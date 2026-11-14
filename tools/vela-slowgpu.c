@@ -10,8 +10,8 @@
 // commit goes out at once, with the GPU still working, as a real app drawing
 // slower than the output does.
 //
-// The compute queue leaves the graphics one, which the compositor uses, free:
-// only waiting for the fence is measured, not GPU contention. If the
+// A compute-only queue is preferred, but resources can still contend. This
+// fixture does not establish absence of GPU contention. If the
 // compositor waited for the fence in its frame, it would miss vblanks (Vela's
 // "state" counts them per output).
 //
@@ -23,7 +23,11 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <gbm.h>
+#include <inttypes.h>
 #include <linux/dma-buf.h>
+#include <math.h>
+#include <poll.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -40,20 +44,27 @@
 
 #include "linux-dmabuf-v1-client-protocol.h"
 #include "linux-drm-syncobj-v1-client-protocol.h"
+#include "presentation-time-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 
-#define WIDTH 512 // 2048-byte rows: linear dmabufs want aligned strides
-#define HEIGHT 320
+static int WIDTH = 512; // JSON workload uses a larger window behind the neutral client.
+static int HEIGHT = 320;
 #define BUFFERS 3
 
 static const uint32_t shaderCode[] = {
 #include "slow.comp.spv.inc"
 };
 
+static const uint32_t contentionShaderCode[] = {
+#include "contention.comp.spv.inc"
+};
+static int contention, desktopLoad;
+static uint64_t loadGpuNs,loadSequence,loadLastSample;
 static struct wl_compositor* compositor;
 static struct xdg_wm_base* wmBase;
 static struct zwp_linux_dmabuf_v1* dmabufManager;
 static struct wp_linux_drm_syncobj_manager_v1* syncobjManager;
+static struct wp_presentation* presentation;
 
 static struct wl_surface* surface;
 static struct wp_linux_drm_syncobj_surface_v1* syncobjSurface;
@@ -99,6 +110,23 @@ static VkFence fence;
 static VkSemaphore semaphore;
 static PFN_vkGetSemaphoreFdKHR getSemaphoreFd;
 static uint32_t iterations = 1 << 14;
+static int jsonOutput, untilEof;
+static unsigned timeoutSeconds = 110;
+static volatile sig_atomic_t stopping;
+static VkQueryPool timing;
+static uint32_t timestampBits;
+static double timestampPeriod, requestedDelay = 150;
+static uint64_t submittedJobs, completedJobs, pendingFrame;
+static uint64_t pendingSubmitNs;
+static uint64_t producerPresented, producerDiscarded;
+
+static void terminate(int signum) { stopping = 1; }
+static void expired(int signum)
+{
+    static const char message[] = "vela-slowgpu: deadline expired\n";
+    (void)write(STDERR_FILENO, message, sizeof(message) - 1);
+    _exit(124);
+}
 static uint32_t dispatches = 1; // bound the duration of each compute dispatch
 
 static void die(const char* what)
@@ -130,6 +158,9 @@ static double nowMs(void)
 
 // ------------------------------------------------------------ Wayland --
 
+static void presentationClock(void* data, struct wp_presentation* object, uint32_t clock) { }
+static const struct wp_presentation_listener presentationListener = { presentationClock };
+
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
     if (!strcmp(interface, wl_compositor_interface.name)) {
@@ -140,6 +171,9 @@ static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, co
         dmabufManager = wl_registry_bind(registry, name, &zwp_linux_dmabuf_v1_interface, 4);
     } else if (!strcmp(interface, wp_linux_drm_syncobj_manager_v1_interface.name)) {
         syncobjManager = wl_registry_bind(registry, name, &wp_linux_drm_syncobj_manager_v1_interface, 1);
+    } else if (jsonOutput && !strcmp(interface, wp_presentation_interface.name)) {
+        presentation = wl_registry_bind(registry, name, &wp_presentation_interface, 1);
+        wp_presentation_add_listener(presentation, &presentationListener, NULL);
     }
 }
 
@@ -245,7 +279,8 @@ static void setupVulkan(void)
         die("no Vulkan device for the compositor's DRM node");
     }
 
-    // A compute-only queue, if there is one: it doesn't take the graphics one.
+    // Delayed producers prefer a compute-only queue. The separate contention
+    // workload deliberately selects a graphics-capable compute queue.
     uint32_t families = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &families, NULL);
     VkQueueFamilyProperties family[16];
@@ -256,7 +291,7 @@ static void setupVulkan(void)
     int chosen = -1;
     for (uint32_t i = 0; i < families; ++i) {
         const VkQueueFlags flags = family[i].queueFlags;
-        if ((flags & VK_QUEUE_COMPUTE_BIT) && !(flags & VK_QUEUE_GRAPHICS_BIT)) {
+        if ((flags & VK_QUEUE_COMPUTE_BIT) && (contention ? !!(flags & VK_QUEUE_GRAPHICS_BIT) : !(flags & VK_QUEUE_GRAPHICS_BIT))) {
             chosen = (int)i;
             break;
         }
@@ -264,8 +299,17 @@ static void setupVulkan(void)
             chosen = (int)i;
         }
     }
-    if (chosen < 0) {
-        die("no compute queue");
+    if (chosen < 0 || (contention && !(family[chosen].queueFlags & VK_QUEUE_GRAPHICS_BIT))) {
+        die("no required compute/graphics queue");
+    }
+    timestampBits = family[chosen].timestampValidBits;
+    VkPhysicalDeviceProperties identity;
+    vkGetPhysicalDeviceProperties(physical, &identity);
+    timestampPeriod = identity.limits.timestampPeriod;
+    if(contention && (identity.limits.maxComputeWorkGroupCount[0]<256 || identity.limits.maxComputeWorkGroupInvocations<64))
+        die("GPU contention geometry unsupported");
+    if (jsonOutput && (!timestampBits || !isfinite(timestampPeriod) || timestampPeriod <= 0)) {
+        die("GPU queue timestamps unsupported");
     }
 
     const float priority = 0.0f;
@@ -285,15 +329,33 @@ static void setupVulkan(void)
     };
     check(vkCreateDevice(physical, &deviceInfo, NULL, &device), "vkCreateDevice");
     vkGetDeviceQueue(device, (uint32_t)chosen, 0, &queue);
+    if (jsonOutput) {
+        const VkQueryPoolCreateInfo query = { .sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+            .queryType = VK_QUERY_TYPE_TIMESTAMP, .queryCount = 2 };
+        check(vkCreateQueryPool(device, &query, NULL, &timing), "GPU timestamp queries");
+        if(contention) {
+            printf("{\"event\":\"gpu-load\",\"schema\":1,\"method\":\"graphics-compute-contention-v1\",\"clock\":\"CLOCK_MONOTONIC\","
+                "\"uid\":%u,\"pid\":%d,\"vendor_id\":%u,\"device_id\":%u,\"drm_major\":%u,\"drm_minor\":%u,"
+                "\"queue_family\":%d,\"graphics_queue\":true,\"workgroups\":256,\"local_size\":64,\"target_job_ms\":5,"
+                "\"timestamp_valid_bits\":%u,\"timestamp_period_ns\":%.9g,\"sample_period_ns\":500000000}\n",
+                getuid(),getpid(),identity.vendorID,identity.deviceID,major(node.st_rdev),minor(node.st_rdev),chosen,timestampBits,timestampPeriod);
+        } else printf("{\"event\":\"producer\",\"schema\":1,\"method\":\"delayed-gpu-acquire-v1\","
+               "\"uid\":%u,\"pid\":%d,\"desktop_static\":%s,\"sync\":\"%s\",\"requested_delay_ms\":%.3f,\"vendor_id\":%u,\"device_id\":%u,"
+               "\"drm_major\":%u,\"drm_minor\":%u,\"queue_family\":%d,\"compute_only_queue\":%s,"
+               "\"contention_excluded\":false,\"timestamp_valid_bits\":%u,\"timestamp_period_ns\":%.9g,\"buffer_width\":%d,\"buffer_height\":%d}\n",
+               getuid(), getpid(), desktopLoad ? "true" : "false", implicitSync ? "implicit" : "explicit", requestedDelay, identity.vendorID, identity.deviceID,
+               major(node.st_rdev), minor(node.st_rdev), chosen,
+               family[chosen].queueFlags & VK_QUEUE_GRAPHICS_BIT ? "false" : "true", timestampBits, timestampPeriod, WIDTH, HEIGHT);
+    }
     getSemaphoreFd = (PFN_vkGetSemaphoreFdKHR)vkGetDeviceProcAddr(device, "vkGetSemaphoreFdKHR");
     if (!getSemaphoreFd) {
         die("VK_KHR_external_semaphore_fd is enabled but vkGetSemaphoreFdKHR is unavailable");
     }
 
-    // The result buffer (64 floats), only so the loop doesn't vanish.
+    // Per-invocation results keep the computation observable to the compiler.
     const VkBufferCreateInfo bufferInfo = {
         .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .size = 64 * sizeof(float),
+        .size = (contention ? 256 : 1) * 64 * sizeof(float),
         .usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT,
     };
     VkBuffer result;
@@ -366,8 +428,8 @@ static void setupVulkan(void)
 
     const VkShaderModuleCreateInfo moduleInfo = {
         .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
-        .codeSize = sizeof(shaderCode),
-        .pCode = shaderCode,
+        .codeSize = contention ? sizeof(contentionShaderCode) : sizeof(shaderCode),
+        .pCode = contention ? contentionShaderCode : shaderCode,
     };
     VkShaderModule module;
     check(vkCreateShaderModule(device, &moduleInfo, NULL, &module), "vkCreateShaderModule");
@@ -413,9 +475,27 @@ static void setupVulkan(void)
 
 // Launches the slow job. With exportFence, returns its sync_file (not signaled
 // yet); without, waits for it to finish.
+static void finishJob(void)
+{
+    check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX), "wait GPU fence");
+    if (jsonOutput && pendingFrame) {
+        uint64_t values[2];
+        check(vkGetQueryPoolResults(device, timing, 0, 2, sizeof(values), values, sizeof(uint64_t),
+                                   VK_QUERY_RESULT_64_BIT), "GPU timestamp results");
+        const uint64_t mask = timestampBits == 64 ? UINT64_MAX : (1ull << timestampBits) - 1;
+        const double duration = ((values[1] - values[0]) & mask) * timestampPeriod / 1e6;
+        if(contention)loadGpuNs+=(uint64_t)(duration*1e6+.5);
+        else printf("{\"event\":\"gpu-complete\",\"frame\":%" PRIu64 ",\"gpu_duration_ms\":%.6f,"
+               "\"submitted_monotonic_ns\":%" PRIu64 ",\"observed_monotonic_ns\":%.0f}\n",
+               pendingFrame, duration, pendingSubmitNs, nowMs() * 1e6);
+        ++completedJobs;
+        pendingFrame = 0;
+    }
+}
+
 static int runJob(int exportFence)
 {
-    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+    finishJob();
     vkResetFences(device, 1, &fence);
     vkResetCommandBuffer(commandBuffer, 0);
     const VkCommandBufferBeginInfo begin = {
@@ -423,6 +503,10 @@ static int runJob(int exportFence)
         .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
     };
     vkBeginCommandBuffer(commandBuffer, &begin);
+    if (jsonOutput) {
+        vkCmdResetQueryPool(commandBuffer, timing, 0, 2);
+        vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, timing, 0);
+    }
     vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipeline);
     vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, NULL);
     // A single 150 ms compute dispatch can starve a separate compositor
@@ -435,7 +519,7 @@ static int runJob(int exportFence)
     for (uint32_t i = 0; i < dispatches; ++i) {
         uint32_t count = per_dispatch + (i < remainder ? 1 : 0);
         vkCmdPushConstants(commandBuffer, pipelineLayout, VK_SHADER_STAGE_COMPUTE_BIT, 0, sizeof(count), &count);
-        vkCmdDispatch(commandBuffer, 1, 1, 1);
+        vkCmdDispatch(commandBuffer, contention ? 256 : 1, 1, 1);
         if (i + 1 < dispatches) {
             const VkMemoryBarrier barrier = {
                 .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER,
@@ -446,6 +530,7 @@ static int runJob(int exportFence)
                                  VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 1, &barrier, 0, NULL, 0, NULL);
         }
     }
+    if (jsonOutput) vkCmdWriteTimestamp(commandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, timing, 1);
     vkEndCommandBuffer(commandBuffer);
     const VkSubmitInfo submit = {
         .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
@@ -483,16 +568,19 @@ static void calibrate(double targetMs)
         iterations *= 2;
     }
     for (int round = 0; round < 2; ++round) {
-        iterations = (uint32_t)((double)iterations * targetMs / elapsed);
-        // Every dispatched shader must execute at least one iteration.
-        if (iterations < dispatches) {
-            iterations = dispatches;
+        double scaled = (double)iterations * targetMs / elapsed;
+        if (!isfinite(scaled) || scaled < 1 || scaled > (double)(1u << 30)) {
+            die("GPU delay calibration is outside the supported iteration range");
         }
+        iterations = (uint32_t)scaled;
+        // Keep every cooperative dispatch non-empty after calibration.
+        if (iterations < dispatches) iterations = dispatches;
         const double start = nowMs();
         runJob(0);
         elapsed = nowMs() - start;
     }
-    printf("GPU job: %u iterations over %u dispatches, %.0f ms\n", iterations, dispatches, elapsed);
+    if (jsonOutput) printf("{\"event\":\"calibrated\",\"iterations\":%u,\"dispatches\":%u,\"wall_duration_ms\":%.6f}\n", iterations, dispatches, elapsed);
+    else printf("GPU job: %u iterations over %u dispatches, %.0f ms\n", iterations, dispatches, elapsed);
     fflush(stdout);
 }
 
@@ -579,14 +667,39 @@ static struct Buffer* freeBuffer(unsigned frame)
     return b;
 }
 
+static void presentedOutput(void* data, struct wp_presentation_feedback* feedback, struct wl_output* output) { }
+static void producerPresent(void* data, struct wp_presentation_feedback* feedback, uint32_t hi, uint32_t lo,
+                            uint32_t ns, uint32_t refresh, uint32_t seqHi, uint32_t seqLo, uint32_t flags)
+{
+    uint64_t* frame = data;
+    ++producerPresented;
+    printf("{\"event\":\"producer-presented\",\"frame\":%" PRIu64 ",\"received_monotonic_ns\":%.0f,\"flags\":%u}\n",
+           *frame, nowMs() * 1e6, flags);
+    wp_presentation_feedback_destroy(feedback);
+    free(frame);
+}
+static void producerDiscard(void* data, struct wp_presentation_feedback* feedback)
+{
+    uint64_t* frame = data;
+    ++producerDiscarded;
+    printf("{\"event\":\"producer-discarded\",\"frame\":%" PRIu64 ",\"received_monotonic_ns\":%.0f}\n", *frame, nowMs() * 1e6);
+    wp_presentation_feedback_destroy(feedback);
+    free(frame);
+}
+static const struct wp_presentation_feedback_listener producerFeedback = { presentedOutput, producerPresent, producerDiscard };
+
 static void draw(void)
 {
     static const uint32_t colors[] = { 0xffd04040, 0xff40b040, 0xff4060d0, 0xffd0b040 };
     static unsigned frame;
     struct Buffer* b = freeBuffer(frame);
-    fill(b, colors[frame++ % 4]);
+    fill(b, colors[desktopLoad ? 0 : frame % 4]);
+    ++frame;
 
+    const uint64_t submissionNs = (uint64_t)(nowMs() * 1e6);
     const int syncFile = runJob(1); // the GPU is still working when the commit goes out
+    const VkResult fenceState = vkGetFenceStatus(device, fence);
+    if (jsonOutput && fenceState != VK_NOT_READY) die("GPU fence was already ready before commit");
     if (implicitSync) {
         struct dma_buf_import_sync_file request = { .flags = DMA_BUF_SYNC_WRITE, .fd = syncFile };
         if (ioctl(b->fd, DMA_BUF_IOCTL_IMPORT_SYNC_FILE, &request) != 0) {
@@ -612,7 +725,24 @@ static void draw(void)
     wl_surface_attach(surface, b->wl, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, WIDTH, HEIGHT);
     wl_callback_add_listener(wl_surface_frame(surface), &frameListener, NULL);
+    if (jsonOutput) {
+        uint64_t* id = malloc(sizeof(*id));
+        if (!id) die("feedback allocation");
+        *id = submittedJobs + 1;
+        wp_presentation_feedback_add_listener(wp_presentation_feedback(presentation, surface), &producerFeedback, id);
+        if (vkGetFenceStatus(device, fence) != VK_NOT_READY) die("GPU fence became ready before commit");
+    }
     wl_surface_commit(surface);
+    if (jsonOutput) {
+        // A fence cannot become unsignaled again before the next reset.
+        // Pending immediately after commit also verifies it was pending
+        // during the commit, including time spent importing its sync_file.
+        if (vkGetFenceStatus(device, fence) != VK_NOT_READY) die("GPU fence became ready while committing");
+        pendingFrame = ++submittedJobs;
+        pendingSubmitNs = submissionNs;
+        printf("{\"event\":\"producer-commit\",\"frame\":%" PRIu64 ",\"monotonic_ns\":%.0f,\"fence_pending\":true}\n",
+               pendingFrame, nowMs() * 1e6);
+    }
     frameDue = 0;
 }
 
@@ -627,23 +757,103 @@ static struct wp_linux_drm_syncobj_timeline_v1* newTimeline(uint32_t* handle)
     return timeline;
 }
 
+static void loadSample(void)
+{
+    uint64_t now=(uint64_t)(nowMs()*1e6);
+    printf("{\"event\":\"gpu-load-sample\",\"sequence\":%" PRIu64 ",\"jobs\":%" PRIu64 ",\"gpu_time_ns\":%" PRIu64
+        ",\"last_submit_ns\":%" PRIu64 ",\"monotonic_ns\":%" PRIu64 "}\n",++loadSequence,completedJobs,loadGpuNs,pendingSubmitNs,now);
+    loadLastSample=now;
+}
+static void runContention(struct wl_display *display)
+{
+    while(!stopping) {
+        pendingSubmitNs=(uint64_t)(nowMs()*1e6);
+        runJob(0);pendingFrame=++submittedJobs;finishJob();
+        uint64_t now=(uint64_t)(nowMs()*1e6);
+        if(!loadSequence || now-loadLastSample>=500000000ull)loadSample();
+        while (wl_display_prepare_read(display) != 0)
+            if(wl_display_dispatch_pending(display)<0)die("Wayland connection lost");
+        if (wl_display_flush(display) < 0 && errno != EAGAIN) {
+            wl_display_cancel_read(display);die("Wayland connection lost");
+        }
+        struct pollfd fds[2]={{STDIN_FILENO,POLLIN,0},{wl_display_get_fd(display),POLLIN,0}};
+        int polled=poll(fds,2,0);
+        if(polled<0) {
+            wl_display_cancel_read(display);
+            if(errno==EINTR)continue;
+            die("contention poll");
+        }
+        if(fds[1].revents&(POLLHUP|POLLERR|POLLNVAL)) {
+            wl_display_cancel_read(display);die("Wayland connection lost");
+        }
+        if(fds[1].revents&POLLIN) {
+            if(wl_display_read_events(display)<0)die("Wayland connection lost");
+        } else wl_display_cancel_read(display);
+        if(wl_display_dispatch_pending(display)<0 || wl_display_get_error(display))die("Wayland connection lost");
+        if(fds[0].revents&(POLLIN|POLLHUP|POLLERR)) {char byte;if(read(0,&byte,1)==0)break;die("stdin accepts EOF only");}
+    }
+    loadSample();
+    printf("{\"event\":\"gpu-load-summary\",\"complete\":%s,\"submitted\":%" PRIu64 ",\"completed\":%" PRIu64 ",\"monotonic_ns\":%.0f}\n",
+        stopping?"false":"true",submittedJobs,completedJobs,nowMs()*1e6);
+    vkDeviceWaitIdle(device);
+}
+
 int main(int argc, char* argv[])
 {
     double targetMs = 150.0;
     int monolithic = 0;
     for (int i = 1; i < argc; ++i) {
-        if (!strcmp(argv[i], "--implicit")) {
+        if (!strcmp(argv[i], "--contention")) {
+            contention=1;
+        } else if (!strcmp(argv[i], "--implicit")) {
             implicitSync = 1;
         } else if (!strcmp(argv[i], "--fullscreen")) {
             wantFullscreen = 1;
         } else if (!strcmp(argv[i], "--monolithic")) {
             monolithic = 1;
-        } else if (atof(argv[i]) > 0) {
-            targetMs = atof(argv[i]);
+        } else if (!strcmp(argv[i], "--json")) {
+            jsonOutput = 1;
+        } else if (!strcmp(argv[i], "--until-stdin-eof")) {
+            untilEof = 1;
+        } else if (!strcmp(argv[i], "--timeout")) {
+            if (++i == argc) return 2;
+            char* end = NULL;
+            errno = 0;
+            unsigned long value = strtoul(argv[i], &end, 10);
+            if (errno || !*argv[i] || *end || value < 1 || value > 240) return 2;
+            timeoutSeconds = (unsigned)value;
+        } else if (!strcmp(argv[i], "--desktop-load")) {
+            desktopLoad=1;
+        } else if (!strcmp(argv[i], "--help")) {
+            puts("Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof [--timeout 1..240]] [--contention] [--desktop-load]\n"
+                 "JSON mode: bounded startup/runtime, GPU timestamps and fixed synchronization evidence.");
+            return 0;
         } else {
-            fprintf(stderr, "usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic]\n");
-            return 2;
+            char* end = NULL;
+            errno = 0;
+            double value = strtod(argv[i], &end);
+            if (errno || !*argv[i] || *end || !isfinite(value) || value < 1 || value > 1000) {
+                fprintf(stderr, "usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof]\n");
+                return 2;
+            }
+            targetMs = value;
         }
+    }
+    if (!isfinite(targetMs) || targetMs < 1 || targetMs > 1000 || jsonOutput != untilEof) return 2;
+    if(desktopLoad && (!jsonOutput || contention || wantFullscreen || monolithic))return 2;
+    if(contention) {
+        if(!jsonOutput || implicitSync || wantFullscreen || monolithic || targetMs!=150.)return 2;
+        targetMs=5.;
+    }
+    requestedDelay = targetMs;
+    if (jsonOutput) {
+        WIDTH = 1024;
+        HEIGHT = 640;
+        setvbuf(stdout, NULL, _IOLBF, 0);
+        signal(SIGTERM, terminate);
+        signal(SIGINT, terminate);
+        signal(SIGALRM, expired);
+        alarm(timeoutSeconds);
     }
 
     struct wl_display* display = wl_display_connect(NULL);
@@ -655,9 +865,10 @@ int main(int argc, char* argv[])
     if (!compositor || !wmBase || !dmabufManager) {
         die("mancano wl_compositor, xdg_wm_base o linux-dmabuf v4");
     }
-    if (!implicitSync && !syncobjManager) {
+    if (!contention && !implicitSync && !syncobjManager) {
         die("the compositor doesn't offer linux-drm-syncobj-v1");
     }
+    if (jsonOutput && !contention && !presentation) die("presentation-time is required for visible producer evidence");
     struct zwp_linux_dmabuf_feedback_v1* feedback = zwp_linux_dmabuf_v1_get_default_feedback(dmabufManager);
     zwp_linux_dmabuf_feedback_v1_add_listener(feedback, &feedbackListener, NULL);
     wl_display_roundtrip(display);
@@ -690,6 +901,7 @@ int main(int argc, char* argv[])
     }
     progress("calibrating compute workload");
     calibrate(targetMs);
+    if(contention) {runContention(display);return 0;}
     progress("allocating linear DMA-BUFs");
     setupBuffers();
     progress("creating Wayland toplevel");
@@ -715,13 +927,34 @@ int main(int argc, char* argv[])
     }
     progress("Wayland toplevel configured; submitting first frame");
 
-    while (running) {
+    while (running && !stopping) {
         if (frameDue) {
             draw();
         }
-        if (wl_display_dispatch(display) < 0) {
-            break;
+        if (!jsonOutput) {
+            if (wl_display_dispatch(display) < 0) break;
+        } else {
+            if (wl_display_dispatch_pending(display) < 0) die("Wayland dispatch failed");
+            if (wl_display_flush(display) < 0 && errno != EAGAIN) die("Wayland flush failed");
+            struct pollfd fds[] = { { wl_display_get_fd(display), POLLIN, 0 }, { STDIN_FILENO, POLLIN, 0 } };
+            int result = poll(fds, 2, 50);
+            if (result < 0 && errno != EINTR) die("poll failed");
+            if (fds[1].revents & (POLLHUP | POLLERR | POLLIN)) {
+                char byte;
+                if (read(STDIN_FILENO, &byte, 1) <= 0) break;
+                die("stdin accepts EOF only");
+            }
+            if (fds[0].revents & (POLLHUP | POLLERR)) die("Wayland connection lost");
+            if (fds[0].revents & POLLIN) {
+                if (wl_display_dispatch(display) < 0) die("Wayland connection lost");
+            }
         }
+    }
+    if (jsonOutput) {
+        finishJob();
+        printf("{\"event\":\"producer-summary\",\"complete\":%s,\"submitted\":%" PRIu64 ",\"completed\":%" PRIu64
+               ",\"presented\":%" PRIu64 ",\"discarded\":%" PRIu64 ",\"monotonic_ns\":%.0f}\n",
+               !stopping && running ? "true" : "false", submittedJobs, completedJobs, producerPresented, producerDiscarded, nowMs() * 1e6);
     }
     vkDeviceWaitIdle(device);
     return 0;

@@ -1,0 +1,8 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+"""Development checks on private compositors and temporary user services."""
+from pathlib import Path
+import runpy
+
+runpy.run_path(str(Path(__file__).resolve().parent.parent / 'benchmarks/tests/selftest.py'), run_name='__main__')

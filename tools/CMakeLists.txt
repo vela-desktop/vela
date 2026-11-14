@@ -67,6 +67,130 @@ vela_client_protocol(proto-xdg-output
     xdg-output-unstable-v1)
 
 vela_client_protocol(proto-xdg-shell ${TOOLS_WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml xdg-shell)
+vela_client_protocol(proto-presentation-time
+    ${TOOLS_WAYLAND_PROTOCOLS_DIR}/stable/presentation-time/presentation-time.xml presentation-time)
+add_executable(vela-bench-probe vela-bench-probe.c)
+target_link_libraries(vela-bench-probe PRIVATE proto-xdg-shell proto-presentation-time)
+target_compile_options(vela-bench-probe PRIVATE -Wall -Wextra -Wno-unused-parameter)
+add_executable(vela-bench-kwin-input-fixture ../benchmarks/tests/kwin_input_fixture.c)
+target_link_libraries(vela-bench-kwin-input-fixture PRIVATE PkgConfig::TOOLS_WAYLAND_CLIENT)
+target_compile_options(vela-bench-kwin-input-fixture PRIVATE -Wall -Wextra)
+add_executable(vela-bench-cpuload vela-bench-cpuload.c)
+target_compile_options(vela-bench-cpuload PRIVATE -Wall -Wextra)
+add_test(NAME benchmark-contention-cli COMMAND ${Python3_EXECUTABLE}
+    ${PROJECT_SOURCE_DIR}/benchmarks/tests/contention_cli.py $<TARGET_FILE:vela-bench-cpuload>)
+set_tests_properties(benchmark-contention-cli PROPERTIES TIMEOUT 20 SKIP_RETURN_CODE 77)
+pkg_check_modules(BENCH_EVDEV IMPORTED_TARGET libevdev)
+if(BENCH_EVDEV_FOUND)
+    add_executable(vela-bench-input vela-bench-input.c)
+    target_link_libraries(vela-bench-input PRIVATE PkgConfig::BENCH_EVDEV)
+    target_compile_options(vela-bench-input PRIVATE -Wall -Wextra)
+    add_executable(vela-bench-input-fixture vela-bench-input.c ../benchmarks/tests/input_fixture.c)
+    target_link_libraries(vela-bench-input-fixture PRIVATE PkgConfig::BENCH_EVDEV)
+    target_compile_options(vela-bench-input-fixture PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    foreach(symbol getuid geteuid libevdev_uinput_create_from_device libevdev_uinput_write_event
+                   libevdev_uinput_get_syspath libevdev_uinput_destroy)
+        target_link_options(vela-bench-input-fixture PRIVATE "LINKER:--wrap=${symbol}")
+    endforeach()
+    add_test(NAME benchmark-input-cli COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/input_cli.py $<TARGET_FILE:vela-bench-input-fixture>)
+    set_tests_properties(benchmark-input-cli PROPERTIES TIMEOUT 15)
+endif()
+find_package(KF6Screen QUIET)
+find_package(Qt6 QUIET COMPONENTS Core Gui DBus)
+add_custom_target(vela-bench-corpus)
+find_package(Qt6 QUIET COMPONENTS Widgets OPTIONAL_COMPONENTS WebEngineWidgets)
+pkg_check_modules(BENCH_FONTCONFIG IMPORTED_TARGET fontconfig)
+pkg_check_modules(BENCH_XCB IMPORTED_TARGET xcb)
+pkg_check_modules(BENCH_GTK IMPORTED_TARGET gtk4>=4.12)
+if(TARGET Qt6::Widgets AND BENCH_FONTCONFIG_FOUND AND BENCH_XCB_FOUND)
+    add_executable(vela-bench-corpus-qt vela-bench-corpus-qt.cpp)
+    target_link_libraries(vela-bench-corpus-qt PRIVATE Qt6::Widgets PkgConfig::BENCH_FONTCONFIG PkgConfig::BENCH_XCB)
+    target_compile_options(vela-bench-corpus-qt PRIVATE -Wall -Wextra)
+    add_dependencies(vela-bench-corpus vela-bench-corpus-qt)
+    if(TARGET Qt6::WebEngineWidgets)
+        add_executable(vela-bench-corpus-web vela-bench-corpus-qt.cpp)
+        target_compile_definitions(vela-bench-corpus-web PRIVATE CORPUS_WEB=1)
+        target_link_libraries(vela-bench-corpus-web PRIVATE Qt6::WebEngineWidgets PkgConfig::BENCH_FONTCONFIG PkgConfig::BENCH_XCB)
+        target_compile_options(vela-bench-corpus-web PRIVATE -Wall -Wextra)
+        add_dependencies(vela-bench-corpus vela-bench-corpus-web)
+    endif()
+endif()
+if(BENCH_GTK_FOUND AND BENCH_FONTCONFIG_FOUND)
+    add_executable(vela-bench-corpus-gtk vela-bench-corpus-gtk.c)
+    target_link_libraries(vela-bench-corpus-gtk PRIVATE PkgConfig::BENCH_GTK PkgConfig::BENCH_FONTCONFIG)
+    target_compile_options(vela-bench-corpus-gtk PRIVATE -Wall -Wextra)
+    add_dependencies(vela-bench-corpus vela-bench-corpus-gtk)
+endif()
+foreach(corpus_tool vela-bench-corpus-qt vela-bench-corpus-gtk vela-bench-corpus-web)
+    if(TARGET ${corpus_tool})
+        add_test(NAME benchmark-${corpus_tool}-cli COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/corpus_cli.py $<TARGET_FILE:${corpus_tool}>)
+        set_tests_properties(benchmark-${corpus_tool}-cli PROPERTIES TIMEOUT 30)
+    endif()
+endforeach()
+if(KF6Screen_FOUND AND TARGET Qt6::DBus)
+    find_program(BENCH_XWAYLAND NAMES Xwayland)
+    if(VELA_BUILD_COMPOSITOR)
+        if(TARGET vela-bench-corpus-qt AND TARGET vela-bench-corpus-gtk AND TARGET vela-bench-corpus-web AND BENCH_XWAYLAND)
+            add_test(NAME benchmark-corpus-integration COMMAND ${Python3_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/benchmarks/tests/p4_integration.py)
+            set_tests_properties(benchmark-corpus-integration PROPERTIES
+                TIMEOUT 550 LABELS "gpu" RUN_SERIAL TRUE
+                ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR};VELA_TEST_CORPUS=full")
+        endif()
+        add_test(NAME benchmark-p4-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/p4_integration.py)
+        set_tests_properties(benchmark-p4-integration PROPERTIES
+            TIMEOUT 180 LABELS "gpu" RUN_SERIAL TRUE ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+        add_test(NAME benchmark-resource-interaction-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/interaction_integration.py)
+        set_tests_properties(benchmark-resource-interaction-integration PROPERTIES
+            TIMEOUT 90 LABELS "gpu" RUN_SERIAL TRUE ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+    endif()
+    add_executable(vela-bench-scene vela-bench-scene.cpp)
+    target_link_libraries(vela-bench-scene PRIVATE Qt6::Gui)
+    target_compile_options(vela-bench-scene PRIVATE -Wall -Wextra)
+    add_executable(vela-bench-desktop vela-bench-desktop.cpp)
+    target_link_libraries(vela-bench-desktop PRIVATE KF6::Screen Qt6::Gui Qt6::DBus)
+    target_compile_options(vela-bench-desktop PRIVATE -Wall -Wextra)
+    find_program(BENCH_KWIN NAMES kwin_wayland)
+    find_program(BENCH_DBUS_RUN NAMES dbus-run-session)
+    if(BENCH_DBUS_RUN AND VELA_BUILD_COMPOSITOR)
+        foreach(phase motion responsiveness)
+            add_test(NAME benchmark-p3-${phase}-integration COMMAND ${Python3_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py ${phase})
+            set_tests_properties(benchmark-p3-${phase}-integration PROPERTIES TIMEOUT 900 LABELS "gpu"
+                RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+        endforeach()
+    endif()
+    if(BENCH_KWIN AND BENCH_DBUS_RUN)
+        if(TARGET vela-bench-corpus-qt AND TARGET vela-bench-corpus-gtk AND TARGET vela-bench-corpus-web AND BENCH_XWAYLAND)
+            add_test(NAME benchmark-plasma-corpus-integration COMMAND ${Python3_EXECUTABLE}
+                ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop> --corpus)
+            set_tests_properties(benchmark-plasma-corpus-integration PROPERTIES
+                TIMEOUT 550 LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+        endif()
+        add_test(NAME benchmark-plasma-p3-motion-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py --plasma motion)
+        set_tests_properties(benchmark-plasma-p3-motion-integration PROPERTIES TIMEOUT 900 LABELS "gpu"
+            RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+        add_test(NAME benchmark-plasma-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_integration.py $<TARGET_FILE:vela-bench-desktop>)
+        set_tests_properties(benchmark-plasma-integration PROPERTIES TIMEOUT 45 LABELS "gpu")
+        add_test(NAME benchmark-plasma-scaling-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop>)
+        set_tests_properties(benchmark-plasma-scaling-integration PROPERTIES TIMEOUT 180
+            LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+        add_test(NAME benchmark-plasma-resource-interaction-integration COMMAND ${Python3_EXECUTABLE}
+            ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop> --interactions)
+        set_tests_properties(benchmark-plasma-resource-interaction-integration PROPERTIES TIMEOUT 90
+            LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+    endif()
+endif()
+add_test(NAME benchmark-probe-cli COMMAND ${Python3_EXECUTABLE}
+    ${PROJECT_SOURCE_DIR}/benchmarks/tests/probe_cli.py $<TARGET_FILE:vela-bench-probe>)
+set_tests_properties(benchmark-probe-cli PROPERTIES TIMEOUT 15)
 vela_client_protocol(proto-viewporter ${TOOLS_WAYLAND_PROTOCOLS_DIR}/stable/viewporter/viewporter.xml viewporter)
 vela_client_protocol(proto-fractional-scale
     ${TOOLS_WAYLAND_PROTOCOLS_DIR}/staging/fractional-scale/fractional-scale-v1.xml fractional-scale-v1)
@@ -144,9 +268,34 @@ add_custom_command(
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/slow.comp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/slow.comp
     COMMENT "Compilo lo shader di vela-slowgpu")
-add_executable(vela-slowgpu vela-slowgpu.c ${TOOLS_SHADER})
+set(CONTENTION_SHADER ${CMAKE_CURRENT_BINARY_DIR}/shaders/contention.comp.spv.inc)
+add_custom_command(OUTPUT ${CONTENTION_SHADER}
+    COMMAND ${TOOLS_GLSLC} --target-env=vulkan1.3 -O -mfmt=num -o ${CONTENTION_SHADER}
+        ${CMAKE_CURRENT_SOURCE_DIR}/shaders/contention.comp
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/contention.comp ${TOOLS_SHADER})
+add_executable(vela-slowgpu vela-slowgpu.c ${TOOLS_SHADER} ${CONTENTION_SHADER})
+add_test(NAME benchmark-slowgpu-cli COMMAND ${Python3_EXECUTABLE}
+    ${PROJECT_SOURCE_DIR}/benchmarks/tests/slowgpu_cli.py $<TARGET_FILE:vela-slowgpu>)
+set_tests_properties(benchmark-slowgpu-cli PROPERTIES TIMEOUT 20)
+if(TARGET vela-bench-desktop AND BENCH_KWIN AND BENCH_DBUS_RUN)
+    add_test(NAME benchmark-plasma-contention-integration COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/plasma_scaling_integration.py $<TARGET_FILE:vela-bench-desktop> --contention)
+    set_tests_properties(benchmark-plasma-contention-integration PROPERTIES TIMEOUT 150 LABELS "gpu" RUN_SERIAL TRUE SKIP_RETURN_CODE 77)
+endif()
+if(TARGET vela-bench-desktop AND BENCH_DBUS_RUN AND VELA_BUILD_COMPOSITOR)
+    add_test(NAME benchmark-p3-loads-integration COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/desktop_integration.py slow-apps)
+    set_tests_properties(benchmark-p3-loads-integration PROPERTIES TIMEOUT 900 LABELS "gpu" RUN_SERIAL TRUE
+        SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+endif()
+if(VELA_BUILD_COMPOSITOR)
+    add_test(NAME benchmark-p2-contention-integration COMMAND ${Python3_EXECUTABLE}
+        ${PROJECT_SOURCE_DIR}/benchmarks/tests/contention_integration.py)
+    set_tests_properties(benchmark-p2-contention-integration PROPERTIES TIMEOUT 280 LABELS "gpu"
+        RUN_SERIAL TRUE SKIP_RETURN_CODE 77 ENVIRONMENT "VELA_BUILD=${CMAKE_BINARY_DIR}")
+endif()
 target_include_directories(vela-slowgpu PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/shaders)
-target_link_libraries(vela-slowgpu PRIVATE proto-xdg-shell proto-linux-dmabuf proto-linux-drm-syncobj
+target_link_libraries(vela-slowgpu PRIVATE proto-xdg-shell proto-linux-dmabuf proto-linux-drm-syncobj proto-presentation-time
     PkgConfig::TOOLS_VULKAN PkgConfig::TOOLS_GBM PkgConfig::TOOLS_DRM)
 endif()
 
