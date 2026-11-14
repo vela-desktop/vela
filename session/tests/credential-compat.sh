@@ -5,6 +5,7 @@ set -eu
 umask 077
 compat=$1
 ensure=$2
+hook=$3
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 mkdir -p "$tmp/vela" "$tmp/runtime"
@@ -133,4 +134,54 @@ if vela_credential_ensure gnome "$binary" gnome.service; then
 fi
 [ "$(cat "$status")" = failed ]
 
-echo "credential compatibility selection and owner validation OK"
+# Run the actual session hook in an isolated user-manager fixture to verify
+# that the first start probes the owner once, restarts do not, and a competing
+# graphical session is left untouched. No real systemd or keyring is contacted.
+mockbin="$tmp/mockbin"
+mkdir -p "$mockbin" "$tmp/hook-runtime"
+cat > "$mockbin/systemctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$MOCK_SYSTEMCTL_CALLS"
+case "$*" in
+    *'is-active graphical-session.target')
+        [ "${MOCK_GRAPHICAL_ACTIVE:-0}" = 1 ] ;;
+    *) exit 0 ;;
+esac
+EOF
+cat > "$mockbin/busctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$MOCK_BUS_CALLS"
+printf '%s\n' 'u 1234'
+EOF
+cat > "$mockbin/readlink" <<'EOF'
+#!/bin/sh
+printf '%s\n' /usr/bin/kwalletd6
+EOF
+cat > "$mockbin/dbus-update-activation-environment" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+chmod 700 "$mockbin/"*
+export PATH="$mockbin:$PATH"
+export MOCK_BUS_CALLS="$tmp/bus-calls" MOCK_SYSTEMCTL_CALLS="$tmp/systemctl-calls"
+export MOCK_GRAPHICAL_ACTIVE=0 VELA_SECRET_BACKEND=kwallet VELA_SECRET_CONFIGURED=1
+export WAYLAND_DISPLAY=wayland-73 XDG_CURRENT_DESKTOP=Vela:KDE
+export XDG_RUNTIME_DIR="$tmp/hook-runtime"
+: > "$MOCK_BUS_CALLS"
+: > "$MOCK_SYSTEMCTL_CALLS"
+sh "$hook" start
+[ -f "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
+[ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
+[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 1 ]
+sh "$hook" start
+[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 1 ]
+sh "$hook" stop
+[ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
+[ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
+MOCK_GRAPHICAL_ACTIVE=1
+export MOCK_GRAPHICAL_ACTIVE
+sh "$hook" start
+[ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
+[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 1 ]
+
+echo "credential compatibility selection, owner validation, and restart lifecycle OK"
