@@ -496,7 +496,16 @@ class ReportingTests(unittest.TestCase):
         cpu_check = helperdir / "vela-cpu-check"
         cpu_check.write_text('#!/bin/sh\nexit 0\n')
         cpu_check.chmod(0o700)
-        template = Path(__file__).resolve().parents[2] / "session/vela-session.in"
+        # The launcher sources a real temporary credential selector. Include it
+        # in this isolated fixture (including directories with spaces) so we
+        # test the installed session contract, not an incomplete fake install.
+        project = Path(__file__).resolve().parents[2]
+        selector = helperdir / "credential-compat/select-backend"
+        selector.parent.mkdir()
+        selector.write_bytes((project / "session/credential-compat/select-backend").read_bytes())
+        config_home = self.home / ".config"
+        config_home.mkdir()
+        template = project / "session/vela-session.in"
         launcher = self.root / "session"
         launcher.write_text(template.read_text()
                             .replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir))
@@ -505,7 +514,8 @@ class ReportingTests(unittest.TestCase):
         (state / "vela").mkdir(parents=True)
         (state / "vela/vela.log").write_text("previous incident\n")
         result = subprocess.run(["sh", str(launcher), "--test"], capture_output=True,
-                                env=dict(os.environ, XDG_STATE_HOME=str(state)), timeout=5)
+                                env=dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(config_home),
+                                         XDG_STATE_HOME=str(state)), timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((state / "vela/vela.log.old").read_text(), "previous incident\n")
         context = {"log_path": str(state / "vela/vela.log")}
@@ -518,7 +528,8 @@ class ReportingTests(unittest.TestCase):
         # Fail before executing the compositor when the preflight rejects the CPU.
         cpu_check.write_text('#!/bin/sh\necho "unsupported CPU" >&2\nexit 1\n')
         rejected = subprocess.run(["sh", str(launcher), "--test"], capture_output=True,
-                                  env=dict(os.environ, XDG_STATE_HOME=str(state)), timeout=5)
+                                  env=dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(config_home),
+                                         XDG_STATE_HOME=str(state)), timeout=5)
         self.assertEqual(rejected.returncode, 1, rejected.stderr)
         error_log = (state / "vela/vela.log").read_text()
         self.assertIn("unsupported CPU", error_log)
