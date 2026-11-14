@@ -122,13 +122,20 @@ class PromoTests(unittest.TestCase):
         host = {"HOME": "/home/real-user", "XDG_RUNTIME_DIR": "/run/user/1000",
                 "XDG_DATA_HOME": "/home/real-user/.local/share",
                 "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
-                "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket"}
+                "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket",
+                "WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0", "WAYLAND_SOCKET": "3"}
         desktop = promo.Desktop(Path("/nonexistent-build"), promo.StartMenu())
         with (mock.patch.dict(promo.capture.os.environ, host),
-              mock.patch.object(promo.capture.subprocess, "Popen", return_value=bus) as popen):
+              mock.patch.object(promo.capture.subprocess, "Popen", return_value=bus) as popen,
+              mock.patch.object(promo.capture.harness, "stop_process_group") as stop):
             with self.assertRaisesRegex(RuntimeError, "D-Bus"):
                 desktop.__enter__()
         command, env = popen.call_args.args[0], popen.call_args.kwargs["env"]
+        # What it activates must not reach the host's display, and goes with it.
+        for key in ("WAYLAND_DISPLAY", "DISPLAY", "WAYLAND_SOCKET"):
+            self.assertNotIn(key, env)
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        stop.assert_called_once_with(bus)
         private = desktop.private_runtime.parent
         address = f"unix:path={private / 'runtime' / 'bus'}"
         self.assertIn(f"--address={address}", command)
