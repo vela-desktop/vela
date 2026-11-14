@@ -44,6 +44,8 @@ Page {
                 ? qsTr("Choose your existing password manager. KWallet is used only as a fallback until you choose. No passwords are transferred; sign out and back in to apply.")
                 : !Prefs.secretBackendInstalled
                 ? qsTr("The selected password manager is not installed. Install it or choose the other provider, then sign out and back in.")
+                : Prefs.secretBackend !== Prefs.activeSecretBackend
+                ? qsTr("This password manager will be used after signing out and back in. The running session still uses the previous choice.")
                 : Prefs.credentialStatus === "conflict"
                 ? qsTr("Another password manager owns Secret Service. Your choice is not active; check the Vela session log. No passwords were migrated.")
                 : Prefs.credentialStatus === "missing" || Prefs.credentialStatus === "unverified" || Prefs.credentialStatus === "failed"
