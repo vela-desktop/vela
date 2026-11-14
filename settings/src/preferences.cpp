@@ -267,7 +267,8 @@ void Preferences::reloadCompositor()
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
     // Temporary user-selected credential backend (applies at next login).
-    const QString backend = value(QStringLiteral("secret-backend"), QStringLiteral("kwallet"));
+    const QString backend = compositorValue(QStringLiteral("secret-backend"));
+    m_secretBackendConfigured = backend == QLatin1String("gnome") || backend == QLatin1String("kwallet");
     m_secretBackend = backend == QLatin1String("gnome") ? QStringLiteral("gnome") : QStringLiteral("kwallet");
     emit secretBackendChanged();
     // As the shell reads it (themefile.h's configuredName()). Only a change
@@ -896,15 +897,44 @@ void Preferences::setLanguage(const QString& language)
     }
 }
 
+bool Preferences::secretBackendInstalled() const
+{
+    const QString binary = m_secretBackend == QLatin1String("gnome")
+        ? QStringLiteral("/usr/bin/gnome-keyring-daemon") : QStringLiteral("/usr/bin/kwalletd6");
+    return QFileInfo(binary).isExecutable();
+}
+
+QString Preferences::credentialStatus() const
+{
+    const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (runtime.isEmpty()) {
+        return {};
+    }
+    QFile status(runtime + QStringLiteral("/vela-credential-compat.status"));
+    if (!status.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+    return QString::fromUtf8(status.readLine()).trimmed();
+}
+
 void Preferences::setSecretBackend(const QString& backend)
 {
     if (backend != QLatin1String("gnome") && backend != QLatin1String("kwallet")) {
         return;
     }
-    if (backend != m_secretBackend) {
+    // An unconfigured first login still needs to persist an explicit KWallet
+    // choice, even though KWallet is the backwards-compatible fallback.
+    if (backend != m_secretBackend || !m_secretBackendConfigured) {
         const auto previous = m_secretBackend;
+        const bool previouslyConfigured = m_secretBackendConfigured;
         m_secretBackend = backend;
-        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("secret-backend") }), m_secretBackend, previous);
+        const bool saved = saveCompositorKeys(QStringList { QStringLiteral("secret-backend") });
+        if (saved) {
+            m_secretBackendConfigured = true;
+        } else if (!m_restoredFromFile) {
+            m_secretBackend = previous;
+            m_secretBackendConfigured = previouslyConfigured;
+        }
         emit secretBackendChanged();
     }
 }
