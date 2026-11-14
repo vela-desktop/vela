@@ -473,9 +473,12 @@ Window {
         dialogWidth: 560
         title: qsTr("Choose your password manager")
         text: qsTr("Vela needs to know which existing password store your apps should use. KWallet is only a temporary fallback until you choose. No passwords will be transferred. Your choice will take effect after signing out and back in.")
+            + ((!Prefs.isSecretBackendInstalled("kwallet") || !Prefs.isSecretBackendInstalled("gnome"))
+                ? qsTr(" Unavailable providers are disabled; install the desired provider first.")
+                : "")
         buttons: [
-            { text: qsTr("KWallet (KDE)"), value: "kwallet" },
-            { text: qsTr("GNOME Keyring"), value: "gnome" },
+            { text: qsTr("KWallet (KDE)"), value: "kwallet", enabled: Prefs.isSecretBackendInstalled("kwallet") },
+            { text: qsTr("GNOME Keyring"), value: "gnome", enabled: Prefs.isSecretBackendInstalled("gnome") },
             { text: qsTr("Decide later"), value: "cancel" }
         ]
         onChosen: value => {
