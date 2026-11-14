@@ -651,6 +651,16 @@ timers share one `timerfd`, made by its first `wl_event_loop_add_timer`;
 later timers only allocate. Vela's own `timerfd`s (an output's latch and
 virtual vblank) are separate descriptors.
 
+The functional descriptor-pressure tests distinguish authentication from event
+registration. With no spare descriptor after accept, peer verification must
+refuse the connection because it cannot obtain a pidfd. Authentication needs
+more transient descriptors than watch registration, so a library shim isolates
+the latter's `EMFILE` path after the real peer check succeeds. The timer case
+first receives a state reply over an authenticated, watched connection, then
+lowers the process's descriptor limit before creating an output. Both refused
+connections and timer failures must leave the compositor usable after pressure
+is removed; authentication is never bypassed for these tests.
+
 OOM-only calls take the same path as the helpers:
 
 ```c
