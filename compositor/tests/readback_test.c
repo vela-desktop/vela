@@ -496,6 +496,44 @@ static void copy_rows_all_alignments(void)
     }
 }
 
+static void copy_rows_partial_pixels(void)
+{
+    // Exact-size sources let ASan detect even a read past the last byte.
+    // Short rows exercise every possible partial 4/8-byte pixel; the helper
+    // must preserve that tail without trying to convert an incomplete pixel.
+    for (size_t bytes = 0; bytes <= 33; ++bytes) {
+        uint8_t *source = malloc(bytes ? bytes : 1);
+        uint8_t *destination = malloc(bytes + 2);
+        assert(source && destination);
+        for (size_t i = 0; i < bytes; ++i) source[i] = (uint8_t)(i * 37 + 13);
+        for (enum readback_alpha alpha = READBACK_ALPHA_NONE; alpha <= READBACK_ALPHA_HALF; ++alpha) {
+            memset(destination, 0x5a, bytes + 2);
+            copy_row(destination + 1, source, bytes, alpha);
+            assert(destination[0] == 0x5a && destination[bytes + 1] == 0x5a);
+            const size_t pixel_bytes = alpha == READBACK_ALPHA_HALF ? 8 : 4;
+            const size_t complete = bytes / pixel_bytes * pixel_bytes;
+            for (size_t i = 0; i < complete; i += pixel_bytes) {
+                if (alpha == READBACK_ALPHA_HALF) {
+                    assert(memcmp(destination + 1 + i, source + i, 6) == 0);
+                    uint16_t a;
+                    memcpy(&a, destination + 1 + i + 6, sizeof(a));
+                    assert(a == 0x3c00);
+                } else {
+                    uint32_t input, output;
+                    memcpy(&input, source + i, sizeof(input));
+                    memcpy(&output, destination + 1 + i, sizeof(output));
+                    const uint32_t mask = alpha == READBACK_ALPHA_8 ? UINT32_C(0xff000000)
+                        : alpha == READBACK_ALPHA_2 ? UINT32_C(0xc0000000) : 0;
+                    assert(output == (input | mask));
+                }
+            }
+            assert(memcmp(destination + 1 + complete, source + complete, bytes - complete) == 0);
+        }
+        free(destination);
+        free(source);
+    }
+}
+
 static void cancelled_gpu_allocations_still_count(void)
 {
     struct vela_vulkan vk = { 0 };
@@ -630,6 +668,7 @@ int main(void)
     shared_staging_retains_other_consumers();
     rearmed_timer_keeps_queued_readbacks();
     copy_rows_all_alignments();
+    copy_rows_partial_pixels();
     packed_pixels(DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010, 0xc0000000);
