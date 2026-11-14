@@ -6,6 +6,7 @@
 #include "alloc/alloc.h"
 #include "a11y.h"
 #include "capture_watch.h"
+#include "client_policy.h"
 #include "bluetooth.h"
 #include "updates.h"
 #include "brightness.h"
@@ -178,6 +179,9 @@ static bool init(struct vela_server *server)
     server->display = wl_display_create();
     server->loop = wl_display_get_event_loop(server->display);
     struct wl_display *display = server->display;
+    // Before any global exists: sandboxed clients and Xwayland must never
+    // see a privileged one, not even briefly.
+    vela_client_policy_init(server);
 
     // Picks the backend by itself: DRM/KMS from a VT, or a Wayland window when
     // launched inside another session (such as KDE) for testing.

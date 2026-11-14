@@ -136,6 +136,7 @@ add_library(vela-pure STATIC
     src/output_config.c
     src/output_key.c
     src/path_security.c
+    src/security_policy.c
     src/sun.c
     src/supervisor_child.c
     src/sync.c
@@ -160,6 +161,7 @@ add_library(vela-compositor-objects OBJECT
     src/bindings.c
     src/bluetooth.c
     src/brightness.c
+    src/client_policy.c
     src/command.c
     src/decoration.c
     src/focus.c
@@ -647,6 +649,7 @@ if(VELA_BUILD_TOOLS)
             tests/output_config_test.cpp
             tests/output_key_test.cpp
             tests/path_security_test.cpp
+            tests/security_policy_test.cpp
             tests/lock_state_test.cpp
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp

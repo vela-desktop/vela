@@ -14,6 +14,8 @@
 #include <stdbool.h>
 
 struct vela_server;
+struct wl_client;
+struct wl_global;
 struct wlr_output;
 
 struct vela_x11_root;
@@ -28,5 +30,12 @@ const struct vela_x11_output *vela_x11_root_output(const struct vela_x11_root *r
 const struct vela_x11_output *vela_x11_root_output_at(const struct vela_x11_root *root, double x, double y);
 // Xft.dpi for X11 apps (vela_x11_dpi).
 int vela_x11_root_dpi(const struct vela_x11_root *root);
+
+// Whether `client` is Xwayland's own Wayland connection.
+bool vela_x11_root_is_xwayland(const struct vela_server *server, const struct wl_client *client);
+// The xdg-output and Xwayland-shell globals each client may see; `root` may
+// be NULL (Xwayland not started). Every other global: true.
+bool vela_x11_root_global_visible(const struct vela_server *server, const struct vela_x11_root *root,
+    const struct wl_client *client, const struct wl_global *global);
 
 #endif
