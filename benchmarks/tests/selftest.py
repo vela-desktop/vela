@@ -47,6 +47,9 @@ def cases(suite, build):
         240, {'VELA_P3_EVIDENCE': 'evidence'}) for target in ('vela', 'plasma')]
     if suite == 'full':
         selected += [('p2-slow-apps', [python, str(TESTS / 'contention_integration.py')], 700,
+                      {'VELA_P2_EVIDENCE': 'evidence'}),
+                     ('p2-slow-apps-vela-sync-test',
+                      [python, str(TESTS / 'contention_integration.py'), '--vela-sync-test'], 700,
                       {'VELA_P2_EVIDENCE': 'evidence'})]
         for target in ('vela', 'plasma'):
             for phase in ('responsiveness', 'slow-apps'):

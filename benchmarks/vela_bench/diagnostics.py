@@ -130,7 +130,7 @@ def user_prefix(record, layout):
 
 
 def user_command(record, layout, operation, command, runtime_seconds=25):
-    if operation not in ("probe", "display", "capture", "calibration", "measurement", "producer", "scene", "observation") or runtime_seconds not in (25, 60, 120, 180):
+    if operation not in ("probe", "display", "capture", "calibration", "measurement", "producer", "scene", "observation") or runtime_seconds not in (25, 60, 120, 180, 240):
         raise BenchError("Unknown fixed diagnostic operation")
     return user_prefix(record, layout) + ["/usr/bin/systemd-run", "--user",
             "--quiet", "--wait", "--pipe", "--collect", "--service-type=exec", "--unit=vela-benchmark-" + operation + ".service",

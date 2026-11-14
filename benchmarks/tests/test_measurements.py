@@ -261,9 +261,64 @@ class MeasurementCampaign(unittest.TestCase):
             self.run_campaign(phases=['slow-apps'])
         self.assertEqual(self.calls,[])
 
+    def test_old_producer_deadline_is_rejected_before_takeover(self):
+        from vela_bench.campaign import execute
+        from types import SimpleNamespace
+        for name in ('vela-slowgpu','vela-bench-cpuload'):
+            self.setup['files'][str(self.layout.helper.parent/name)]='fixture'
+        with self.assertRaisesRegex(BenchError,'extended slow-apps deadline'):
+            execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='--contention --timeout 1..110')),
+                assume_yes=True,layout=self.layout,phases=['slow-apps'],fast=True)
+        self.assertEqual(self.calls,[])
+
 
 
 class SlowWorkload(unittest.TestCase):
+    def test_slow_motion_can_finish_after_the_old_deadline_on_either_desktop(self):
+        from types import SimpleNamespace
+        from vela_bench.measurements import run_motion
+        from vela_bench.host import Layout
+        raw, rows = motion_rows()
+        calls = []
+        class Host:
+            def run(self, command, **options):
+                if '--frames' not in command:
+                    return SimpleNamespace(returncode=0, stdout='inactive\n')
+                timeout = int(command[command.index('--timeout') + 1])
+                runtime = next(int(v.split('=')[-1]) for v in command if 'RuntimeMaxSec=' in v)
+                calls.append((timeout, runtime, options['timeout']))
+                # The previous 55 s watchdog kills a progressing probe even
+                # when its complete 630-frame stream would finish at 60 s.
+                complete = min(timeout, runtime, options['timeout']) > 60
+                return SimpleNamespace(returncode=0 if complete else 124,
+                    stdout=raw if complete else raw.rsplit('\n', 2)[0] + '\n', stderr='')
+        with tempfile.TemporaryDirectory() as tmp:
+            for target in ('vela', 'plasma'):
+                for label in ('explicit', 'implicit'):
+                    result = run_motion(Host(), {'uid':1001,'gid':1001}, Path(tmp), target,
+                        Layout(), {'mode':{'refresh_mhz':60000}}, label)
+                    self.assertEqual(result['status'], 'passed', result)
+                    self.assertEqual(result['metrics']['submitted'], 600)
+            self.assertTrue(all(60 < probe < unit < host for probe, unit, host in calls))
+
+    def test_slow_motion_still_rejects_timeout_and_partial_feedback(self):
+        from types import SimpleNamespace
+        from vela_bench.measurements import run_motion
+        from vela_bench.host import Layout
+        raw, _ = motion_rows()
+        for status in (124, 0):
+            class Host:
+                def run(self, command, **options):
+                    if '--frames' in command:
+                        return SimpleNamespace(returncode=status, stdout=raw.rsplit('\n', 2)[0] + '\n', stderr='')
+                    return SimpleNamespace(returncode=0, stdout='inactive\n')
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                result = run_motion(Host(), {'uid':1001,'gid':1001}, Path(tmp), 'vela',
+                    Layout(), {'mode':{'refresh_mhz':60000}}, 'explicit')
+                self.assertEqual(result['status'], 'failed')
+                self.assertNotIn('metrics', result)
+                self.assertTrue((Path(tmp)/'vela-measure-explicit-motion.jsonl').exists())
+
     def test_production_pairing_and_raw_audit_for_both_sync_modes(self):
         from types import SimpleNamespace
         import io
@@ -311,9 +366,13 @@ class SlowWorkload(unittest.TestCase):
         class Host:
             def run(self,*args,**kwargs):return SimpleNamespace(returncode=0,stdout='inactive\n')
             def spawn(self,command,errors):
+                if '--contention' not in command and not any(v.endswith('vela-bench-cpuload') for v in command):
+                    self_test.assertIn('--property=RuntimeMaxSec=240', command)
+                    self_test.assertGreater(int(command[command.index('--timeout')+1]), 40+170)
                 return SimpleNamespace(kind='cpu' if any(v.endswith('vela-bench-cpuload') for v in command) else 'gpu' if '--contention' in command else None,
                     mode='implicit' if '--implicit' in command else 'explicit',
                     stdin=io.BytesIO(),stdout=None,stderr=None,poll=lambda:0,wait=lambda timeout:0)
+        self_test = self
         with tempfile.TemporaryDirectory() as tmp, patch('vela_bench.measurements.run_input',side_effect=inject), \
                 patch('vela_bench.measurements.run_motion',side_effect=animate), \
                 patch('vela_bench.measurements.Lines',FakeLines):

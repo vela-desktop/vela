@@ -1169,6 +1169,37 @@ checks the actual compositor environment, its native scanout-policy reply and
 the GPU-wait startup log. Run it alone with
 `scripts/vela-bench-selftest --case controls-vela-sync-test`.
 
+The full selection also runs the complete P2 slow-apps controller in that
+diagnostic profile, including both delayed-producer synchronization modes and
+CPU/GPU contention. Run just that regression with:
+
+```sh
+scripts/vela-bench-selftest --suite full --case p2-slow-apps-vela-sync-test
+```
+
+Loaded explicit/implicit motion keeps all 30 warm-up and 600 measured frames
+but allows 170 seconds, equally for both desktops and runtime profiles. At
+150 ms per GPU job, a compositor waiting on the producer can legitimately
+exceed the old 55-second limit; its slow frames remain in the results.
+The producer has a 230-second native watchdog and a 240-second service limit
+covering startup, input, motion and shutdown. Other motion retains its
+55-second deadline, and the overall pilot/campaign watchdogs remain bounded.
+Incomplete feedback or expiry still fails the block; verified restoration
+allows later blocks to continue. The sample specification and metric formulas
+are unchanged, so historical archives remain readable.
+
+This requires the updated native `vela-slowgpu` as well as the Python launcher.
+Build it unprivileged, then refresh the installed instruments before the next
+physical run (substitute your build directory):
+
+```sh
+cmake --build build-native-displays --target vela-slowgpu
+sudo scripts/vela-bench setup --update --tools-dir build-native-displays/tools
+```
+
+The slow-apps preflight rejects an older producer before taking over the
+desktop. `run-all` refreshes launcher code; it does not build native tools.
+
 `full` adds the complete P2 slow-apps controller, the other two P3 phases on
 both desktops, P4 toolkit/corpus checks and native window-resource interactions.
 Older P2/P4 resource-accounting and some service transports remain fixture

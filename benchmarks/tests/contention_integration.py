@@ -6,6 +6,7 @@
 Headless feedback explicitly bypasses physical-output parsing only in this
 unprivileged test. No primary runner flag can enable that path.
 """
+import argparse
 import json
 import os
 from pathlib import Path
@@ -23,7 +24,9 @@ sys.path[:0]=[str(ROOT/'benchmarks'),str(ROOT/'tests/functional')]
 from harness import Session,tool
 from vela_bench import measurements
 from vela_bench.archive import atomic_json
-from vela_bench.host import Layout
+from vela_bench.host import ACCOUNT, Layout
+from vela_bench.model import vela_environment
+from vela_bench.pilot import desktop_environment
 
 KEYBOARD='''import json,sys,subprocess,time
 p=subprocess.Popen([sys.argv[1],'-'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
@@ -39,9 +42,17 @@ finally:
 '''
 
 
-def main():
-    with Session(size='1280x720@60') as session,tempfile.TemporaryDirectory() as temporary:
+def main(vela_sync_test=False):
+    user = SimpleNamespace(pw_uid=os.getuid(), pw_name=ACCOUNT, pw_dir='/tmp', pw_shell='/bin/sh')
+    created = desktop_environment('vela', user,
+        {'XDG_SESSION_ID': 'private-test', 'XDG_SEAT': 'seat0', 'XDG_VTNR': '3'}, vela_sync_test=vela_sync_test)
+    runtime = {key: created[key] for key in vela_environment(vela_sync_test)}
+    with Session(size='1280x720@60', env=runtime) as session,tempfile.TemporaryDirectory() as temporary:
         directory=Path(temporary);layout=Layout(directory);groups={}
+        observed = dict(item.decode().split('=', 1) for item in
+            Path(f'/proc/{session.process.pid}/environ').read_bytes().split(b'\0') if b'=' in item)
+        assert {key: observed[key] for key in vela_environment(True) if key in observed} == runtime
+        atomic_json(directory/'runtime-profile.json', {'vela_sync_test': vela_sync_test, 'environment': runtime})
         cpus=','.join(map(str,sorted(os.sched_getaffinity(0))[:2]))
         class Host:
             def spawn(self,command,errors):
@@ -140,6 +151,9 @@ def motion_only(env,target,directory,tools):
             'measured_frames_per_condition':600,'raw_audit':True}
 
 if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--vela-sync-test',action='store_true')
+    options=parser.parse_args()
     if os.getuid()==0 or not any(Path('/dev/dri').glob('renderD*')):
         print('SKIP: private P2 integration requires an unprivileged user and GPU render node');sys.exit(77)
-    main()
+    main(options.vela_sync_test)

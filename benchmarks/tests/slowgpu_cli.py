@@ -18,11 +18,18 @@ class Failures(unittest.TestCase):
         for args in (['150oops'],['nan'],['0'],['1001'],['--json'],['--until-stdin-eof'],
                      ['--desktop-load'],['--desktop-load','--contention','--json','--until-stdin-eof'],
                      ['--desktop-load','--fullscreen','--json','--until-stdin-eof'],['--contention'],['5','--contention','--json','--until-stdin-eof'],
-                     ['--contention','--implicit','--json','--until-stdin-eof'],['--timeout'],['--json','--until-stdin-eof','--timeout','0']):
+                     ['--contention','--implicit','--json','--until-stdin-eof'],['--timeout'],
+                     ['--json','--until-stdin-eof','--timeout','0'],['--json','--until-stdin-eof','--timeout','241']):
             with self.subTest(args=args):
                 result=subprocess.run([TOOL,*args],env={},capture_output=True,timeout=3)
                 self.assertNotEqual(result.returncode,0)
                 self.assertNotIn(b'no Wayland compositor',result.stderr)
+
+    def test_extended_deadline_is_accepted_before_display_connection(self):
+        for timeout in ('230', '240'):
+            result=subprocess.run([TOOL,'--json','--until-stdin-eof','--timeout',timeout],
+                env={},capture_output=True,timeout=3)
+            self.assertIn(b'no Wayland compositor',result.stderr)
 
     def test_deadline_includes_stalled_registry_exchange(self):
         for args in ([],['--fullscreen'],['--fullscreen','--implicit'],['--monolithic'],['--contention']):

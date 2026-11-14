@@ -113,7 +113,7 @@ class P2CampaignBinding(unittest.TestCase):
         from types import SimpleNamespace
         from vela_bench.campaign import execute
         with contextlib.redirect_stdout(io.StringIO()):
-            return execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='--contention')),
+            return execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='--contention --timeout 1..240')),
                 assume_yes=True,layout=self.layout,phases=['slow-apps'],fast=True,**options)
 
     def test_reserved_uid_and_method_binding_survive_export(self):

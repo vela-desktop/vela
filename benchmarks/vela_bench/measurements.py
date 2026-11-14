@@ -19,6 +19,11 @@ VERSION = 'p2-neutral-client-v3'
 PHASES = ('responsiveness', 'motion', 'slow-apps')
 INPUT_WARMUP, INPUT_SAMPLES = 5, 100
 MOTION_WARMUP, MOTION_SAMPLES = 30, 600
+# A deliberately unready 150 ms GPU buffer can pace the entire output when
+# ready-wait is disabled. Keep every sample, including in that diagnostic
+# condition: 630 frames at the accepted 225 ms/job upper bound need 142 s.
+SLOW_MOTION_TIMEOUT = 170
+PRODUCER_TIMEOUT = 230
 SPEC_V1 = {'version': 'p2-neutral-client-v1', 'input_warmup_actions': INPUT_WARMUP, 'input_actions': INPUT_SAMPLES,
         'motion_warmup_frames': MOTION_WARMUP, 'motion_frames': MOTION_SAMPLES,
         'producer_delay_ms': 150, 'producer_sync_modes': ['explicit', 'implicit'],
@@ -173,11 +178,13 @@ def producer_metrics(rows, mode, window, *, physical_output_required=True, uid=N
 
 def run_motion(host, record, directory, target, layout, profile, label):
     prefix = directory / f'{target}-measure-{label}-motion'
+    slow = label in ('explicit', 'implicit')
+    timeout = SLOW_MOTION_TIMEOUT if slow else 55
     command = user_command(record, layout, 'measurement', [str(layout.probe), '--frames',
-        str(MOTION_WARMUP + MOTION_SAMPLES), '--timeout', '55'], runtime_seconds=60)
+        str(MOTION_WARMUP + MOTION_SAMPLES), '--timeout', str(timeout)], runtime_seconds=180 if slow else 60)
     outcome = {'status': 'failed', 'scenario': label + '-motion'}
     try:
-        result = host.run(command, check=False, timeout=65)
+        result = host.run(command, check=False, timeout=185 if slow else 65)
         prefix.with_suffix('.jsonl').write_text(result.stdout)
         prefix.with_suffix('.stderr').write_text(result.stderr)
         if result.returncode:
@@ -288,18 +295,24 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
                         if progress:
                             progress(mode + '-producer-start')
                         command = user_command(record, layout, 'producer', [str(layout.helper.parent / 'vela-slowgpu'),
-                            '150', '--json', '--until-stdin-eof', *(['--implicit'] if mode == 'implicit' else [])], runtime_seconds=120)
+                            '150', '--json', '--until-stdin-eof', '--timeout', str(PRODUCER_TIMEOUT),
+                            *(['--implicit'] if mode == 'implicit' else [])], runtime_seconds=240)
                         process = host.spawn(command, errors)
                         lines = Lines(process)
-                        deadline = time.monotonic() + 112
+                        deadline = time.monotonic() + 235
                         while lines.next(deadline).get('event') != 'producer-presented':
                             pass
                         def drain():
                             while lines.next(deadline).get('event') != 'producer-summary':
                                 pass
                         future = pool.submit(drain)
-                        sample = measure(mode + '-')
-                        process.stdin.close()
+                        try:
+                            sample = measure(mode + '-')
+                        finally:
+                            # Request orderly completion even if a probe fails;
+                            # the reader must not wait for the producer's full
+                            # watchdog just to leave the executor context.
+                            process.stdin.close()
                         future.result(timeout=12)
                         if process.wait(timeout=5):
                             raise BenchError('GPU producer exited unsuccessfully')

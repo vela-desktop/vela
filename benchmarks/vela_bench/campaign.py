@@ -418,8 +418,11 @@ def require_selection_instruments(host, layout, setup, current, selection):
         if str(cpu) not in setup['files']:
             raise BenchError('Slow-apps requires the installed vela-bench-cpuload; build and refresh setup --tools-dir BUILD/tools')
         trusted(cpu)
-        if '--contention' not in host.run([str(producer),'--help'],timeout=10).stdout:
+        help = host.run([str(producer),'--help'],timeout=10).stdout
+        if '--contention' not in help:
             raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
+        if '--timeout 1..240' not in help:
+            raise BenchError('Installed GPU producer lacks the extended slow-apps deadline; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
 
 
 def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=False, fast=False, seed=0,

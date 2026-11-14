@@ -820,12 +820,12 @@ int main(int argc, char* argv[])
             char* end = NULL;
             errno = 0;
             unsigned long value = strtoul(argv[i], &end, 10);
-            if (errno || !*argv[i] || *end || value < 1 || value > 110) return 2;
+            if (errno || !*argv[i] || *end || value < 1 || value > 240) return 2;
             timeoutSeconds = (unsigned)value;
         } else if (!strcmp(argv[i], "--desktop-load")) {
             desktopLoad=1;
         } else if (!strcmp(argv[i], "--help")) {
-            puts("Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof [--timeout 1..110]] [--contention] [--desktop-load]\n"
+            puts("Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof [--timeout 1..240]] [--contention] [--desktop-load]\n"
                  "JSON mode: bounded startup/runtime, GPU timestamps and fixed synchronization evidence.");
             return 0;
         } else {
