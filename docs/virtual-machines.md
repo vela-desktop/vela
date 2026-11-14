@@ -6,10 +6,11 @@ passthrough is not required. A VM exposing only VirGL/OpenGL, QXL or a basic
 framebuffer does not meet Vela's Vulkan requirements. There is no software
 compositor fallback.
 
-Nested startup, shell, Files, a native Vulkan client and output capture have
-been verified on one Fedora 44 KDE guest (see [validation](#verified-guest)).
-Full-session DRM/KMS and the other host/driver combinations still need
-verification. CPU tests and compilation alone do not demonstrate VM support.
+Nested and full DRM/KMS startup, shell, Files, Vulkan/X11 clients and output
+capture have been verified on one Fedora 44 KDE guest (see
+[validation](#verified-guest)). Other host/driver combinations and the full
+GPU suites still need verification. CPU tests and compilation alone do not
+demonstrate VM support.
 
 ## Configure the virtual GPU
 
@@ -181,14 +182,35 @@ Mesa/Venus `26.2.6`, Vulkan device API `1.4.334`, Qt `6.11.2`, and wlroots
 `1.3.0`, kernel `7.3.3-1-cachyos`, and a Radeon RX 9070 XT / RADV `26.2.6`.
 The VM used the shared GPU, without PCI GPU passthrough.
 
-- Passed: Venus discovery, nested Vela shell, Files with Zink, native Wayland
-  `vkcube` selecting Venus, window activation, and Vela's own output capture.
+- Passed on `416bd23` (Fedora CI merge `d5b0ac1`, RPM
+  `0.2.0-1.314.gd5b0ac1.fc44`): Venus discovery, nested startup with automatic
+  Zink selection, Files, native Wayland `vkcube`, window activation,
+  maximize/restore, 125% scale and Vela's output capture; clean nested shutdown.
+- Passed: full login-manager session on `/dev/dri/card1` (`virtio_gpu`), with
+  `Virtual-1` at 1280x800 / 74.994 Hz, Venus on `/dev/dri/renderD128`, and Zink
+  inherited by the shell and imported into the systemd user environment.
+  Files, X11 and native Vulkan windows render; a visible `vkcube` completed
+  60 frames. Maximize/restore, 125% scale and native capture also passed in
+  the DRM session, with scale restored afterwards.
 - Reproduced: the default VirGL/EGL shell buffer crashes the compositor inside
   Venus; the Vulkan output allocator alone does not resolve client imports.
-- Also passed: the two `DmabufDiagnostics` GPU tests on the physical host with
-  Vulkan validation enabled.
-- Pending: full-session DRM/KMS, Xwayland, resize/scale, lock/unlock, logout,
-  and the full GPU functional/sharpness suites inside the guest.
+- Also passed: both `DmabufDiagnostics` GPU tests inside the Venus guest and
+  on the physical host (the latter with Vulkan validation), plus the guest's
+  `test_x11.X11.test_window_is_managed` smoke test (pixels, focus,
+  maximize/restore and close).
+- Pending: physical mode changes, lock/unlock, logout, other virtual/physical
+  display configurations, and full GPU functional/sharpness coverage.
+
+Observations remain outside the passing smoke cases. KDE's autostarted
+`xwaylandvideobridge` displayed a black below-normal window; stopping
+`app-org.kde.xwaylandvideobridge@autostart.service` removed it for this session.
+Its autostart policy has not been changed by the Venus renderer work. One
+Vulkan client opened concurrently with Files stopped advancing after being
+covered and revealed. A fresh visible 60-frame run and a later controlled
+cover/reveal 120-frame run completed; reproduction and attribution of the
+first stall remain pending. Xwayland also reported window-property errors
+during test-window closure; the compositor remained running. No Vulkan
+device-loss event was observed.
 
 This is a recorded configuration and smoke-test result, not a compatibility
 guarantee for every virtio/Venus stack.
