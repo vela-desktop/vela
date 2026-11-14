@@ -15,6 +15,7 @@
 #include "icon_cache.h"
 #include "icons.h"
 
+#include <fcntl.h>
 #include <ftw.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -52,7 +53,10 @@ static void make_dir(const char *relative)
 
 static void write_text(const char *path, const char *text)
 {
-    FILE *file = fopen(path, "we");
+    // Created for the owner only, whatever the umask (fopen asks for 0666).
+    int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+    CHECK(fd >= 0);
+    FILE *file = fdopen(fd, "w");
     CHECK(file);
     CHECK(fputs(text, file) >= 0);
     CHECK(fclose(file) == 0);
