@@ -7,6 +7,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "child.h"
 #include "config.h"
 #include "log.h"
@@ -101,20 +102,17 @@ int vela_up_clock_start(struct vela_up_daemon *d)
 
 static void check_finish(struct vela_up_daemon *d)
 {
-    d->check_buffer = d->check_buffer ? d->check_buffer : strdup("");
+    d->check_buffer = d->check_buffer ? d->check_buffer : vela_strdup("");
     struct vela_up_check check;
-    if (!d->check_buffer || vela_up_check_parse(d->check_buffer, &check) < 0) {
+    if (vela_up_check_parse(d->check_buffer, &check) < 0) {
         // No report at all: the script couldn't even start, or crashed.
         vela_up_log("vela-update --check ended without a result (status %d)", d->check_status);
         memset(&check, 0, sizeof(check));
         check.valid = true;
-        check.status = strdup("error");
-        check.error_code = strdup("failed");
-        check.error_message = strdup("The update check ended without a result.");
+        check.status = vela_strdup("error");
+        check.error_code = vela_strdup("failed");
+        check.error_message = vela_strdup("The update check ended without a result.");
         check.checked_at = (int64_t)time(NULL);
-        if (!check.status || !check.error_code || !check.error_message) {
-            vela_up_check_clear(&check);
-        }
     }
     bool failed = check.valid && strcmp(check.status, "error") == 0;
     bool network = failed
@@ -125,7 +123,7 @@ static void check_finish(struct vela_up_daemon *d)
 
     free(d->check_buffer);
     d->check_buffer = NULL;
-    d->check_length = 0;
+    d->check_length = d->check_capacity = 0;
     d->check_pid = 0;
     d->check_exited = false;
     d->check_child = sd_event_source_disable_unref(d->check_child);
@@ -153,11 +151,8 @@ static int on_check_output(sd_event_source *source, int fd, uint32_t revents, vo
         if (d->check_length + (size_t)n > MAX_OUTPUT) {
             continue; // not a report anymore; the parse will fail
         }
-        char *grown = realloc(d->check_buffer, d->check_length + (size_t)n + 1);
-        if (!grown) {
-            continue;
-        }
-        d->check_buffer = grown;
+        // Bounded by MAX_OUTPUT, so a failure is real exhaustion.
+        d->check_buffer = vela_grow(d->check_buffer, &d->check_capacity, d->check_length + (size_t)n + 1, 1);
         memcpy(d->check_buffer + d->check_length, chunk, (size_t)n);
         d->check_length += (size_t)n;
         d->check_buffer[d->check_length] = '\0';
@@ -207,7 +202,13 @@ static int on_check_timeout(sd_event_source *source, uint64_t usec, void *data)
     vela_up_log("vela-update --check is taking too long: stopping it");
     if (d->check_pid > 0) {
         signal_check(d, SIGTERM);
-        sd_event_add_time_relative(d->event, &d->check_kill, CLOCK_MONOTONIC, d->timing.kill_us, 0, on_check_kill, d);
+        int r = sd_event_add_time_relative(d->event, &d->check_kill, CLOCK_MONOTONIC, d->timing.kill_us, 0,
+            on_check_kill, d);
+        if (r < 0) {
+            // No grace period to wait out: stop it now.
+            vela_up_log("check kill timer: %s", strerror(-r));
+            signal_check(d, SIGKILL);
+        }
     }
     return 0;
 }

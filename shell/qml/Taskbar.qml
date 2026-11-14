@@ -556,7 +556,7 @@ Window {
         }
         Fill {
             anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
-            radius: Theme.radius
+            radius: root.style.corner(8, Theme.radius)
             color: transferMouse.pressed ? Theme.subtlePressed
                 : transferMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
@@ -603,7 +603,7 @@ Window {
 
                 Fill {
                     anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
-                    radius: Theme.radius
+                    radius: root.style.corner(8, Theme.radius)
                     color: trayMouse.pressed ? Theme.subtlePressed : trayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 }
                 Image {
@@ -703,7 +703,7 @@ Window {
         }
         Fill {
             anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
-            radius: Theme.radius
+            radius: root.style.corner(8, Theme.radius)
             color: sharingMouse.pressed ? Theme.subtlePressed : sharingMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
         Icon {
@@ -769,7 +769,7 @@ Window {
         }
         Fill {
             anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
-            radius: Theme.radius
+            radius: root.style.corner(8, Theme.radius)
             color: microphoneMouse.pressed ? Theme.subtlePressed : microphoneMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
         Icon {
@@ -856,7 +856,7 @@ Window {
         }
         Fill {
             anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
-            radius: Theme.radius
+            radius: root.style.corner(8, Theme.radius)
             color: caffeineMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
             opacity: caffeineMouse.containsMouse ? 1 : 0
             Behavior on opacity { NumberAnimation { duration: Theme.fast } }
@@ -894,7 +894,7 @@ Window {
 
         Fill {
             anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
-            radius: root.floating ? root.style.buttonRadius : Theme.radius
+            radius: root.style.corner(4, root.floating ? root.style.ownButtonRadius : Theme.radius)
             color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
         Row {
@@ -977,7 +977,7 @@ Window {
         Fill {
             anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
             // A floating style's buttons' corners: its highlight is one of them.
-            radius: root.floating ? root.style.buttonRadius : Theme.radius
+            radius: root.style.corner(4, root.floating ? root.style.ownButtonRadius : Theme.radius)
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
         }
         // Notifications to read: a number next to the clock, like Windows 11,

@@ -140,6 +140,37 @@ An install goes through `resolving` (fetch, select the revision),
 which may ask for the password). Beta skips `building`. Arch's local build
 installs from makepkg, so it goes from `building` straight to the end.
 
+### Package recipes shown during installation
+
+When installing (not during `--check`), `vela-update` prints the relevant
+packaging recipe **before** downloading/installing a prebuilt package or
+starting a local build. It identifies the selected Git commit, so the recipe
+matches the source revision chosen by `--branch`, `--commit`, or the Beta
+release tag:
+
+- **Arch/CachyOS**: `packaging/arch/PKGBUILD` on Experimental;
+  `packaging/arch/PKGBUILD.beta` on Beta.
+- **Fedora**: `packaging/fedora/vela.spec` on both channels.
+- **Ubuntu 26.10**: `packaging/ubuntu/build-depends` and the DEB/CPack
+  section of `CMakeLists.txt`. Ubuntu packages are built with CPack,
+  not with a Debian `debian/rules` recipe.
+
+Experimental reads from its cached Git mirror at the resolved commit. Beta
+retrieves the recipe directly from GitHub using the resolved release commit,
+so failure to retrieve this **informational** display does not block an
+otherwise valid signed update. Printing a recipe does **not** authenticate
+prebuilt binaries: checksum and Sigstore provenance verification remain
+mandatory, independent steps. Automatic checks and `--check --json` never
+print recipes; JSON stdout stays machine-readable.
+
+For interactive installs with `less` available, the selected recipe opens in a
+**read-only pager**, not in Vim or the user's `$EDITOR`. The updater displays
+instructions before opening it and in the pager's status line: scroll with
+arrow keys or PageUp/PageDown, then press **q** to close the preview and
+continue the update. The viewer runs in `LESSSECURE` mode (no shell escapes).
+For non-interactive runs, or if `less` is unavailable, the recipe is printed
+directly as before without waiting for input. No pager is opened for checks.
+
 ### 5.3 State files
 
 In `${XDG_STATE_HOME:-~/.local/state}/vela-update/`, always written, by a

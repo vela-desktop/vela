@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+import pty
 from pathlib import Path
 import shutil
 import subprocess
@@ -31,6 +32,21 @@ if name == "curl":
         if "-w" in args:
             print(code, end="")
         sys.exit(22)
+    if url.startswith("https://raw.githubusercontent.com/vela-desktop/vela/"):
+        if os.environ.get("TEST_RECIPE_MISSING") == "1":
+            refuse("404")
+        prefix = "https://raw.githubusercontent.com/vela-desktop/vela/" + os.environ["TEST_COMMIT"] + "/"
+        if not url.startswith(prefix):
+            sys.exit("Recipe is not pinned to the release commit: " + url)
+        path = url[len(prefix):]
+        known = {"packaging/arch/PKGBUILD.beta": "pkgname=vela",
+                 "packaging/fedora/vela.spec": "Name: vela",
+                 "packaging/ubuntu/build-depends": "cmake",
+                 "CMakeLists.txt": 'option(VELA_PACKAGE_DEB "DEB" OFF)\nset(CPACK_GENERATOR "DEB")'}
+        if path not in known:
+            sys.exit("Unexpected recipe URL: " + url)
+        respond(known[path].encode())
+        sys.exit(0)
     if "/releases?per_page=100&page=" in url:
         if os.environ.get("TEST_API_STATUS"):
             refuse(os.environ["TEST_API_STATUS"])
@@ -198,12 +214,12 @@ class BetaUpdateTests(unittest.TestCase):
         self.assertFalse(self.calls.exists())
 
 
-    def configure_os(self, distro, version=""):
+    def configure_os(self, distro, version="", package_version="0.1.11"):
         self.os_release.write_text("ID=" + distro + "\n" +
                                    ('VERSION_ID="' + version + '"\n' if version else ""))
         if distro == "fedora":
-            self.env["TEST_PACKAGE"] = "vela-0.1.11-1.fc44.x86_64.rpm"
-            self.env["TEST_MANIFEST"] = "SHA256SUMS-fedora"
+            self.env["TEST_PACKAGE"] = f"vela-{package_version}-1.fc{version}.x86_64.rpm"
+            self.env["TEST_MANIFEST"] = "SHA256SUMS-fedora-45" if version == "45" else "SHA256SUMS-fedora"
         elif distro == "ubuntu":
             self.env["TEST_PACKAGE"] = "vela_0.1.11_amd64.deb"
             self.env["TEST_MANIFEST"] = "SHA256SUMS-ubuntu"
@@ -218,6 +234,72 @@ class BetaUpdateTests(unittest.TestCase):
         result = self.run_update("--check", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["tag"], "v0.99.0")
+
+    def test_beta_interactive_recipe_has_a_readonly_pager_with_quit_hint(self):
+        pager = self.root / "bin/less"
+        pager.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, pathlib, sys\n"
+            "pathlib.Path(os.environ['TEST_PAGER_CAPTURE']).write_text(sys.stdin.read())\n"
+            "pathlib.Path(os.environ['TEST_PAGER_ARGS']).write_text(json.dumps("
+            "{'args': sys.argv[1:], 'secure': os.getenv('LESSSECURE'), "
+            "'options': os.getenv('LESS')}))\n")
+        pager.chmod(0o755)
+        capture = self.root / "recipe-preview.txt"
+        options = self.root / "pager-options.json"
+        self.env.update(TEST_SIGNED_MANIFEST="1", TEST_PAGER_CAPTURE=str(capture),
+                        TEST_PAGER_ARGS=str(options))
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                ["sh", str(self.script)], env=self.env,
+                stdin=slave, stdout=slave, stderr=subprocess.PIPE,
+                text=True, timeout=30)
+        finally:
+            os.close(slave)
+            os.close(master)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("pkgname=vela", capture.read_text())
+        pager_options = json.loads(options.read_text())
+        self.assertIn("q: close and continue", " ".join(pager_options["args"]))
+        self.assertEqual(pager_options["secure"], "1")
+        self.assertEqual(pager_options["options"], "")
+        self.assertTrue(self.verified.exists())
+
+    def test_beta_install_shows_pinned_arch_pkgbuild(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Beta packaging recipe for arch at v0.1.11 (" + COMMIT + ")", result.stdout)
+        self.assertIn("--- packaging/arch/PKGBUILD.beta ---", result.stdout)
+        self.assertIn("pkgname=vela", result.stdout)
+
+    def test_beta_install_shows_fedora_spec_and_ubuntu_cpack(self):
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        self.configure_os("fedora", "45")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--- packaging/fedora/vela.spec ---", result.stdout)
+        self.assertIn("Name: vela", result.stdout)
+        self.configure_os("ubuntu", "26.10")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--- packaging/ubuntu/build-depends ---", result.stdout)
+        self.assertIn("--- CMakeLists.txt ---", result.stdout)
+        self.assertIn('set(CPACK_GENERATOR "DEB")', result.stdout)
+
+    def test_beta_recipe_outage_does_not_bypass_signature_or_block_install(self):
+        self.env.update(TEST_SIGNED_MANIFEST="1", TEST_RECIPE_MISSING="1")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("couldn't display packaging/arch/PKGBUILD.beta", result.stderr)
+        self.assertTrue(self.verified.exists())
+
+    def test_beta_check_json_has_no_package_recipe(self):
+        result = self.run_update("--check", "--json")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(json.loads(result.stdout)["commit"], COMMIT)
+        self.assertNotIn("packaging recipe", result.stdout.lower())
 
     def test_signed_arch_beta_installs_successfully(self):
         self.env["TEST_SIGNED_MANIFEST"] = "1"
@@ -245,6 +327,83 @@ class BetaUpdateTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(self.calls.read_text())[:4],
                          ["dnf", "install", "-y", "--allowerasing"])
+
+    def test_fedora_45_selects_native_signed_rpm(self):
+        self.configure_os("fedora", "45")
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".fc45.x86_64.rpm", json.loads(self.calls.read_text())[-1])
+
+    def test_fedora_distro_upgrade_reinstalls_same_version_for_new_release(self):
+        self.configure_os("fedora", "45")
+        self.env["TEST_INSTALLED"] = "0.1.11-1.fc44"
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        check = self.run_update("--check", "--json")
+        self.assertEqual(check.returncode, 0, check.stderr)
+        self.assertEqual(json.loads(check.stdout)["status"], "update-available")
+        result = self.run_update()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(".fc45.x86_64.rpm", json.loads(self.calls.read_text())[-1])
+
+
+    def test_fedora_beta_both_release_lines_select_native_signed_rpms(self):
+        # These are the same packaged code paths used after backport to
+        # release/0.1 (v0.1.2) and directly on main (v0.2.0).
+        for project_version in ("0.1.2", "0.2.0"):
+            for fedora_release in ("44", "45"):
+                with self.subTest(beta=project_version, fedora=fedora_release):
+                    self.configure_os("fedora", fedora_release,
+                                      package_version=project_version)
+                    self.env["TEST_RELEASE_LIST"] = json.dumps([
+                        {"tag_name": "v" + project_version,
+                         "prerelease": True, "draft": False}
+                    ])
+                    self.env["TEST_INSTALLED"] = "0.1.1-1.fc" + fedora_release
+                    self.env["TEST_SIGNED_MANIFEST"] = "1"
+                    self.calls.unlink(missing_ok=True)
+                    self.verified.unlink(missing_ok=True)
+
+                    check = self.run_update("--check", "--json")
+                    self.assertEqual(check.returncode, 0, check.stderr)
+                    state = json.loads(check.stdout)
+                    self.assertEqual(state["version"], project_version)
+                    self.assertEqual(state["status"], "update-available")
+                    self.assertFalse(self.calls.exists())
+
+                    install = self.run_update()
+                    self.assertEqual(install.returncode, 0, install.stderr)
+                    args = json.loads(self.calls.read_text())
+                    self.assertEqual(args[:4], ["dnf", "install", "-y", "--allowerasing"])
+                    self.assertEqual(
+                        Path(args[-1]).name,
+                        f"vela-{project_version}-1.fc{fedora_release}.x86_64.rpm")
+                    verification = json.loads(self.verified.read_text())
+                    self.assertEqual(verification[verification.index("--release-tag") + 1],
+                                     "v" + project_version)
+                    self.assertEqual(verification[verification.index("--commit") + 1],
+                                     COMMIT)
+
+    def test_fedora_45_same_beta_version_migrates_fc44_for_both_release_lines(self):
+        for project_version in ("0.1.2", "0.2.0"):
+            with self.subTest(beta=project_version):
+                self.configure_os("fedora", "45", package_version=project_version)
+                self.env["TEST_RELEASE_LIST"] = json.dumps([
+                    {"tag_name": "v" + project_version,
+                     "prerelease": True, "draft": False}
+                ])
+                self.env["TEST_INSTALLED"] = project_version + "-1.fc44"
+                self.env["TEST_SIGNED_MANIFEST"] = "1"
+                self.calls.unlink(missing_ok=True)
+                self.verified.unlink(missing_ok=True)
+
+                check = self.run_update("--check", "--json")
+                self.assertEqual(check.returncode, 0, check.stderr)
+                self.assertEqual(json.loads(check.stdout)["status"], "update-available")
+                install = self.run_update()
+                self.assertEqual(install.returncode, 0, install.stderr)
+                self.assertEqual(Path(json.loads(self.calls.read_text())[-1]).name,
+                                 f"vela-{project_version}-1.fc45.x86_64.rpm")
 
     def test_ubuntu_uses_apt_even_if_pacman_exists(self):
         self.configure_os("ubuntu", "26.10")

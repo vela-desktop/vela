@@ -65,6 +65,8 @@ struct vela_vulkan {
     // The GPU can export and import semaphores as sync_files (implicit sync
     // with the kernel, §7.3).
     bool sync_file;
+    bool export_buffers; // Venus: allocate with Vulkan, then export to the output
+    bool venus;
 
     PFN_vkGetMemoryFdPropertiesKHR get_memory_fd_properties;
     PFN_vkGetSemaphoreFdKHR get_semaphore_fd;
@@ -89,6 +91,8 @@ static inline bool vela_vulkan_unusable(const struct vela_vulkan *vk)
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bits, VkMemoryPropertyFlags flags);
 // A dmabuf of that format and modifier can be imported for that use.
 bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
+    VkImageUsageFlags usage);
+bool vela_vulkan_can_export_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
     VkImageUsageFlags usage);
 // A dmabuf as a VkImage, without copies (all planes in the same dmabuf).
 bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
@@ -251,9 +255,23 @@ struct pipeline_entry {
     VkPipeline pipeline;
 };
 
+// Passes kept for the next drawing (pass.c). Only one is open at a time
+// today: every caller begins and submits its pass in one function, and
+// nothing they call in between begins another. The cap leaves room for an
+// output frame and a capture or two open at once, without keeping a pass
+// for every past peak.
+#define VELA_PASS_FREE_MAX 4
+// A pass's array larger than this after a drawing is freed rather than
+// kept: about 5000 clip pieces of a drawing, far above an ordinary frame.
+#define VELA_PASS_KEEP_BYTES (1024u * 1024u)
+
 struct vela_renderer {
     struct wlr_renderer base; // first member: wlr_renderer* <-> vela_renderer*
     struct vela_vulkan *vk; // not ours: the server destroys it after us
+
+    struct wl_list passes_open; // vela_pass.link: begun, not yet submitted
+    struct wl_list passes_free; // vela_pass.link: ready for the next drawing
+    int passes_free_count;
 
     VkCommandPool pool;
     struct command_slot *commands;
@@ -316,6 +334,8 @@ struct vela_renderer {
 };
 
 struct vela_target *vela_renderer_target(struct vela_renderer *renderer, struct wlr_buffer *buffer);
+// Frees every pass of the renderer, open or kept (pass.c), each once.
+void vela_renderer_destroy_passes(struct vela_renderer *renderer);
 // A free command buffer, already recording.
 VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *renderer);
 // Uploads of wl_shm buffers are recorded here and go to the GPU with the next

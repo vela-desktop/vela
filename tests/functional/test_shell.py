@@ -18,7 +18,7 @@ import subprocess
 import time
 import unittest
 
-from harness import BUILD, ROOT, TIME_SCALE, Image, Session, tool
+from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
@@ -41,11 +41,10 @@ class RealShell(unittest.TestCase):
     shell_env = {} # more for the shell (a stopped clock, test_personalization.py)
 
     def setUp(self):
-        self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        self.addCleanup(self.stop_bus)
-        address = self.bus.stdout.readline().strip()
-        self.assertTrue(address, "private D-Bus session failed to start")
+        # Nothing it would activate may reach the session these tests run in.
+        self.bus = PrivateBus()
+        address = self.bus.start()
+        self.addCleanup(self.bus.stop)
         self.vela = Session(size="1920x1080@100", env={
             "VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"), "DBUS_SESSION_BUS_ADDRESS": address,
             "VELA_DEBUG_ANIMATION": "1", **self.compositor_env})
@@ -77,15 +76,6 @@ class RealShell(unittest.TestCase):
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
                            timeout=20, what="the real Qt desktop")
 
-    def stop_bus(self):
-        self.bus.terminate()
-        try:
-            self.bus.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            self.bus.kill()
-            self.bus.wait(timeout=3)
-        self.bus.stdout.close()
-
     @staticmethod
     def mapped(state, namespace):
         return any(layer["namespace"] == namespace and layer["mapped"] for layer in state["layers"])
@@ -113,6 +103,52 @@ class RealShell(unittest.TestCase):
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.addCleanup(process.wait)
         return process
+
+    @contextmanager
+    def input_session(self):
+        """One vela-input (and so one virtual keyboard) for a whole scene.
+
+        A new vela-input per action brings its keymap to the seat: the
+        notification center loses the keyboard and closes, like Start."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        pending = bytearray()
+
+        def send(*actions):
+            """Execute a command, allowing its requested sleeps plus I/O overhead."""
+            session.stdin.write("\t".join(map(str, actions)) + "\n")
+            session.stdin.flush()
+            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
+                           if action == "sleep")
+            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
+            # select + os.read also bounds partial replies: TextIO.readline()
+            # can block forever after a process writes a non-newline prefix.
+            while b"\n" not in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
+                    self.fail(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
+                chunk = os.read(session.stdout.fileno(), 4096)
+                if not chunk:
+                    self.fail(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
+                pending.extend(chunk)
+                self.assertLessEqual(len(pending), 4096, "vela-input reply exceeded 4096 bytes")
+            line, _, rest = pending.partition(b"\n")
+            pending[:] = rest
+            self.assertEqual(line.decode("utf-8", errors="replace").strip(), "OK",
+                             f"vela-input refused {actions!r}")
+        try:
+            yield send
+        finally:
+            try:
+                session.stdin.close()
+            except BrokenPipeError:
+                pass  # The process may have already died after a timeout.
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                session.kill()
+                session.wait()
+            session.stdout.close()
 
     @staticmethod
     def layer(state, namespace):
@@ -228,30 +264,6 @@ class QtShell(RealShell):
         """Extract (notification ID, action key) from each ActionInvoked signal."""
         return [(int(notification_id), action) for notification_id, action in re.findall(
             r"ActionInvoked[^\n]*?\(\s*(?:uint32\s+)?(\d+)\s*,\s*['\"]([^'\"]+)['\"]", signals)]
-
-    @contextmanager
-    def input_session(self):
-        """One vela-input (and so one virtual keyboard) for a whole scene.
-
-        A new vela-input per action brings its keymap to the seat: the
-        notification center loses the keyboard and closes, like Start."""
-        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-
-        def send(*actions):
-            session.stdin.write("\t".join(map(str, actions)) + "\n")
-            session.stdin.flush()
-            self.assertEqual(session.stdout.readline().strip(), "OK", f"vela-input refused {actions!r}")
-        try:
-            yield send
-        finally:
-            session.stdin.close()
-            try:
-                session.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                session.kill()
-                session.wait()
-            session.stdout.close()
 
     def open_notification_center(self, send):
         """Open the center with the session's keyboard; return its layer and panel origin.
@@ -471,18 +483,32 @@ class QtShell(RealShell):
             # The pointer has not moved: only the list's content can differ.
             self.assertNotEqual(before.rows, self.vela.pixels().rows, "History did not scroll")
 
-            # The scroll offset is unknown, and right-clicking a 6-unit gap
-            # between cards dismisses nothing. Find a card by its hover close
-            # button: compared with the pointer outside the center (moving
-            # there does not close it), nothing changes over a gap.
-            send("move", center["x"] - 60, y, "sleep", 200)
-            neutral = self.vela.pixels()
-            for target_y in range(y, y + 48, 4):
-                send("move", x, target_y, "sleep", 150)
-                if self.vela.pixels().changed_bounds(neutral):
-                    break
-            else:
-                self.fail("no history card under the pointer after scrolling")
+            # Hover pixels vary with Qt RHI; use the rendered card's body.
+            # Compare two interior strips with the surrounding panel, without
+            # depending on any particular theme color or a rounded corner.
+            # Pick the middle of a continuous card run, not its edge, a 6px
+            # gap or the app-name section heading.
+            image = self.vela.pixels()
+
+            def card_row(row):
+                outside = image.at(left + 3, row)
+                return all(max(abs(a - b) for a, b in zip(image.at(left + offset, row), outside)) >= 4
+                           for offset in (18, 300))
+
+            runs, run = [], []
+            for sample_y in range(max(12, y - 70), min(image.height - 12, y + 71)):
+                if all(card_row(sample_y + delta) for delta in (-8, 0, 8)):
+                    run.append(sample_y)
+                elif run:
+                    runs.append(run)
+                    run = []
+            if run:
+                runs.append(run)
+            candidates = [run for run in runs if len(run) >= 18]
+            self.assertTrue(candidates, "no visible history card in the scrolled list")
+            best = max(candidates, key=len)
+            target_y = best[len(best) // 2]
+            send("move", x, target_y, "sleep", 150)
             # Still cut to the output's height with eleven cards: the D-Bus
             # signal below, not the window's size, proves the removal.
             send("click", "right")
@@ -1627,6 +1653,184 @@ class PanelBlur(RealShell):
             sliding += 1
         self.assertGreater(sliding, 0, "no capture landed while the panel was sliding")
 
+
+
+# Vela Expressive's shell (themes/vela-expressive.conf is not shipped yet):
+# its keys in a theme of the session's own, as docs/theme-system.md's variant
+# contract asks of a variant.
+EXPRESSIVE_THEME = ("# Vela Test Expressive: the shell's expressive variants\n"
+                    "schema-version=1\n"
+                    "controls-variant=expressive\n"
+                    "motion-variant=expressive\n"
+                    "color-source=wallpaper\n"
+                    "quicksettings-variant=expressive\n"
+                    "notifications-variant=expressive\n"
+                    "startmenu-variant=expressive\n")
+# The QML the variants touch: a warning from them in the log fails a test.
+EXPRESSIVE_QML = ("QsTile.qml", "QuickSettingsTile.qml", "QuickSettings.qml", "StartMenu.qml", "AppTile.qml",
+                  "NotificationCenter.qml", "NotificationList.qml", "NotificationToast.qml",
+                  "NotificationPopups.qml", "SmallButton.qml", "Styles.qml")
+
+
+class ExpressiveShell(RealShell):
+    """Start, quick settings and the notification center with their
+    expressive variants: they open and close, Start launches from the
+    keyboard, a tile toggles with Enter, the blur stays behind each panel."""
+
+    # No system bus: no Wi-Fi, Bluetooth or power profile of this machine's
+    # among the tiles, so the keys below reach Night light, whose state the
+    # compositor reports.
+    shell_env = {"DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/nonexistent/vela-test-system-bus"}
+
+    def use_expressive_theme(self):
+        themes = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "vela", "themes")
+        os.makedirs(themes, exist_ok=True)
+        with open(os.path.join(themes, "vela-test-expressive.conf"), "w") as file:
+            file.write(EXPRESSIVE_THEME)
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("theme=vela-test-expressive\n")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell rereads the theme
+
+    def assert_clean_log(self):
+        warnings = [line for line in self.vela.log_text().splitlines()
+                    if any(f"{name}:" in line for name in EXPRESSIVE_QML)]
+        self.assertEqual(warnings, [], "QML warnings from the expressive variants")
+
+    def open_panel(self, send, key, namespace):
+        send("key", key, "sleep", 900)
+        state = self.vela.wait_for(lambda s: self.layer(s, namespace), timeout=8, what=f"{namespace} open")
+        return self.layer(state, namespace)
+
+    def close_panel(self, send, namespace):
+        send("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+
+    def test_panels_open_and_close_with_blur(self):
+        # Quick settings' tiles are two to a row, 56 high: its window differs
+        # from the default look's.
+        with self.input_session() as send:
+            default = self.open_panel(send, "super+a", "vela-quick-settings")
+            self.close_panel(send, "vela-quick-settings")
+        self.use_expressive_theme()
+        with self.input_session() as send:
+            for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings"),
+                                   ("super+n", "vela-notification-center")):
+                with self.subTest(panel=namespace):
+                    layer = self.open_panel(send, key, namespace)
+                    time.sleep(1.0) # at rest
+                    if namespace == "vela-quick-settings":
+                        self.assertNotEqual(layer["h"], default["h"], "quick settings kept the default tiles")
+                    # The blur is asked for the panel at rest, rounded like
+                    # it (a region of many rectangles): it spans the panel,
+                    # its shadow's room on the left (and on the right for
+                    # Start, 12 for the others), 12 above the window's bottom
+                    # (the taskbar).
+                    regions = PanelBlur.blur_regions(self, namespace)
+                    self.assertTrue(regions and regions[-1], f"{namespace} has no blur region")
+                    rects = regions[-1]
+                    x0, y0 = min(r[0] for r in rects), min(r[1] for r in rects)
+                    x1, y1 = max(r[0] + r[2] for r in rects), max(r[1] + r[3] for r in rects)
+                    start = namespace == "vela-start-menu"
+                    self.assertEqual(x1 - x0, 640 if start else 360)
+                    self.assertEqual(layer["w"] - x1, x0 if start else 12)
+                    self.assertEqual(y1, layer["h"] - 12)
+                    self.assertGreaterEqual(y0, 0)
+                    area = sum(r[2] * r[3] for r in rects)
+                    self.assertGreater(area, 0.9 * (x1 - x0) * (y1 - y0), f"{namespace}'s blur doesn't cover it")
+                    self.close_panel(send, namespace)
+        self.check_desktop()
+        self.assert_clean_log()
+
+    def test_notifications_of_one_app_in_the_center(self):
+        self.use_expressive_theme()
+        for summary in ("First", "Second", "Third"):
+            self.send_notification(summary)
+        with self.input_session() as send:
+            center = self.open_panel(send, "super+n", "vela-notification-center")
+            time.sleep(1.0)
+            self.assertGreater(center["h"], 300)
+            self.close_panel(send, "vela-notification-center")
+        self.check_desktop()
+        self.assert_clean_log()
+
+    send_notification = QtShell.send_notification
+
+    def test_start_launches_from_the_keyboard(self):
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications, exist_ok=True)
+        marker = os.path.join(self.vela.directory, "launched-probe")
+        with open(os.path.join(applications, "vela-expressive-probe.desktop"), "w") as file:
+            file.write(f"[Desktop Entry]\nType=Application\nName=Expressive Probe\nExec=/usr/bin/touch {marker}\n")
+        self.use_expressive_theme()
+        with self.input_session() as send:
+            self.open_panel(send, "super", "vela-start-menu")
+            send("type", "Expressive Probe", "sleep", 800, "key", "Return")
+            self.vela.wait_for(lambda _: os.path.exists(marker), timeout=8, read_state=False,
+                               what="the app launched from Start")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        self.check_desktop()
+        self.assert_clean_log()
+
+    def test_a_tile_toggles_with_enter(self):
+        self.use_expressive_theme()
+        self.assertFalse(self.vela.query("accessibility")["nightLight"])
+        with self.input_session() as send:
+            self.open_panel(send, "super+a", "vela-quick-settings")
+            # Without Wi-Fi the network's tile first, then Night light.
+            send("key", "Tab", "sleep", 200, "key", "Tab", "sleep", 200, "key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light on")
+            self.assertTrue(self.mapped(self.vela.state(), "vela-quick-settings"), "a tile closed quick settings")
+            send("key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: not self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light off")
+            self.close_panel(send, "vela-quick-settings")
+        self.check_desktop()
+        self.assert_clean_log()
+
+    use_checkout_themes = QtShell.use_checkout_themes
+
+    def test_style_files_on_the_default_theme(self):
+        # themes/startmenu/expressive.conf and themes/notifications/
+        # expressive.conf, chosen as styles over Vela Official: the variants
+        # alone, in a theme of Fluent controls and acrylic panels.
+        with self.input_session() as send:
+            default = self.open_panel(send, "super+a", "vela-quick-settings")
+            self.close_panel(send, "vela-quick-settings")
+        self.use_checkout_themes()
+        with open(self.vela.config_path(), "w") as conf:
+            conf.write("theme=vela\nstartmenu-style=expressive\nnotifications-style=expressive\n")
+        self.vela.command("reload-config")
+        time.sleep(1.5) # the shell rereads the styles
+        self.send_notification("Grouped")
+        with self.input_session() as send:
+            for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings"),
+                                   ("super+n", "vela-notification-center")):
+                with self.subTest(panel=namespace):
+                    layer = self.open_panel(send, key, namespace)
+                    time.sleep(1.0) # at rest
+                    if namespace == "vela-quick-settings":
+                        self.assertNotEqual(layer["h"], default["h"], "the style kept the default tiles")
+                    # The blur at rest spans the panel, as with the theme.
+                    regions = PanelBlur.blur_regions(self, namespace)
+                    self.assertTrue(regions and regions[-1], f"{namespace} has no blur region")
+                    rects = regions[-1]
+                    x0, x1 = min(r[0] for r in rects), max(r[0] + r[2] for r in rects)
+                    self.assertEqual(x1 - x0, 640 if namespace == "vela-start-menu" else 360)
+                    self.close_panel(send, namespace)
+            # A tile of the style turns Night light on and off from the keyboard.
+            self.assertFalse(self.vela.query("accessibility")["nightLight"])
+            self.open_panel(send, "super+a", "vela-quick-settings")
+            send("key", "Tab", "sleep", 200, "key", "Tab", "sleep", 200, "key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light on")
+            send("key", "Return", "sleep", 300)
+            self.vela.wait_for(lambda _: not self.vela.query("accessibility")["nightLight"], timeout=5,
+                               read_state=False, what="Night light off")
+            self.close_panel(send, "vela-quick-settings")
+        self.check_desktop()
+        self.assert_clean_log()
 
 if __name__ == "__main__":
     unittest.main()

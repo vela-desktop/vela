@@ -65,6 +65,7 @@ target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_D
 
 set(SETTINGS_QML_FILES
     qml/Main.qml
+    qml/NavigationEntry.qml
     qml/Card.qml
     qml/BrightnessCard.qml
     qml/CardGroup.qml
@@ -143,7 +144,7 @@ qt_add_resources(vela-settings "images"
     PREFIX "/vela"
     BASE ${PROJECT_SOURCE_DIR}
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
-target_link_libraries(vela-settings PRIVATE
+target_link_libraries(vela-settings PRIVATE vela-alloc
     vela-displays
     Qt6::DBus
     Qt6::Gui
@@ -179,7 +180,7 @@ qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-disp
 # Vela.Bluetooth and Vela.Updates, with animation effects on and off.
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
-    qt_add_executable(vela-settings-test tests/settings_test.cpp)
+    qt_add_executable(vela-settings-test tests/settings_test.cpp ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
     target_compile_definitions(vela-settings-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
         FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml"
         FAKE_UPDATES="${PROJECT_SOURCE_DIR}/common/updates/tests/FakeUpdates.qml"
@@ -191,6 +192,17 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME settings-controls-no-effects COMMAND vela-settings-test)
     set_tests_properties(settings-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(settings-controls settings-controls-no-effects PROPERTIES TIMEOUT 60)
+    # Under a theme of expressive controls and motion (common/tests/quicktest.h,
+    # VELA_TEST_THEME), on tests/expressive/ only.
+    add_test(NAME settings-controls-expressive COMMAND vela-settings-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    add_test(NAME settings-controls-expressive-no-effects COMMAND vela-settings-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(settings-controls-expressive PROPERTIES ENVIRONMENT "VELA_TEST_THEME=expressive")
+    set_tests_properties(settings-controls-expressive-no-effects PROPERTIES
+        ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(settings-controls-expressive settings-controls-expressive-no-effects PROPERTIES TIMEOUT 60)
+    # The expressive controls alone.
+    add_test(NAME settings-controls-expressive-controls COMMAND vela-settings-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(settings-controls-expressive-controls PROPERTIES TIMEOUT 60 ENVIRONMENT "VELA_TEST_THEME=controls")
 endif()
 
 # Preferences on a private vela-shell.conf: Personalization's choices.

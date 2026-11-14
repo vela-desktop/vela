@@ -269,23 +269,38 @@ Window {
                                     elide: Text.ElideRight
                                 }
                             }
-                            Image {
-                                id: thumb
+                            // The window's picture, 8 inside the card: where it
+                            // reaches the card's corners, its own are the card's
+                            // less that.
+                            Item {
+                                id: thumbBox
                                 x: 8
                                 y: grid.titleHeight
                                 width: parent.width - 16
                                 height: parent.height - grid.titleHeight - 8
-                                source: root.revision > 0 ? "image://thumbnail/" + card.modelData.id + "/" + root.revision : ""
-                                fillMode: Image.PreserveAspectFit
-                                asynchronous: false
-                                cache: false
-                                onStatusChanged: {
-                                    if (status === Image.Ready && implicitHeight > 0) {
-                                        const a = implicitWidth / implicitHeight
-                                        if (Math.abs((root.aspects[card.modelData.id] || 0) - a) > 0.01) {
-                                            const copy = Object.assign({}, root.aspects)
-                                            copy[card.modelData.id] = a
-                                            root.aspects = copy
+                                RoundClip {
+                                    anchors.centerIn: parent
+                                    width: thumb.paintedWidth
+                                    height: thumb.paintedHeight
+                                    radius: Theme.nested(Theme.radiusOverlay, 8, 0)
+                                    Image {
+                                        id: thumb
+                                        anchors.centerIn: parent
+                                        width: thumbBox.width
+                                        height: thumbBox.height
+                                        source: root.revision > 0 ? "image://thumbnail/" + card.modelData.id + "/" + root.revision : ""
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: false
+                                        cache: false
+                                        onStatusChanged: {
+                                            if (status === Image.Ready && implicitHeight > 0) {
+                                                const a = implicitWidth / implicitHeight
+                                                if (Math.abs((root.aspects[card.modelData.id] || 0) - a) > 0.01) {
+                                                    const copy = Object.assign({}, root.aspects)
+                                                    copy[card.modelData.id] = a
+                                                    root.aspects = copy
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -296,7 +311,7 @@ Window {
                                 anchors { right: parent.right; top: parent.top; margins: 6 }
                                 width: 28
                                 height: 24
-                                radius: Theme.radius
+                                radius: Theme.nested(Theme.radiusOverlay, 6, Theme.radius) // 6 inside the card
                                 color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
                                 Text {
                                     anchors.centerIn: parent
@@ -379,13 +394,18 @@ Window {
                                 color: "black"
                                 border.width: desk.current || drop.containsDrag ? 2 : deskHover.hovered ? 1 : 0
                                 border.color: desk.current || drop.containsDrag ? Theme.accent : Theme.stroke
-                                Image {
+                                // 3 inside the card: its corners less that.
+                                RoundClip {
                                     anchors { fill: parent; margins: 3 }
-                                    source: "image://wallpaper/" + encodeURIComponent(Config.wallpaper)
-                                    sourceSize: Qt.size(width, height) // logical: Qt turns it into pixels
-                                    fillMode: Image.PreserveAspectCrop
-                                    asynchronous: true
-                                    opacity: drop.containsDrag ? 0.6 : 1
+                                    radius: Theme.nested(parent.radius, 3, 0)
+                                    Image {
+                                        anchors.fill: parent
+                                        source: "image://wallpaper/" + encodeURIComponent(Config.wallpaper)
+                                        sourceSize: Qt.size(width, height) // logical: Qt turns it into pixels
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        opacity: drop.containsDrag ? 0.6 : 1
+                                    }
                                 }
                                 // The desktop's windows, small: how many there
                                 // are.
@@ -394,7 +414,7 @@ Window {
                                     spacing: 4
                                     Repeater {
                                         model: Math.min(6, root.windows.filter(w => w.workspace === desk.index).length)
-                                        Rectangle { width: 14; height: 10; radius: 2; color: Qt.rgba(1, 1, 1, 0.75) }
+                                        Rectangle { width: 14; height: 10; radius: Theme.nested(Theme.radiusOverlay, 8, 2); color: Qt.rgba(1, 1, 1, 0.75) }
                                     }
                                 }
                                 // Close the desktop, on hover.
@@ -403,7 +423,7 @@ Window {
                                     anchors { right: parent.right; top: parent.top; margins: 6 }
                                     width: 24
                                     height: 24
-                                    radius: Theme.radius
+                                    radius: Theme.nested(Theme.radiusOverlay, 6, Theme.radius) // 6 inside the card
                                     color: deskClose.containsMouse ? "#c42b1c" : Qt.rgba(0, 0, 0, 0.55)
                                     z: 2
                                     Text {

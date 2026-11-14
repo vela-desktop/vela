@@ -3,6 +3,7 @@
 
 #include "input.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "workspace.h"
 #include "view.h"
@@ -227,7 +228,7 @@ static void handle_pointer_destroy(struct wl_listener *listener, void *data)
 
 static void add_pointer(struct vela_input *input, struct wlr_input_device *device)
 {
-    struct vela_pointer *pointer = calloc(1, sizeof(*pointer));
+    struct vela_pointer *pointer = VELA_NEW(struct vela_pointer);
     pointer->input = input;
     pointer->device = device;
 #if WLR_HAS_LIBINPUT_BACKEND
@@ -300,7 +301,7 @@ static void handle_new_constraint(struct wl_listener *listener, void *data)
 {
     struct vela_input *input = wl_container_of(listener, input, new_constraint);
     struct wlr_pointer_constraint_v1 *wlr = data;
-    struct vela_constraint *constraint = calloc(1, sizeof(*constraint));
+    struct vela_constraint *constraint = VELA_NEW(struct vela_constraint);
     constraint->input = input;
     constraint->wlr = wlr;
     vela_listen(&wlr->events.destroy, &constraint->destroy, handle_constraint_destroy);
@@ -686,7 +687,7 @@ static void handle_start_drag(struct wl_listener *listener, void *data)
     }
     drag_icon_destroy(input->drag_icon); // one drag at a time
     struct wlr_surface *surface = drag->icon->surface;
-    struct vela_drag_icon *icon = calloc(1, sizeof(*icon));
+    struct vela_drag_icon *icon = VELA_NEW(struct vela_drag_icon);
     icon->input = input;
     icon->surface = surface;
     icon->tree = vela_tree_create(input->server->layers.drag);
@@ -768,6 +769,10 @@ void vela_input_paste(struct vela_input *input)
     // app, then Ctrl+V.
     if (!input->paste_timer) {
         input->paste_timer = wl_event_loop_add_timer(input->server->loop, handle_paste_timer, input);
+        if (!input->paste_timer) {
+            wlr_log_errno(WLR_ERROR, "Paste: no timer, the text stays on the clipboard");
+            return;
+        }
     }
     wl_event_source_timer_update(input->paste_timer, 120);
 }
@@ -776,7 +781,7 @@ void vela_input_paste(struct vela_input *input)
 
 struct vela_input *vela_input_create(struct vela_server *server)
 {
-    struct vela_input *input = calloc(1, sizeof(*input));
+    struct vela_input *input = VELA_NEW(struct vela_input);
     input->server = server;
     wl_list_init(&input->pointers);
     wl_list_init(&input->keyboards);
@@ -785,16 +790,16 @@ struct vela_input *vela_input_create(struct vela_server *server)
     input->four_fingers = VELA_SWIPE_DESKTOP;
     struct wl_display *display = server->display;
 
-    server->cursor = wlr_cursor_create();
+    server->cursor = VELA_MUST(wlr_cursor_create());
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
     server->cursor_manager
-        = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24));
+        = VELA_MUST(wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24)));
 
     // Games and apps that want the mouse to themselves.
-    input->relative_pointers = wlr_relative_pointer_manager_v1_create(display);
-    input->pointer_constraints = wlr_pointer_constraints_v1_create(display);
+    input->relative_pointers = VELA_MUST(wlr_relative_pointer_manager_v1_create(display));
+    input->pointer_constraints = VELA_MUST(wlr_pointer_constraints_v1_create(display));
     vela_listen(&input->pointer_constraints->events.new_constraint, &input->new_constraint, handle_new_constraint);
-    input->shortcuts_inhibit = wlr_keyboard_shortcuts_inhibit_v1_create(display);
+    input->shortcuts_inhibit = VELA_MUST(wlr_keyboard_shortcuts_inhibit_v1_create(display));
     vela_listen(&input->shortcuts_inhibit->events.new_inhibitor, &input->new_inhibitor, handle_new_inhibitor);
 
     struct wlr_cursor *cursor = server->cursor;
@@ -802,7 +807,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
     vela_listen(&cursor->events.motion_absolute, &input->motion_absolute, handle_motion_absolute);
     vela_listen(&cursor->events.button, &input->button, handle_button);
     vela_listen(&cursor->events.axis, &input->axis, handle_axis);
-    input->gestures = wlr_pointer_gestures_v1_create(display);
+    input->gestures = VELA_MUST(wlr_pointer_gestures_v1_create(display));
     vela_listen(&cursor->events.swipe_begin, &input->swipe_begin, handle_swipe_begin);
     vela_listen(&cursor->events.swipe_update, &input->swipe_update, handle_swipe_update);
     vela_listen(&cursor->events.swipe_end, &input->swipe_end, handle_swipe_end);
@@ -814,7 +819,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
     vela_listen(&cursor->events.frame, &input->frame, handle_frame);
 
     vela_listen(&server->backend->events.new_input, &input->new_input, handle_new_input);
-    struct wlr_seat *seat = wlr_seat_create(display, "seat0");
+    struct wlr_seat *seat = VELA_MUST(wlr_seat_create(display, "seat0"));
     server->seat = seat;
     vela_listen(&seat->events.request_set_cursor, &input->request_set_cursor, handle_request_set_cursor);
     vela_listen(&seat->events.request_set_selection, &input->request_set_selection, handle_request_set_selection);
@@ -822,16 +827,16 @@ struct vela_input *vela_input_create(struct vela_server *server)
         handle_request_set_primary_selection);
     vela_listen(&seat->events.request_start_drag, &input->request_start_drag, handle_request_start_drag);
     vela_listen(&seat->events.start_drag, &input->start_drag, handle_start_drag);
-    struct wlr_cursor_shape_manager_v1 *shapes = wlr_cursor_shape_manager_v1_create(display, 1);
+    struct wlr_cursor_shape_manager_v1 *shapes = VELA_MUST(wlr_cursor_shape_manager_v1_create(display, 1));
     vela_listen(&shapes->events.request_set_shape, &input->request_set_shape, handle_request_set_shape);
 
     wl_list_init(&input->new_virtual_pointer.link);
     wl_list_init(&input->new_virtual_keyboard.link);
     if (vela_env_int("VELA_DEBUG_INPUT", 0) != 0) {
         wlr_log(WLR_INFO, "VELA_DEBUG_INPUT: virtual pointer and keyboard enabled");
-        struct wlr_virtual_pointer_manager_v1 *pointers = wlr_virtual_pointer_manager_v1_create(display);
+        struct wlr_virtual_pointer_manager_v1 *pointers = VELA_MUST(wlr_virtual_pointer_manager_v1_create(display));
         vela_listen(&pointers->events.new_virtual_pointer, &input->new_virtual_pointer, handle_new_virtual_pointer);
-        struct wlr_virtual_keyboard_manager_v1 *keyboards = wlr_virtual_keyboard_manager_v1_create(display);
+        struct wlr_virtual_keyboard_manager_v1 *keyboards = VELA_MUST(wlr_virtual_keyboard_manager_v1_create(display));
         vela_listen(&keyboards->events.new_virtual_keyboard, &input->new_virtual_keyboard, handle_new_virtual_keyboard);
     }
     return input;

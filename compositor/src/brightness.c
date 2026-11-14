@@ -3,6 +3,7 @@
 
 #include "brightness.h"
 
+#include "alloc/alloc.h"
 #include "backlight_choice.h"
 #include "brightness_model.h"
 #include "buffer.h"
@@ -22,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
@@ -123,7 +125,7 @@ static void publish(struct vela_brightness *brightness)
     const char *text = vela_buffer_text(&json);
     if (!brightness->published || strcmp(brightness->published, text) != 0) {
         free(brightness->published);
-        brightness->published = strdup(text);
+        brightness->published = vela_strdup(text);
         vela_commands_notify(brightness->server, "brightness");
     }
     vela_buffer_finish(&json);
@@ -343,7 +345,7 @@ static void start_helper(struct vela_brightness_output *output)
         return;
     }
     fcntl(fds[0], F_SETFL, fcntl(fds[0], F_GETFL) | O_NONBLOCK);
-    struct helper *helper = calloc(1, sizeof(*helper));
+    struct helper *helper = VELA_NEW(struct helper);
     helper->brightness = brightness;
     helper->fd = fds[0];
     helper->power = helper->session = true;
@@ -355,10 +357,23 @@ static void start_helper(struct vela_brightness_output *output)
     helper->child.exited = helper_exited;
 
     char command[sizeof(brightness->command) + 192];
-    bool ok = vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
-                  brightness->command, output->mechanism, output->target)
+    // Without its timer the helper has no watchdog: don't start it.
+    bool ok = helper->timer
+        && vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
+            brightness->command, output->mechanism, output->target)
         && vela_child_start(&helper->child, server->loop, command);
     close(fds[1]);
+    if (ok) {
+        helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
+        if (!helper->source) {
+            // Started but unreadable: end and reap it before its watch goes.
+            wlr_log_errno(WLR_ERROR, "Brightness %s: can't watch the helper", output->connector);
+            kill(helper->child.pid, SIGKILL);
+            waitpid(helper->child.pid, NULL, 0);
+            vela_child_stop(&helper->child);
+            ok = false;
+        }
+    }
     if (!ok) {
         // Not started, or started and not watched: without our end it exits.
         helper_free(helper);
@@ -368,7 +383,6 @@ static void start_helper(struct vela_brightness_output *output)
     }
     helper->owner = output;
     output->helper = helper;
-    helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
     vela_brightness_model_restart(&output->model);
     publish(brightness);
 }
@@ -433,7 +447,7 @@ static void sync_all(void *data)
 static void schedule_sync(struct vela_brightness *brightness)
 {
     if (!brightness->sync) {
-        brightness->sync = wl_event_loop_add_idle(brightness->server->loop, sync_all, brightness);
+        brightness->sync = VELA_MUST(wl_event_loop_add_idle(brightness->server->loop, sync_all, brightness));
     }
 }
 
@@ -501,7 +515,7 @@ void vela_brightness_output_added(struct vela_output *output)
     if (!drm && !brightness->fake) {
         return; // nested or headless: no monitor of ours behind it
     }
-    struct vela_brightness_output *entry = calloc(1, sizeof(*entry));
+    struct vela_brightness_output *entry = VELA_NEW(struct vela_brightness_output);
     entry->brightness = brightness;
     entry->output = output;
     entry->was_powered = output->powered;
@@ -633,7 +647,7 @@ void vela_brightness_load_settings(struct vela_server *server)
 
 void vela_brightness_start(struct vela_server *server)
 {
-    struct vela_brightness *brightness = calloc(1, sizeof(*brightness));
+    struct vela_brightness *brightness = VELA_NEW(struct vela_brightness);
     brightness->server = server;
     brightness->session_active = !server->session || server->session->active;
     wl_list_init(&brightness->outputs);

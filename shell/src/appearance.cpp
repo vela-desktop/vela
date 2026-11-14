@@ -7,6 +7,7 @@
 #include "iconprovider.h"
 #include "language.h"
 #include "mica.h"
+#include "scheme.h"
 #include "themefile.h"
 
 #include <QDir>
@@ -66,7 +67,7 @@ void Appearance::watch()
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
     // The chosen theme and styles and what they inherit too: editing one shows
     // at once.
-    QStringList paths { shellConfig, wallpaperTintCachePath(), vela::language::configPath() };
+    QStringList paths { shellConfig, wallpaperTintCachePath(), wallpaperColorCachePath(), vela::language::configPath() };
     paths += m_loaded.files();
     for (const QString& path : std::as_const(paths)) {
         if (path.isEmpty()) {
@@ -121,16 +122,34 @@ QVariantMap Appearance::taskbarLayout(const QVariantMap& tokens, bool light, con
     };
 }
 
+QVariantMap Appearance::tonalOf(const QColor& source, bool light) const
+{
+    const vela::color::Roles roles = vela::color::tonalSpot(source.rgb(), !light);
+    QVariantMap tonal;
+    for (const vela::color::RoleName& role : vela::color::roleNames) {
+        tonal.insert(QLatin1String(role.name), QColor::fromRgb(roles.*role.member));
+    }
+    return tonal;
+}
+
+QColor Appearance::schemeSource(bool light) const
+{
+    return vela::accent::schemeSource(m_theme, light, m_accentSource, m_chosenAccent, m_wallpaperColor);
+}
+
 void Appearance::reload()
 {
     QSettings shell(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
     shell.sync();
     const QString key = m_mode == Mode::Shell ? QStringLiteral("appearance/shellTheme") : QStringLiteral("appearance/appTheme");
     const bool light = shell.value(key).toString() == QLatin1String("light");
-    QColor accent(shell.value(QStringLiteral("appearance/accent")).toString());
-    if (!accent.isValid()) {
-        accent = vela::defaults::accent();
+    QColor chosen(shell.value(QStringLiteral("appearance/accent")).toString());
+    if (!chosen.isValid()) {
+        chosen = vela::defaults::accent();
     }
+    const vela::accent::Source source
+        = vela::accent::sourceFromString(shell.value(QStringLiteral("appearance/accentSource")).toString());
+    const QColor wallpaper = cachedWallpaperColor();
     const QColor tint = cachedWallpaperTint();
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
@@ -153,9 +172,31 @@ void Appearance::reload()
     if (filesChanged && m_watching) {
         watch();
     }
+    // The accent after the theme: it may ask for the wallpaper's.
+    m_accentSource = source;
+    m_chosenAccent = chosen;
+    const bool wallpaperChanged = wallpaper != m_wallpaperColor;
+    m_wallpaperColor = wallpaper;
+    const QColor accent = vela::accent::userAccent(theme, light, source, chosen, wallpaper).color;
+    // The palette only when its source or the mode changed: the quantized
+    // wallpaper is cached, but a scheme is still some HCT solving.
+    const QColor tonalSource = schemeSource(light);
+    const bool tonalChanged = m_tonal.isEmpty() || tonalSource != m_tonalSource || light != m_light;
+    if (tonalChanged) {
+        m_tonalSource = tonalSource;
+        m_tonal = tonalOf(tonalSource, light);
+    }
+    // The other mode's palette too: with the shell dark and the apps light,
+    // the title bars take the light palette's surface, whose source may
+    // change (the chosen accent) while this mode's stays (the wallpaper's).
+    const QColor otherSource = schemeSource(!light);
+    const bool otherChanged = otherSource != m_otherTonalSource;
+    m_otherTonalSource = otherSource;
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
-        // Only the theme or the motion: the icons stay as they are.
-        if (themeChanged || motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
+        // Only the theme, the palette, the wallpaper's color (Settings shows
+        // it) or the motion: the icons stay as they are.
+        if (themeChanged || tonalChanged || otherChanged || wallpaperChanged || motion.effects != m_animationEffects
+            || motion.duration != m_animationDuration) {
             m_animationEffects = motion.effects;
             m_animationDuration = motion.duration;
             emit changed();

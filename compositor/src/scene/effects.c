@@ -3,6 +3,7 @@
 
 #include "scene/effects.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "scene/scene.h"
 
@@ -109,13 +110,9 @@ static void handle_get_effect(struct wl_client *client, struct wl_resource *mana
             "the surface already has an effect");
         return;
     }
-    struct wl_resource *resource = wl_resource_create(client, &ext_background_effect_surface_v1_interface,
-        wl_resource_get_version(manager), id);
-    if (!resource) {
-        wl_client_post_no_memory(client);
-        return;
-    }
-    struct effect *effect = calloc(1, sizeof(*effect));
+    struct wl_resource *resource = VELA_MUST(wl_resource_create(client, &ext_background_effect_surface_v1_interface,
+        wl_resource_get_version(manager), id));
+    struct effect *effect = VELA_NEW(struct effect);
     effect->resource = resource;
     effect->surface = surface;
     effect->scene = wl_resource_get_user_data(manager);
@@ -138,19 +135,15 @@ static const struct ext_background_effect_manager_v1_interface manager_impl = {
 
 static void bind_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
-    struct wl_resource *resource = wl_resource_create(client, &ext_background_effect_manager_v1_interface,
-        (int)version, id);
-    if (!resource) {
-        wl_client_post_no_memory(client);
-        return;
-    }
+    struct wl_resource *resource = VELA_MUST(wl_resource_create(client, &ext_background_effect_manager_v1_interface,
+        (int)version, id));
     wl_resource_set_implementation(resource, &manager_impl, data, NULL);
     ext_background_effect_manager_v1_send_capabilities(resource, EXT_BACKGROUND_EFFECT_MANAGER_V1_CAPABILITY_BLUR);
 }
 
 void vela_background_effects_init(struct wl_display *display, struct vela_scene *scene)
 {
-    wl_global_create(display, &ext_background_effect_manager_v1_interface, 1, scene, bind_manager);
+    VELA_MUST(wl_global_create(display, &ext_background_effect_manager_v1_interface, 1, scene, bind_manager));
 }
 
 const pixman_region32_t *vela_blur_region(struct wlr_surface *surface)

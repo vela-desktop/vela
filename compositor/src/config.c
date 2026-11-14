@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "config.h"
+#include "alloc/alloc.h"
 
 #include "legacy_names.h"
 #include "path_security.h"
@@ -46,15 +47,13 @@ static char *modernize(const char *line)
     if (!*line || *line == '#' || !eq) {
         return NULL;
     }
-    char *key = strndup(line, (size_t)(eq - line));
+    char *key = vela_strndup(line, (size_t)(eq - line));
     const char *value = eq + 1;
     const char *new_key = vela_legacy_key(key);
     const char *new_value = vela_legacy_value(new_key ? new_key : key, value);
     char *result = NULL;
     if (new_key || new_value) {
-        if (asprintf(&result, "%s=%s", new_key ? new_key : key, new_value ? new_value : value) < 0) {
-            result = NULL;
-        }
+        result = vela_asprintf("%s=%s", new_key ? new_key : key, new_value ? new_value : value);
     }
     free(key);
     return result;
@@ -69,10 +68,7 @@ struct lines {
 
 static void lines_push(struct lines *lines, char *line)
 {
-    if (lines->count == lines->capacity) {
-        lines->capacity = lines->capacity ? lines->capacity * 2 : 32;
-        lines->items = realloc(lines->items, (size_t)lines->capacity * sizeof(*lines->items));
-    }
+    lines->items = vela_grow(lines->items, &lines->capacity, lines->count + 1, sizeof(*lines->items));
     lines->items[lines->count++] = line;
 }
 
@@ -84,18 +80,97 @@ static void lines_free(struct lines *lines)
     free(lines->items);
 }
 
-// The file line by line, already with the current names; *changed if some
-// still had the old ones.
-static void read_lines(const char *path, struct lines *lines, bool *changed)
+FILE *vela_config_open(const char *path, bool *missing)
 {
-    FILE *file = fopen(path, "r");
+    errno = 0;
+    FILE *file = fopen(path, "re");
+    *missing = !file && errno == ENOENT;
+    return file;
+}
+
+int vela_read_line(FILE *file, char **line, size_t *capacity, ssize_t *length)
+{
+    // getline returns -1 both at the end and on an error. errno is cleared
+    // right before the call (the caller's loop body may have set it), and the
+    // stream's error flag is checked too: a failed allocation does not
+    // necessarily set it. A failed allocation is fatal, as everywhere else
+    // (docs/memory-allocation-policy.md, "getline").
+    errno = 0;
+    ssize_t n = getline(line, capacity, file);
+    if (n >= 0) {
+        *length = n;
+        return 1;
+    }
+    if (errno == ENOMEM) {
+        vela_oom(*capacity, 1, __FILE__, __LINE__);
+    }
+    return errno != 0 || ferror(file) ? -1 : 0;
+}
+
+bool vela_ini_read(const char *path, const char *section, const char *const *keys, char (*values)[256], int count)
+{
+    for (int i = 0; i < count; ++i) {
+        values[i][0] = '\0';
+    }
+    FILE *file = fopen(path, "re");
     if (!file) {
-        return;
+        return false;
+    }
+    size_t section_length = strlen(section);
+    bool inside = false;
+    char *line = NULL;
+    size_t capacity = 0;
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
+        if (n > 0 && line[n - 1] == '\n') {
+            line[--n] = '\0';
+        }
+        if (line[0] == '[') {
+            inside = (size_t)n == section_length + 2 && strncmp(line + 1, section, section_length) == 0
+                && line[n - 1] == ']';
+            continue;
+        }
+        char *eq = inside ? strchr(line, '=') : NULL;
+        if (!eq) {
+            continue;
+        }
+        *eq = '\0';
+        for (int i = 0; i < count; ++i) {
+            if (strcmp(line, keys[i]) == 0) {
+                snprintf(values[i], sizeof(values[i]), "%s", eq + 1);
+            }
+        }
+    }
+    free(line);
+    fclose(file);
+    if (status < 0) {
+        // A partial read is not a file without those keys that happens to be
+        // short: report nothing rather than a mix.
+        for (int i = 0; i < count; ++i) {
+            values[i][0] = '\0';
+        }
+        return false;
+    }
+    return true;
+}
+
+
+// The file line by line, already with the current names; *changed if some
+// still had the old ones. false when the file exists but could not be read
+// whole: nothing derived from it may be written back.
+static bool read_lines(const char *path, struct lines *lines, bool *changed)
+{
+    bool missing = false;
+    FILE *file = vela_config_open(path, &missing);
+    if (!file) {
+        return missing;
     }
     char *line = NULL;
     size_t capacity = 0;
-    ssize_t n;
-    while ((n = getline(&line, &capacity, file)) >= 0) {
+    ssize_t n = 0;
+    int status;
+    while ((status = vela_read_line(file, &line, &capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[n - 1] = '\0';
         }
@@ -103,10 +178,11 @@ static void read_lines(const char *path, struct lines *lines, bool *changed)
         if (modern && changed) {
             *changed = true;
         }
-        lines_push(lines, modern ? modern : strdup(line));
+        lines_push(lines, modern ? modern : vela_strdup(line));
     }
     free(line);
     fclose(file);
+    return status == 0;
 }
 
 // A new file in place of the old one: readers never see half a file.
@@ -143,10 +219,7 @@ static bool write_lines(const char *path, const struct lines *lines)
 
 static void set_entry(struct vela_config *config, const char *line, size_t key_length)
 {
-    char *entry = strdup(line);
-    if (!entry) {
-        return;
-    }
+    char *entry = vela_strdup(line);
     entry[key_length] = '\0';
     for (int i = 0; i < config->count; ++i) {
         if (strcmp(config->entries[i].key, entry) == 0) {
@@ -156,16 +229,7 @@ static void set_entry(struct vela_config *config, const char *line, size_t key_l
             return;
         }
     }
-    if (config->count == config->capacity) {
-        int capacity = config->capacity ? config->capacity * 2 : 32;
-        struct vela_config_entry *entries = realloc(config->entries, (size_t)capacity * sizeof(*entries));
-        if (!entries) {
-            free(entry);
-            return;
-        }
-        config->entries = entries;
-        config->capacity = capacity;
-    }
+    config->entries = vela_grow(config->entries, &config->capacity, config->count + 1, sizeof(*config->entries));
     config->entries[config->count].key = entry;
     config->entries[config->count].value = entry + key_length + 1;
     ++config->count;
@@ -179,7 +243,11 @@ void vela_config_read(struct vela_config *config)
         return;
     }
     struct lines lines = { 0 };
-    read_lines(path, &lines, NULL);
+    if (!read_lines(path, &lines, NULL)) {
+        // A partial read is no data: never some settings and defaults for the rest.
+        lines_free(&lines);
+        return;
+    }
     for (int i = 0; i < lines.count; ++i) {
         const char *line = lines.items[i];
         const char *eq = strchr(line, '=');
@@ -231,12 +299,11 @@ bool vela_config_write_checked(const char *key, const char *value)
     }
 
     struct lines lines = { 0 };
-    read_lines(path, &lines, NULL);
-    char *wanted = NULL;
-    if (asprintf(&wanted, "%s=%s", key, value) < 0) {
+    if (!read_lines(path, &lines, NULL)) {
         lines_free(&lines);
-        return false;
+        return false; // never replace a file we could not read
     }
+    char *wanted = vela_asprintf("%s=%s", key, value);
     size_t key_length = strlen(key);
     bool found = false;
     int kept = 0;
@@ -249,17 +316,17 @@ bool vela_config_write_checked(const char *key, const char *value)
         }
         if (same_key) {
             free(line);
-            line = strdup(wanted);
+            line = vela_strdup(wanted);
             found = true;
         }
         lines.items[kept++] = line;
     }
     lines.count = kept;
     if (lines.count == 0) {
-        lines_push(&lines, strdup("# Vela settings (written by the Settings app)"));
+        lines_push(&lines, vela_strdup("# Vela settings (written by the Settings app)"));
     }
     if (!found) {
-        lines_push(&lines, strdup(wanted));
+        lines_push(&lines, vela_strdup(wanted));
     }
     free(wanted);
     bool ok = write_lines(path, &lines);
@@ -280,8 +347,7 @@ void vela_config_migrate(void)
     }
     struct lines lines = { 0 };
     bool changed = false;
-    read_lines(path, &lines, &changed);
-    if (changed) {
+    if (read_lines(path, &lines, &changed) && changed) {
         write_lines(path, &lines);
     }
     lines_free(&lines);

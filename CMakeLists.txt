@@ -13,6 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# CPU code generation and compiler feature probes (also tested standalone).
+include(cmake/VelaCpuTarget.cmake)
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
@@ -41,11 +44,13 @@ if(VELA_BUILD_TOOLS)
         -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)
     add_test(NAME documentation COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-docs.py)
     add_test(NAME shared-values COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-shared-values.py)
+    # Direct libc allocations outside common/alloc (docs/memory-allocation-policy.md, "Enforcement").
+    add_test(NAME allocation-sites COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-allocations.py)
     # Reports only until the private controls are replaced (docs/visual-coherence.md §8).
     add_test(NAME qml-motion COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-qml-motion.py)
     add_test(NAME functional-harness COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/tests/harness -v)
-    set_tests_properties(script-tests documentation shared-values qml-motion functional-harness PROPERTIES TIMEOUT 30)
+    set_tests_properties(script-tests documentation shared-values allocation-sites qml-motion functional-harness PROPERTIES TIMEOUT 30)
     set_tests_properties(functional-harness PROPERTIES
         ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/tests/functional")
 endif()
@@ -55,6 +60,9 @@ if(VELA_BUILD_REPORT)
     add_subdirectory(report)
 endif()
 
+# The allocation helpers, in every build: the C code allocates through them,
+# and every C++ program installs their new handler (alloc/new_handler.h).
+add_subdirectory(common/alloc)
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)

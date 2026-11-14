@@ -482,6 +482,30 @@ compositor into `common/`; a twenty-line test keeps two readable copies equal.
 in `scripts/tests`), and the window animations' logged durations
 (`test_animation.py`, `Durations`).
 
+**The expressive motion variant.** A theme with `motion-variant=expressive`
+(Vela Expressive) adds Material 3 Expressive's three spatial curves, in QML
+only, for what moves in Vela's interfaces: positions, sizes and corners. They
+are the cubic Béziers Material publishes for its spatial springs where no
+gesture drives the motion, with its durations:
+
+| Speed | Curve | ms | Used for (Vela's choice) |
+|---|---|---|---|
+| fast | `(0.42, 1.67, 0.21, 0.90)` | 350 | small controls: a switch's knob, a button's or a tile's corners |
+| default | `(0.38, 1.21, 0.22, 1.00)` | 500 | panels entering |
+| slow | `(0.39, 1.29, 0.35, 0.98)` | 650 | unused in the shell |
+
+They overshoot their end a little and settle. `Spatial.qml` animates on them
+(`Theme.spatialCurve()`, `Theme.spatialDuration()`); with the default variant it
+is `Eased` with the shared curve and the duration it is given, so the default
+look moves as before. Colors and opacity never overshoot (they stay
+`ColorFade` and `Eased`), exits don't bounce (they stay `Eased` in `normal`),
+the durations are multiplied by `animation-duration` like every other, and with
+animation effects off nothing moves. The scale and the curve above stay the
+only ones shared with the compositor, and `motion.h` doesn't change: windows
+don't bounce, because their animations are the compositor's, which keeps one
+curve for every theme. A window that overshot would also cross its own
+snapped position (§6.1), and a theme file can't reach the compositor's motion.
+
 ### 6.5 Animation effects: one switch (D11)
 
 `animation-effects` in `vela.conf` (default `yes`), next to the other
@@ -753,6 +777,28 @@ click gives no keyboard focus (`focusPolicy: Qt.TabFocus`), as before: Tab
 does, with the ring, so a click on a toolbar button doesn't take the keys from
 a view. `TextBox` takes `Fill` as its background.
 
+**The expressive variant.** `controls-variant=expressive` gives the same
+controls Material 3 Expressive's look, on the same Templates, `Fill` and state
+precedence; only `background`, `contentItem` and sizes change, and the default
+look is unchanged:
+
+| Control | Expressive look (M3's tokens; sizes for the mouse are Vela's) |
+|---|---|
+| `Button` | 40 high, 16 a side, label in Medium; state layers of 8% and 10%; corners morph to the pressed (8) and selected (12) shapes on the fast spatial curve |
+| `Switch` | M3's handle (16, 24 on, 28 pressed) on the fast spatial curve, a 40 state layer, the track off on surface container highest |
+| `Slider` | inactive track in secondary container; the thick slider (quick settings) keeps its shape, its knob the fill's color |
+| `ListItem` | 56 high, state layers of on surface, the selected item a full secondary container pill in Medium |
+| `Dialog` | extra large corners, headline title, no footer band, the actions at the trailing edge (the accent one tonal) |
+| `TextBox`, `Choice` | M3's filled field: surface container highest, the indicator in primary with the focus |
+| `FocusRing` | secondary, same geometry |
+| `CheckBox`, `RadioButton` | M3's 18 box and 20 ring in primary, a 40 state layer |
+| `ToolButton` (Files) | M3's extra small buttons: round, 32 high, the checked one in secondary container |
+| Settings' cards, Files' rows | a card group is one container (large outer, extra small inner corners, 2 apart); rows keep their `MouseArea` and take state layers through `Theme.hoverLayer`, `pressedLayer` and `restLayer` |
+
+`TonalSurface` (`level`: lowest to highest) is a container on Material's
+surface roles. A control's `styleVariant` (default `Theme.controlsVariant`)
+lets a preview draw either look.
+
 **Verified by** Qt Quick Test (part of Qt): for `Button`, `Switch` and `Slider`,
 each state combination gives the expected color at rest; a hover reversed
 halfway turns back from its current color; Space and Enter activate, Tab moves
@@ -817,6 +863,14 @@ context menus, send the list of theirs). `area` doesn't change during a slide;
 it follows the panel's size, on every frame of Quick Settings' height change
 like Start's updates today. Start drops its per-frame updates.
 
+Under the expressive motion variant a panel's entrance (`away` on the default
+spatial curve, §6.4) passes its rest by `Theme.spatialOvershoot("default")` of
+its offset before settling. `travel` is widened by that much on the side
+opposite to where the panel comes from (and a scale's change by as much), so
+the region still covers the panel on every frame and still doesn't change
+during the slide. With the default variant, or without animation effects, the
+overshoot is 0 and `travel` is as above.
+
 **`Shadow.qml`** is `PanelShadow` moved into `Vela.Controls` (so the polkit
 prompt can use it), with two depths in `Theme.shadow` (`Theme.flyout` and
 `Theme.dialog` are colors): `flyout` (blur 32, offset 6, 45%) and `dialog`
@@ -827,7 +881,12 @@ panel, as a click outside does, through a `MouseArea` under the `PanelMotion`,
 the way `ContextMenu.qml` already handles its whole window. An input region
 would let the click through, but needs a new path from QML to
 `QWindow::setMask()` for a band 46 units wide; consuming it is what Vela's menus
-already do.
+already do. Under the expressive controls, whose surfaces are opaque, a
+`Shadow` also fills its target's corners inside the target's box: the four
+strips alone left a lighter square behind M3's large round corners. Since the
+compositor blurs wherever a window isn't transparent, a blurred window then
+asks for its blur rounded like its panel (`Effects.setBlur`'s radius), or the
+shaded corners show blurred, a lighter fringe in light mode.
 
 **`Dialog.qml`** is Files' dialog (the button list is the more general API) with
 Settings' content slot and only `Theme` values, in `Vela.Controls`; the two
@@ -974,6 +1033,65 @@ check (PR 8 only reported, until PR 11 replaced the private controls). Local `Be
 animations are allowed: the taskbar indicator, the Start menu's app tiles, the
 polkit prompt's shake and spinner have motion of their own.
 
+### 6.12 Corners inside corners
+
+A round shape inside a round shape reads as one object only when the two
+corners are **concentric**: the inner arc has the outer one's center, so the
+band between them is as wide in the corner as along the edges. That fixes the
+inner radius: the outer radius less the gap. Two corners of the same radius,
+one inside the other, are the usual mistake: the band swells in the corner.
+
+Vela had it in many places, most of them hidden by the default theme's small
+radii (8 outside, 4 inside, 4 apart happens to be right) and plain in every
+rounder theme or style: a menu's rows, the quick settings' tiles, the
+notification center's cards, the buttons of a floating taskbar, a panel's
+shadow, the pictures in Settings' tiles.
+
+One rule, in one place, `Theme.nested(outer, gap, own)`:
+
+- **In the corner** (`gap < outer`): at least `outer - gap`. A theme chooses
+  the outer shape; what sits in its corner follows.
+- **Its own radius, if rounder, up to the gap**: a corner no larger than its
+  distance from the edge does not fight the outer one (Window Glass's tiles,
+  16 round and 16 inside a panel of 20, stay 16, not the concentric 4, which
+  would make them square where the panel's corner is barely felt); a larger
+  one is cut to the larger of the gap and `outer - gap`.
+- **Out of the corner's reach** (`gap >= outer`, a square outer shape
+  included): the shape's `own` radius. Buttons in the middle of a dialog are
+  not the dialog's corner's concern.
+- **Things in a row share a radius**: every row of a menu and every tile of a
+  grid takes the radius of the ones at the corners.
+- **Unequal gaps** (24 from the side, 10 from below): the larger one.
+- **Full pills and circles are shapes of their own** (a switch, an avatar, an
+  expressive button, the expressive quick settings' off tile): they do not
+  ask.
+- **A picture has square corners**: inside a round shape it goes in a
+  `RoundClip` with the nested radius.
+
+So a style's `quicksettings-tile-radius`, `notifications-card-radius` and
+`taskbar-button-radius` are those pieces' own radii: they show where the
+panel's radius is no larger than the gap (as in Vela Official) or where
+they are no larger than the gap themselves, and otherwise the pieces follow
+the panel.
+
+| Outer shape | What follows it | Gap |
+| --- | --- | --- |
+| A panel (`Shadow`'s target) | its shadow | 0: the same corners |
+| A menu, a drop-down's list, Settings' search results | every row | 4 |
+| Quick settings | the tiles; a page's back button, list items and link; the footer's button | 16 (12 expressive); 16; 6 |
+| The notification center | the cards; the header's buttons | 8; 16 |
+| Start | the Power button; a pinned app's highlight in the expressive container; the power menu's entries | 24; 3; 4 |
+| A floating taskbar | the buttons and the highlights | what is left above and below them |
+| Alt+Tab, the taskbar's previews, Task View, Snap layouts, the snipping bar, the clipboard | their cards and buttons | each one's padding |
+| Files' address bar and tabs | the path's pieces; a tab's close button | 3; 6 |
+| Settings' picture tiles, wallpapers, previews; Task View's thumbnails | the picture (`RoundClip`) | each one's margin |
+
+`VELA_ROUNDED_DUMP=<directory>` makes any of Vela's Qt programs write, twice a
+second, every shown item with corners, where it is and its radii
+(`common/src/controls.cpp`); `scripts/check-corners.py` reads those files and
+lists each shape that sits in the corner of a rounder one without following
+it. `tst_corners.qml` tests the rule and the pieces that apply it.
+
 ## 7. Verification
 
 Three kinds, kept apart:
@@ -1041,7 +1159,9 @@ are independent of each other and of the QML work. 8–11, the largest part, las
   a QML token and an include path into `common/` to share four numbers; and the
   formula belongs to the shell (§6.6).
 - **Three motion levels** (full, reduced, off): no user need beyond Windows'
-  switch, and one more state in both processes.
+  switch, and one more state in both processes. This still holds: the
+  expressive motion variant (§6.4) is a theme's look in QML, not a user's
+  level, and the compositor keeps one curve and four durations.
 - **`PanelMotion` with modes and a recipe table** (`Edge`, `Popup`, `Dialog`,
   `Overlay`, `Toast`, `Page`): six modes to express three numbers, and pages and
   toasts aren't panel lifecycles.

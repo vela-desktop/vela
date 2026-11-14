@@ -18,13 +18,18 @@ Page {
             radius: Theme.radiusCard
             color: "black"
             clip: true
-            Image {
+            // 4 inside the frame: its corners less that.
+            RoundClip {
                 anchors.fill: parent
                 anchors.margins: 4
-                source: Prefs.wallpaper.startsWith(":") ? "qrc" + Prefs.wallpaper : "file://" + Prefs.wallpaper
-                sourceSize: Qt.size(356, 216)
-                fillMode: Image.PreserveAspectCrop
-                asynchronous: true
+                radius: Theme.nested(preview.radius, 4, 0)
+                Image {
+                    anchors.fill: parent
+                    source: Prefs.wallpaper.startsWith(":") ? "qrc" + Prefs.wallpaper : "file://" + Prefs.wallpaper
+                    sourceSize: Qt.size(356, 216)
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                }
             }
         }
         Column {

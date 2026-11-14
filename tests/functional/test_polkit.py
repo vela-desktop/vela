@@ -23,7 +23,7 @@ import tempfile
 import time
 import unittest
 
-from harness import BUILD, TIME_SCALE, Session, TimeoutError
+from harness import BUILD, TIME_SCALE, PrivateBus, Session, TimeoutError, stop_process_group
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT = os.path.join(BUILD, "polkit", "vela-polkit-prompt")
@@ -281,14 +281,20 @@ class AgentTests(unittest.TestCase):
     """The real agent, started by the compositor, with a fake polkitd."""
 
     def start(self, reject=False, language=None, backend=None):
-        self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--print-address=1"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        self.address = self.bus.stdout.readline().decode().strip()
+        # The system bus of the test: polkitd's, owned by fake_polkitd.py.
+        self.bus = PrivateBus()
+        self.address = self.bus.start()
+        # Cleanups, unlike tearDown, run all, also when one of them fails.
+        self.addCleanup(self.bus.stop)
         self.fake = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_polkitd.py"), self.address]
                                      + (["--reject"] if reject else [])
-                                     + (["--backend", backend] if backend else []), stdout=subprocess.PIPE)
+                                     + (["--backend", backend] if backend else []), stdout=subprocess.PIPE,
+                                     start_new_session=True)
+        self.addCleanup(self.fake.stdout.close)
+        self.addCleanup(stop_process_group, self.fake)
         self.assertEqual(self.fake.stdout.readline().strip(), b"ready")
         self.config = tempfile.mkdtemp(prefix="vela-polkit-test-")
+        self.addCleanup(shutil.rmtree, self.config, ignore_errors=True)
         if language:
             os.makedirs(os.path.join(self.config, "vela"))
             with open(os.path.join(self.config, "vela", "vela.conf"), "w") as conf:
@@ -301,18 +307,9 @@ class AgentTests(unittest.TestCase):
             "XDG_CONFIG_HOME": self.config,
         })
         self.vela.start()
+        self.addCleanup(self.vela.stop)
         connection = dbus.bus.BusConnection(self.address)
         self.control = dbus.Interface(connection.get_object("org.vela.Test", "/org/vela/Test"), "org.vela.Test")
-
-    def tearDown(self):
-        if hasattr(self, "vela"):
-            self.vela.stop()
-        for process in (getattr(self, "fake", None), getattr(self, "bus", None)):
-            if process:
-                process.terminate()
-                process.wait(3)
-        if hasattr(self, "config"):
-            shutil.rmtree(self.config, ignore_errors=True)
 
     def registrations(self, count=1, timeout=8.0):
         deadline = time.monotonic() + timeout

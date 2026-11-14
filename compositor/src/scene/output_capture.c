@@ -39,6 +39,7 @@ SOFTWARE.
 #include <wlr/util/addon.h>
 #include "ext-image-capture-source-v1-protocol.h"
 
+#include "alloc/alloc.h"
 #include "scene/capture.h"
 #include "server.h"
 
@@ -154,12 +155,7 @@ static void output_source_copy_frame(struct wlr_ext_image_capture_source_v1 *bas
 	if (wl_signal_get(&frame->events.destroy, output_capture_frame_destroy)) {
 		return;
 	}
-	struct output_capture_frame *pending = calloc(1, sizeof(*pending));
-	if (!pending) {
-		wlr_ext_image_copy_capture_frame_v1_fail(frame,
-			EXT_IMAGE_COPY_CAPTURE_FRAME_V1_FAILURE_REASON_UNKNOWN);
-		return;
-	}
+	struct output_capture_frame *pending = VELA_NEW(struct output_capture_frame);
 	pending->source = source;
 	pending->destroy.notify = output_capture_frame_destroy;
 	wl_signal_add(&frame->events.destroy, &pending->destroy);
@@ -297,11 +293,7 @@ static void output_manager_handle_create_source(struct wl_client *client,
 	if (addon != NULL) {
 		source = wl_container_of(addon, source, addon);
 	} else {
-		source = calloc(1, sizeof(*source));
-		if (source == NULL) {
-			wl_resource_post_no_memory(manager_resource);
-			return;
-		}
+		source = VELA_NEW(struct vela_output_capture_source);
 
 		wlr_ext_image_capture_source_v1_init(&source->base, &output_source_impl);
 		pixman_region32_init(&source->damage);
@@ -338,12 +330,8 @@ static void output_manager_bind(struct wl_client *client, void *data,
 		uint32_t version, uint32_t id) {
 	struct vela_output_capture_manager *manager = data;
 
-	struct wl_resource *resource = wl_resource_create(client,
-		&ext_output_image_capture_source_manager_v1_interface, version, id);
-	if (!resource) {
-		wl_client_post_no_memory(client);
-		return;
-	}
+	struct wl_resource *resource = VELA_MUST(wl_resource_create(client,
+		&ext_output_image_capture_source_manager_v1_interface, version, id));
 	wl_resource_set_implementation(resource, &output_manager_impl, manager, NULL);
 }
 
@@ -355,20 +343,14 @@ static void output_manager_handle_display_destroy(struct wl_listener *listener, 
 	free(manager);
 }
 
-bool vela_output_capture_manager_create(struct vela_server *server)
+void vela_output_capture_manager_create(struct vela_server *server)
 {
-    struct vela_output_capture_manager *manager = calloc(1, sizeof(*manager));
-    if (!manager) return false;
+    struct vela_output_capture_manager *manager = VELA_NEW(struct vela_output_capture_manager);
     manager->server = server;
-    manager->global = wl_global_create(server->display,
-        &ext_output_image_capture_source_manager_v1_interface, 1, manager, output_manager_bind);
-    if (!manager->global) {
-        free(manager);
-        return false;
-    }
+    manager->global = VELA_MUST(wl_global_create(server->display,
+        &ext_output_image_capture_source_manager_v1_interface, 1, manager, output_manager_bind));
     manager->display_destroy.notify = output_manager_handle_display_destroy;
     wl_display_add_destroy_listener(server->display, &manager->display_destroy);
-    return true;
 }
 
 static void output_cursor_source_request_frame(struct wlr_ext_image_capture_source_v1 *base,

@@ -107,6 +107,10 @@ Without an explicit build type, Vela defaults to `RelWithDebInfo`.
 
 Useful CMake options:
 
+The table lists CMake variable names, without the command-line `-D` prefix.
+To set an option when configuring a build, use `-DNAME=VALUE` (for example,
+`-DVELA_BUILD_SHELL=OFF`). Boolean options accept `ON` or `OFF`.
+
 | Option | Default | Purpose |
 |---|---:|---|
 | `VELA_BUILD_COMPOSITOR` | `ON` | Build the Wayland compositor and session integration. |
@@ -115,6 +119,7 @@ Useful CMake options:
 | `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.10 or newer. |
 | `VELA_REPORT_GUI` | Same as `VELA_BUILD_SHELL` | Build the ordinary Qt Widgets reporting window, also usable in other desktops. |
 | `VELA_WLROOTS` | `wlroots-0.20` | pkg-config name used for wlroots. Only wlroots 0.20 is supported. |
+| `VELA_CPU_TARGET` | `x86-64-v3` | x86-64 ISA/codegen baseline; optional local override such as `native` or `znver5` for single-machine builds. The installed `vela-session` performs a v3 CPU preflight before launching the compositor. |
 
 For example:
 
@@ -569,6 +574,8 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 |---|---|
 | `Fill` | A background whose color, chosen by the control from its state, fades in `Theme.fast` |
 | `Icon`, `Chevron`, `FocusRing`, `Eased`, `ColorFade` | What controls are made of: a theme icon at its size, the ">" and "v" arrows, the keyboard focus ring, a number and a color animated on Vela's curve |
+| `Spatial` | A position, a size or a corner animated on Material's spatial curve of a `speed` (`fast`, `default`) under `motion-variant=expressive`, and like `Eased` in `rest` otherwise ([§6.4](visual-coherence.md#64-one-duration-scale-written-twice-and-checked-d10)); never for colors, opacity or exits |
+| `TonalSurface` | A container on Material's surface roles: `level` from `lowest` to `highest`, `highEmphasis`, an optional outline |
 | `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled`; a subtle `Button` that is `checked` (what it opens is open) rests on the hover color |
 | `ListItem` | A row of a list on `Fill`: subtle (resting on the hover color when `checked`, the current one), or the control's colors when `highlighted` |
 | `TextBox` | A restyled Basic `TextField` |
@@ -577,7 +584,9 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
 | `StartIcon` | The Start button's icon: Vela's sail in the accent's colors, or the distribution's logo or a picture (`source`, as `shell/src/starticon.h` resolves Settings → Start's choice) |
 
-A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`).
+Every control and piece takes the theme's `controls-variant`: under `expressive` it draws Material 3 Expressive's shapes, sizes and state layers on `Theme`'s tonal roles (`Theme.primary`, `Theme.surfaceContainerLow` and the others, `Theme.expressive`), and a control's `styleVariant` overrides it for a preview ([configuration](configuration.md#expressive-look)). The roles come from `Style.tonal`, which `Appearance` (`shell/src/appearance.cpp`) computes with `vela-color` (`common/color/`): a static C++20 library without Qt, a port of Material Color Utilities (Apache-2.0, [common/color/LICENSE](../common/color/LICENSE)) with the HCT color space, tonal palettes, the Tonal Spot scheme and the quantizer and score that find a wallpaper's color. `shell/src/accentsource.h` holds the accent's one rule (the theme's, the wallpaper's, the chosen one), shared by `Appearance` and the lock screen.
+
+A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`). Each suite's `tests/expressive/` folder holds the expressive look's tests, run under an expressive test theme by the `*-expressive` entries ([testing](testing.md)).
 
 ## Debugging rendering
 

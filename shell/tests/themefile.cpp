@@ -105,14 +105,70 @@ private slots:
         QVERIFY(!vela::themes::token(QStringLiteral("subtleHover"))); // not themed (Theme.qml says why)
     }
 
+    // Theme-authored controls select only built-in variants, and the palette
+    // only its source. The tonal roles, shape and typography keys stay typed
+    // and are not executable.
+    void expressiveControlTokens()
+    {
+        const vela::themes::File file = read("controls-variant=expressive\nmotion-variant=expressive\ncolor-source=wallpaper\nlight.primary=#6750A4\n"
+                                             "dark.secondaryContainer=#4A4458\nsurfaceBase=#FEF7FF\nonSurfaceVariant=#49454F\n"
+                                             "shapeLarge=24\nshapeExtraLarge=28\nfontBody=16\n");
+        QVERIFY(file.problems.isEmpty());
+        QCOMPARE(file.tokens.value(QStringLiteral("controls-variant")).toString(), QStringLiteral("expressive"));
+        QCOMPARE(file.tokens.value(QStringLiteral("color-source")).toString(), QStringLiteral("wallpaper"));
+        QCOMPARE(file.tokens.value(QStringLiteral("motion-variant")).toString(), QStringLiteral("expressive"));
+        QCOMPARE(file.tokens.value(QStringLiteral("light.primary")).value<QColor>(), QColor(QStringLiteral("#6750A4")));
+        QCOMPARE(file.tokens.value(QStringLiteral("dark.secondaryContainer")).value<QColor>(), QColor(QStringLiteral("#4A4458")));
+        QCOMPARE(file.tokens.value(QStringLiteral("surfaceBase")).value<QColor>(), QColor(QStringLiteral("#FEF7FF")));
+        QCOMPARE(file.tokens.value(QStringLiteral("onSurfaceVariant")).value<QColor>(), QColor(QStringLiteral("#49454F")));
+        QCOMPARE(file.tokens.value(QStringLiteral("shapeLarge")).toDouble(), 24.0);
+        QCOMPARE(file.tokens.value(QStringLiteral("shapeExtraLarge")).toDouble(), 28.0);
+        QCOMPARE(file.tokens.value(QStringLiteral("fontBody")).toDouble(), 16.0);
+        using vela::themes::TokenKind;
+        QCOMPARE(vela::themes::token(QStringLiteral("color-source"))->kind, TokenKind::Variant);
+        QCOMPARE(vela::themes::token(QStringLiteral("motion-variant"))->kind, TokenKind::Variant);
+        QCOMPARE(vela::themes::token(QStringLiteral("tertiaryContainer"))->kind, TokenKind::Color);
+        QCOMPARE(vela::themes::token(QStringLiteral("inverseOnSurface"))->kind, TokenKind::Color);
+        QCOMPARE(vela::themes::token(QStringLiteral("shapeExtraSmall"))->kind, TokenKind::Number);
+        // The surface role has a key of its own: `surface` is the shell's panels.
+        QCOMPARE(vela::themes::token(QStringLiteral("surface"))->kind, TokenKind::Color);
+        QVERIFY(!vela::themes::token(QStringLiteral("surfaceTone")));
+        QVERIFY(!vela::themes::token(QStringLiteral("weightLabel"))); // follows the variant
+
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: controls-variant=custom-qml is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("controls-variant=custom-qml\n").problems), QStringList { "unknown-variant" });
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: color-source=image is not one of Vela's layouts (accent, wallpaper): skipped");
+        QCOMPARE(kinds(read("color-source=image\n").problems), QStringList { "unknown-variant" });
+        // The compositor's motion is not a theme's: only Vela's two QML ones.
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: motion-variant=bouncy is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("motion-variant=bouncy\n").problems), QStringList { "unknown-variant" });
+    }
+
     // A theme sets any surface's keys: numbers, and layouts among Vela's own.
     void surfaceKeysAndVariants()
     {
-        QTest::ignoreMessage(QtWarningMsg, "theme test:3: quicksettings-variant=seven is not one of Vela's layouts (default, glass, classic): skipped");
+        QTest::ignoreMessage(QtWarningMsg, "theme test:3: quicksettings-variant=seven is not one of Vela's layouts (default, glass, classic, expressive): skipped");
         const vela::themes::File file = read("taskbar-height=52\ntaskbar-variant=floating\nquicksettings-variant=seven\n");
         QCOMPARE(kinds(file.problems), QStringList { "unknown-variant" });
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-height")).toDouble(), 52.0);
         QCOMPARE(file.tokens.value(QStringLiteral("taskbar-variant")).toString(), QStringLiteral("floating"));
+
+        // Vela Expressive's shell: quick settings, Start and the notification
+        // center, only Vela's own layouts.
+        const vela::themes::File expressive = read("quicksettings-variant=expressive\nstartmenu-variant=expressive\n"
+                                                   "notifications-variant=expressive\n");
+        QVERIFY(expressive.problems.isEmpty());
+        for (const char* key : { "quicksettings-variant", "startmenu-variant", "notifications-variant" }) {
+            QCOMPARE(expressive.tokens.value(QLatin1String(key)).toString(), QStringLiteral("expressive"));
+            QCOMPARE(vela::themes::token(QLatin1String(key))->kind, vela::themes::TokenKind::Variant);
+        }
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: startmenu-variant=tiles is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("startmenu-variant=tiles\n").problems), QStringList { "unknown-variant" });
+        QTest::ignoreMessage(QtWarningMsg, "theme test:1: notifications-variant=stack is not one of Vela's layouts (default, expressive): skipped");
+        QCOMPARE(kinds(read("notifications-variant=stack\n").problems), QStringList { "unknown-variant" });
+        // A surface's style may choose its own variant.
+        QVERIFY(read("startmenu-variant=expressive\n", vela::themes::StartMenu).problems.isEmpty());
+        QVERIFY(read("notifications-variant=expressive\nquicksettings-variant=expressive\n", vela::themes::Notifications).problems.isEmpty());
     }
 
     // A style only sets its own surface's keys and the blur's: anything else
@@ -659,7 +715,10 @@ private slots:
                 QVERIFY2(names.contains(name), qPrintable(surface + u'/' + picture));
             }
         }
-        QCOMPARE(count, 22); // Lowell137's, one of each look: 11 taskbar, 5 Start menu, 6 quick settings styles
+        // Lowell137's, one of each look (11 taskbar, 5 Start menu, 6 quick
+        // settings styles), and Vela Expressive's Start menu and quick
+        // settings with the notification center.
+        QCOMPARE(count, 24);
     }
 };
 

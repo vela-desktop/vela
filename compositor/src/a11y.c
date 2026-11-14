@@ -3,6 +3,7 @@
 
 #include "a11y.h"
 
+#include "alloc/alloc.h"
 #include "color.h"
 #include "config.h"
 #include "input.h"
@@ -200,7 +201,7 @@ static int handle_schedule_timer(void *data)
 
 struct vela_a11y *vela_a11y_create(struct vela_server *server)
 {
-    struct vela_a11y *a11y = calloc(1, sizeof(*a11y));
+    struct vela_a11y *a11y = VELA_NEW(struct vela_a11y);
     a11y->server = server;
     a11y->night_kelvin = VELA_NIGHT_KELVIN_DEFAULT;
     snprintf(a11y->schedule, sizeof(a11y->schedule), "no");
@@ -215,7 +216,11 @@ struct vela_a11y *vela_a11y_create(struct vela_server *server)
     a11y->zoom_from = 1.0;
     a11y->zoom_tween = (struct vela_tween) { -1.0, 1.0, NULL };
     a11y->timer = wl_event_loop_add_timer(server->loop, handle_schedule_timer, a11y);
-    wl_event_source_timer_update(a11y->timer, 60000);
+    if (a11y->timer) {
+        wl_event_source_timer_update(a11y->timer, 60000);
+    } else {
+        wlr_log_errno(WLR_ERROR, "Accessibility: no timer, schedules apply only at the next change");
+    }
     return a11y;
 }
 
@@ -224,7 +229,9 @@ void vela_a11y_destroy(struct vela_a11y *a11y)
     if (!a11y) {
         return;
     }
-    wl_event_source_remove(a11y->timer);
+    if (a11y->timer) {
+        wl_event_source_remove(a11y->timer);
+    }
     free(a11y);
 }
 

@@ -283,7 +283,7 @@ arch|cachyos|endeavouros) backend=arch ;;
 *) if command -v pacman >/dev/null 2>&1; then
        backend=arch
    else
-       fail unsupported "unsupported distribution (requires Arch/pacman, Fedora 44, or Ubuntu 26.10)."
+       fail unsupported "unsupported distribution (requires Arch/pacman, Fedora 44/45, or Ubuntu 26.10)."
    fi ;;
 esac
 if [ "$backend" = arch ] && ! command -v pacman >/dev/null 2>&1; then
@@ -301,9 +301,10 @@ if [ "$backend" = fedora ]; then
     fi
     # Having DNF installed does not imply compatible Fedora libraries.
     fedora_release=$(rpm --eval '%{?fedora}' 2>/dev/null || true)
-    if [ "$fedora_release" != 44 ]; then
-        fail unsupported "Fedora 44 is the only supported RPM target (detected: ${fedora_release:-unknown})."
-    fi
+    case "$fedora_release" in
+        44|45) ;;
+        *) fail unsupported "Fedora 44/45 are the only supported RPM targets (detected: ${fedora_release:-unknown})." ;;
+    esac
 fi
 
 packageVersion() {
@@ -349,7 +350,7 @@ installPackage() {
     elif rpm -q vela >/dev/null 2>&1; then
         # Switching from the mutually-exclusive Beta RPM to vela-git.
         sudo dnf install -y --allowerasing "$1"
-    elif [ "$force" = 1 ] && [ -n "$installed" ] &&
+    elif [ "$force" = 1 ] && [ "$native_rpm_mismatch" = 0 ] && [ -n "$installed" ] &&
          [ "${latestFull#"$installed"}" != "$latestFull" ]; then
         # DNF 'install' deliberately skips an already installed identical NEVRA.
         sudo dnf reinstall -y "$1"
@@ -737,6 +738,17 @@ else
     installed=$(printf '%s\n' "$installed_version" | sed -n 's/.*+git\([0-9a-f]*\).*$/\1/p')
 fi
 
+# A distro upgrade changes the native RPM target even if the selected Git
+# revision is unchanged. An installed .fc44 RPM must not be treated as
+# up-to-date on Fedora 45 (and vice versa).
+native_rpm_mismatch=0
+if [ "$backend" = fedora ] && [ -n "$installed_version" ]; then
+    case "$installed_version" in
+        *".fc${fedora_release}") ;;
+        *) native_rpm_mismatch=1 ;;
+    esac
+fi
+
 # The project version at the selected commit, as its package will have it.
 projectVersion() {
     git -C "$MIRROR" show "$latestFull:CMakeLists.txt" 2>/dev/null |
@@ -749,7 +761,8 @@ check_done() {
         --commit "$latestFull" --source "$source" ${CHANGES:+--changes "$CHANGES"}
 }
 
-if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] && [ "$force" = 0 ]; then
+if [ -n "$installed" ] && [ "${latestFull#"$installed"}" != "$latestFull" ] &&
+   [ "$force" = 0 ] && [ "$native_rpm_mismatch" = 0 ]; then
     echo ":: Vela is up to date ($(packageVersion))."
     if [ "$check" = 1 ]; then
         check_done up-to-date
@@ -838,6 +851,10 @@ artifact_name=vela-git
 if [ "$backend" = fedora ]; then
     manifest_name=SHA256SUMS-fedora
     artifact_name=vela-fedora-rpm
+    if [ "$fedora_release" = 45 ]; then
+        manifest_name=SHA256SUMS-fedora-45
+        artifact_name=vela-fedora-45-rpm
+    fi
 fi
 if [ "$backend" != ubuntu ] && [ "$prefer" != build ] && [ -n "$repo" ] && command -v curl > /dev/null 2>&1; then
     release_url="https://github.com/$repo/releases/download/alpha-$latestFull"
@@ -857,7 +874,7 @@ if [ "$backend" != ubuntu ] && [ "$prefer" != build ] && [ -n "$repo" ] && comma
                 fi
             else
                 if printf '%s\n' "$release_package" |
-                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}(\.fc[[:digit:]]+)?\.x86_64\.rpm$"; then
+                    grep -Eq "^vela-git-[[:alnum:].+_-]+\.g${latest}\.fc${fedora_release}\.x86_64\.rpm$"; then
                     package_name_valid=1
                 fi
             fi
@@ -954,6 +971,55 @@ prune() {
     done
 }
 
+# Always show what describes the package being installed, whether a verified
+# binary is available or we build it locally. Read the recipe from the pinned
+# commit, never from the updater's own (possibly older) installed files.
+# Checks stay quiet: their JSON output is a public interface.
+showRecipeContent() {
+    printf '\n%s\n' ":: Packaging recipe for $backend at $latestFull"
+    if [ "$backend" = ubuntu ]; then
+        printf '%s\n' "--- packaging/ubuntu/build-depends ---"
+        if git -C "$MIRROR" cat-file -e "$latestFull:packaging/ubuntu/build-depends" 2>/dev/null; then
+            git -C "$MIRROR" show "$latestFull:packaging/ubuntu/build-depends"
+        else
+            printf '%s\n' "(legacy revision: vela-update uses its built-in dependency fallback)"
+        fi
+        printf '%s\n' "--- CMakeLists.txt (DEB / CPack configuration) ---"
+        if git -C "$MIRROR" cat-file -e "$latestFull:CMakeLists.txt" 2>/dev/null; then
+            git -C "$MIRROR" show "$latestFull:CMakeLists.txt" |
+                sed -n '/^option(VELA_PACKAGE_DEB /,$p'
+        else
+            printf '%s\n' "(CMakeLists.txt unavailable at this revision)"
+        fi
+    else
+        if [ "$backend" = arch ]; then
+            recipe=packaging/arch/PKGBUILD
+        else
+            recipe=packaging/fedora/vela.spec
+        fi
+        printf '%s\n' "--- $recipe ---"
+        if ! git -C "$MIRROR" show "$latestFull:$recipe"; then
+            printf '%s\n' "vela-update: can't display $recipe at $latestFull" >&2
+        fi
+    fi
+    printf '%s\n\n' ":: End of packaging recipe"
+}
+
+# A plain terminal dump remains useful in logs and automated invocations.
+# In a real terminal, use a read-only pager rather than an editor (never $EDITOR).
+# Always show a quit hint: users do not need to know Vim or less commands.
+showRecipe() {
+    if [ -t 0 ] && [ -t 1 ] && command -v less >/dev/null 2>&1; then
+        printf '\n%s\n' ":: Reviewing the package recipe (read-only). Scroll with arrows/PageUp/PageDown; press q to close and continue."
+        showRecipeContent | LESS= LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
+        printf '%s\n' ":: Recipe preview closed; continuing update."
+    else
+        showRecipeContent
+    fi
+}
+
+showRecipe
+
 # Prefer a public release if its checksum AND signed build provenance verify.
 # Failed verification must never install or cache an untrusted package.
 if [ -n "$release_package" ]; then
@@ -1004,7 +1070,7 @@ if [ -n "$ciRun" ]; then
         if [ "$backend" = arch ]; then
             package=$(archPackages "$DOWNLOAD" "$latest" | head -n 1)
         else
-            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest".*.x86_64.rpm 2> /dev/null | head -n 1)
+            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest".fc"$fedora_release".x86_64.rpm 2> /dev/null | head -n 1)
         fi
     else
         package=""

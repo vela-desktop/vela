@@ -9,6 +9,7 @@
 // the page and come to the front (that's how the shell opens "Display
 // settings", "Personalize" and the other menu entries).
 
+#include "alloc/new_handler.h"
 #include "renderingpolicy.h"
 #include "about.h"
 #include "appmodel.h"
@@ -117,6 +118,7 @@ private:
 /** Configure text before Qt startup and run Settings with its single-instance request handler. */
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-settings");
     vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));

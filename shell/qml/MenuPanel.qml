@@ -9,8 +9,19 @@ import Vela.Controls
 // One level of a menu (the menu or one of its submenus), like Windows 11
 // menus: rounded corners, 32-high rows with the icon on the left and the
 // shortcut on the right, highlight detached from the edges.
+//
+// Expressive (M3's vertical menu, at Vela's 32 rows): no outline; the
+// current row a state layer of on surface (8%, 10% pressed) in extra small
+// corners; a checked entry in tertiary container with its text, in medium
+// corners (M3's selected item); the icon row's and the pin's buttons state
+// layers too.
 Item {
     id: panel
+    readonly property bool expressive: Theme.expressive
+    // A state layer of on surface, `amount` of it (0 at rest).
+    function stateLayer(amount) {
+        return Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, amount)
+    }
 
     property var entries: []
     property int level: 0
@@ -233,7 +244,7 @@ Item {
             anchors.fill: parent
             radius: Theme.radiusOverlay
             color: panel.fill
-            border.width: 1
+            border.width: panel.expressive ? 0 : 1
             border.color: Theme.stroke
         }
 
@@ -258,6 +269,9 @@ Item {
                     readonly property var entry: modelData
                     readonly property bool isCurrent: panel.currentIndex === index
                     readonly property bool usable: entry.enabled !== false
+                    // Expressive: a checked entry sits in a tonal container.
+                    readonly property bool selected: panel.expressive && entry.checked === true
+                    readonly property color content: selected ? Theme.tertiaryContainerText : Theme.text
                     width: panel.width
                     height: panel.rowHeightOf(entry)
 
@@ -287,9 +301,11 @@ Item {
                                 height: 36
                                 Fill {
                                     anchors.fill: parent
-                                    radius: Theme.radius
-                                    color: !iconButton.usable ? Theme.subtleRest
-                                         : iconMouse.pressed ? Theme.subtlePressed : iconMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                                    radius: panel.expressive ? width / 2 : Theme.radius
+                                    color: panel.expressive
+                                        ? panel.stateLayer(!iconButton.usable ? 0 : iconMouse.pressed ? Theme.statePressed : iconMouse.containsMouse ? Theme.stateHover : 0)
+                                        : !iconButton.usable ? Theme.subtleRest
+                                        : iconMouse.pressed ? Theme.subtlePressed : iconMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                                 }
                                 Icon {
                                     anchors.centerIn: parent
@@ -323,12 +339,20 @@ Item {
                         anchors.fill: parent
 
                         Fill {
+                            objectName: "rowFill"
+                            readonly property real amount: !row.isCurrent || !row.usable ? 0
+                                : rowMouse.pressed ? Theme.statePressed : Theme.stateHover
                             x: 4
                             width: parent.width - 8
                             height: parent.height
-                            radius: Theme.radius
-                            color: !row.isCurrent || !row.usable ? Theme.subtleRest
-                                 : rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
+                            // 4 inside the menu: the menu's corners less
+                            // that (Theme.nested), every row alike.
+                            radius: Theme.nested(Theme.radiusOverlay, 4,
+                                !panel.expressive ? Theme.radius : row.selected ? Theme.shapeMedium : Theme.shapeExtraSmall)
+                            color: panel.expressive
+                                ? (row.selected ? Theme.mix(Theme.tertiaryContainer, Theme.tertiaryContainerText, amount) : panel.stateLayer(amount))
+                                : !row.isCurrent || !row.usable ? Theme.subtleRest
+                                : rowMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
                         }
 
                         // Icon, or the check mark or dot of choice entries.
@@ -353,7 +377,7 @@ Item {
                                 visible: row.entry.checked === true && !row.entry.radio
                                 preferredRendererType: Shape.CurveRenderer
                                 ShapePath {
-                                    strokeColor: Theme.text
+                                    strokeColor: row.content
                                     strokeWidth: 1.5
                                     fillColor: "transparent"
                                     capStyle: ShapePath.RoundCap
@@ -369,7 +393,7 @@ Item {
                                 width: 6
                                 height: 6
                                 radius: 3
-                                color: Theme.text
+                                color: row.content
                             }
                         }
 
@@ -384,8 +408,9 @@ Item {
                                 const label = row.entry.liveText ? row.entry.liveText() : row.entry.text
                                 return panel.keyboardMode ? panel.styledText(label) : panel.plainText(label)
                             }
-                            color: row.usable ? Theme.text : Theme.textSecondary
+                            color: row.usable ? row.content : Theme.textSecondary
                             font.pixelSize: Theme.fontBody
+                            font.weight: row.selected ? Theme.weightLabel : Font.Normal
                             elide: Text.ElideRight
                         }
                         Text {
@@ -450,7 +475,9 @@ Item {
                         height: 28
                         Fill {
                             anchors.fill: parent
-                            color: pinMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                            radius: panel.expressive ? width / 2 : Theme.radius
+                            color: panel.expressive ? panel.stateLayer(pinMouse.containsMouse ? Theme.stateHover : 0)
+                                                    : pinMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         }
                         Shape {
                             anchors.centerIn: parent

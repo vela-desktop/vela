@@ -7,6 +7,7 @@
 
 #include "render/render.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 
 #include <assert.h>
@@ -111,7 +112,7 @@ static bool create_view(struct vela_texture *texture)
 static struct vela_texture *new_texture(struct vela_renderer *renderer, const struct vela_pixel_format *format,
     int width, int height)
 {
-    struct vela_texture *texture = calloc(1, sizeof(*texture));
+    struct vela_texture *texture = VELA_NEW(struct vela_texture);
     wlr_texture_init(&texture->base, vela_renderer_wlr(renderer), &texture_impl, (uint32_t)width, (uint32_t)height);
     texture->renderer = renderer;
     texture->format = format;
@@ -136,6 +137,10 @@ static struct wlr_texture *import_dmabuf(struct vela_renderer *renderer, struct 
     }
 
     struct vela_vulkan *vk = renderer->vk;
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: client texture %dx%d drm=0x%08x modifier=0x%" PRIx64 " fd0=%d",
+            dmabuf->width, dmabuf->height, dmabuf->format, dmabuf->modifier, dmabuf->fd[0]);
+    }
     const struct vela_pixel_format *format = vela_pixel_format_from_drm(dmabuf->format);
     if (!format || !wlr_drm_format_set_has(&vk->texture_formats, dmabuf->format, dmabuf->modifier)) {
         wlr_log(WLR_DEBUG, "Texture: dmabuf 0x%08x (modifier 0x%" PRIx64 ") not supported", dmabuf->format,
@@ -775,11 +780,7 @@ struct vela_readback *vela_renderer_readback(struct vela_renderer *renderer, str
         if (wlr) wlr_texture_destroy(wlr);
         return NULL;
     }
-    struct vela_readback *readback = calloc(1, sizeof(*readback));
-    if (!readback) {
-        wlr_texture_destroy(wlr);
-        return NULL;
-    }
+    struct vela_readback *readback = VELA_NEW(struct vela_readback);
     if (!renderer->readback_timer) {
         renderer->readback_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
         if (renderer->readback_fd >= 0) {

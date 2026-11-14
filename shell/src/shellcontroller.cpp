@@ -4,6 +4,7 @@
 #include "shellcontroller.h"
 
 #include "mica.h"
+#include "wallpapercolor.h"
 #include "../../common/primaryoutput.h"
 
 #include <QCoreApplication>
@@ -493,6 +494,13 @@ QColor ShellController::wallpaperTint(const QString& wallpaper) const
     const QColor tint(int(sum[0] / count), int(sum[1] / count), int(sum[2] / count));
     saveWallpaperTint(tint);
     return tint;
+}
+
+QColor ShellController::wallpaperColor(const QString& wallpaper) const
+{
+    const QColor color = wallpaperSourceColor(wallpaper);
+    saveWallpaperColor(color);
+    return color;
 }
 
 QString ShellController::userInitial() const

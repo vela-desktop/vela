@@ -6,6 +6,7 @@
 // times and the wlr_renderer wlroots sees.
 
 #include "render/render.h"
+#include "alloc/alloc.h"
 #include "render/wait_arrays.h"
 #include "sync.h"
 
@@ -210,9 +211,11 @@ static void destroy(struct vela_renderer *r);
 
 struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk)
 {
-    struct vela_renderer *r = calloc(1, sizeof(*r));
+    struct vela_renderer *r = VELA_NEW(struct vela_renderer);
     wlr_renderer_init(&r->base, &renderer_impl, WLR_BUFFER_CAP_DMABUF);
     r->vk = vk;
+    wl_list_init(&r->passes_open);
+    wl_list_init(&r->passes_free);
     wl_list_init(&r->targets);
     wl_list_init(&r->textures);
     for (int i = 0; i < vk->shm_format_count; ++i) {
@@ -243,6 +246,9 @@ static void destroy_target(struct vela_target *target);
 
 static void destroy(struct vela_renderer *r)
 {
+    // Host memory and buffer locks only: first, while every buffer they
+    // lock still exists.
+    vela_renderer_destroy_passes(r);
     vela_renderer_cancel_readbacks(r);
     VkDevice device = r->vk->device;
     // Device loss makes timeline progress unknowable. Destroy/free calls remain
@@ -515,10 +521,7 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
         return NULL;
     }
 
-    struct vela_target *target = calloc(1, sizeof(*target));
-    if (!target) {
-        return NULL;
-    }
+    struct vela_target *target = VELA_NEW(struct vela_target);
     target->renderer = r;
     target->format = format->srgb;
     target->dmabuf_fd = dmabuf.fd[0];
@@ -543,7 +546,9 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
         .format = format->srgb,
         .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
     };
+    if (vela_env_one("VELA_DEBUG_DMABUF")) wlr_log(WLR_INFO, "DMABUF trace: before vkCreateImageView (render target)");
     VkResult view_result = vkCreateImageView(r->vk->device, &view_info, NULL, &target->view);
+    if (vela_env_one("VELA_DEBUG_DMABUF")) wlr_log(WLR_INFO, "DMABUF trace: after vkCreateImageView result=%d", (int)view_result);
     if (view_result != VK_SUCCESS) {
         vela_vulkan_result(r->vk, view_result, "vkCreateImageView(target)");
         vkDestroyImage(r->vk->device, target->image, NULL);
@@ -554,6 +559,7 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
 
     wlr_addon_init(&target->addon, &buffer->addons, r, &target_addon_impl);
     wl_list_insert(&r->targets, &target->link);
+    if (vela_env_one("VELA_DEBUG_DMABUF")) wlr_log(WLR_INFO, "DMABUF trace: render target ready");
     return target;
 }
 

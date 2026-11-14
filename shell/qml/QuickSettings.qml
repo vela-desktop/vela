@@ -164,7 +164,7 @@ Window {
     // larger height before the panel animates and shrinks after it: two
     // configures per change, none per frame, and at rest the window is just
     // the panel and its shadow, so clicks above it reach what is below.
-    readonly property real targetHeight: page === "" ? content.height + 24 + footer.height
+    readonly property real targetHeight: page === "" ? content.height + content.y + 8 + footer.height
         : (page === "wifi" ? wifiPage.finalHeight : page === "bluetooth" ? bluetoothPage.finalHeight
            : page === "sound" ? soundPage.height
            : page === "brightness" ? brightnessPage.height : accessPage.height) + 32
@@ -206,148 +206,10 @@ Window {
         Eased { id: pageSlideIn; target: pageSlide; property: "x"; to: 0 }
     }
 
-    // One part of a tile (both halves of a split one): Qt's button, the
-    // accent when on, every change of color faded (Fill).
-    component TileButton: T.AbstractButton {
-        id: half
-        property bool on
-        property bool roundLeft: true
-        property bool roundRight: true
-        // An inline arrow's half lights the whole tile: its hover and press
-        // show on the other half, and it draws nothing itself.
-        property bool lit: false
-        property bool litDown: false
-        property bool bare: false
-        height: parent.height
-        z: visualFocus ? 1 : 0 // the ring above the other half
-        hoverEnabled: true
-        focusPolicy: Qt.TabFocus
-        Keys.onReturnPressed: clicked()
-        Keys.onEnterPressed: clicked()
-        readonly property bool shownDown: down || litDown
-        readonly property bool shownHovered: hovered || lit
-        // bare: no fill of its own, but the focus ring still shows.
-        background: Fill {
-            readonly property int corner: Styles.quickSettings.tileRadius
-            topLeftRadius: half.roundLeft ? corner : 0
-            bottomLeftRadius: half.roundLeft ? corner : 0
-            topRightRadius: half.roundRight ? corner : 0
-            bottomRightRadius: half.roundRight ? corner : 0
-            color: half.bare ? "transparent"
-                 : half.on ? (half.shownDown ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.06))
-                              : half.shownHovered ? Qt.tint(Theme.accent, Qt.rgba(1, 1, 1, 0.08)) : Theme.accent)
-                 : (half.shownDown ? Theme.controlPressed : half.shownHovered ? Theme.controlHover : Theme.control)
-            FocusRing { visible: half.visualFocus }
-        }
-    }
-
-    // A tile: on (accent color) or off, with the label below. `split`: an
-    // arrow on the right opening its page (Wi-Fi); `menu`: the whole tile
-    // opens the page (Accessibility). Turning on fades to the accent, hover
-    // and press fade; a right click opens its Settings page.
-    component Tile: Item {
-        id: tile
-        property string icon
-        property string label
-        property bool checked
-        property bool usable: true
-        property bool split: false
-        property bool menu: false
-        signal toggled()
-        signal details()
-        signal contextMenu()
-        width: 104
-        height: 82
-        opacity: usable ? 1 : 0.45
-
-        Item {
-            id: face
-            width: parent.width
-            height: 48
-            // A style's arrow beside the icon (quicksettings-inline-arrow): the
-            // tile is one button, its right half opens the page.
-            readonly property bool inline: Styles.quickSettings.inlineArrow
-            readonly property real detailsWidth: inline ? width / 2 : 36
-
-            TileButton {
-                id: mainButton
-                width: tile.split && !face.inline ? parent.width - 36 : parent.width
-                on: tile.checked
-                roundRight: !tile.split || face.inline
-                lit: detailsButton.hovered
-                litDown: detailsButton.down
-                enabled: tile.usable
-                Accessible.name: tile.label
-                Accessible.checkable: !tile.menu
-                Accessible.checked: tile.checked
-                onClicked: tile.menu ? tile.details() : tile.toggled()
-            }
-            TileButton {
-                id: detailsButton
-                visible: tile.split
-                x: parent.width - face.detailsWidth
-                width: face.detailsWidth
-                on: tile.checked
-                roundLeft: false
-                bare: face.inline
-                enabled: tile.usable
-                Accessible.name: qsTr("%1 settings").arg(tile.label)
-                onClicked: tile.details()
-            }
-            // Off: a thin border, which fades away as the tile turns on. A
-            // style without borders keeps only a line along the bottom edge.
-            Rectangle {
-                visible: !Styles.quickSettings.borderless
-                anchors.fill: parent
-                radius: Styles.quickSettings.tileRadius
-                color: "transparent"
-                border.width: 1
-                border.color: tile.checked ? Qt.rgba(Theme.stroke.r, Theme.stroke.g, Theme.stroke.b, 0) : Theme.stroke
-                Behavior on border.color { ColorFade {} }
-            }
-            GlassEdge {
-                atBottom: true
-                cornerRadius: Styles.quickSettings.tileRadius
-                visible: Styles.quickSettings.borderless && !tile.checked
-            }
-            Fill {
-                visible: tile.split && !face.inline
-                x: parent.width - 36
-                y: 10
-                width: 1
-                height: parent.height - 20
-                radius: 0
-                color: tile.checked ? Qt.rgba(1, 1, 1, 0.35) : Theme.stroke
-            }
-            Icon {
-                x: (tile.split || tile.menu) && face.inline ? parent.width / 2 - width - 2
-                    : (tile.split ? parent.width - 36 : parent.width) / 2 - width / 2
-                anchors.verticalCenter: parent.verticalCenter
-                name: tile.icon
-                size: 18
-                onAccent: tile.checked
-            }
-            Chevron {
-                visible: tile.split || tile.menu
-                x: face.inline ? parent.width / 2 + 6 : tile.split ? parent.width - 21 : parent.width - 18
-                anchors.verticalCenter: parent.verticalCenter
-                color: tile.checked ? "white" : Theme.text
-            }
-            TapHandler {
-                acceptedButtons: Qt.RightButton
-                enabled: tile.usable
-                onTapped: tile.contextMenu()
-            }
-        }
-        Text {
-            anchors { top: face.bottom; topMargin: 6; horizontalCenter: parent.horizontalCenter }
-            width: parent.width
-            text: tile.label
-            color: Theme.text
-            font.pixelSize: Theme.fontCaption
-            horizontalAlignment: Text.AlignHCenter
-            elide: Text.ElideRight
-        }
+    // A tile (QuickSettingsTile.qml), its expressive width half the panel's
+    // content less the gap.
+    component Tile: QuickSettingsTile {
+        expressiveWidth: (content.width - 8) / 2
     }
 
     // A slider (brightness, volume, an app's volume) with its icon on the
@@ -421,7 +283,8 @@ Window {
             value: row.value
             enabled: !row.locked
             wheelEnabled: false
-            fillColor: row.muted ? Theme.textSecondary : Theme.accentFill
+            // The expressive variant's fill: M3's slider, primary.
+            fillColor: row.muted ? Theme.textSecondary : Styles.quickSettings.expressive ? Theme.primary : Theme.accentFill
             Accessible.name: row.name
             onMoved: row.moved(value)
         }
@@ -534,6 +397,9 @@ Window {
         height: 36
         Button {
             id: back
+            // At the top of a page, 16 inside the panel's corner.
+            outerRadius: Styles.quickSettings.radius
+            outerGap: 16
             subtle: true
             width: 32
             height: 32
@@ -612,6 +478,8 @@ Window {
         Keys.onReturnPressed: clicked()
         Keys.onEnterPressed: clicked()
         background: Fill {
+            // At the bottom of a page, 16 inside the panel's corner.
+            radius: Theme.nested(Styles.quickSettings.radius, 16, Theme.radius)
             color: link.down ? Theme.subtlePressed : link.hovered ? Theme.subtleHover : Theme.subtleRest
             FocusRing { visible: link.visualFocus }
         }
@@ -673,15 +541,19 @@ Window {
                 Column {
                     id: content
                     visible: root.page === ""
-                    x: 16
-                    y: 16
-                    width: parent.width - 32
+                    // Expressive: 12 from the panel's edges, so a tile's
+                    // square corners (16) are the panel's (28) less the
+                    // padding (M3's nested radii); Vela's choice.
+                    readonly property int pad: Styles.quickSettings.pad
+                    x: pad
+                    y: pad
+                    width: parent.width - 2 * pad
                     spacing: 16
 
                     Grid {
-                        columns: 3
+                        columns: Styles.quickSettings.expressive ? 2 : 3
                         columnSpacing: 8
-                        rowSpacing: 4
+                        rowSpacing: Styles.quickSettings.expressive ? 8 : 4
 
                         Tile {
                             visible: Status.wifiAvailable
@@ -752,8 +624,8 @@ Window {
                     // A style without the footer band: a line above the sliders.
                     Rectangle {
                         visible: Styles.quickSettings.flatFooter
-                        x: -16
-                        width: parent.width + 32
+                        x: -content.pad
+                        width: parent.width + 2 * content.pad
                         height: 1
                         color: Theme.stroke
                     }
@@ -846,6 +718,8 @@ Window {
                                 // password field and button, in `normal`.
                                 delegate: ListItem {
                                     id: net
+                                    outerRadius: Styles.quickSettings.radius // 16 inside the panel
+                                    outerGap: 16
                                     required property var modelData
                                     readonly property bool open: wifiPage.expanded === modelData.ssid
                                     readonly property bool needsPassword: modelData.secure && !modelData.active
@@ -1060,6 +934,8 @@ Window {
                                 model: Audio.outputs
                                 delegate: ListItem {
                                     id: output
+                                    outerRadius: Styles.quickSettings.radius // 16 inside the panel
+                                    outerGap: 16
                                     required property var modelData
                                     width: soundColumn.width
                                     height: 44
@@ -1273,6 +1149,8 @@ Window {
                         ]
                         delegate: ListItem {
                             id: option
+                            outerRadius: Styles.quickSettings.radius // 16 inside the panel
+                            outerGap: 16
                             required property var modelData
                             width: accessPage.width
                             height: 48
@@ -1335,7 +1213,10 @@ Window {
                     }
                 }
                 Button {
-                    anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                    // 6 from the footer's edges, in the panel's corner.
+                    anchors { right: parent.right; rightMargin: 6; verticalCenter: parent.verticalCenter }
+                    outerRadius: panel.radius
+                    outerGap: 6
                     subtle: true
                     width: 36
                     height: 36
@@ -1347,10 +1228,11 @@ Window {
                 }
             }
 
+            // Not the expressive variant's: M3's surfaces have no edge.
             GlassEdge {
                 z: 1
                 cornerRadius: panel.radius
-                visible: Styles.quickSettings.borderless
+                visible: Styles.quickSettings.borderless && !Styles.quickSettings.expressive
             }
         }
     }

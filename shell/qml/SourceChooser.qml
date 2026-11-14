@@ -228,7 +228,7 @@ Window {
 
                     Fill {
                         anchors { fill: parent; margins: 6 }
-                        radius: Theme.radiusOverlay
+                        radius: Theme.nested(Theme.radiusOverlay, 22, Theme.radiusOverlay) // 22 inside the panel
                         color: card.chosen ? Qt.rgba(0.36, 0.55, 1.0, 0.18) : cardMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         border.width: card.chosen ? 2 : 0
                         border.color: Theme.accent

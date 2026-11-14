@@ -3,6 +3,7 @@
 
 #include "scene/surface.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
@@ -64,7 +65,7 @@ static const struct wlr_addon_interface state_addon = {
 
 void vela_surface_state_create(struct vela_scene *scene, struct wlr_surface *surface)
 {
-    struct vela_surface_state *state = calloc(1, sizeof(*state));
+    struct vela_surface_state *state = VELA_NEW(struct vela_surface_state);
     state->surface = surface;
     state->scene = scene;
     state->density = 1.0;

@@ -531,6 +531,12 @@ own `wlr_allocator` (`wlr_allocator_init` is public): GBM buffers with an
 explicit modifier accepted by the primary plane
 (`wlr_output_get_primary_formats`).
 
+On Venus, the experimental [VM path](virtual-machines.md) allocates output
+images and dedicated DMA-BUF memory on our Vulkan device instead of GBM, then
+exports their actual modifier/plane layout to wlroots. The renderer imports
+that resource through its normal target cache. `VELA_ALLOCATOR` selects the
+allocator for controlled comparisons; physical GPUs keep GBM by default.
+
 **Our renderer also speaks wlroots' language** (chosen in S1). wlroots draws by
 itself in a few places: it prepares the hardware cursor buffer, copies the
 output for screencopy and `ext-image-copy-capture`, and uploads apps' `wl_shm`
@@ -547,7 +553,7 @@ the same synchronization. The code is in `compositor/src/render/`:
 | `vulkan.c` | device, importable formats (textures, render targets, wl_shm), dmabuf import |
 | `renderer.c` | GPU submission with a timeline semaphore, deferred destruction (typed lists of retired images and used semaphores, freed when the timeline reaches their point), staging memory for uploads (uncached) and for readbacks (cached: captures read it with the CPU), dmabuf render targets, pipelines; syncobj timeline for app releases and GPU timestamps (S3); the `wlr_renderer` |
 | `texture.c` | textures from dmabuf (one import per buffer) and from memory (upload of changed areas only), pixel reads |
-| `pass.c` | drawing: textured or solid-color quads, rectangle clipping, barriers, implicit and explicit sync, timing; the `wlr_render_pass` |
+| `pass.c` | drawing: textured or solid-color quads, rectangle clipping, barriers, implicit and explicit sync, timing; the `wlr_render_pass`. Passes belong to the renderer: a finished one goes back on its free list (at most four) with its arrays, so a frame allocates nothing once they are large enough ([allocation policy](memory-allocation-policy.md#7-the-frame-path)) |
 | `allocator.c`, `formats.c`, `pixel_buffer.c` | GBM output buffers, the pixel format table, CPU images as `wlr_buffer` |
 
 **Hardware cursor on NVIDIA and other DRM drivers.** wlroots shares the

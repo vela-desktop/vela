@@ -3,6 +3,8 @@
 
 #include "path_security.h"
 
+#include "alloc/alloc.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -102,11 +104,7 @@ int vela_runtime_dir_open(const char *path)
             return -1;
         }
 
-        char *name = strndup(component, length);
-        if (!name) {
-            close(fd);
-            return -1;
-        }
+        char *name = vela_strndup(component, length);
 
         // Preserve the previous semantics: parent symlinks may be part of a
         // valid absolute XDG path, but the runtime directory itself must not
@@ -223,16 +221,29 @@ bool vela_lock_marker_create_at(int runtime_fd, const char *display)
     return true;
 }
 
-bool vela_lock_marker_present_at(int runtime_fd, const char *display)
+enum vela_lock_marker vela_lock_marker_state_at(int runtime_fd, const char *display)
 {
     char marker[64];
     if (runtime_fd < 0 || !lock_marker_name(display, marker, sizeof(marker))) {
-        return false;
+        return VELA_LOCK_MARKER_UNKNOWN;
     }
     struct stat info;
-    return fstatat(runtime_fd, marker, &info, AT_SYMLINK_NOFOLLOW) == 0
-        && S_ISREG(info.st_mode) && info.st_uid == geteuid()
-        && (info.st_mode & 077) == 0;
+    if (fstatat(runtime_fd, marker, &info, AT_SYMLINK_NOFOLLOW) != 0) {
+        // ENOMEM or a transient error on the runtime directory must never
+        // read as "unlocked": only a positively missing entry does.
+        return errno == ENOENT ? VELA_LOCK_MARKER_ABSENT : VELA_LOCK_MARKER_UNKNOWN;
+    }
+    if (S_ISREG(info.st_mode) && info.st_uid == geteuid() && (info.st_mode & 077) == 0) {
+        return VELA_LOCK_MARKER_PRESENT;
+    }
+    // Something else holds the marker's name: not ours, but not proof that
+    // the screen was unlocked either.
+    return VELA_LOCK_MARKER_UNKNOWN;
+}
+
+bool vela_lock_marker_present_at(int runtime_fd, const char *display)
+{
+    return vela_lock_marker_state_at(runtime_fd, display) != VELA_LOCK_MARKER_ABSENT;
 }
 
 bool vela_lock_marker_remove_at(int runtime_fd, const char *display)

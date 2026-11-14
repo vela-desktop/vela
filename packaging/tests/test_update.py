@@ -107,7 +107,7 @@ elif name == "rpm":
         sys.exit(0)
     if not os.environ.get("TEST_INSTALLED"):
         sys.exit(1)
-    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc44")
+    print("0.1.0-1.1.g" + os.environ["TEST_INSTALLED"] + ".fc" + os.environ.get("TEST_INSTALLED_FEDORA_RELEASE", os.environ.get("TEST_FEDORA_RELEASE", "44")))
 elif name == "rpmbuild":
     values = {}
     for idx, value in enumerate(args[:-1]):
@@ -125,10 +125,10 @@ elif name == "rpmbuild":
         sys.exit(1)
     rpm_dir = topdir / "RPMS/x86_64"
     rpm_dir.mkdir(parents=True, exist_ok=True)
-    (rpm_dir / ("vela-git-" + version + "-1.1.g" + sha[:7] + ".fc44.x86_64.rpm")).touch()
+    (rpm_dir / ("vela-git-" + version + "-1.1.g" + sha[:7] + ".fc" + os.environ.get("TEST_FEDORA_RELEASE", "44") + ".x86_64.rpm")).touch()
     # Fedora also emits these debug subpackages by default: ignore both.
     for suffix in ("-debuginfo", "-debugsource"):
-        (rpm_dir / ("vela-git" + suffix + "-" + version + "-1.1.g" + sha[:7] + ".fc44.x86_64.rpm")).touch()
+        (rpm_dir / ("vela-git" + suffix + "-" + version + "-1.1.g" + sha[:7] + ".fc" + os.environ.get("TEST_FEDORA_RELEASE", "44") + ".x86_64.rpm")).touch()
 elif name == "makepkg":
     if os.environ.get("TEST_REQUIRE_TTY"):
         # sudo authenticates through /dev/tty, not necessarily stdin.
@@ -259,7 +259,7 @@ elif name == "gh":
         dest.mkdir(parents=True, exist_ok=True)
         sha = os.environ["TEST_DOWNLOAD_SHA"]
         if os.environ.get("TEST_FEDORA"):
-            (dest / ("vela-git-0.1.0-1.1.g" + sha + ".fc44.x86_64.rpm")).touch()
+            (dest / ("vela-git-0.1.0-1.1.g" + sha + ".fc" + os.environ.get("TEST_FEDORA_RELEASE", "44") + ".x86_64.rpm")).touch()
         else:
             (dest / ("vela-git-0.1.0.r1.g" + sha + "-1-x86_64.pkg.tar.zst")).touch()
 elif name == "curl":
@@ -306,14 +306,15 @@ elif name == "curl":
     output = pathlib.Path(args[args.index("-o") + 1])
     advertised = os.environ.get("TEST_RELEASE_PKG_SHA") or sha
     if os.environ.get("TEST_FEDORA"):
-        package = "vela-git-0.1.0-1.1.g" + advertised[:7] + ".fc44.x86_64.rpm"
+        package = "vela-git-0.1.0-1.1.g" + advertised[:7] + ".fc" + os.environ.get("TEST_FEDORA_RELEASE", "44") + ".x86_64.rpm"
     else:
         package = "vela-git-0.1.0.r1.g" + advertised[:7] + "-1-x86_64.pkg.tar.zst"
     data = ("package for " + sha).encode()
     digest = hashlib.sha256(data).hexdigest()
     if os.environ.get("TEST_BAD_RELEASE_DIGEST"):
         digest = "f" * 64
-    manifest_name = "SHA256SUMS-fedora" if os.environ.get("TEST_FEDORA") else "SHA256SUMS"
+    manifest_name = ("SHA256SUMS-fedora-45" if os.environ.get("TEST_FEDORA_RELEASE") == "45"
+                     else "SHA256SUMS-fedora") if os.environ.get("TEST_FEDORA") else "SHA256SUMS"
     if url == prefix + manifest_name:
         mode = os.environ.get("TEST_BAD_RELEASE_MANIFEST")
         if mode == "invalid-digest":
@@ -499,6 +500,61 @@ class UpdateFixture(unittest.TestCase):
 
 
 class UpdateRevision(UpdateFixture):
+    def test_install_prints_selected_arch_recipe_before_build(self):
+        result = self.run_update("--branch", "fix/nvidia", "--build")
+        self.assertIn("Packaging recipe for arch at " + self.nvidia, result.stdout)
+        self.assertIn("--- packaging/arch/PKGBUILD ---", result.stdout)
+        self.assertIn("# NVIDIA test package", result.stdout)
+        self.assertNotIn("# main package", result.stdout)
+        self.assertLess(result.stdout.index("# NVIDIA test package"),
+                        result.stdout.index(":: Building the arch package"))
+
+    def test_interactive_recipe_has_a_readonly_pager_with_a_quit_hint(self):
+        # Simulate a terminal without depending on the host's less installation.
+        pager = self.update_script.parent / "less"
+        pager.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, pathlib, sys\n"
+            "pathlib.Path(os.environ['TEST_PAGER_CAPTURE']).write_text(sys.stdin.read())\n"
+            "pathlib.Path(os.environ['TEST_PAGER_ARGS']).write_text(json.dumps("
+            "{'args': sys.argv[1:], 'secure': os.getenv('LESSSECURE'), "
+            "'options': os.getenv('LESS')}))\n")
+        pager.chmod(0o755)
+        capture = self.directory / "recipe-preview.txt"
+        options = self.directory / "pager-options.json"
+        self.env["TEST_PAGER_CAPTURE"] = str(capture)
+        self.env["TEST_PAGER_ARGS"] = str(options)
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                ["sh", str(self.update_script), "--source", str(self.source),
+                 "--branch", "fix/nvidia", "--build"],
+                env=self.env, stdin=slave, stdout=slave, stderr=subprocess.PIPE,
+                text=True, timeout=30)
+        finally:
+            os.close(slave)
+            os.close(master)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("# NVIDIA test package", capture.read_text())
+        self.assertNotIn("# main package", capture.read_text())
+        pager_options = json.loads(options.read_text())
+        self.assertIn("q: close and continue", " ".join(pager_options["args"]))
+        self.assertEqual(pager_options["secure"], "1")
+        self.assertEqual(pager_options["options"], "")
+        self.assertTrue(self.calls("makepkg"))
+
+    def test_verified_arch_download_also_shows_recipe(self):
+        self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
+        result = self.run_update("--download")
+        self.assertIn("# main package", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+
+    def test_check_json_does_not_include_recipe(self):
+        result = self.run_update("--check", "--json")
+        self.assertEqual(json.loads(result.stdout)["commit"], self.main)
+        self.assertNotIn("Packaging recipe", result.stdout)
+        self.assertEqual(self.calls("makepkg"), [])
+
     def test_explicit_arch_beta_to_experimental_is_single_transaction(self):
         if not self.os_release.read_text().startswith("ID=arch"):
             self.skipTest("Arch-only native package transition")

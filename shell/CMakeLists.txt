@@ -74,6 +74,7 @@ qt_add_executable(vela-shell
     src/tray.cpp
     src/taskbarmodel.h
     src/wallpaperprovider.h
+    src/wallpapercolor.h
     src/screensharing.cpp
     src/screensharing.h
     src/screenwindows.cpp
@@ -129,6 +130,7 @@ set(VELA_QML_FILES
     qml/Switcher.qml
     qml/Wallpaper.qml
     qml/NotificationPopups.qml
+    qml/NotificationToast.qml
     qml/Menus.qml
     qml/Styles.qml
     qml/ContextMenu.qml
@@ -144,7 +146,11 @@ set(VELA_QML_FILES
     qml/PropertiesDialog.qml
     qml/CheckBox.qml
     qml/QuickSettings.qml
+    qml/QsTile.qml
+    qml/QuickSettingsTile.qml
     qml/NotificationCenter.qml
+    qml/SmallButton.qml
+    qml/NotificationList.qml
     qml/TaskView.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml
@@ -171,7 +177,7 @@ qt_add_qml_module(vela-shell
     QML_FILES ${VELA_QML_FILES})
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
-target_link_libraries(vela-shell PRIVATE
+target_link_libraries(vela-shell PRIVATE vela-alloc
     Qt6::DBus
     Qt6::Gui
     Qt6::Qml
@@ -268,7 +274,7 @@ if(VELA_BUILD_TOOLS)
     # of what its windows find in their context (Vela.Bluetooth, Shell,
     # BluetoothPrompts), with animation effects on and off.
     find_package(Qt6 6.5 REQUIRED COMPONENTS QuickTest)
-    qt_add_executable(vela-shell-test tests/shell_test.cpp)
+    qt_add_executable(vela-shell-test tests/shell_test.cpp ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
     target_compile_definitions(vela-shell-test PRIVATE QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests"
         FAKE_BLUETOOTH="${PROJECT_SOURCE_DIR}/common/bluetooth/tests/FakeBluetooth.qml")
     target_compile_options(vela-shell-test PRIVATE -Wall -Wextra)
@@ -278,6 +284,21 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
     set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+    # Under a theme of expressive controls and motion (common/tests/quicktest.h,
+    # VELA_TEST_THEME), on tests/expressive/ only.
+    add_test(NAME shell-controls-expressive COMMAND vela-shell-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    add_test(NAME shell-controls-expressive-no-effects COMMAND vela-shell-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(shell-controls-expressive PROPERTIES ENVIRONMENT "VELA_TEST_THEME=expressive")
+    set_tests_properties(shell-controls-expressive-no-effects PROPERTIES
+        ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(shell-controls-expressive shell-controls-expressive-no-effects PROPERTIES TIMEOUT 60)
+    # Each expressive piece alone inside the default theme (VELA_TEST_THEME=
+    # shell, controls): the mixed combinations; motion and color alone are
+    # the controls suite's (common/CMakeLists.txt).
+    foreach(piece shell controls)
+        add_test(NAME shell-controls-expressive-${piece} COMMAND vela-shell-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+        set_tests_properties(shell-controls-expressive-${piece} PROPERTIES TIMEOUT 60 ENVIRONMENT "VELA_TEST_THEME=${piece}")
+    endforeach()
 
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
@@ -294,6 +315,13 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-start-icon-test PRIVATE Qt6::Gui Qt6::Test)
     add_test(NAME shell-start-icon COMMAND vela-start-icon-test)
     set_tests_properties(shell-start-icon PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    qt_add_executable(vela-icon-provider-test tests/iconprovider.cpp src/iconprovider.h)
+    target_include_directories(vela-icon-provider-test PRIVATE src)
+    target_compile_options(vela-icon-provider-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-icon-provider-test PRIVATE Qt6::Quick Qt6::DBus Qt6::Test)
+    add_test(NAME shell-icon-provider COMMAND vela-icon-provider-test)
+    set_tests_properties(shell-icon-provider PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)

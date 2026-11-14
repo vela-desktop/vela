@@ -14,7 +14,7 @@ import tempfile
 import time
 import unittest
 
-from harness import TIME_SCALE, Session, tool
+from harness import BUILD, TIME_SCALE, Session, tool
 
 
 def child_compositor(supervisor_pid):
@@ -298,6 +298,198 @@ class Lock(unittest.TestCase):
             self.assertTrue(vela.state().has(window))
 
 
+class DamageFailure(unittest.TestCase):
+    """A pixman region operation that runs out of memory must never leave
+    stale pixels: the frame redraws whole buffers instead of trusting broken
+    damage. The failures are real (an LD_PRELOAD shim makes malloc fail
+    inside the chosen operation), not simulated in Vela's code."""
+
+    SHIM = os.path.join(BUILD, "compositor", "libvela-pixman-fail-preload.so")
+    # copy also reaches wlroots' own region code (wlr_region_transform).
+    OPERATIONS = ("union", "union_rect", "intersect", "subtract", "copy")
+
+    def start(self, **options):
+        self.assertTrue(os.path.exists(self.SHIM), "build the vela-pixman-fail-preload target")
+        directory = tempfile.mkdtemp(prefix="vela-pixman-fail-")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        # The shim gets the directory as an inherited descriptor and opens a
+        # fixed name in it: no path travels through the environment.
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, fd)
+        self.trigger = os.path.join(directory, "pixman-fail")
+        self.injections = 0
+        return Session(env={"LD_PRELOAD": self.SHIM, "VELA_TEST_PIXMAN_FAIL_DIR": str(fd)}, pass_fds=(fd,),
+                       **options)
+
+    def arm(self, vela, operation, skip, case):
+        with open(self.trigger + ".tmp", "w") as trigger:
+            trigger.write(f"{vela.process.pid} {operation} {skip} {case}")
+        os.replace(self.trigger + ".tmp", self.trigger)
+
+    def disarm(self, vela):
+        """True when the armed failure really happened."""
+        injected = not os.path.exists(self.trigger)
+        if not injected:
+            os.unlink(self.trigger)  # this change needed fewer allocations
+        return injected
+
+    def assert_matches_full_redraw(self, vela, what):
+        # One capture after each of a few small frames (the pointer moving in
+        # a corner): each frame reuses another swapchain buffer, so stale
+        # pixels left in any one of them reach a capture.
+        shown = []
+        for step in range(3):
+            vela.input("move", 3 + step % 2, 3)
+            time.sleep(0.1 * TIME_SCALE)
+            shown.append(vela.pixels())
+        # SIGUSR1 redraws every buffer from scratch (server.c): if the image
+        # changes, the damage had left stale pixels.
+        os.kill(vela.process.pid, signal.SIGUSR1)
+        time.sleep(0.3 * TIME_SCALE)
+        redrawn = vela.pixels()
+        for index, image in enumerate(shown):
+            stale = sum(a != b for a, b in zip(image.rows, redrawn.rows))
+            self.assertEqual(stale, 0, f"{what}, capture {index}: {stale} rows differ from a full redraw")
+
+    @staticmethod
+    def recoveries(vela):
+        log = vela.log_text()
+        return log.count("damage lost (out of memory)") + log.count("drawing hit a failed region operation")
+
+    def test_failed_region_operations_never_leave_stale_pixels(self):
+        # Decorated, most allocating operations are in occlusion culling.
+        # Undecorated there are fewer, so increasing `skip` reaches the damage
+        # diff, the damage ring and the drawing too.
+        for decorated in (True, False):
+            with self.subTest(decorated=decorated):
+                self.check_failed_region_operations(decorated)
+
+    def check_failed_region_operations(self, decorated):
+        with self.start() as vela:
+            window = vela.open_window(400, 300, decorated=decorated)
+            vela.wait_for(lambda s: s["focused"] == window)
+            injected = {operation: 0 for operation in self.OPERATIONS}
+            case = 0
+            for operation in self.OPERATIONS:
+                for skip in range(6):
+                    with self.subTest(operation=operation, skip=skip):
+                        case += 1
+                        # Keyboard Move changes the scene in one step, with no
+                        # animation whose later frames would damage the lost
+                        # area again. Return ends it, so the pointer moved
+                        # below no longer drags the window.
+                        vela.command("window active move")
+                        time.sleep(0.1 * TIME_SCALE)
+                        before = vela.state().window(window)["x"]
+                        recovered = self.recoveries(vela)
+                        self.arm(vela, operation, skip, case)
+                        vela.input("key", "Right" if case % 2 else "Left")
+                        vela.wait_for(lambda s: s.window(window)["x"] != before, what="the window moved")
+                        time.sleep(0.2 * TIME_SCALE)
+                        if self.disarm(vela):
+                            injected[operation] += 1
+                            # Recovered on its own, before a screen capture
+                            # could force a frame of its own.
+                            self.assertGreater(self.recoveries(vela), recovered, "no recovery frame")
+                        vela.input("key", "Return")
+                        self.assert_matches_full_redraw(vela, f"{operation} after {skip}")
+            log = vela.log_text()
+            # Every operation really failed at least once, along both paths.
+            for operation, count in injected.items():
+                self.assertGreater(count, 0, f"no {operation} failure was injected")
+            self.assertIn("damage lost (out of memory)", log)
+            self.assertIn("drawing hit a failed region operation", log)
+
+    def test_failed_region_operation_while_locking_shows_only_the_lock(self):
+        for operation in self.OPERATIONS:
+            with self.subTest(operation=operation):
+                with self.start(lock_hold_ms=10000) as vela:
+                    vela.open_window(800, 600)
+                    self.arm(vela, operation, 0, 1)
+                    vela.command("lock")
+                    vela.wait_for_log("vela-testlock: locked")
+                    time.sleep(0.2 * TIME_SCALE)
+                    self.disarm(vela)
+                    image = vela.pixels()
+                    lock_color = (16, 32, 64)  # what vela-testlock paints
+                    for y in range(0, image.height, 16):
+                        for x in range(0, image.width, 16):
+                            self.assertEqual(image.at(x, y), lock_color, (x, y))
+                    self.assert_matches_full_redraw(vela, f"lock after {operation}")
+
+
+class ConfigurationRead(unittest.TestCase):
+    """desktop.conf that exists but cannot be read whole is never rewritten
+    from what the compositor managed to read (docs/memory-allocation-policy.md,
+    "Existing defects", 1). vela.conf and outputs.conf: compositor.config-read."""
+
+    SHIM = os.path.join(BUILD, "compositor", "libvela-getline-fail-preload.so")
+    CONTENT = "# mine\ndesktop=Work\ndesktop=Games\nsticky-app=org.kde.konsole\n"
+
+    def make_config(self):
+        """A private XDG_CONFIG_HOME holding CONTENT as vela/desktop.conf."""
+        config = tempfile.mkdtemp(prefix="vela-desktop-conf-")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", config], check=False))
+        os.mkdir(os.path.join(config, "vela"), 0o700)
+        path = os.path.join(config, "vela", "desktop.conf")
+        with open(path, "w") as file:
+            file.write(self.CONTENT)
+        return config, path
+
+    def run_session(self, failure):
+        config, path = self.make_config()
+        env = {"XDG_CONFIG_HOME": config}
+        if failure == "unreadable":
+            os.chmod(path, 0)
+        elif failure:
+            self.assertTrue(os.path.exists(self.SHIM), "build the vela-getline-fail-preload target")
+            env.update({"LD_PRELOAD": self.SHIM, "VELA_TEST_GETLINE_FAIL": f"desktop.conf 3 {failure}"})
+        with Session(env=env) as vela:
+            if failure:
+                vela.wait_for_log("desktop.conf could not be read")
+            # Both rewrite desktop.conf.
+            desktops = vela.state()["workspaces"]
+            vela.command("workspace rename 0 Renamed")
+            vela.command("workspace new")
+            vela.wait_for(lambda s: s["workspaces"] == desktops + 1, what="the new desktop")
+            time.sleep(0.3 * TIME_SCALE)
+        os.chmod(path, 0o600)
+        with open(path) as file:
+            return file.read()
+
+    def test_desktop_conf_read_failure_never_rewrites_it(self):
+        for failure in ("EIO", "unreadable"):
+            with self.subTest(failure=failure):
+                if failure == "unreadable" and os.geteuid() == 0:
+                    self.skipTest("root ignores file permissions")
+                self.assertEqual(self.run_session(failure), self.CONTENT)
+
+    def test_desktop_conf_out_of_memory_aborts_without_rewriting(self):
+        # No memory for a line is not a read error: the compositor aborts
+        # through vela_oom (docs/memory-allocation-policy.md, "getline") and
+        # its supervisor restarts it. Nothing is written on the way out.
+        config, path = self.make_config()
+        self.assertTrue(os.path.exists(self.SHIM), "build the vela-getline-fail-preload target")
+        env = {"XDG_CONFIG_HOME": config, "LD_PRELOAD": self.SHIM,
+               "VELA_TEST_GETLINE_FAIL": "desktop.conf 3 ENOMEM"}
+        vela = Session(env=env, expected_exit=-signal.SIGABRT)
+        # Started after all (the check under test is missing): stop it.
+        self.addCleanup(lambda: vela.process and vela.process.poll() is None and vela.process.kill())
+        with self.assertRaises(AssertionError) as failure:
+            vela.start()
+        self.assertEqual(vela.process.returncode, -signal.SIGABRT, str(failure.exception))
+        self.assertRegex(str(failure.exception), r"vela: out of memory \(\d+ x 1 bytes\) at \S*config\.c:\d+")
+        with open(path) as file:
+            self.assertEqual(file.read(), self.CONTENT)
+
+    def test_readable_desktop_conf_is_still_saved(self):
+        # The control: the same commands do rewrite a file read whole.
+        content = self.run_session(None)
+        self.assertIn("desktop=Renamed", content)
+        self.assertIn("desktop=Games", content)
+        self.assertIn("sticky-app=org.kde.konsole", content)
+
+
 class VulkanShutdown(unittest.TestCase):
     """Headless shutdown smoke tests; physical DRM/KMS regression tests are separate."""
 
@@ -517,6 +709,28 @@ class CommandSocket(unittest.TestCase):
             self.assertEqual(len(vela.state().windows), 20)
 
 
+class DmabufDiagnostics(unittest.TestCase):
+    """PR 19's opt-in trace, plus the real Vulkan export/import path."""
+
+    def test_vulkan_export_renders_and_can_be_captured(self):
+        with Session(size="640x480@60", env={"VELA_ALLOCATOR": "vulkan", "VELA_DEBUG_DMABUF": "1"}) as vela:
+            vela.wait_for_log("Output buffer allocator: Vulkan DMA-BUF export")
+            vela.wait_for_log("DMABUF trace: after initial wlr_output_commit_state")
+            vela.wait_for_log("DMABUF trace: Vulkan export plane=")
+            vela.wait_for_log("DMABUF trace: render target ready")
+            wallpaper = subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", "804020"], env=vela.client_env)
+            vela.clients.append(wallpaper)
+            vela.open_window(200, 150)
+            vela.wait_for_log("DMABUF trace: after frame wlr_output_commit_state")
+            vela.wait_for(lambda _: vela.pixels().at(10, 10) == (128, 64, 32),
+                          what="Vulkan-exported output pixels", read_state=False)
+
+    def test_trace_off_by_default(self):
+        with Session(size="640x480@60", env={"VELA_DEBUG_DMABUF": "0"}) as vela:
+            vela.open_window()
+            self.assertNotIn("DMABUF trace:", vela.log_text())
+
+
 class Supervisor(unittest.TestCase):
     def test_redraw_signal_keeps_supervised_session_alive(self):
         # pkill -x matches /proc/<pid>/comm, not argv. Never run pkill in
@@ -614,6 +828,236 @@ class Supervisor(unittest.TestCase):
             time.sleep(0.5)
             vela.wait_for(lambda s: s["locked"], what="restarted locked")
             vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def _marker(self, vela):
+        runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+        return os.path.join(runtime, f"vela-locked-{vela.display}")
+
+    def test_crash_while_locked_restarts_locked_without_marker(self):
+        # The shared lock state alone carries the lock across a restart: the
+        # case of a marker that could not be created, or was removed, when a
+        # crash happens (such as during the lock's fatal blackout window).
+        with Session(supervise=True, lock_hold_ms=3000) as vela:
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            os.unlink(self._marker(vela))
+            first = child_compositor(vela.process.pid)
+            os.kill(first, signal.SIGSEGV)
+            vela.wait_for_log("restarting locked")
+            vela.wait_for(lambda s: s["locked"], what="restarted locked")
+            vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+            # After a real unlock the page says "unlocked": the next crash
+            # restarts unlocked, as before.
+            second = child_compositor(vela.process.pid)
+            os.kill(second, signal.SIGSEGV)
+            vela.wait_for(lambda s: child_compositor(vela.process.pid) not in (None, second),
+                          read_state=False, what="a third compositor")
+            vela.wait_for(lambda s: s["outputs"], what="the third compositor responds")
+            self.assertFalse(vela.state()["locked"])
+            self.assertEqual(vela.log_text().count("restarting locked"), 1)
+
+    CRASHES = (signal.SIGSEGV, signal.SIGABRT)  # SIGABRT: what vela_oom will raise
+    LIBC_SHIM = os.path.join(BUILD, "compositor", "libvela-libc-fail-preload.so")
+
+    def _stop_once_logged(self, vela, compositor, text):
+        """Run the compositor in 2 ms slices until `text` is logged, and leave
+        it stopped there (the windows these tests aim at last a frame or more)."""
+        deadline = time.monotonic() + 5 * TIME_SCALE
+        os.kill(compositor, signal.SIGSTOP)
+        while text not in vela.log_text():
+            self.assertLess(time.monotonic(), deadline, f"never logged: {text}")
+            os.kill(compositor, signal.SIGCONT)
+            time.sleep(0.002)
+            os.kill(compositor, signal.SIGSTOP)
+        # SIGSTOP takes effect asynchronously: wait until the process is
+        # really stopped (and not gone).
+        state = None
+        for _ in range(200):
+            with open(f"/proc/{compositor}/stat") as stat:
+                state = stat.read().rsplit(")", 1)[1].split()[0]
+            if state != "R" and state != "S" and state != "D":
+                break
+            time.sleep(0.005)
+        self.assertEqual(state, "T", "stopped, not exited")
+
+    def _crash_stopped(self, compositor, signum):
+        os.kill(compositor, signum)
+        os.kill(compositor, signal.SIGCONT)
+
+    def _libc_failures(self):
+        self.assertTrue(os.path.exists(self.LIBC_SHIM), "build the vela-libc-fail-preload target")
+        directory = tempfile.mkdtemp(prefix="vela-libc-fail-")
+        self.addCleanup(lambda: subprocess.run(["rm", "-rf", directory], check=False))
+        # An inherited descriptor of the directory, with fixed trigger names.
+        fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+        self.addCleanup(os.close, fd)
+        setenv, fstatat = os.path.join(directory, "setenv"), os.path.join(directory, "fstatat")
+        options = {"env": {"LD_PRELOAD": self.LIBC_SHIM, "VELA_TEST_FAIL_DIR": str(fd)}, "pass_fds": (fd,)}
+        return options, setenv, fstatat
+
+    def test_crash_during_lock_blackout_restarts_locked(self):
+        # The marker cannot be created, so the lock takes its fatal path: a
+        # blackout, then the end of the session. A crash anywhere during that
+        # window used to restart unlocked (no marker); the shared lock state
+        # now restarts it locked.
+        for signum in self.CRASHES:
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True, lock_hold_ms=1000) as vela:
+                    marker = self._marker(vela)
+                    compositor = child_compositor(vela.process.pid)
+                    os.mkdir(marker, 0o700)  # renaming a file over it fails
+                    try:
+                        vela.command("lock")
+                        self._stop_once_logged(vela, compositor, "ending session after the black backdrop")
+                    finally:
+                        # Without the directory the restarted compositor can
+                        # create the marker; the page alone keeps it locked.
+                        os.rmdir(marker)
+                    self._crash_stopped(compositor, signum)
+                    vela.wait_for_log("restarting locked")
+                    log = vela.log_text()
+                    self.assertIn("the compositor crashed", log)
+                    self.assertNotIn("secure lock state could not be persisted", log)
+                    vela.wait_for(lambda s: s["locked"], what="restarted locked")
+                    vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def test_crash_while_locking_restarts_locked(self):
+        # Between the lock engaging and the locker being told "locked".
+        for signum in self.CRASHES:
+            with self.subTest(signal=signal.Signals(signum).name):
+                with Session(supervise=True, lock_hold_ms=1000) as vela:
+                    compositor = child_compositor(vela.process.pid)
+                    vela.command("lock")
+                    self._stop_once_logged(vela, compositor, "Screen locked")
+                    self.assertNotIn("vela-testlock: locked", vela.log_text())
+                    self._crash_stopped(compositor, signum)
+                    vela.wait_for_log("restarting locked")
+                    vela.wait_for(lambda s: s["locked"], what="restarted locked")
+                    vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def test_crash_while_locked_restarts_locked_after_abort(self):
+        # The same as test_crash_while_locked_restarts_locked, with the signal
+        # an allocation failure raises.
+        with Session(supervise=True, lock_hold_ms=3000) as vela:
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            os.kill(child_compositor(vela.process.pid), signal.SIGABRT)
+            vela.wait_for_log("restarting locked")
+            vela.wait_for(lambda s: s["locked"], what="restarted locked")
+
+    def test_setenv_failure_in_restart_child_never_restarts_unlocked(self):
+        for signum in self.CRASHES:
+            with self.subTest(signal=signal.Signals(signum).name):
+                options, setenv, _ = self._libc_failures()
+                with Session(supervise=True, lock_hold_ms=3000, **options) as vela:
+                    vela.command("lock")
+                    vela.wait_for(lambda s: s["locked"])
+                    with open(setenv, "w") as trigger:
+                        trigger.write("VELA_RESTARTED once")
+                    os.kill(child_compositor(vela.process.pid), signum)
+                    # That child gives up before exec; the next one starts
+                    # locked from the page.
+                    vela.wait_for_log("injected setenv failure")
+                    vela.wait_for_log("exited with an error (code 127)")
+                    vela.wait_for_log("restarting locked")
+                    vela.wait_for(lambda s: s["locked"], what="restarted locked")
+
+    def test_setenv_always_failing_ends_the_session(self):
+        options, setenv, _ = self._libc_failures()
+        with Session(supervise=True, lock_hold_ms=10000, expected_exit=1, **options) as vela:
+            vela.command("lock")
+            vela.wait_for(lambda s: s["locked"])
+            with open(setenv, "w") as trigger:
+                trigger.write("VELA_RESTARTED")
+            os.kill(child_compositor(vela.process.pid), signal.SIGABRT)
+            self.assertEqual(vela.process.wait(timeout=15), 1)
+            log = vela.log_text()
+            self.assertIn("giving up", log)
+            self.assertEqual(log.count("Vela running on"), 1, "no compositor ever started again")
+
+    def test_marker_that_cannot_be_checked_restarts_locked(self):
+        # Unlocked page, no marker, but fstatat on the marker fails (EIO): its
+        # absence is not proven, so the restart is locked.
+        options, _, fstatat = self._libc_failures()
+        with Session(supervise=True, lock_hold_ms=1000, **options) as vela:
+            open(fstatat, "w").close()
+            try:
+                os.kill(child_compositor(vela.process.pid), signal.SIGSEGV)
+                vela.wait_for_log("Lock marker unreadable")
+                vela.wait_for_log("restarting locked")
+            finally:
+                os.unlink(fstatat)
+            vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+
+    def test_unreadable_lock_marker_restarts_locked(self):
+        # A marker whose state cannot be established counts as present, even
+        # though the page says "unlocked". A symlink is not a valid marker,
+        # but the restarted lock can still replace it atomically (a
+        # directory could not be replaced, which ends the session instead).
+        with Session(supervise=True, lock_hold_ms=1000) as vela:
+            marker = self._marker(vela)
+            os.symlink(os.path.join(vela.directory, "nowhere"), marker)
+            try:
+                os.kill(child_compositor(vela.process.pid), signal.SIGSEGV)
+                vela.wait_for_log("Lock marker unreadable")
+                vela.wait_for_log("restarting locked")
+                vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
+                self.assertFalse(os.path.lexists(marker))
+            finally:
+                if os.path.lexists(marker):
+                    os.unlink(marker)
+
+    def test_lock_state_is_never_inherited_by_applications(self):
+        def descriptors(pid):
+            links = []
+            for fd in os.listdir(f"/proc/{pid}/fd"):
+                try:
+                    links.append(os.readlink(f"/proc/{pid}/fd/{fd}"))
+                except OSError:
+                    pass
+            return links
+
+        def descendants(pid):
+            found, frontier = [], [pid]
+            while frontier:
+                parent = frontier.pop()
+                try:
+                    children = open(f"/proc/{parent}/task/{parent}/children").read().split()
+                except OSError:
+                    continue
+                found += [int(child) for child in children]
+                frontier += [int(child) for child in children]
+            return found
+
+        page = "memfd:vela-lock-state"
+        with Session(supervise=True, lock_hold_ms=5000) as vela:
+            vela.command("lock")  # starts the locker, a child of the compositor
+            vela.wait_for(lambda s: s["locked"])
+            compositor = child_compositor(vela.process.pid)
+            self.assertTrue(any(page in link for link in descriptors(vela.process.pid)),
+                            "the supervisor keeps the page for the next compositor")
+            self.assertFalse(any(page in link for link in descriptors(compositor)),
+                             "the compositor keeps only the mapping")
+            with open(f"/proc/{compositor}/maps") as maps:
+                self.assertIn(page, maps.read())
+            applications = descendants(compositor)
+            self.assertTrue(applications, "the locker is running")
+            for pid in applications:
+                self.assertFalse(any(page in link for link in descriptors(pid)), pid)
+
+    def test_unusable_lock_state_ends_session_before_starting(self):
+        # Only the supervisor passes --lock-state-fd; a value that is not its
+        # sealed page is refused before anything is shown (status 77).
+        compositor = os.path.join(BUILD, "compositor", "vela-compositor")
+        env = dict(os.environ, WLR_BACKENDS="headless", WLR_LIBINPUT_NO_DEVICES="1")
+        env.pop("WAYLAND_DISPLAY", None)
+        for value in ("0", "abc", "-1", "999"):
+            with self.subTest(value=value):
+                result = subprocess.run([compositor, f"--lock-state-fd={value}"], env=env,
+                                        stdin=subprocess.DEVNULL, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 77, result.stderr)
+                self.assertIn(b"lock state is unusable", result.stderr)
 
     def test_gives_up_after_three_quick_crashes(self):
         with Session(supervise=True, expected_exit=1) as vela:

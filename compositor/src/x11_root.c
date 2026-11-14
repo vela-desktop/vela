@@ -3,6 +3,7 @@
 
 #include "x11_root.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "server.h"
 #include "util.h"
@@ -176,17 +177,9 @@ static void handle_get_xdg_output(struct wl_client *client, struct wl_resource *
     struct wl_resource *wl_output)
 {
     struct vela_x11_root *root = wl_resource_get_user_data(manager);
-    struct xdg_output *xdg = calloc(1, sizeof(*xdg));
-    if (!xdg) {
-        wl_client_post_no_memory(client);
-        return;
-    }
-    xdg->resource = wl_resource_create(client, &zxdg_output_v1_interface, wl_resource_get_version(manager), id);
-    if (!xdg->resource) {
-        free(xdg);
-        wl_client_post_no_memory(client);
-        return;
-    }
+    struct xdg_output *xdg = VELA_NEW(struct xdg_output);
+    xdg->resource
+        = VELA_MUST(wl_resource_create(client, &zxdg_output_v1_interface, wl_resource_get_version(manager), id));
     wl_resource_set_implementation(xdg->resource, &xdg_output_impl, xdg, xdg_output_resource_destroy);
     xdg->root = root;
     xdg->wl_output = wl_output;
@@ -213,28 +206,18 @@ static const struct zxdg_output_manager_v1_interface manager_impl = {
 
 static void bind_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
-    struct wl_resource *resource = wl_resource_create(client, &zxdg_output_manager_v1_interface, (int)version, id);
-    if (!resource) {
-        wl_client_post_no_memory(client);
-        return;
-    }
+    struct wl_resource *resource
+        = VELA_MUST(wl_resource_create(client, &zxdg_output_manager_v1_interface, (int)version, id));
     wl_resource_set_implementation(resource, &manager_impl, data, NULL);
 }
 
 struct vela_x11_root *vela_x11_root_create(struct vela_server *server)
 {
-    struct vela_x11_root *root = calloc(1, sizeof(*root));
-    if (!root) {
-        return NULL;
-    }
+    struct vela_x11_root *root = VELA_NEW(struct vela_x11_root);
     root->server = server;
     wl_list_init(&root->resources);
-    root->global = wl_global_create(server->display, &zxdg_output_manager_v1_interface, XDG_OUTPUT_VERSION, root,
-        bind_manager);
-    if (!root->global) {
-        free(root);
-        return NULL;
-    }
+    root->global = VELA_MUST(
+        wl_global_create(server->display, &zxdg_output_manager_v1_interface, XDG_OUTPUT_VERSION, root, bind_manager));
     wl_display_set_global_filter(server->display, filter_global, root);
     vela_listen(&server->output_layout->events.change, &root->layout_change, handle_layout_change);
     update(root);

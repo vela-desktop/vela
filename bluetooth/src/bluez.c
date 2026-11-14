@@ -7,6 +7,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 
 #include <errno.h>
@@ -150,7 +151,7 @@ static int on_managed_objects(sd_bus_message *reply, void *data, sd_bus_error *e
 static void appeared(struct vela_bt_daemon *d, const char *owner)
 {
     free(d->bluez);
-    d->bluez = strdup(owner);
+    d->bluez = vela_strdup(owner);
     vela_bt_log("BlueZ is on the bus (%s)", owner);
     d->managed = sd_bus_slot_unref(d->managed);
     d->managed_retry = sd_event_source_disable_unref(d->managed_retry);

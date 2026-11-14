@@ -3,6 +3,7 @@
 
 #include "process.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 
 #include <fcntl.h>
@@ -134,7 +135,7 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
 {
     // A single fork, so the process stays our child and a pidfd in the Wayland
     // loop tells us when it ends.
-    char *copy = strdup(command);
+    char *copy = vela_strdup(command);
     free(child->command);
     child->command = copy;
     child->loop = loop;
@@ -162,6 +163,14 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
     child->pidfd = pidfd;
     child->started_ns = vela_now_ns();
     child->source = wl_event_loop_add_fd(loop, pidfd, WL_EVENT_READABLE, handle_exit, child);
+    if (!child->source) {
+        // Unwatched, it would never be reaped or restarted: end it now.
+        wlr_log_errno(WLR_ERROR, "Can't watch \"%s\": stopped", command);
+        kill(pid, SIGKILL);
+        waitpid(pid, NULL, 0);
+        stop_watching(child);
+        return false;
+    }
     return true;
 }
 

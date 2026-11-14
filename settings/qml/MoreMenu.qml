@@ -7,6 +7,8 @@ import Vela.Controls
 
 // A card's "..." button and its menu, like Windows 11's: `entries` is
 // [{text, action}]. Up and Down move between entries, Esc closes it.
+// Expressive: the menu without outline (M3's vertical menu), its entries
+// ListItems in the expressive variant.
 Button {
     id: button
     property var entries: []
@@ -35,8 +37,10 @@ Button {
                     id: entry
                     required property var modelData
                     objectName: "entry:" + modelData.text
-                    width: Math.max(180, label.implicitWidth + 24)
+                    width: Math.max(180, label.implicitWidth + 24 + leftPadding + rightPadding)
                     height: 36
+                    outerRadius: Theme.radiusOverlay // 4 inside the menu
+                    outerGap: 4
                     text: modelData.text
                     Keys.onUpPressed: nextItemInFocusChain(false).forceActiveFocus()
                     Keys.onDownPressed: nextItemInFocusChain(true).forceActiveFocus()
@@ -58,7 +62,7 @@ Button {
         background: Rectangle {
             color: Theme.flyout
             radius: Theme.radiusOverlay
-            border.width: 1
+            border.width: button.expressive ? 0 : 1
             border.color: Qt.rgba(0, 0, 0, 0.4)
         }
         enter: Transition { NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.fast } }

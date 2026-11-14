@@ -1,0 +1,54 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Executed by the architecture-independent session script before loading the
+# x86-64-v3 compositor. Optional cpuinfo path is for isolated tests only.
+
+set -eu
+if [ "$(uname -m)" != x86_64 ]; then
+    exit 0 # CMake does not apply x86-64 -march flags on other architectures.
+fi
+if [ "$#" -gt 1 ]; then
+    echo 'vela-session: usage: vela-cpu-check [cpuinfo-path]' >&2
+    exit 2
+fi
+cpuinfo=${1:-/proc/cpuinfo}
+if [ ! -r "$cpuinfo" ]; then
+    echo 'vela-session: cannot read CPU features; x86-64-v3 support cannot be verified' >&2
+    exit 1
+fi
+
+# Linux /proc/cpuinfo names differ from the psABI terms: pni=SSE3,
+# abm=LZCNT, cx16=CMPXCHG16B, lahf_lm=LAHF/SAHF. The kernel clears AVX
+# flags when the OS has not enabled XSAVE/XCR0 (so checking AVX also checks
+# operating-system readiness). Check all logical CPUs, not just the first.
+awk '
+BEGIN {
+    count = split("cx16 lahf_lm popcnt pni sse4_1 sse4_2 ssse3 avx avx2 bmi1 bmi2 f16c fma abm movbe xsave", required, " ")
+}
+/^[[:space:]]*flags[[:space:]]*:/ {
+    cpus++
+    sub(/^[^:]*:/, "")
+    gsub(/[[:space:]]+/, " ")
+    flags = " " $0 " "
+    for (i = 1; i <= count; i++) {
+        if (index(flags, " " required[i] " ") == 0)
+            missing[required[i]] = 1
+    }
+}
+END {
+    if (cpus == 0) {
+        print "vela-session: cannot determine CPU features from /proc/cpuinfo" > "/dev/stderr"
+        exit 1
+    }
+    details = ""
+    for (i = 1; i <= count; i++) {
+        if (missing[required[i]])
+            details = details (details == "" ? "" : ", ") required[i]
+    }
+    if (details != "") {
+        print "vela-session: CPU does not support x86-64-v3 (missing: " details ")" > "/dev/stderr"
+        exit 1
+    }
+}
+' "$cpuinfo"

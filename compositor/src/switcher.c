@@ -3,6 +3,7 @@
 
 #include "switcher.h"
 
+#include "alloc/alloc.h"
 #include "buffer.h"
 #include "focus.h"
 #include "server.h"
@@ -17,7 +18,7 @@
 
 struct vela_switcher *vela_switcher_create(void)
 {
-    return calloc(1, sizeof(struct vela_switcher));
+    return VELA_NEW(struct vela_switcher);
 }
 
 void vela_switcher_destroy(struct vela_switcher *switcher)

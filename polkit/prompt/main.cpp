@@ -11,6 +11,7 @@
 // outputs. All of them take the pointer: nothing underneath can be touched
 // until the user answers.
 
+#include "alloc/new_handler.h"
 #include "renderingpolicy.h"
 #include "controls.h"
 #include "language.h"
@@ -137,6 +138,7 @@ private:
 /** Validate the authentication request and run its Wayland prompt with shared text rendering. */
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-polkit-prompt");
     if (argc > 1 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {
         std::printf("Usage: vela-polkit-prompt\n"
                     "Vela's User Account Control dialog. Started by vela-polkit-agent, which\n"

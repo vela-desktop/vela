@@ -15,4 +15,10 @@ mkdir -p "$STATE_DIR"
 exec 2> "$STATE_DIR/vela.log"
 printf 'vela-session: started_at=%s boot_id=%s\n' \
     "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$(cat /proc/sys/kernel/random/boot_id)" >&2
+# Must run before loading any Vela binary compiled for the x86-64-v3 baseline.
+# The helper is POSIX shell and runs on machines that cannot execute those binaries.
+if ! "@CMAKE_INSTALL_FULL_LIBEXECDIR@/vela-cpu-check"; then
+    echo "vela-session: CPU compatibility preflight failed; compositor not started" >&2
+    exit 1
+fi
 exec "@CMAKE_INSTALL_FULL_BINDIR@/vela-compositor" --supervise -s "@CMAKE_INSTALL_FULL_BINDIR@/vela-shell" "$@"

@@ -3,9 +3,11 @@
 
 #include "workspace.h"
 
+#include "alloc/alloc.h"
 #include "focus.h"
 #include "buffer.h"
 #include "config.h"
+#include "desktop_conf.h"
 #include "motion.h"
 #include "output.h"
 #include "scene/scene.h"
@@ -31,7 +33,7 @@ static void finish_switch(struct vela_server *server);
 static void push_string(char ***items, int *count, int *capacity, const char *text)
 {
     *items = vela_grow(*items, capacity, *count + 1, sizeof(**items));
-    (*items)[(*count)++] = strdup(text);
+    (*items)[(*count)++] = vela_strdup(text);
 }
 
 static void free_strings(char **items, int count)
@@ -42,33 +44,30 @@ static void free_strings(char **items, int count)
     free(items);
 }
 
+static void add_desktop(void *data, const char *name)
+{
+    struct vela_workspaces *ws = data;
+    push_string(&ws->names, &ws->count, &ws->capacity, name);
+}
+
+static void add_sticky_app(void *data, const char *app_id)
+{
+    struct vela_workspaces *ws = data;
+    push_string(&ws->sticky_apps, &ws->sticky_count, &ws->sticky_capacity, app_id);
+}
+
 struct vela_workspaces *vela_workspaces_create(struct vela_server *server)
 {
-    struct vela_workspaces *ws = calloc(1, sizeof(*ws));
+    struct vela_workspaces *ws = VELA_NEW(struct vela_workspaces);
     ws->server = server;
     ws->next_map_serial = 1;
     // desktop=<name> for each desktop (empty: "Desktop N");
     // sticky-app=<app_id>.
     char path[PATH_MAX];
-    FILE *in = vela_config_path("desktop.conf", path, sizeof(path)) ? fopen(path, "re") : NULL;
-    if (in) {
-        char *line = NULL;
-        size_t size = 0;
-        ssize_t length;
-        while ((length = getline(&line, &size, in)) >= 0) {
-            if (length > 0 && line[length - 1] == '\n') {
-                line[--length] = '\0';
-            }
-            if (strncmp(line, "desktop=", 8) == 0) {
-                push_string(&ws->names, &ws->count, &ws->capacity, line + 8);
-            } else if (strncmp(line, "sticky-app=", 11) == 0 && length > 11) {
-                push_string(&ws->sticky_apps, &ws->sticky_count, &ws->sticky_capacity, line + 11);
-            } else if (strncmp(line, "app-ovunque=", 12) == 0 && length > 12) {
-                push_string(&ws->sticky_apps, &ws->sticky_count, &ws->sticky_capacity, line + 12); // the old name
-            }
-        }
-        free(line);
-        fclose(in);
+    const struct vela_desktop_conf_reader reader = { add_desktop, add_sticky_app, ws };
+    ws->unreadable = vela_config_path("desktop.conf", path, sizeof(path)) && !vela_desktop_conf_read(path, &reader);
+    if (ws->unreadable) {
+        wlr_log(WLR_ERROR, "desktop.conf could not be read; desktop changes will not be saved this session");
     }
     if (ws->count == 0) {
         push_string(&ws->names, &ws->count, &ws->capacity, "");
@@ -92,6 +91,9 @@ static void save(const struct vela_workspaces *ws)
     char directory[PATH_MAX];
     char path[PATH_MAX];
     char temporary[PATH_MAX + 8];
+    if (ws->unreadable) {
+        return; // the file holds more than we could read: leave it
+    }
     if (!vela_config_path(NULL, directory, sizeof(directory)) || !vela_config_path("desktop.conf", path, sizeof(path))
         || !vela_format(temporary, sizeof(temporary), "%s.XXXXXX", path)) {
         return;
@@ -240,7 +242,7 @@ static void sync_taskbar(struct vela_server *server)
 {
     // In opening order: the taskbar shows them in that order.
     int count = wl_list_length(&server->views);
-    struct vela_view **ordered = calloc((size_t)(count ? count : 1), sizeof(*ordered));
+    struct vela_view **ordered = VELA_NEW_N(struct vela_view *, count);
     int n = 0;
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
@@ -488,7 +490,7 @@ void vela_workspaces_rename(struct vela_server *server, int index, const char *n
     if (index < 0 || index >= ws->count) {
         return;
     }
-    char *clean = malloc(strlen(name) + 1);
+    char *clean = VELA_NEW_N(char, vela_size_add(strlen(name), 1));
     size_t n = 0;
     for (const char *c = name; *c; ++c) {
         if (*c != '\n' && *c != '\r') {

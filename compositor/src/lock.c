@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "lock.h"
+#include "alloc/alloc.h"
 #include "lock_retry_policy.h"
+#include "lock_state.h"
 
 #include "listen.h"
 #include "a11y.h"
@@ -96,6 +98,24 @@ static int handle_lock_fatal_exit(void *data)
     lock_unsafe_exit(data);
 }
 
+// Reserve fatal_waiting for every output, so that the fatal path never has
+// to grow it. Called whenever the fatal path becomes reachable (the lock
+// engages) and whenever the outputs change while locked.
+static void lock_reserve_fatal_waiting(struct vela_lock *lock)
+{
+    int outputs = wl_list_length(&lock->server->outputs);
+    if (outputs > lock->fatal_waiting_capacity) {
+        lock->fatal_waiting = vela_grow(lock->fatal_waiting, &lock->fatal_waiting_capacity,
+            outputs, sizeof(*lock->fatal_waiting));
+    }
+}
+
+// The fatal path itself allocates nothing (docs/memory-allocation-policy.md,
+// "The premise", item 3): the black backdrop is already current (the lock is
+// engaged, and every layout change while locked rebuilds it), fatal_waiting
+// is reserved, and the timer was created with the lock. What it cannot avoid
+// is the frame path that renders the black frames, and libwayland's leave
+// events; a crash there restarts locked through the shared lock state.
 static void lock_fatal_shutdown(struct vela_lock *lock)
 {
     if (lock->fatal_exit_pending) {
@@ -118,23 +138,26 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     }
     wlr_seat_keyboard_clear_focus(server->seat);
     wlr_seat_pointer_clear_focus(server->seat);
-    vela_lock_update_layout(lock);
     vela_scene_changed(server->scene);
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         if (!output->wlr->enabled || !output->powered) {
             continue;
         }
-        lock->fatal_waiting = vela_grow(lock->fatal_waiting, &lock->fatal_waiting_capacity,
-            lock->fatal_waiting_count + 1, sizeof(*lock->fatal_waiting));
-        lock->fatal_waiting[lock->fatal_waiting_count++] = output;
         vela_output_schedule_frame(output);
+        if (lock->fatal_waiting_count < lock->fatal_waiting_capacity) {
+            lock->fatal_waiting[lock->fatal_waiting_count++] = output;
+        } else {
+            lock->fatal_waiting_incomplete = true; // a missed reservation: never expected
+        }
     }
-    if (lock->fatal_waiting_count == 0) {
+    if (lock->fatal_waiting_count == 0 && !lock->fatal_waiting_incomplete) {
         wlr_log(WLR_ERROR, "Lock: no active outputs to blank before terminating session");
         lock_unsafe_exit(lock);
     }
-    lock->fatal_timer = wl_event_loop_add_timer(server->loop, handle_lock_fatal_exit, lock);
+    if (lock->fatal_waiting_incomplete) {
+        wlr_log(WLR_ERROR, "Lock: not every output is tracked; waiting for the full blackout timeout");
+    }
     if (!lock->fatal_timer ||
         wl_event_source_timer_update(lock->fatal_timer, VELA_LOCK_FATAL_TIMEOUT_MS) < 0) {
         wlr_log_errno(WLR_ERROR, "Lock: cannot schedule bounded session shutdown");
@@ -240,7 +263,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, new_surface);
     struct wlr_session_lock_surface_v1 *wlr = data;
-    struct lock_surface *surface = calloc(1, sizeof(*surface));
+    struct lock_surface *surface = VELA_NEW(struct lock_surface);
     surface->server = lock->server;
     surface->wlr = wlr;
     surface->tree = vela_tree_create(lock->server->layers.lock);
@@ -283,6 +306,8 @@ static void handle_unlock(struct wl_listener *listener, void *data)
         lock->pointer_retarget_idle = NULL;
     }
     server->locked = false;
+    // Only now may a crash restart the session unlocked.
+    vela_lock_state_store(server->lock_state, false);
     vela_bluetooth_report_lock(server, false);
     if (server->runtime_dir_fd >= 0
         && !vela_lock_marker_remove_at(server->runtime_dir_fd, server->socket_name)) {
@@ -420,7 +445,7 @@ static void handle_new_inhibitor(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, new_inhibitor);
     struct wlr_idle_inhibitor_v1 *inhibitor = data;
-    struct inhibitor_watch *watch = calloc(1, sizeof(*watch));
+    struct inhibitor_watch *watch = VELA_NEW(struct inhibitor_watch);
     watch->lock = lock;
     vela_listen(&inhibitor->events.destroy, &watch->destroy, handle_inhibitor_destroy);
     vela_lock_note_activity(lock);
@@ -621,7 +646,7 @@ static int handle_caffeine_timer(void *data)
 
 struct vela_lock *vela_lock_create(struct vela_server *server)
 {
-    struct vela_lock *lock = calloc(1, sizeof(*lock));
+    struct vela_lock *lock = VELA_NEW(struct vela_lock);
     lock->server = server;
     lock->lock_on_idle = true;
     vela_node_set_enabled(&server->layers.lock->node, false);
@@ -631,11 +656,18 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     if (!lock->respawn) {
         wlr_log_errno(WLR_ERROR, "Unable to create locker retry timer");
     }
+    // Created now, armed only by the fatal path: that path must not need a
+    // new event source (an allocation and a descriptor) to end the session.
+    // Without it, the fatal path exits at once instead of after the blackout.
+    lock->fatal_timer = wl_event_loop_add_timer(server->loop, handle_lock_fatal_exit, lock);
+    if (!lock->fatal_timer) {
+        wlr_log_errno(WLR_ERROR, "Unable to create the lock's fatal shutdown timer");
+    }
     wl_list_init(&lock->new_surface.link);
     wl_list_init(&lock->unlock.link);
     wl_list_init(&lock->destroy.link);
 
-    lock->manager = wlr_session_lock_manager_v1_create(server->display);
+    lock->manager = VELA_MUST(wlr_session_lock_manager_v1_create(server->display));
     vela_listen(&lock->manager->events.new_lock, &lock->new_lock, handle_new_lock);
 
     // Timed caffeine turns itself off (cheap in every session, tests too).
@@ -644,8 +676,8 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
         wlr_log_errno(WLR_ERROR, "Unable to create caffeine expiry timer");
     }
 
-    lock->idle_notifier = wlr_idle_notifier_v1_create(server->display);
-    lock->idle_inhibit = wlr_idle_inhibit_v1_create(server->display);
+    lock->idle_notifier = VELA_MUST(wlr_idle_notifier_v1_create(server->display));
+    lock->idle_inhibit = VELA_MUST(wlr_idle_inhibit_v1_create(server->display));
     vela_listen(&lock->idle_inhibit->events.new_inhibitor, &lock->new_inhibitor, handle_new_inhibitor);
 
     // Only in the real session: nested or headless nothing turns off (tests
@@ -653,6 +685,9 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     const char *screen_off = getenv("VELA_SCREEN_OFF");
     if (server->session || (screen_off && *screen_off)) {
         lock->idle_timer = wl_event_loop_add_timer(server->loop, handle_idle_timer, lock);
+        if (!lock->idle_timer) {
+            wlr_log_errno(WLR_ERROR, "Unable to create the idle timer: screens stay on and nothing locks on idle");
+        }
         vela_lock_load_settings(lock);
     }
     return lock;
@@ -703,6 +738,11 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    // First, before anything else can fail or crash: from here on a restart
+    // starts locked even if the marker below cannot be created.
+    vela_lock_state_store(server->lock_state, true);
+    // The fatal path is reachable from now on: reserve what it needs.
+    lock_reserve_fatal_waiting(lock);
     vela_bluetooth_report_lock(server, true);
     // Cancel the active DnD grab before hiding the desktop. Ending the
     // matching wlroots grab invokes its cancellation path (not its drop path).
@@ -809,7 +849,7 @@ void vela_lock_output_rendered(struct vela_lock *lock, struct vela_output *outpu
                 continue;
             }
             lock->fatal_waiting[i] = lock->fatal_waiting[--lock->fatal_waiting_count];
-            if (lock->fatal_waiting_count == 0) {
+            if (lock->fatal_waiting_count == 0 && !lock->fatal_waiting_incomplete) {
                 wlr_log(WLR_ERROR, "Lock: blackout committed on all active outputs; ending session");
                 // Permit scanout to catch up with the committed black frames.
                 if (!lock->fatal_timer ||
@@ -842,6 +882,7 @@ void vela_lock_update_layout(struct vela_lock *lock)
     if (!server->locked) {
         return;
     }
+    lock_reserve_fatal_waiting(lock);
     // A black backdrop per output, below the lock program's surfaces: even
     // before it draws, or when it's gone, nothing else shows.
     clear_backdrop(lock);
@@ -869,6 +910,7 @@ void vela_lock_update_layout(struct vela_lock *lock)
     // Defer the hit test: a layout-change callback may precede wlroots'
     // output-removal cursor warp, and a click must work without motion.
     if (!lock->pointer_retarget_idle) {
-        lock->pointer_retarget_idle = wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock);
+        lock->pointer_retarget_idle
+            = VELA_MUST(wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock));
     }
 }

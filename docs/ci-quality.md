@@ -83,8 +83,11 @@ Other documents link here instead of restating the requirements.
   blockers until fixed, explicitly retested and reclassified.
 - **Pass means:** the workflows actually build the selected revision on
   the expected hardware, run the full `gpu`-labeled CTest suite, and reject
-  missing, failed or skipped test cases. `vulkaninfo` by itself is not
-  a pass; a headless GPU pass does not certify physical DRM/KMS, VT
+  missing, failed or skipped test cases. Qt Quick's separate OpenGL
+  `text-rendering-rhi` test belongs to hosted Mesa/Xvfb CI, not to the
+  real-hardware compositor GPU suite, and is still mandatory there.
+  `vulkaninfo` by itself is not a pass; a headless GPU pass does not certify
+  physical DRM/KMS, VT
   switching, screen sharing, or suspend/resume.
 - **Runner safety:** only manually dispatch trusted, reviewed code to
   personal self-hosted machines; use unprivileged runner accounts with no
@@ -190,9 +193,8 @@ requires `DRIVER_ID_INTEL_OPEN_SOURCE_MESA`, Vulkan >= 1.4 and
 PCI vendor `0x8086`, and verifies the DRM render node actually
 selected by Vela. After building, a separate headless compositor smoke
 check verifies Vela's actual Intel renderer **even for partial runs**
-that only select non-compositor GPU-labeled tests (e.g.
-`text-rendering-rhi`). A qualifying `vulkaninfo` result alone is never
-reported as an Intel compositor pass.
+that select only sharpness or CPU-fence tests. A qualifying `vulkaninfo`
+result alone is never reported as an Intel compositor pass.
 
 The Intel build is limited to **two concurrent compiler jobs** for the
 8 GB machine, with a 180-minute job timeout. It executes the same

@@ -516,13 +516,8 @@ Item {
         tab: page
         anchors { left: parent.left; right: parent.right; top: addressBar.bottom }
     }
-    Rectangle {
+    FilesLayer {
         anchors { left: parent.left; right: parent.right; top: commandBar.bottom; bottom: parent.bottom }
-        color: Theme.layer
-        topLeftRadius: Theme.radiusOverlay
-        topRightRadius: Theme.radiusOverlay
-        border.width: 1
-        border.color: Theme.layerStroke
 
         NavPane {
             id: nav

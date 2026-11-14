@@ -20,8 +20,12 @@ Flickable {
     clip: true
     boundsBehavior: Flickable.StopAtBounds
 
+    // Expressive: M3's navigation drawer item at Vela's 32 rows: the place
+    // in use a full pill of secondary container with its text in Medium, no
+    // bar; the others state layers.
     component Entry: Fill {
         id: entry
+        readonly property bool expressive: Theme.expressive
         property string icon
         property string label
         property string location
@@ -31,13 +35,15 @@ Flickable {
         property bool droppable: location.startsWith("/")
         property int indent: 0
         readonly property bool selected: pane.current === location
+        objectName: "place:" + location
         width: column.width
         height: 32
-        radius: Theme.radius
-        color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+        radius: expressive ? height / 2 : Theme.radius
+        color: drop.containsDrag ? Theme.selectionHover : selected ? Theme.selection : mouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
 
         Rectangle {
-            visible: entry.selected
+            objectName: "selectionBar"
+            visible: entry.selected && !entry.expressive
             anchors.verticalCenter: parent.verticalCenter
             width: 3
             height: 16
@@ -53,12 +59,14 @@ Flickable {
             sourceSize: Qt.size(width, height)
         }
         Text {
+            objectName: "label"
             x: 38 + entry.indent
             width: parent.width - x - (entry.pinned ? 28 : 8)
             anchors.verticalCenter: parent.verticalCenter
             text: entry.label
-            color: Theme.text
+            color: entry.expressive && entry.selected ? Theme.secondaryContainerText : Theme.text
             font.pixelSize: Theme.fontBody
+            font.weight: entry.expressive && entry.selected ? Theme.weightLabel : Font.Normal
             elide: Text.ElideRight
         }
         Text {

@@ -49,20 +49,25 @@ Item {
         Behavior on scale { Eased {} }
     }
 
-    // Indicator under the icon: app open / active (or Start menu open)
+    // Indicator under the icon: app open / active (or Start menu open).
+    // Expressive (Vela's choice, M3 has no taskbar): a 4 high pill, 24 wide
+    // in primary when active, 8 in outline when open, whose width moves on
+    // the fast spatial curve.
     Rectangle {
+        objectName: "indicator"
+        readonly property bool expressive: Theme.expressive
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 2
-        height: 3
-        radius: 1.5
-        width: root.active ? 16 : root.running ? 6 : 0
-        color: root.active ? Theme.accent : Theme.textSecondary
+        height: expressive ? 4 : 3
+        radius: height / 2
+        width: root.active ? (expressive ? 24 : 16) : root.running ? (expressive ? 8 : 6) : 0
+        color: root.active ? (expressive ? Theme.primary : Theme.accent) : (expressive ? Theme.outline : Theme.textSecondary)
         opacity: root.active || root.running ? 1 : 0
 
         Behavior on width {
             enabled: Theme.motion > 0
-            Eased {}
+            Spatial { speed: "fast"; rest: Theme.normal }
         }
         Behavior on color { ColorFade {} }
         Behavior on opacity {

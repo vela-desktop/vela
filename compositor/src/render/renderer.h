@@ -17,8 +17,9 @@
 //   last, after the renderer;
 // - vela_renderer belongs to wlroots: born with vela_renderer_create, it
 //   dies with wlr_renderer_destroy(vela_renderer_wlr(r));
-// - a vela_pass lives from vela_renderer_begin_pass to vela_pass_submit,
-//   which consumes it;
+// - a vela_pass is open from vela_renderer_begin_pass to vela_pass_submit,
+//   which ends it: the caller must not use it again. The object itself
+//   belongs to the renderer, which keeps it for the next drawing;
 // - textures are created and destroyed by wlroots (wlr_texture_from_buffer,
 //   wlr_texture_destroy); their Vulkan resources go away when the GPU is
 //   done with them.
@@ -54,6 +55,14 @@ void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation);
 // The render node of the same GPU, opened by the device: the allocator and the
 // syncobj timelines need it.
 int vela_vulkan_render_fd(const struct vela_vulkan *vk);
+bool vela_vulkan_exports_buffers(const struct vela_vulkan *vk);
+// Venus clients must allocate on the Vulkan device too: OpenGL through Zink.
+// Configure the environment inherited by children, preserving user overrides.
+bool vela_vulkan_configure_clients(const struct vela_vulkan *vk);
+
+// Vulkan-owned DMA-BUFs avoid importing virgl GBM resources into Venus.
+// Destroy before the Vulkan device, with wlr_allocator_destroy().
+struct wlr_allocator *vela_vulkan_allocator_create(struct vela_vulkan *vk);
 
 // Allocator of output buffers (docs/renderer.md §7.2): GBM on the render node,
 // buffers exported as dmabufs with an explicit modifier, fit for both Vulkan
@@ -187,10 +196,10 @@ void vela_pass_measure(struct vela_pass *pass);
 // capture with explicit sync).
 void vela_pass_signal_on_done(struct vela_pass *pass, struct wlr_drm_syncobj_timeline *timeline, uint64_t point);
 
-// Submits the drawing and frees the pass. In the result: the renderer timeline
-// point, the measurement slot (-1: not measured) and the syncobj timeline
-// point signaled at the end (0 if none): the release of the app buffers this
-// drawing read.
+// Submits the drawing and ends the pass, whose locks and references are
+// dropped even when it fails. In the result: the renderer timeline point, the
+// measurement slot (-1: not measured) and the syncobj timeline point signaled
+// at the end (0 if none): the release of the app buffers this drawing read.
 struct vela_pass_result {
     uint64_t point;
     int timing_slot;

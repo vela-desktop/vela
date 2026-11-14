@@ -167,11 +167,12 @@ case "${ID:-}" in
         command -v pacman >/dev/null 2>&1 || fail missing-tool "pacman is required on Arch" ;;
     fedora)
         backend=fedora
-        if [ "${VERSION_ID:-}" != 44 ] ||
-           ! command -v rpm >/dev/null 2>&1 ||
-           ! command -v dnf >/dev/null 2>&1; then
-            fail unsupported "Fedora Beta supports Fedora 44 with rpm and dnf only"
-        fi ;;
+        case "${VERSION_ID:-}" in
+            44|45) ;;
+            *) fail unsupported "Fedora Beta supports Fedora 44 and 45 only" ;;
+        esac
+        command -v rpm >/dev/null 2>&1 || fail missing-tool "Fedora needs rpm"
+        command -v dnf >/dev/null 2>&1 || fail missing-tool "Fedora needs dnf" ;;
     ubuntu)
         backend=ubuntu
         if [ "${VERSION_ID:-}" != 26.10 ] ||
@@ -307,11 +308,20 @@ else:
     print("same" if current == target else "newer" if current > target else "older")
 PY
 )
+# After a Fedora upgrade, install the native RPM even if the Vela version
+# is unchanged (e.g. the installed .fc44 package on a Fedora 45 host).
+native_rpm_mismatch=0
+if [ "$backend" = fedora ] && [ "$comparison" = same ] && [ -n "$installed" ]; then
+    case "$installed" in
+        *".fc${VERSION_ID}") ;;
+        *) native_rpm_mismatch=1 ;;
+    esac
+fi
 current=0
-[ "$comparison" != same ] || current=1
+[ "$comparison" != same ] || [ "$native_rpm_mismatch" = 1 ] || current=1
 status=update-available
 [ "$comparison" != newer ] || status=downgrade-available
-[ "$comparison" != same ] || status=up-to-date
+[ "$comparison" != same ] || [ "$native_rpm_mismatch" = 1 ] || status=up-to-date
 [ -n "$report_package" ] || status=not-installed
 if [ "$check" = 1 ]; then
     report_check --status "$status" --installed-package "$report_package" \
@@ -334,6 +344,51 @@ if [ "$current" = 1 ] && [ "$force" = 0 ]; then
 fi
 echo ":: Vela Beta ${status}: $tag ($latestFull)"
 if [ "$check" = 1 ]; then exit 0; fi
+# Beta installs attested binaries, not a local build. Display the packaging
+# source from the exact release commit for transparency, without confusing it
+# with verification of the downloaded binary (which happens separately).
+# This is informative: a GitHub raw-content outage cannot block a signed update.
+showBetaRecipeFile() {
+    path="$1"
+    printf '%s\n' "--- $path ---"
+    url="https://raw.githubusercontent.com/$REPO/$latestFull/$path"
+    if curl -fsSL --connect-timeout 5 --max-time 15 -o "$work/recipe" "$url"; then
+        if [ "$path" = CMakeLists.txt ]; then
+            sed -n '/^option(VELA_PACKAGE_DEB /,$p' "$work/recipe"
+        else
+            cat "$work/recipe"
+        fi
+    else
+        printf '%s\n' "vela-update: couldn't display $path; inspect $url (signature verification still applies)." >&2
+    fi
+}
+
+showBetaRecipeContent() {
+    printf '\n%s\n' ":: Beta packaging recipe for $backend at $tag ($latestFull)"
+    case "$backend" in
+        arch) showBetaRecipeFile packaging/arch/PKGBUILD.beta ;;
+        fedora) showBetaRecipeFile packaging/fedora/vela.spec ;;
+        ubuntu)
+            showBetaRecipeFile packaging/ubuntu/build-depends
+            showBetaRecipeFile CMakeLists.txt ;;
+    esac
+    printf '%s\n\n' ":: End of packaging recipe"
+}
+
+# Keep unattended output available for logs. Interactive review is deliberately
+# read-only: neither $EDITOR nor a Vim-like program is invoked.
+showBetaRecipe() {
+    if [ -t 0 ] && [ -t 1 ] && command -v less >/dev/null 2>&1; then
+        printf '\n%s\n' ":: Reviewing the package recipe (read-only). Scroll with arrows/PageUp/PageDown; press q to close and continue."
+        showBetaRecipeContent | LESS= LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
+        printf '%s\n' ":: Recipe preview closed; continuing update."
+    else
+        showBetaRecipeContent
+    fi
+}
+
+showBetaRecipe
+
 # Installation requires signed provenance. Fail before transferring the binary.
 if ! command -v cosign >/dev/null 2>&1; then
     fail missing-tool "cosign is required to install signed Beta packages"
@@ -344,7 +399,8 @@ case "$backend" in
 arch) manifest=SHA256SUMS
       regex="^vela-$escaped_version-[0-9]+-x86_64[.]pkg[.]tar[.]zst$" ;;
 fedora) manifest=SHA256SUMS-fedora
-        regex="^vela-$escaped_version-[0-9]+([.]fc[0-9]+)?[.]x86_64[.]rpm$" ;;
+        [ "$VERSION_ID" != 45 ] || manifest=SHA256SUMS-fedora-45
+        regex="^vela-$escaped_version-[0-9]+[.]fc${VERSION_ID}[.]x86_64[.]rpm$" ;;
 ubuntu) manifest=SHA256SUMS-ubuntu
         regex="^vela_$escaped_version"_"amd64[.]deb$" ;;
 esac

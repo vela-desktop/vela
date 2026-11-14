@@ -40,7 +40,7 @@ Flickable {
                     width: 220
                     height: 56
                     radius: Theme.radius
-                    color: folderMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: folderMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter
@@ -95,7 +95,7 @@ Flickable {
                     height: 72
                     opacity: mounted ? 1 : 0.85
                     radius: Theme.radius
-                    color: driveMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: driveMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter

@@ -35,7 +35,7 @@ Window {
             Shell.placeOnScreen(root, Shell.primaryScreen)
             root.visible = true
             motion.open()
-            Effects.setBlur(root, [motion.visibleArea])
+            Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
         }
     }
 
@@ -87,7 +87,7 @@ Window {
         duration: Theme.normal
         instantExit: true
         onClosed: root.visible = false
-        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea])
+        onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
 
         Shadow {
             target: panel
@@ -121,7 +121,7 @@ Window {
 
                         width: root.cardWidth
                         height: root.cardHeight
-                        radius: Theme.radiusOverlay
+                        radius: Theme.nested(Theme.radiusOverlay, 16, Theme.radiusOverlay) // 16 inside the panel
                         color: current || cardMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         border.width: current ? 2 : 0
                         border.color: Theme.accent

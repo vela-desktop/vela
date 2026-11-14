@@ -40,6 +40,7 @@ void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation)
 struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struct wlr_buffer *buffer) { abort(); }
 struct wlr_render_pass *vela_pass_wlr(struct vela_pass *pass) { abort(); }
 void vela_pass_signal_on_done(struct vela_pass *pass, struct wlr_drm_syncobj_timeline *timeline, uint64_t point) { abort(); }
+void vela_renderer_destroy_passes(struct vela_renderer *renderer) { abort(); }
 bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory) { abort(); }
 
@@ -265,6 +266,14 @@ static void semaphore_creation_loss(void)
     semaphore_result = VK_SUCCESS;
 }
 
+// The arrays a submit grows; a real renderer frees them in its teardown.
+static void free_submit_arrays(struct vela_renderer *renderer)
+{
+    free(renderer->wait_infos);
+    free(renderer->wait_semaphores);
+    free(renderer->used_semaphores);
+}
+
 static void submission_loss_stops_new_gpu_work(void)
 {
     struct vela_vulkan vk = { 0 };
@@ -277,6 +286,7 @@ static void submission_loss_stops_new_gpu_work(void)
     assert(renderer.last_point == 0 && end_calls == 1 && submit_calls == 1);
     assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, NULL));
     assert(end_calls == 1 && submit_calls == 1); // no new Vulkan work
+    free_submit_arrays(&renderer);
 }
 
 static void failed_end_releases_command_reservations(void)
@@ -321,7 +331,7 @@ static void semaphore_fd_export_loss(void)
     assert(!vela_renderer_submit(&renderer, (VkCommandBuffer)(uintptr_t)1, NULL, 0, &fd));
     assert(vk.loss.lost && fd == -1 && exported_fds == 1 && submit_calls == 1);
     assert(strcmp(vk.loss.first_operation, "vkGetSemaphoreFdKHR") == 0);
-    free(renderer.used_semaphores);
+    free_submit_arrays(&renderer);
 }
 
 static void debug_sync_failed_wait_closes_exported_fd(void)
@@ -344,7 +354,7 @@ static void debug_sync_failed_wait_closes_exported_fd(void)
     assert(fcntl(last_exported_fd, F_GETFD) == -1 && errno == EBADF);
     assert(unsetenv("VELA_DEBUG_SYNC") == 0);
     wait_result = VK_SUCCESS;
-    free(renderer.used_semaphores);
+    free_submit_arrays(&renderer);
 }
 
 static void semaphore_fd_import_loss(void)

@@ -63,6 +63,9 @@ Column {
             return
         }
         Prefs.setSurfaceStyle(surface, style)
+        if (Prefs.saveError !== "") {
+            return
+        }
         const surface_ = surface
         root.offerUndo(style === "" ? qsTr("The theme's style is in use") : qsTr("%1 is in use").arg(Prefs.displayName(surface, style) || style),
             () => Prefs.setSurfaceStyle(surface_, previous))
@@ -108,15 +111,30 @@ Column {
                     spacing: 6
                     Repeater {
                         model: tile.modelData.images
-                        Image {
+                        // Each picture whole, in its own corners: the tile's
+                        // less its 6 of margin (Theme.nested).
+                        Item {
+                            id: shot
                             required property string modelData
                             width: (tile.width - 12 - pictures.spacing * (pictures.count - 1)) / pictures.count
                             height: tile.pictureHeight
-                            fillMode: Image.PreserveAspectFit
-                            source: modelData
-                            sourceSize.height: height * 2
-                            asynchronous: true
-                            smooth: true
+                            RoundClip {
+                                anchors.centerIn: parent
+                                width: shotImage.paintedWidth
+                                height: shotImage.paintedHeight
+                                radius: Theme.nested(tile.background.radius, 6, 0)
+                                Image {
+                                    id: shotImage
+                                    anchors.centerIn: parent
+                                    width: shot.width
+                                    height: shot.height
+                                    fillMode: Image.PreserveAspectFit
+                                    source: shot.modelData
+                                    sourceSize.height: height * 2
+                                    asynchronous: true
+                                    smooth: true
+                                }
+                            }
                         }
                     }
                 }

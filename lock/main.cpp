@@ -14,11 +14,13 @@
 // checked with PAM (the "vela-lock" service, or "login" if not installed) in a
 // separate thread: a failure makes you wait a few seconds.
 
+#include "alloc/new_handler.h"
 #include "ext-session-lock-v1-client-protocol.h"
 #include "fractional-scale-v1-client-protocol.h"
 #include "viewporter-client-protocol.h"
 
 #include "wallpaperblur.h"
+#include "drawing.h"
 #include "clockformat.h"
 #include "defaults.h"
 #include "language.h"
@@ -74,7 +76,7 @@ struct Screen {
     uint32_t blurredScale120 = 0; // blur radius depends on output scale, not only pixel dimensions
 };
 
-enum class Mode { Clock, Login, Checking };
+using vela::lock::Mode;
 
 wl_display* display = nullptr;
 wl_compositor* compositor = nullptr;
@@ -102,6 +104,9 @@ QString userName;
 QString displayName;
 // 24-hour or 12-hour, as the taskbar shows it (shell/src/clockformat.h).
 QString timeFormat = vela::clock::timeFormat(true);
+// The theme's and the accent's (look.h): Vela's blue and the default
+// drawing until main() reads them, and if it can't.
+vela::lock::Look look;
 
 void redrawAll();
 
@@ -170,94 +175,16 @@ void draw(Screen& screen)
     }
     {
         QImage image(static_cast<uchar*>(data), w, h, stride, QImage::Format_RGB32);
-        QPainter p(&image);
-        p.setRenderHints(QPainter::Antialiasing | QPainter::TextAntialiasing | QPainter::SmoothPixmapTransform);
-        const bool login = mode != Mode::Clock;
-        p.drawImage(0, 0, login ? screen.backgroundBlurred : screen.background);
-        p.fillRect(QRect(0, 0, w, h), QColor(0, 0, 0, login ? 110 : 60));
-
-        // From here on in logical coordinates.
-        const double scale = double(screen.scale120) / 120.0;
-        p.scale(scale, scale);
-        const double lw = screen.width;
-        const double lh = screen.height;
-        QFont font = QGuiApplication::font();
-
-        if (!login) {
-            const QDateTime now = QDateTime::currentDateTime();
-            const QString time = QLocale().toString(now.time(), timeFormat);
-            font.setPixelSize(120);
-            font.setWeight(QFont::DemiBold);
-            // On a narrow output (a portrait phone-sized one) the time,
-            // longer at 12 hours ("12:45 PM"), shrinks to 90% of its width.
-            const qreal wide = QFontMetricsF(font).horizontalAdvance(time);
-            if (wide > lw * 0.9) {
-                font.setPixelSize(std::max(24, int(120 * lw * 0.9 / wide)));
-            }
-            p.setFont(font);
-            p.setPen(QColor(255, 255, 255, 240));
-            const QRectF timeBox(0, lh * 0.12, lw, 150);
-            p.drawText(timeBox, Qt::AlignHCenter | Qt::AlignTop, time);
-            font.setPixelSize(26);
-            font.setWeight(QFont::Medium);
-            p.setFont(font);
-            const QString date = QLocale().toString(now.date(), QStringLiteral("dddd d MMMM"));
-            p.drawText(QRectF(0, timeBox.bottom() + 4, lw, 40), Qt::AlignHCenter | Qt::AlignTop, date);
-        } else {
-            // User in the center, password below.
-            const double cx = lw / 2;
-            const double top = lh * 0.30;
-            const double avatar = 150;
-            QPainterPath circle;
-            circle.addEllipse(QPointF(cx, top + avatar / 2), avatar / 2, avatar / 2);
-            p.fillPath(circle, QColor(91, 140, 255));
-            font.setPixelSize(64);
-            font.setWeight(QFont::DemiBold);
-            p.setFont(font);
-            p.setPen(Qt::white);
-            p.drawText(QRectF(cx - avatar / 2, top, avatar, avatar), Qt::AlignCenter, displayName.left(1).toUpper());
-
-            font.setPixelSize(28);
-            p.setFont(font);
-            const double nameY = top + avatar + 20;
-            p.drawText(QRectF(0, nameY, lw, 40), Qt::AlignHCenter | Qt::AlignTop, displayName);
-
-            const QRectF field(cx - 150, nameY + 60, 300, 40);
-            QPainterPath fieldPath;
-            fieldPath.addRoundedRect(field, 6, 6);
-            p.fillPath(fieldPath, QColor(255, 255, 255, 36));
-            p.setPen(QPen(QColor(255, 255, 255, 50), 1));
-            p.drawPath(fieldPath);
-            // The accent line at the bottom, as in Windows 11 fields.
-            p.fillRect(QRectF(field.left() + 2, field.bottom() - 2, field.width() - 4, 2), QColor(91, 140, 255));
-
-            font.setPixelSize(15);
-            font.setWeight(QFont::Normal);
-            p.setFont(font);
-            const QRectF textBox = field.adjusted(14, 0, -14, 0);
-            if (mode == Mode::Checking) {
-                p.setPen(QColor(255, 255, 255, 170));
-                p.drawText(textBox, Qt::AlignVCenter | Qt::AlignLeft, QCoreApplication::translate("Lock", "Signing in…"));
-            } else if (password.empty()) {
-                p.setPen(QColor(255, 255, 255, 140));
-                p.drawText(textBox, Qt::AlignVCenter | Qt::AlignLeft, QCoreApplication::translate("Lock", "Password"));
-            } else {
-                // One dot per character (multibyte UTF-8 characters count as
-                // one).
-                const auto chars = std::count_if(password.begin(), password.end(),
-                    [](char c) { return (static_cast<unsigned char>(c) & 0xC0) != 0x80; });
-                p.setPen(Qt::white);
-                p.setBrush(Qt::white);
-                const double dot = 7;
-                for (qsizetype i = 0; i < std::min<qsizetype>(chars, 32); ++i) {
-                    p.drawEllipse(QPointF(textBox.left() + dot / 2 + i * (dot + 5), textBox.center().y()), dot / 2, dot / 2);
-                }
-            }
-            if (!message.isEmpty()) {
-                p.setPen(QColor(255, 255, 255, 220));
-                p.drawText(QRectF(0, field.bottom() + 16, lw, 30), Qt::AlignHCenter | Qt::AlignTop, message);
-            }
-        }
+        vela::lock::Scene scene;
+        scene.mode = mode;
+        scene.now = QDateTime::currentDateTime();
+        scene.timeFormat = timeFormat;
+        scene.displayName = displayName;
+        scene.passwordEmpty = password.empty();
+        scene.passwordChars = vela::lock::passwordCharacters(password);
+        scene.message = message;
+        vela::lock::paint(image, screen.background, screen.backgroundBlurred, QSizeF(screen.width, screen.height),
+            screen.scale120, look, scene);
     }
     munmap(data, size);
 
@@ -589,11 +516,19 @@ const wl_registry_listener registryListener { onGlobal, onGlobalRemove };
 
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-lock");
     // Qt only for fonts and images: no Qt window.
     qputenv("QT_QPA_PLATFORM", "offscreen");
     QGuiApplication app(argc, argv);
     vela::language::install(QStringLiteral("vela-lock")); // draws every frame: nothing to retranslate
     timeFormat = vela::clock::timeFormat(vela::clock::hour24(QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell"))));
+    // A theme or cache that can't be read leaves the default look: the
+    // screen locks whatever happens here.
+    try {
+        look = vela::lock::configuredLook();
+    } catch (...) {
+        look = {};
+    }
 
     if (const passwd* pw = getpwuid(getuid())) {
         userName = QString::fromLocal8Bit(pw->pw_name);

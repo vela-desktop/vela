@@ -9,6 +9,7 @@
 // the durations three times Vela's; with VELA_TEST_ANIMATION_EFFECTS=no it
 // turns animation effects off (two ctest entries).
 
+#include "accessibleprobe.h"
 #include "controls.h"
 #include "quicktest.h"
 
@@ -30,8 +31,14 @@ public slots:
         // Controls set their accessible role and state only once a screen
         // reader is there.
         QAccessible::setActive(true);
+        vela::test::AccessibleProbe::install();
         vela::controls::install(*engine, Appearance::Mode::Apps);
         qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(FAKE_BLUETOOTH)), "Vela.Bluetooth", 1, 0, "Bluetooth");
+        // The shell's styles as the singleton they are in the shell: the
+        // tests import its QML as a directory, where Styles.qml is a plain
+        // type (`import Vela.Shell.Test as ShellTest`, ShellTest.Styles).
+        qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/../qml/Styles.qml")),
+            "Vela.Shell.Test", 1, 0, "Styles");
         for (const auto& [name, file] : { std::pair { "Shell", "FakeShell.qml" }, std::pair { "BluetoothPrompts", "FakeBluetoothPrompts.qml" } }) {
             QQmlComponent component(engine, QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/") + QLatin1String(file)));
             QObject* fake = component.create();

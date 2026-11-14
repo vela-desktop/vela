@@ -3,6 +3,7 @@
 
 #include "server.h"
 #include "error_screen.h"
+#include "lock_state.h"
 #include "supervisor.h"
 #include "render/renderer.h"
 
@@ -65,11 +66,21 @@ int main(int argc, char *argv[])
     }
 
     const char *startup = NULL;
+    const char *lock_state_text = NULL;
+    // Passed only by the supervisor (supervisor.c), never documented for users.
+    enum { OPTION_LOCK_STATE = 256 };
+    static const struct option long_options[] = {
+        { VELA_LOCK_STATE_OPTION, required_argument, NULL, OPTION_LOCK_STATE },
+        { NULL, 0, NULL, 0 },
+    };
     int option;
-    while ((option = getopt(argc, argv, "s:h")) != -1) {
+    while ((option = getopt_long(argc, argv, "s:h", long_options, NULL)) != -1) {
         switch (option) {
         case 's':
             startup = optarg;
+            break;
+        case OPTION_LOCK_STATE:
+            lock_state_text = optarg;
             break;
         case 'h':
             print_usage(argv[0]);
@@ -97,6 +108,19 @@ int main(int argc, char *argv[])
         return 1;
     }
 
+    // The shared lock state comes first, before anything can be shown or any
+    // child started. A supervised compositor that cannot keep it could not
+    // record a later lock either: end the session instead of running without.
+    struct vela_lock_state *lock_state = NULL;
+    if (lock_state_text) {
+        lock_state = vela_lock_state_map(vela_lock_state_parse_fd(lock_state_text));
+        if (!lock_state) {
+            fprintf(stderr, "vela-compositor: the supervisor's lock state is unusable; "
+                "ending the session\n");
+            return VELA_EXIT_LOCK_UNSAFE;
+        }
+    }
+
     // Late latching wakes the compositor at a precise moment before the
     // vblank: the kernel must not round timers (50 µs by default).
     prctl(PR_SET_TIMERSLACK, 1UL, 0UL, 0UL, 0UL);
@@ -112,6 +136,9 @@ int main(int argc, char *argv[])
     }
     if (unsupported_gpu) {
         return VELA_EXIT_UNSUPPORTED_GPU;
+    }
+    if (server) {
+        server->lock_state = lock_state;
     }
     if (!server || !vela_server_start(server, startup)) {
         return 1;

@@ -29,7 +29,7 @@ foreach(xml
     list(APPEND LOCK_PROTOCOL_SOURCES ${header} ${code})
 endforeach()
 
-qt_add_executable(vela-lock main.cpp ${LOCK_PROTOCOL_SOURCES})
+qt_add_executable(vela-lock main.cpp drawing.h look.h ${LOCK_PROTOCOL_SOURCES})
 # The shell's default wallpaper.
 qt_add_resources(vela-lock "images"
     PREFIX "/vela"
@@ -37,7 +37,9 @@ qt_add_resources(vela-lock "images"
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
 target_include_directories(vela-lock PRIVATE ${LOCK_GENERATED_DIR} ${PROJECT_SOURCE_DIR}/shell/src)
 target_compile_options(vela-lock PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
-target_link_libraries(vela-lock PRIVATE Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app)
+# The theme, the accent and its tonal roles (look.h).
+target_link_libraries(vela-lock PRIVATE vela-alloc Qt6::Gui Qt6::Svg PkgConfig::LOCK_DEPS ${PAM_LIBRARY} vela-app
+    vela-color vela-theme-tokens)
 
 # Fast, display-independent pixel tests for the actual login blur implementation.
 # These run in regular non-GPU CTest jobs and do not require a Wayland session.
@@ -47,6 +49,22 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-lock-blur-tests PRIVATE -Wall -Wextra)
     add_test(NAME lock-wallpaper-blur COMMAND vela-lock-blur-tests)
     set_tests_properties(lock-wallpaper-blur PROPERTIES TIMEOUT 30 LABELS unit)
+
+    # The lock's theme, accent and colors (look.h), on private settings.
+    add_executable(vela-lock-look-tests tests/test_lock_look.cpp)
+    target_include_directories(vela-lock-look-tests PRIVATE ${PROJECT_SOURCE_DIR}/shell/src)
+    target_link_libraries(vela-lock-look-tests PRIVATE Qt6::Gui vela-color vela-theme-tokens)
+    target_compile_options(vela-lock-look-tests PRIVATE -Wall -Wextra)
+    add_test(NAME lock-look COMMAND vela-lock-look-tests)
+    set_tests_properties(lock-look PROPERTIES TIMEOUT 30 LABELS unit)
+
+    # The lock's drawing (drawing.h), painted offscreen and read back.
+    add_executable(vela-lock-drawing-tests tests/test_lock_drawing.cpp)
+    target_include_directories(vela-lock-drawing-tests PRIVATE ${PROJECT_SOURCE_DIR}/shell/src)
+    target_link_libraries(vela-lock-drawing-tests PRIVATE Qt6::Gui vela-color vela-theme-tokens)
+    target_compile_options(vela-lock-drawing-tests PRIVATE -Wall -Wextra)
+    add_test(NAME lock-drawing COMMAND vela-lock-drawing-tests)
+    set_tests_properties(lock-drawing PROPERTIES TIMEOUT 30 LABELS unit)
 endif()
 
 install(TARGETS vela-lock RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

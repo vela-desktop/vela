@@ -148,7 +148,7 @@ Window {
                     readonly property bool current: Snip.mode === modelData.mode
                     width: 40
                     height: 36
-                    radius: Theme.radius
+                    radius: Theme.nested(Theme.radiusOverlay, 8, Theme.radius) // 8 inside the bar
                     color: current || toolMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                     border.width: current ? 1 : 0
                     border.color: Theme.accent
@@ -172,7 +172,7 @@ Window {
             Fill {
                 width: 40
                 height: 36
-                radius: Theme.radius
+                radius: Theme.nested(Theme.radiusOverlay, 8, Theme.radius)
                 color: closeMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                 Text {
                     anchors.centerIn: parent

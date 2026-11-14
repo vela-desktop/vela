@@ -10,8 +10,14 @@ import Vela.Controls
 // `clickable` the whole card is a button (and shows the arrow if it leads to
 // another page): for the pointer, the keyboard (Tab, then Space or Enter)
 // and screen readers alike.
+//
+// Expressive: M3's filled card on surface container low, without an
+// outline. In a CardGroup the cards are one container (M3's segmented
+// list): large corners outside, extra small inside, 2 apart; `first` and
+// `last` still cut a group (an expanding card's).
 Fill {
     id: card
+    readonly property bool expressive: Theme.expressive
     property string icon
     property string title
     property string description
@@ -22,6 +28,25 @@ Fill {
     property alias trailing: trailingRow.data
     property alias contentItem: extra.data // content below, full width
     property int minimumHeight: description !== "" ? 69 : 48
+    // Expressive: where it is in its CardGroup (the visible cards).
+    readonly property bool grouped: expressive && parent !== null && parent.objectName === "cardGroupColumn"
+    readonly property bool groupFirst: !grouped || neighbour(-1) === null
+    readonly property bool groupLast: !grouped || neighbour(1) === null
+    function neighbour(step) {
+        const siblings = parent.children
+        let i = 0
+        while (i < siblings.length && siblings[i] !== card)
+            ++i
+        for (i += step; i >= 0 && i < siblings.length; i += step) {
+            if (siblings[i].visible)
+                return siblings[i]
+        }
+        return null
+    }
+    readonly property real outerRadius: expressive ? Theme.shapeLarge : Theme.radiusCard
+    readonly property real innerRadius: expressive ? Theme.shapeExtraSmall : 0
+    readonly property bool roundTop: first && groupFirst
+    readonly property bool roundBottom: last && groupLast
     signal clicked()
     // A clickable card takes the keyboard's focus (a page shows it, asked).
     function takeFocus() {
@@ -39,11 +64,11 @@ Fill {
     implicitHeight: (title !== "" || icon !== "" ? Math.max(minimumHeight, header.height + 24) : 16) + (hasExtra ? extra.height + 16 : 0)
     height: implicitHeight
     color: button.pressed && clickable ? Theme.cardPressed : button.hovered && clickable ? Theme.cardHover : Theme.card
-    topLeftRadius: first ? Theme.radiusCard : 0
-    topRightRadius: first ? Theme.radiusCard : 0
-    bottomLeftRadius: last ? Theme.radiusCard : 0
-    bottomRightRadius: last ? Theme.radiusCard : 0
-    border.width: 1
+    topLeftRadius: roundTop ? outerRadius : innerRadius
+    topRightRadius: roundTop ? outerRadius : innerRadius
+    bottomLeftRadius: roundBottom ? outerRadius : innerRadius
+    bottomRightRadius: roundBottom ? outerRadius : innerRadius
+    border.width: expressive ? 0 : 1
     border.color: Theme.cardStroke
 
     // The button under the card's controls (they come after it, on top).
@@ -130,5 +155,10 @@ Fill {
 
     FocusRing {
         visible: button.visualFocus
+        // Expressive: the card's own corners, 3 out.
+        topLeftRadius: card.expressive ? card.topLeftRadius + 3 : radius
+        topRightRadius: card.expressive ? card.topRightRadius + 3 : radius
+        bottomLeftRadius: card.expressive ? card.bottomLeftRadius + 3 : radius
+        bottomRightRadius: card.expressive ? card.bottomRightRadius + 3 : radius
     }
 }

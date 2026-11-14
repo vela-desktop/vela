@@ -3,6 +3,7 @@
 
 #include "probe.h"
 
+#include "alloc/alloc.h"
 #include "device.h"
 
 #include <dirent.h>
@@ -91,7 +92,7 @@ static void add_name(void *data, const char *name)
 {
     struct names *names = data;
     if (names->count < 64) {
-        names->name[names->count++] = strdup(name);
+        names->name[names->count++] = vela_strdup(name);
     }
 }
 

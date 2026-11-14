@@ -3,6 +3,7 @@
 
 #include "command.h"
 
+#include "alloc/alloc.h"
 #include "a11y.h"
 #include "bindings.h"
 #include "capture_watch.h"
@@ -486,7 +487,7 @@ static void window(struct vela_server *server, const char *line)
 static void end_task(struct vela_server *server, const char *app_id)
 {
     int count = wl_list_length(&server->views);
-    pid_t *pids = calloc((size_t)count + 1, sizeof(*pids));
+    pid_t *pids = VELA_NEW_N(pid_t, (size_t)count + 1);
     int n = 0;
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
@@ -663,7 +664,7 @@ static void flush(struct client *client)
 static void queue(struct client *client, int topic, const char *line)
 {
     free(client->queued[topic]);
-    client->queued[topic] = strdup(line);
+    client->queued[topic] = vela_strdup(line);
     flush(client);
 }
 
@@ -672,7 +673,7 @@ static char *topic_line(struct vela_server *server, int topic)
     struct vela_buffer line = { 0 };
     topics[topic].write(server, &line);
     vela_buffer_append(&line, "\n");
-    char *text = strdup(vela_buffer_text(&line));
+    char *text = vela_strdup(vela_buffer_text(&line));
     vela_buffer_finish(&line);
     return text;
 }
@@ -813,17 +814,24 @@ static int handle_connection(int fd, uint32_t mask, void *data)
     if (client_fd < 0) {
         return 0;
     }
-    struct client *client = calloc(1, sizeof(*client));
+    struct client *client = VELA_NEW(struct client);
     client->server = server;
     client->fd = client_fd;
     client->source = wl_event_loop_add_fd(server->loop, client_fd, WL_EVENT_READABLE, handle_client, client);
+    if (!client->source) {
+        // Descriptors exhausted (epoll or the duplicate): drop this client.
+        wlr_log_errno(WLR_ERROR, "Can't watch a command connection");
+        close(client_fd);
+        free(client);
+        return 0;
+    }
     wl_list_insert(server->commands->clients.prev, &client->link);
     return 0;
 }
 
 void vela_commands_listen(struct vela_server *server)
 {
-    struct vela_commands *commands = calloc(1, sizeof(*commands));
+    struct vela_commands *commands = VELA_NEW(struct vela_commands);
     commands->fd = -1;
     wl_list_init(&commands->clients);
     server->commands = commands;
@@ -850,6 +858,12 @@ void vela_commands_listen(struct vela_server *server)
     }
     chmod(commands->path, 0600);
     commands->source = wl_event_loop_add_fd(server->loop, commands->fd, WL_EVENT_READABLE, handle_connection, server);
+    if (!commands->source) {
+        wlr_log_errno(WLR_ERROR, "Can't watch for commands on %s", commands->path);
+        close(commands->fd);
+        commands->fd = -1;
+        unlink(commands->path);
+    }
 }
 
 void vela_commands_stop(struct vela_server *server)
