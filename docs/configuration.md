@@ -35,7 +35,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
-| `secret-backend` | `kwallet` | **Temporary until Vela Secrets:** `kwallet` or `gnome` (GNOME Keyring). Select in Settings > System; takes effect at the next login. Never migrates passwords. |
+| `secret-backend` | `kwallet` | **Temporary until Vela Secrets:** `kwallet` or `gnome` (GNOME Keyring). When absent, the old KWallet behavior is retained but Settings asks for an explicit choice. The chosen provider must be installed and own `org.freedesktop.secrets`; errors appear in Settings and the session log. Changes require a new login and never migrate passwords. |
 | `bluetooth-adapter` | empty | The address of the Bluetooth adapter to use when there are two or more ([Bluetooth](bluetooth.md#62-the-model)), written by Settings > Bluetooth & devices > Advanced. Empty, or an adapter that isn't there: the first one. |
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
