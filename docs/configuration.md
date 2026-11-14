@@ -341,6 +341,9 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG_ANIMATION=1` | Log, per output and frame, the presentation and wall times and each running animation's progress and geometry (position, scale, opacity), and a line when an animation retires (`tests/functional/test_animation.py` reads it). |
 | `VELA_DEBUG_SYNC=1` | Make the CPU wait for the GPU on every renderer submission; useful when isolating synchronization problems. |
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
+| `VELA_DEBUG_DMABUF=1` | Trace output commits and DMA-BUF allocation/import, including Vulkan calls and FD identities; see [VM diagnostics](virtual-machines.md). |
+| `VELA_ALLOCATOR=auto\|gbm\|vulkan` | Output buffers: auto selects Vulkan DMA-BUF export for Venus and GBM otherwise. Overrides allow controlled [VM comparisons](virtual-machines.md). |
+| `MESA_LOADER_DRIVER_OVERRIDE` | On Venus, Vela defaults this to `zink` for launched OpenGL clients, so their buffers come from the Vulkan device too. Explicit values are preserved; see [VM diagnostics](virtual-machines.md). |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |
 | `VELA_FILES_TIMING=1` | Make `vela-files` print startup timing data; used by `scripts/measure.sh`. |
 | `VELA_STILL=<date and time>` | For still pictures that don't change with when they are taken (`scripts/theme-pictures.py`): the shell's clock and calendar show this ISO date and time, such as `2026-01-14T10:30:00`, and text carets don't blink. |
