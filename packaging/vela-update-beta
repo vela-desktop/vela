@@ -363,15 +363,31 @@ showBetaRecipeFile() {
     fi
 }
 
-printf '\n%s\n' ":: Beta packaging recipe for $backend at $tag ($latestFull)"
-case "$backend" in
-    arch) showBetaRecipeFile packaging/arch/PKGBUILD.beta ;;
-    fedora) showBetaRecipeFile packaging/fedora/vela.spec ;;
-    ubuntu)
-        showBetaRecipeFile packaging/ubuntu/build-depends
-        showBetaRecipeFile CMakeLists.txt ;;
-esac
-printf '%s\n\n' ":: End of packaging recipe"
+showBetaRecipeContent() {
+    printf '\n%s\n' ":: Beta packaging recipe for $backend at $tag ($latestFull)"
+    case "$backend" in
+        arch) showBetaRecipeFile packaging/arch/PKGBUILD.beta ;;
+        fedora) showBetaRecipeFile packaging/fedora/vela.spec ;;
+        ubuntu)
+            showBetaRecipeFile packaging/ubuntu/build-depends
+            showBetaRecipeFile CMakeLists.txt ;;
+    esac
+    printf '%s\n\n' ":: End of packaging recipe"
+}
+
+# Keep unattended output available for logs. Interactive review is deliberately
+# read-only: neither $EDITOR nor a Vim-like program is invoked.
+showBetaRecipe() {
+    if [ -t 0 ] && [ -t 1 ] && command -v less >/dev/null 2>&1; then
+        printf '\n%s\n' ":: Reviewing the package recipe (read-only). Scroll with arrows/PageUp/PageDown; press q to close and continue."
+        showBetaRecipeContent | LESS= LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
+        printf '%s\n' ":: Recipe preview closed; continuing update."
+    else
+        showBetaRecipeContent
+    fi
+}
+
+showBetaRecipe
 
 # Installation requires signed provenance. Fail before transferring the binary.
 if ! command -v cosign >/dev/null 2>&1; then
