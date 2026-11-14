@@ -23,10 +23,17 @@ bool vela_global_privileged(const char *interface);
 // started for tests (VELA_TEST_COMMANDS=1 and the headless backend).
 bool vela_command_test_only(const char *line);
 
-// Whether a process runs inside a Flatpak sandbox, from its /proc entry.
-// For a sandbox that does not use wp_security_context_v1 (older Flatpak).
-// False when it cannot be established (process gone, /proc not readable).
-bool vela_pid_in_flatpak(pid_t pid);
+// Whether the process at the other end of a Unix socket runs in a Flatpak
+// sandbox, for sandboxes that don't use wp_security_context_v1 (older
+// Flatpak). `pid` is the peer's SO_PEERCRED pid.
+enum vela_sandbox {
+    VELA_SANDBOX_NONE, // verified: its root has no /.flatpak-info
+    VELA_SANDBOX_FLATPAK,
+    // Not established: the peer is gone, outside our pid namespace, or its
+    // root can't be inspected (a non-dumpable process). Callers deny.
+    VELA_SANDBOX_UNKNOWN,
+};
+enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid);
 
 // A shared-memory buffer: `stride` bytes per row, `bpp` bytes per pixel. The
 // rows must hold their pixels and the last byte read must be addressable.

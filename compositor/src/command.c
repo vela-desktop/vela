@@ -848,8 +848,12 @@ static bool peer_allowed(struct vela_server *server, int fd)
         wlr_log(WLR_ERROR, "Command socket: refused a peer of another user (uid %u)", (unsigned)peer.uid);
         return false;
     }
-    if (vela_pid_in_flatpak(peer.pid)) {
-        wlr_log(WLR_ERROR, "Command socket: refused a sandboxed peer (process %d)", (int)peer.pid);
+    // Only a peer verified to be outside a sandbox: one that exited right
+    // after sending its commands, or hides its /proc root, is refused too.
+    enum vela_sandbox sandbox = vela_peer_sandbox(fd, peer.pid);
+    if (sandbox != VELA_SANDBOX_NONE) {
+        wlr_log(WLR_ERROR, "Command socket: refused a %s peer (process %d)",
+            sandbox == VELA_SANDBOX_FLATPAK ? "sandboxed" : "unverifiable", (int)peer.pid);
         return false;
     }
     if (server->commands->client_count >= MAX_CLIENTS) {

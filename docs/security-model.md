@@ -48,7 +48,17 @@ These globals are withheld from sandboxed clients and from Xwayland
 
 A client is sandboxed when it connected through a `wp_security_context_v1`
 socket (Flatpak 1.15 and later create one per app) or, for older sandboxes,
-when its process has `/.flatpak-info` in its root. The global filter hides the
+when its process has `/.flatpak-info` in its root. Only a client positively
+verified to be outside a sandbox counts as unsandboxed. These cases count as
+sandboxed:
+
+- the peer's process can't be inspected, for example a non-dumpable process
+  whose `/proc/<pid>/root` is unreadable;
+- the peer is in another pid namespace;
+- the peer has already exited. On Linux 6.5 and later `SO_PEERPIDFD` confirms
+  that the inspected pid still belongs to the process that connected.
+
+The same rule applies to the command socket. The global filter hides the
 globals from the registry and libwayland refuses to bind them, so a client
 cannot reach them by guessing names.
 

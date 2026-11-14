@@ -7,6 +7,9 @@ extern "C" {
 
 #include <gtest/gtest.h>
 #include <cstdint>
+#include <cstring>
+#include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 TEST(SecurityPolicy, PrivilegedGlobals)
@@ -39,13 +42,72 @@ TEST(SecurityPolicy, TestOnlyCommands)
     EXPECT_FALSE(vela_command_test_only(nullptr));
 }
 
-TEST(SecurityPolicy, NoFlatpakForThisProcessOrNone)
+TEST(SecurityPolicy, PeerSandbox)
 {
-    EXPECT_FALSE(vela_pid_in_flatpak(0));
-    EXPECT_FALSE(vela_pid_in_flatpak(-1));
+    int pair[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair), 0);
+    // The peer of a socketpair is this very process.
     if (access("/.flatpak-info", F_OK) != 0) {
-        EXPECT_FALSE(vela_pid_in_flatpak(getpid()));
+        EXPECT_EQ(vela_peer_sandbox(pair[0], getpid()), VELA_SANDBOX_NONE);
     }
+    // Outside our pid namespace, or no pid: never trusted.
+    EXPECT_EQ(vela_peer_sandbox(pair[0], 0), VELA_SANDBOX_UNKNOWN);
+    EXPECT_EQ(vela_peer_sandbox(pair[0], -1), VELA_SANDBOX_UNKNOWN);
+    close(pair[0]);
+    close(pair[1]);
+}
+
+TEST(SecurityPolicy, PeerGoneBeforeInspectionIsUnknown)
+{
+    // A peer that connects, sends and exits before it is inspected.
+    int pair[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair), 0);
+    pid_t child = fork();
+    ASSERT_GE(child, 0);
+    if (child == 0) {
+        close(pair[0]);
+        int connected[2];
+        // A fresh connection made by the child, handed back to the parent.
+        if (socketpair(AF_UNIX, SOCK_STREAM, 0, connected) != 0) {
+            _exit(1);
+        }
+        char byte = 0;
+        struct iovec iov = { &byte, 1 };
+        char control[CMSG_SPACE(sizeof(int))] = {};
+        struct msghdr message = {};
+        message.msg_iov = &iov;
+        message.msg_iovlen = 1;
+        message.msg_control = control;
+        message.msg_controllen = sizeof(control);
+        struct cmsghdr *header = CMSG_FIRSTHDR(&message);
+        header->cmsg_level = SOL_SOCKET;
+        header->cmsg_type = SCM_RIGHTS;
+        header->cmsg_len = CMSG_LEN(sizeof(int));
+        memcpy(CMSG_DATA(header), &connected[0], sizeof(int));
+        _exit(sendmsg(pair[1], &message, 0) == 1 ? 0 : 1);
+    }
+    close(pair[1]);
+    char byte = 0;
+    struct iovec iov = { &byte, 1 };
+    char control[CMSG_SPACE(sizeof(int))] = {};
+    struct msghdr message = {};
+    message.msg_iov = &iov;
+    message.msg_iovlen = 1;
+    message.msg_control = control;
+    message.msg_controllen = sizeof(control);
+    ASSERT_EQ(recvmsg(pair[0], &message, 0), 1);
+    int socket_fd = -1;
+    memcpy(&socket_fd, CMSG_DATA(CMSG_FIRSTHDR(&message)), sizeof(int));
+    int status = 0;
+    ASSERT_EQ(waitpid(child, &status, 0), child);
+    // Its credentials outlive it; its process does not.
+    struct ucred peer = {};
+    socklen_t length = sizeof(peer);
+    ASSERT_EQ(getsockopt(socket_fd, SOL_SOCKET, SO_PEERCRED, &peer, &length), 0);
+    EXPECT_EQ(peer.pid, child);
+    EXPECT_EQ(vela_peer_sandbox(socket_fd, peer.pid), VELA_SANDBOX_UNKNOWN);
+    close(socket_fd);
+    close(pair[0]);
 }
 
 TEST(SecurityPolicy, ShmLayout)

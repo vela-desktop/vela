@@ -3,10 +3,17 @@
 
 #include "security_policy.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <sys/syscall.h>
 #include <unistd.h>
+
+#ifndef SO_PEERPIDFD
+#define SO_PEERPIDFD 77 // Linux 6.5
+#endif
 
 // Keep in sync with docs/security-model.md, "Privileged protocols".
 static const char *const privileged[] = {
@@ -59,23 +66,54 @@ bool vela_command_test_only(const char *line)
     return line && (word(line, "test-output") || word(line, "test-power") || word(line, "test-shell"));
 }
 
-bool vela_pid_in_flatpak(pid_t pid)
+// The peer's process as a pidfd, taken by the kernel when it connected: -1
+// on kernels without SO_PEERPIDFD (before 6.5), -2 on any other failure.
+static int peer_pidfd(int socket_fd)
+{
+    int pidfd = -1;
+    socklen_t length = sizeof(pidfd);
+    if (getsockopt(socket_fd, SOL_SOCKET, SO_PEERPIDFD, &pidfd, &length) == 0 && length == sizeof(pidfd)
+        && pidfd >= 0) {
+        return pidfd;
+    }
+    return errno == ENOPROTOOPT || errno == EINVAL ? -1 : -2;
+}
+
+enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
 {
     if (pid <= 0) {
-        return false;
+        return VELA_SANDBOX_UNKNOWN; // not in our pid namespace
     }
+    int pidfd = peer_pidfd(socket_fd);
+    if (pidfd == -2) {
+        return VELA_SANDBOX_UNKNOWN;
+    }
+    enum vela_sandbox result = VELA_SANDBOX_UNKNOWN;
     char path[64];
-    int written = snprintf(path, sizeof(path), "/proc/%ld/root/.flatpak-info", (long)pid);
-    if (written < 0 || (size_t)written >= sizeof(path)) {
-        return false;
+    int written = snprintf(path, sizeof(path), "/proc/%ld/root", (long)pid);
+    int root = written > 0 && (size_t)written < sizeof(path)
+        ? open(path, O_PATH | O_DIRECTORY | O_CLOEXEC) : -1;
+    if (root >= 0) {
+        // Opened, not stat()ed: never follow a symlink planted in the sandbox.
+        int marker = openat(root, ".flatpak-info", O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NOCTTY | O_NONBLOCK);
+        if (marker >= 0) {
+            result = VELA_SANDBOX_FLATPAK;
+            close(marker);
+        } else if (errno == ENOENT) {
+            result = VELA_SANDBOX_NONE; // positively absent
+        }
+        close(root);
     }
-    // Opened, not stat()ed: never follow a symlink planted in the sandbox.
-    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NOCTTY | O_NONBLOCK);
-    if (fd < 0) {
-        return false;
+    // Still alive after the inspection: the pid was the peer's all along, not
+    // a number reused after the peer exited. Without a pidfd (older kernels)
+    // a peer that exited has no /proc root left to open: unknown already.
+    if (pidfd >= 0) {
+        if (syscall(SYS_pidfd_send_signal, pidfd, 0, NULL, 0) != 0) {
+            result = VELA_SANDBOX_UNKNOWN;
+        }
+        close(pidfd);
     }
-    close(fd);
-    return true;
+    return result;
 }
 
 bool vela_shm_layout_valid(int width, int height, size_t stride, uint32_t bpp)

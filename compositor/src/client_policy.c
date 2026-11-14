@@ -57,11 +57,17 @@ bool vela_client_sandboxed(struct vela_server *server, const struct wl_client *c
     pid_t pid = 0;
     wl_client_get_credentials(mutable_client, &pid, NULL, NULL);
     struct client_trust *trust = VELA_NEW(struct client_trust);
-    trust->sandboxed = vela_pid_in_flatpak(pid);
+    // Unknown counts as sandboxed: a client that can't be inspected (gone,
+    // non-dumpable, another pid namespace) doesn't get privileged protocols.
+    enum vela_sandbox sandbox = vela_peer_sandbox(wl_client_get_fd(mutable_client), pid);
+    trust->sandboxed = sandbox != VELA_SANDBOX_NONE;
     trust->destroy.notify = handle_client_destroy;
     wl_client_add_destroy_listener(mutable_client, &trust->destroy);
-    if (trust->sandboxed) {
+    if (sandbox == VELA_SANDBOX_FLATPAK) {
         wlr_log(WLR_INFO, "Client (process %d) is a Flatpak app without a security context: "
+            "privileged protocols withheld", (int)pid);
+    } else if (sandbox == VELA_SANDBOX_UNKNOWN) {
+        wlr_log(WLR_INFO, "Client (process %d) can't be verified as unsandboxed: "
             "privileged protocols withheld", (int)pid);
     }
     return trust->sandboxed;
