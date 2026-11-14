@@ -94,6 +94,7 @@ class Preferences : public QObject {
     Q_PROPERTY(bool secretBackendConfigured READ secretBackendConfigured NOTIFY secretBackendChanged)
     Q_PROPERTY(bool secretBackendInstalled READ secretBackendInstalled NOTIFY secretBackendChanged)
     Q_PROPERTY(QString credentialStatus READ credentialStatus NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString activeSecretBackend READ activeSecretBackend CONSTANT)
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
@@ -230,6 +231,7 @@ public:
     bool secretBackendConfigured() const { return m_secretBackendConfigured; }
     bool secretBackendInstalled() const;
     QString credentialStatus() const;
+    QString activeSecretBackend() const;
     void setSecretBackend(const QString& backend);
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
