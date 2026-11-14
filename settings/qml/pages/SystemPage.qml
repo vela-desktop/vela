@@ -40,11 +40,20 @@ Page {
             objectName: "temporaryCredentials"
             icon: "dialog-password"
             title: qsTr("Password manager (temporary)")
-            description: qsTr("Choose the existing password store for apps. This does not transfer passwords. Changes take effect after signing out and back in.")
+            description: !Prefs.secretBackendConfigured
+                ? qsTr("Choose your existing password manager. KWallet is used only as a fallback until you choose. No passwords are transferred; sign out and back in to apply.")
+                : !Prefs.secretBackendInstalled
+                ? qsTr("The selected password manager is not installed. Install it or choose the other provider, then sign out and back in.")
+                : Prefs.credentialStatus === "conflict"
+                ? qsTr("Another password manager owns Secret Service. Your choice is not active; check the Vela session log. No passwords were migrated.")
+                : Prefs.credentialStatus === "missing" || Prefs.credentialStatus === "unverified" || Prefs.credentialStatus === "failed"
+                ? qsTr("The selected password manager could not be verified or started. Check the session log. Changing the choice requires a new login.")
+                : qsTr("Use this existing password store for apps. No passwords are transferred. Changes take effect after signing out and back in.")
             trailing: Choice {
                 objectName: "secretBackend"
                 model: [qsTr("KWallet (KDE)"), qsTr("GNOME Keyring")]
-                currentIndex: Prefs.secretBackend === "gnome" ? 1 : 0
+                currentIndex: Prefs.secretBackendConfigured ? (Prefs.secretBackend === "gnome" ? 1 : 0) : -1
+                Accessible.name: qsTr("Select password manager")
                 onChosen: index => Prefs.secretBackend = ["kwallet", "gnome"][index]
             }
         }
