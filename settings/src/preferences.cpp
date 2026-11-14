@@ -897,11 +897,19 @@ void Preferences::setLanguage(const QString& language)
     }
 }
 
-bool Preferences::secretBackendInstalled() const
+bool Preferences::isSecretBackendInstalled(const QString& backend) const
 {
-    const QString binary = m_secretBackend == QLatin1String("gnome")
+    if (backend != QLatin1String("gnome") && backend != QLatin1String("kwallet")) {
+        return false;
+    }
+    const QString binary = backend == QLatin1String("gnome")
         ? QStringLiteral("/usr/bin/gnome-keyring-daemon") : QStringLiteral("/usr/bin/kwalletd6");
     return QFileInfo(binary).isExecutable();
+}
+
+bool Preferences::secretBackendInstalled() const
+{
+    return isSecretBackendInstalled(m_secretBackend);
 }
 
 QString Preferences::activeSecretBackend() const
