@@ -174,10 +174,13 @@ class PrivateBusCleanup(unittest.TestCase):
 
     @staticmethod
     def identity(pid):
-        """The pid with its start time: a reused pid is another process."""
+        """Return a live process identity; a zombie has already released its fds."""
         try:
             with open(f"/proc/{pid}/stat") as stat:
-                return pid, stat.read().rsplit(")", 1)[1].split()[19]
+                fields = stat.read().rsplit(")", 1)[1].split()
+            if fields[0] in ("Z", "X", "x"):
+                return None
+            return pid, fields[19]  # starttime; distinguish a reused PID
         except FileNotFoundError:
             return None
 
@@ -210,6 +213,28 @@ class PrivateBusCleanup(unittest.TestCase):
 
     def test_activated_service_ignoring_sigterm_is_killed(self):
         self.check_activated_child_is_stopped(ignore_term=True)
+
+    def test_zombie_only_group_is_not_live(self):
+        # A child that exits but hasn't been waited for is a zombie on Linux.
+        # PID 1 can leave activated services in this state indefinitely in CI.
+        from harness import _group_has_live_members, stop_process_group
+
+        process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+        self.addCleanup(process.wait)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with open(f"/proc/{process.pid}/stat") as stat:
+                state = stat.read().rsplit(")", 1)[1].split()[0]
+            if state == "Z":
+                break
+            time.sleep(0.02)
+        else:
+            self.fail("test child did not become a zombie")
+        self.assertIsNone(self.identity(process.pid))
+        self.assertFalse(_group_has_live_members(process.pid))
+        started = time.monotonic()
+        stop_process_group(process, timeout=0.25)
+        self.assertLess(time.monotonic() - started, 1.5)
 
     def test_default_bus_activates_nothing(self):
         with PrivateBus() as bus:
