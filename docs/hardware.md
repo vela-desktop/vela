@@ -47,7 +47,7 @@ candidate revision checks and release rules.
 | NVIDIA GeForce RTX 4070 Laptop GPU + proprietary driver, Arch/CachyOS | The NVIDIA GPU CI runner: the same GPU suites for relevant GPU changes and releases; driver-specific synchronization handling; manual tester reports | The runner's suites are headless, so DRM/KMS, screen sharing and suspend/resume rely on manual reports; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
 | Intel Alder Lake-UP3 UHD Graphics (8086:46b3) + Mesa/ANV 26.2.5, CachyOS | Hardware Vulkan 1.4 and required DRM/dma-buf extensions confirmed; experimental manual Intel GPU CI workflow added | Full-suite baseline not yet established; timing-sensitive synchronization on a shared GPU engine and physical KMS need further testing |
 | NVK | Listed as an intended Vulkan driver option | Compatibility is not demonstrated by the AMD test runs |
-| VMs and virtio/Venus | Useful experimental debugging environment | Vulkan version, modifiers, dmabuf import and compositor behavior depend on the VM stack |
+| VMs and virtio/Venus | One Fedora 44 KDE guest verified with [Vulkan output allocation and Zink clients](virtual-machines.md), without GPU passthrough: nested and DRM/KMS login, Vulkan/X11 windows, capture and 125% scale | Other stacks, full GPU suites, lock/unlock and logout remain unverified; a client stall and KDE autostart observation are recorded in the VM guide |
 | Hybrid and multi-GPU systems | Supported configurations are an architectural goal | Correct operation across GPU boundaries needs dedicated tests |
 
 These are **coverage descriptions**, not a ranking of hardware or a statement that every item was individually tested in this documentation change.

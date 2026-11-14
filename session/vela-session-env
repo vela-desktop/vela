@@ -34,8 +34,12 @@ start)
         eval "value=\${$var-}"
         [ -n "$value" ] && SET="$SET $var"
     done
+    # D-Bus cannot unset activation variables. Only systemd may receive this
+    # session-local Mesa override; systemd-managed D-Bus services inherit it.
+    SYSTEMD_SET="$SET"
+    [ -n "${MESA_LOADER_DRIVER_OVERRIDE:-}" ] && SYSTEMD_SET="$SET MESA_LOADER_DRIVER_OVERRIDE"
     # shellcheck disable=SC2086
-    systemctl --user import-environment $SET
+    systemctl --user import-environment $SYSTEMD_SET
     if command -v dbus-update-activation-environment > /dev/null; then
         # shellcheck disable=SC2086
         dbus-update-activation-environment $SET
@@ -54,7 +58,7 @@ stop)
     fi
     systemctl --user -q unmask --runtime "$RESTORE" 2> /dev/null
     # shellcheck disable=SC2086
-    systemctl --user unset-environment $VARS
+    systemctl --user unset-environment $VARS MESA_LOADER_DRIVER_OVERRIDE
     ;;
 *)
     echo "Usage: vela-session-env start|stop" >&2
