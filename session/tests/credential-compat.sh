@@ -54,31 +54,50 @@ status="$XDG_RUNTIME_DIR/vela-credential-compat.status"
 
 MOCK_OWNER=none
 MOCK_NEXT_OWNER=none
+MOCK_NATIVE_OWNER=none
+MOCK_NEXT_NATIVE_OWNER=none
 MOCK_FAIL=0
 busctl()
 {
     case "$*" in
+        *org.kde.kwalletd6) owner=$MOCK_NATIVE_OWNER ;;
+        *) owner=$MOCK_OWNER ;;
+    esac
+    case "$*" in
         *NameHasOwner*)
-            case "$MOCK_OWNER" in
+            case "$owner" in
                 none) printf '%s\n' 'b false' ;;
                 malformed) printf '%s\n' 'not a boolean' ;;
                 busdown) return 1 ;;
                 *) printf '%s\n' 'b true' ;;
             esac ;;
         *GetConnectionUnixProcessID*)
-            case "$MOCK_OWNER" in
+            case "$owner" in
                 malformed_pid) printf '%s\n' 'not a typed PID' ;;
-                *) printf '%s\n' 'u 1234' ;;
+                *) case "$*" in
+                    *org.kde.kwalletd6) printf '%s\n' 'u 5678' ;;
+                    *) printf '%s\n' 'u 1234' ;;
+                esac ;;
             esac ;;
     esac
 }
 readlink()
 {
-    case "$MOCK_OWNER" in
-        gnome) printf '%s\n' /usr/bin/gnome-keyring-daemon ;;
-        kwallet) printf '%s\n' /usr/bin/kwalletd6 ;;
-        other) printf '%s\n' /usr/bin/other-keyring ;;
-        *) return 1 ;;
+    case "$1" in
+        /proc/5678/exe)
+            case "$MOCK_NATIVE_OWNER" in
+                kwallet) printf '%s\n' /usr/bin/kwalletd6 ;;
+                other) printf '%s\n' /usr/bin/other-keyring ;;
+                *) return 1 ;;
+            esac ;;
+        *)
+            case "$MOCK_OWNER" in
+                gnome) printf '%s\n' /usr/bin/gnome-keyring-daemon ;;
+                kwallet) printf '%s\n' /usr/bin/kwalletd6 ;;
+                ksecretd) printf '%s\n' /usr/bin/ksecretd ;;
+                other) printf '%s\n' /usr/bin/other-keyring ;;
+                *) return 1 ;;
+            esac ;;
     esac
 }
 systemctl()
@@ -86,6 +105,7 @@ systemctl()
     printf '%s\n' "$*" >> "$calls"
     [ "$MOCK_FAIL" -eq 0 ] || return 1
     MOCK_OWNER=$MOCK_NEXT_OWNER
+    MOCK_NATIVE_OWNER=$MOCK_NEXT_NATIVE_OWNER
 }
 sleep() { :; }
 
@@ -102,6 +122,29 @@ fi
 [ "$(cat "$status")" = conflict ]
 [ ! -s "$calls" ] # Never start a competing secrets service.
 
+# Recent KWallet splits native org.kde.kwalletd6 from ksecretd/Secret Service.
+# Treat native-only availability as limited, not a broken wallet or full success.
+MOCK_OWNER=ksecretd
+vela_credential_ensure kwallet "$tmp/does-not-exist" kwallet.service
+[ "$(cat "$status")" = ok ]
+[ ! -s "$calls" ]
+
+MOCK_OWNER=none
+MOCK_NATIVE_OWNER=kwallet
+if vela_credential_ensure kwallet "$binary" kwallet.service; then
+    echo 'native-only KWallet reported fully functional' >&2; exit 1
+fi
+[ "$(cat "$status")" = limited ]
+[ ! -s "$calls" ]
+
+MOCK_NATIVE_OWNER=other
+if vela_credential_ensure kwallet "$binary" kwallet.service; then
+    echo 'foreign native API owner accepted' >&2; exit 1
+fi
+[ "$(cat "$status")" = conflict ]
+[ ! -s "$calls" ]
+
+MOCK_NATIVE_OWNER=none
 MOCK_OWNER=none
 if vela_credential_ensure gnome "$tmp/missing" gnome.service; then
     echo 'missing backend accepted' >&2; exit 1
@@ -126,6 +169,20 @@ grep -q -- '--no-block stop gnome.service' "$calls"
 
 MOCK_OWNER=none
 MOCK_NEXT_OWNER=none
+MOCK_NEXT_NATIVE_OWNER=kwallet
+: > "$calls"
+if vela_credential_ensure kwallet "$binary" kwallet.service; then
+    echo 'new native-only daemon reported full Secret Service compatibility' >&2; exit 1
+fi
+[ "$(cat "$status")" = limited ]
+[ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
+if grep -q 'stop kwallet.service' "$calls"; then
+    echo 'native KWallet daemon was incorrectly stopped' >&2; exit 1
+fi
+
+MOCK_OWNER=none
+MOCK_NEXT_OWNER=none
+MOCK_NEXT_NATIVE_OWNER=none
 if vela_credential_ensure kwallet "$binary" kwallet.service; then
     echo 'no owner accepted' >&2; exit 1
 fi
