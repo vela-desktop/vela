@@ -25,6 +25,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from xml.sax.saxutils import escape as xml_escape
 import zlib
 
 # Opt-in only: keep the functional test harness standard-library-only.
@@ -63,6 +64,154 @@ def tool(name):
 
 class TimeoutError(AssertionError):
     pass
+
+
+# What would connect a process to the session the tests run in (the
+# developer's own Vela, or any desktop), rather than to the one under test.
+HOST_DISPLAY_VARIABLES = ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")
+
+
+def environment_without_display():
+    """os.environ without the host session's display."""
+    return {key: value for key, value in os.environ.items() if key not in HOST_DISPLAY_VARIABLES}
+
+
+def _group_has_live_members(group):
+    """Linux /proc: zombies still have PIDs and a process group, but no fds.
+
+    Services orphaned by a D-Bus daemon may stay zombies until PID 1 reaps
+    them (which some CI containers never do). killpg(group, 0) reports such
+    a zombie-only group as present even though nothing is running.
+    """
+    with os.scandir("/proc") as processes:
+        for entry in processes:
+            if not entry.name.isdecimal():
+                continue
+            try:
+                with open(f"/proc/{entry.name}/stat") as stat:
+                    fields = stat.read().rsplit(")", 1)[1].split()
+                # Fields after (comm): state, ppid, process group, ...
+                if int(fields[2]) == group and fields[0] not in ("Z", "X", "x"):
+                    return True
+            except (OSError, ValueError, IndexError):
+                # The process can exit while /proc is being inspected.
+                continue
+    return False
+
+
+def stop_process_group(process, timeout=3):
+    """Stop a start_new_session process and its group, TERM then KILL.
+
+    The group can outlive its leader. Wait for all *live* group members,
+    not for orphaned zombies whose resources are already released.
+    """
+    group = process.pid
+
+    def signal_group(number):
+        try:
+            os.killpg(group, number)
+            return True
+        except ProcessLookupError:
+            return False
+
+    if not signal_group(signal.SIGTERM):
+        process.wait()
+        return
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        process.poll()  # Reap the leader if it has exited.
+        if not _group_has_live_members(group):
+            process.wait()
+            return
+        time.sleep(0.02)
+    signal_group(signal.SIGKILL)
+    process.wait()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _group_has_live_members(group):
+            return
+        time.sleep(0.02)
+    if _group_has_live_members(group):
+        raise RuntimeError(f"process group {group} still has live members after SIGKILL")
+
+
+_BUS_CONFIG = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:dir={directory}</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+{services}</busconfig>
+"""
+
+
+class PrivateBus:
+    """A private D-Bus bus for one test, gone with everything it started.
+
+    with PrivateBus() as bus:
+        Session(env={"DBUS_SESSION_BUS_ADDRESS": bus.address})
+
+    By default it activates nothing: no service directories, so a name
+    nobody owns is an immediate error rather than the host's service (the
+    session bus would start the desktop portal or the secret service, with
+    the bus's environment). `services` is a directory of .service files the
+    bus may activate. Activated services get no display of the host session
+    and a private XDG_RUNTIME_DIR, and run in the bus's process group, which
+    stop() terminates whole."""
+
+    def __init__(self, services=None):
+        self.services = services
+        self.process = None
+        self.directory = None
+        self.address = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, kind, value, traceback):
+        self.stop()
+        return False
+
+    def start(self):
+        try:
+            self._start()
+        except BaseException:
+            self.stop()
+            raise
+        return self.address
+
+    def _start(self):
+        self.directory = tempfile.mkdtemp(prefix="vela-bus-")
+        runtime = os.path.join(self.directory, "runtime")
+        os.mkdir(runtime, 0o700)
+        services = f"  <servicedir>{xml_escape(self.services)}</servicedir>\n" if self.services else ""
+        config = os.path.join(self.directory, "bus.conf")
+        with open(config, "w") as file:
+            file.write(_BUS_CONFIG.format(directory=xml_escape(self.directory), services=services))
+        env = {key: value for key, value in environment_without_display().items() if not key.startswith("DBUS_")}
+        env["XDG_RUNTIME_DIR"] = runtime
+        self.env = env
+        self.process = subprocess.Popen(["dbus-daemon", f"--config-file={config}", "--nofork", "--nopidfile",
+                                         "--print-address=1"], env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.DEVNULL, text=True, start_new_session=True)
+        self.address = self.process.stdout.readline().strip()
+        if not self.address:
+            raise AssertionError("the private D-Bus bus failed to start")
+
+    def stop(self):
+        if self.process:
+            stop_process_group(self.process)
+            self.process.stdout.close()
+            self.process = None
+        if self.directory:
+            shutil.rmtree(self.directory, ignore_errors=True)
+            self.directory = None
 
 
 class Session:
@@ -120,8 +269,7 @@ class Session:
         """Start the compositor with private persistent paths and a session log."""
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
         os.mkdir(os.path.join(self.directory, "home"))
-        env = {key: value for key, value in os.environ.items()
-               if key not in ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")}
+        env = environment_without_display()
         env.update({
             "VELA_TEST_MARK": "menu",
             "WLR_BACKENDS": "headless",
