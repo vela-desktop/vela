@@ -296,6 +296,10 @@ int main(int argc, char** argv)
     }
     width = sizes[0];
     height = sizes[1];
+    if (dmabuf && (nextAfterMs >= 0 || everyFrame)) {
+        fprintf(stderr, "vela-bigbuffer: --dmabuf cannot be combined with --next-after or --every-frame\n");
+        return 2;
+    }
 
     struct wl_display* display = wl_display_connect(NULL);
     if (!display) die("no Wayland compositor");
