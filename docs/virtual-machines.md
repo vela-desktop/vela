@@ -142,9 +142,12 @@ but a VirGL/EGL shell buffer aborts in Venus's `vn_GetMemoryFdPropertiesKHR`
 abort; OpenGL through **Zink on Venus** also works for the shell and Files.
 Vela therefore defaults `MESA_LOADER_DRIVER_OVERRIDE=zink` for processes it
 launches on Venus, preserving explicit overrides, including empty values.
-The full-session environment hook also passes this selection to systemd/D-Bus
-activation and clears it on exit. Its existing guard leaves another running
-graphical session alone. Physical GPU driver selection is unchanged.
+The full-session environment hook passes this selection to systemd --user,
+including systemd-activated D-Bus services, and unsets it on exit. Direct
+dbus-daemon activation does not receive the override: D-Bus cannot unset
+variables, and leaving Zink there could break subsequent sessions on older
+Mesa. The existing guard leaves another running graphical session alone.
+Physical GPU driver selection is unchanged.
 
 `VELA_DEBUG_DMABUF=1` enables the trace, and `VELA_VULKAN_VALIDATION=1` enables
 validation layers when installed. An unmatched `before` without `after`
