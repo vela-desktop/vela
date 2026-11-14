@@ -79,9 +79,9 @@ class ProvisioningTests(unittest.TestCase):
             last = next(state_iter, last)
             return {"instances": [{"id": 123, **last}]}
 
-        with mock.patch.object(vast_runner, "vast", side_effect=vast_get), \\
-             mock.patch.object(vast_runner, "github", return_value={"status": github_state}), \\
-             mock.patch.object(vast_runner.time, "monotonic", side_effect=clock.monotonic), \\
+        with mock.patch.object(vast_runner, "vast", side_effect=vast_get), \
+             mock.patch.object(vast_runner, "github", return_value={"status": github_state}), \
+             mock.patch.object(vast_runner.time, "monotonic", side_effect=clock.monotonic), \
              mock.patch.object(vast_runner.time, "sleep", side_effect=clock.sleep):
             result = vast_runner.wait_online("vela-desktop", 9, 123)
         return result, clock.now
