@@ -135,6 +135,7 @@ static void allocator_selection(void)
         unsetenv("VELA_ALLOCATOR");
         assert(select_buffer_allocator(&vk, &driver));
         assert(vk.export_buffers == (drivers[i] == VK_DRIVER_ID_MESA_VENUS));
+        assert(vk.venus == (drivers[i] == VK_DRIVER_ID_MESA_VENUS));
         setenv("VELA_ALLOCATOR", "auto", 1);
         assert(select_buffer_allocator(&vk, &driver));
         assert(vk.export_buffers == (drivers[i] == VK_DRIVER_ID_MESA_VENUS));
@@ -146,6 +147,24 @@ static void allocator_selection(void)
         assert(!select_buffer_allocator(&vk, &driver));
     }
     unsetenv("VELA_ALLOCATOR");
+}
+
+static void client_environment(void)
+{
+    struct vela_vulkan vk = { 0 };
+    unsetenv("MESA_LOADER_DRIVER_OVERRIDE");
+    assert(vela_vulkan_configure_clients(&vk));
+    assert(getenv("MESA_LOADER_DRIVER_OVERRIDE") == NULL);
+    vk.venus = true;
+    assert(vela_vulkan_configure_clients(&vk));
+    assert(strcmp(getenv("MESA_LOADER_DRIVER_OVERRIDE"), "zink") == 0);
+    setenv("MESA_LOADER_DRIVER_OVERRIDE", "virgl", 1);
+    assert(vela_vulkan_configure_clients(&vk));
+    assert(strcmp(getenv("MESA_LOADER_DRIVER_OVERRIDE"), "virgl") == 0);
+    setenv("MESA_LOADER_DRIVER_OVERRIDE", "", 1);
+    assert(vela_vulkan_configure_clients(&vk));
+    assert(strcmp(getenv("MESA_LOADER_DRIVER_OVERRIDE"), "") == 0);
+    unsetenv("MESA_LOADER_DRIVER_OVERRIDE");
 }
 
 static void export_capabilities(void)
@@ -174,5 +193,6 @@ int main(void)
     failed_device_creation(VK_ERROR_INITIALIZATION_FAILED, false);
     allocator_selection();
     export_capabilities();
+    client_environment();
     return 0;
 }

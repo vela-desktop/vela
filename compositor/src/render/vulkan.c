@@ -247,13 +247,14 @@ static bool supports_calibrated_timestamps(struct vela_vulkan *vk)
 
 static bool select_buffer_allocator(struct vela_vulkan *vk, const VkPhysicalDeviceDriverProperties *driver)
 {
+    vk->venus = driver->driverID == VK_DRIVER_ID_MESA_VENUS;
     const char *allocator = getenv("VELA_ALLOCATOR");
     if (allocator && strcmp(allocator, "auto") && strcmp(allocator, "gbm") && strcmp(allocator, "vulkan")) {
         wlr_log(WLR_ERROR, "Invalid VELA_ALLOCATOR=%s (expected auto, gbm or vulkan)", allocator);
         return false;
     }
     vk->export_buffers = allocator && strcmp(allocator, "auto")
-        ? strcmp(allocator, "vulkan") == 0 : driver->driverID == VK_DRIVER_ID_MESA_VENUS;
+        ? strcmp(allocator, "vulkan") == 0 : vk->venus;
     wlr_log(WLR_INFO, "Output buffer allocator: %s (Vulkan driver %s)",
         vk->export_buffers ? "Vulkan DMA-BUF export" : "GBM", driver->driverName);
     return true;
@@ -500,6 +501,21 @@ bool vela_vulkan_can_export_dmabuf(const struct vela_vulkan *vk, VkFormat format
 bool vela_vulkan_exports_buffers(const struct vela_vulkan *vk)
 {
     return vk->export_buffers;
+}
+
+bool vela_vulkan_configure_clients(const struct vela_vulkan *vk)
+{
+    // VirGL GBM resources are not necessarily registered in the host's Venus
+    // context. Importing one can abort *inside* vkGetMemoryFdPropertiesKHR.
+    // Zink uses Venus for OpenGL allocation as well as drawing. Keep explicit
+    // overrides (even empty ones) available for controlled driver comparisons.
+    if (!vk->venus || getenv("MESA_LOADER_DRIVER_OVERRIDE")) return true;
+    if (setenv("MESA_LOADER_DRIVER_OVERRIDE", "zink", 0) != 0) {
+        wlr_log_errno(WLR_ERROR, "Venus: cannot configure the OpenGL client driver");
+        return false;
+    }
+    wlr_log(WLR_INFO, "Venus: OpenGL clients use Zink on Vulkan (MESA_LOADER_DRIVER_OVERRIDE=zink)");
+    return true;
 }
 
 // A format's modifiers with their properties, in an allocated array.

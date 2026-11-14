@@ -6,9 +6,10 @@ passthrough is not required. A VM exposing only VirGL/OpenGL, QXL or a basic
 framebuffer does not meet Vela's Vulkan requirements. There is no software
 compositor fallback.
 
-This work is an **unverified VM compatibility candidate** until the affected
-guest completes the checks below. CPU tests and compilation do not demonstrate
-that a Venus guest can display Vela.
+Nested startup, shell, Files, a native Vulkan client and output capture have
+been verified on one Fedora 44 KDE guest (see [validation](#verified-guest)).
+Full-session DRM/KMS and the other host/driver combinations still need
+verification. CPU tests and compilation alone do not demonstrate VM support.
 
 ## Configure the virtual GPU
 
@@ -26,6 +27,43 @@ These are options to incorporate into the VM's configuration, not a complete
 VM launch command. Mesa's example also uses a memfd memory backend. With
 libvirt/virt-manager, check the resulting QEMU configuration: selecting Virtio
 video and enabling 3D acceleration alone does not establish Venus support.
+On libvirt 12.9 / QEMU 11.1, the tested setup uses shared memfd RAM, Virtio
+video with `accel3d='yes'` and `blob='on'`, and an `egl-headless` display
+paired with SPICE. Add Venus and host memory to the **existing** video device
+using a stable user alias and
+[QEMU property overrides](https://libvirt.org/drvqemu.html#overriding-properties-of-qemu-devices):
+
+```xml
+<!-- Add xmlns:qemu='http://libvirt.org/schemas/domain/qemu/1.0' to <domain>. -->
+<memoryBacking>
+  <source type='memfd'/>
+  <access mode='shared'/>
+</memoryBacking>
+<!-- In <devices>, alongside the existing SPICE display: -->
+<graphics type='egl-headless'>
+  <gl rendernode='/dev/dri/renderD128'/>
+</graphics>
+<video>
+  <model type='virtio' device='virtio-vga-gl' heads='1' primary='yes' blob='on'>
+    <acceleration accel3d='yes'/>
+  </model>
+  <alias name='ua-venus-video'/>
+</video>
+<!-- Under <domain>, outside <devices>: -->
+<qemu:override>
+  <qemu:device alias='ua-venus-video'>
+    <qemu:frontend>
+      <qemu:property name='venus' type='bool' value='true'/>
+      <qemu:property name='hostmem' type='unsigned' value='4294967296'/>
+    </qemu:frontend>
+  </qemu:device>
+</qemu:override>
+```
+
+These are XML fragments to merge into the existing definition, preserving its
+disk, network and PCI addresses. Choose the host's actual render node. Save a
+copy of the original XML, validate the result with `virt-xml-validate`, and
+fully shut down/start the guest to apply the video-device changes.
 Expose the host CPU (`-cpu host` / libvirt `host-passthrough`); Vela's normal
 packages require x86-64-v3. CPU host-passthrough does not pass through the GPU.
 
@@ -93,6 +131,16 @@ that support **both export and import**. The dedicated GBM cursor optimization
 is not installed with the Vulkan allocator, to avoid a separate GBM import.
 Client DMA-BUF imports still use the normal renderer and need guest testing.
 
+On the tested guest, compositor-owned Vulkan buffers import successfully,
+but a VirGL/EGL shell buffer aborts in Venus's `vn_GetMemoryFdPropertiesKHR`
+(`vn_call_vkGetMemoryResourcePropertiesMESA`). Qt's Vulkan backend avoids that
+abort; OpenGL through **Zink on Venus** also works for the shell and Files.
+Vela therefore defaults `MESA_LOADER_DRIVER_OVERRIDE=zink` for processes it
+launches on Venus, preserving explicit overrides, including empty values.
+The full-session environment hook also passes this selection to systemd/D-Bus
+activation and clears it on exit. Its existing guard leaves another running
+graphical session alone. Physical GPU driver selection is unchanged.
+
 `VELA_DEBUG_DMABUF=1` enables the trace, and `VELA_VULKAN_VALIDATION=1` enables
 validation layers when installed. An unmatched `before` without `after`
 locates an aborting call; it does not establish its cause. Compare one change
@@ -107,7 +155,9 @@ device loss. It checks multi-plane layouts, FD duplication and closure,
 buffer locks, unsupported export formats and invalid metadata. The
 `compositor.vulkan-device-init` test covers device initialization failures,
 allocator selection for Venus and physical drivers, and import/export feature
-requirements.
+requirements, plus the Venus client-driver default and explicit overrides.
+The CPU `scripts/tests/test_session_environment.py` tests activation propagation,
+cleanup and the other-desktop guard.
 
 The functional suite's `DmabufDiagnostics` tests render and capture an output
 using the forced Vulkan allocator, and check that tracing stays opt-in:
@@ -122,3 +172,23 @@ without one. They need to pass on GPU runners as well as in the target guest.
 In the VM, also verify nested and full-session startup, shell and client
 windows (including EGL and Vulkan clients), resizing, cursor movement,
 screenshots, lock/unlock and logout. Record failures and untested cases.
+
+## Verified guest
+
+On 2026-11-14, the Fedora 44 KDE guest ran kernel `7.3.3-200.fc44.x86_64`,
+Mesa/Venus `26.2.6`, Vulkan device API `1.4.334`, Qt `6.11.2`, and wlroots
+`0.20.2`. The host used QEMU `11.1.3`, libvirt `12.9.0`, virglrenderer
+`1.3.0`, kernel `7.3.3-1-cachyos`, and a Radeon RX 9070 XT / RADV `26.2.6`.
+The VM used the shared GPU, without PCI GPU passthrough.
+
+- Passed: Venus discovery, nested Vela shell, Files with Zink, native Wayland
+  `vkcube` selecting Venus, window activation, and Vela's own output capture.
+- Reproduced: the default VirGL/EGL shell buffer crashes the compositor inside
+  Venus; the Vulkan output allocator alone does not resolve client imports.
+- Also passed: the two `DmabufDiagnostics` GPU tests on the physical host with
+  Vulkan validation enabled.
+- Pending: full-session DRM/KMS, Xwayland, resize/scale, lock/unlock, logout,
+  and the full GPU functional/sharpness suites inside the guest.
+
+This is a recorded configuration and smoke-test result, not a compatibility
+guarantee for every virtio/Venus stack.

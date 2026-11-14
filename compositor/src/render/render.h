@@ -66,6 +66,7 @@ struct vela_vulkan {
     // with the kernel, §7.3).
     bool sync_file;
     bool export_buffers; // Venus: allocate with Vulkan, then export to the output
+    bool venus;
 
     PFN_vkGetMemoryFdPropertiesKHR get_memory_fd_properties;
     PFN_vkGetSemaphoreFdKHR get_semaphore_fd;

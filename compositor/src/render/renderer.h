@@ -56,6 +56,9 @@ void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation);
 // syncobj timelines need it.
 int vela_vulkan_render_fd(const struct vela_vulkan *vk);
 bool vela_vulkan_exports_buffers(const struct vela_vulkan *vk);
+// Venus clients must allocate on the Vulkan device too: OpenGL through Zink.
+// Configure the environment inherited by children, preserving user overrides.
+bool vela_vulkan_configure_clients(const struct vela_vulkan *vk);
 
 // Vulkan-owned DMA-BUFs avoid importing virgl GBM resources into Venus.
 // Destroy before the Vulkan device, with wlr_allocator_destroy().

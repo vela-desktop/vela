@@ -392,6 +392,7 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     }
 
     setenv("WAYLAND_DISPLAY", socket, 1);
+    if (!vela_vulkan_configure_clients(server->vulkan)) return false;
     // Only in the real session (from SDDM or a console): nested or headless,
     // Vela stays a guest of the environment it finds.
     if (server->session) {

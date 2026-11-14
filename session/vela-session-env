@@ -10,7 +10,7 @@
 # graphical session is already active (Plasma on another console, while trying
 # Vela from a VT), nothing is touched, so as not to break it.
 
-VARS="WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP KDE_SESSION_VERSION QT_WAYLAND_RECONNECT XDG_SESSION_TYPE XDG_SESSION_DESKTOP QT_QPA_PLATFORMTHEME XDG_MENU_PREFIX"
+VARS="WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP KDE_SESSION_VERSION QT_WAYLAND_RECONNECT XDG_SESSION_TYPE XDG_SESSION_DESKTOP QT_QPA_PLATFORMTHEME XDG_MENU_PREFIX MESA_LOADER_DRIVER_OVERRIDE"
 STATE="${XDG_RUNTIME_DIR:-/tmp}/vela-session-${WAYLAND_DISPLAY:-none}"
 # Vela also declares itself KDE (for the keyring), but restoring the apps of
 # the last Plasma session is ksmserver's job, which isn't here: its autostart
@@ -55,6 +55,11 @@ stop)
     systemctl --user -q unmask --runtime "$RESTORE" 2> /dev/null
     # shellcheck disable=SC2086
     systemctl --user unset-environment $VARS
+    # D-Bus has no unset operation. An empty Mesa override restores automatic
+    # driver selection for a later desktop instead of retaining Vela's Zink.
+    if command -v dbus-update-activation-environment > /dev/null; then
+        dbus-update-activation-environment MESA_LOADER_DRIVER_OVERRIDE=
+    fi
     ;;
 *)
     echo "Usage: vela-session-env start|stop" >&2
