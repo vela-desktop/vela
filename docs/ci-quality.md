@@ -154,16 +154,28 @@ ephemeral Arch Linux container. The instance and runner registration
 are destroyed in the cleanup job, including when the GPU job fails.
 
 The `gpu` input optionally selects a supported RTX model; when left
-empty, the script selects the cheapest suitable offer under the configured
-price cap (currently $0.12/hour). Offers must meet the script's
-CPU, RAM, disk, GPU VRAM, reliability and NVIDIA driver requirements.
-The actual model and driver can vary between runs. The GPU's proprietary
+empty, the script ranks fitting offers by hourly price, effective CPU
+capacity, reported host reliability, and NVIDIA driver version, subject to
+the configured price cap (currently $0.12/hour). It is a cost/performance
+heuristic, not a historical benchmarking service. Offers must meet the
+script's CPU, RAM, disk, GPU VRAM, reliability and driver requirements.
+The actual model and driver can vary between runs. During provisioning,
+an image that cannot start within six minutes is rejected; once the
+instance reports running, the JIT runner must register within 150 seconds.
+Known fatal image-pull errors (such as DNS failures) are rejected earlier,
+and the next eligible rental is tried. The GPU's proprietary
 driver, Vulkan ICD and DRM render nodes are provided by the rental host;
 build and test dependencies come from the
 [NVIDIA CI image](../.github/images/nvidia-ci/Dockerfile). The
 [image publishing workflow](../.github/workflows/nvidia-ci-image.yml)
 must first publish the image matching the selected revision's image tree;
 the rental step verifies its availability before incurring costs.
+
+The NVIDIA test job sizes Ninja parallelism from the offered effective CPU
+allocation, container CPU affinity/quota and available host/cgroup memory,
+reserving memory for the system and capping builds at 16 concurrent jobs.
+Unlike the AMD and Intel self-hosted runners, no persistent compilation
+cache is configured for these one-off rentals.
 
 The test job checks a real NVIDIA DRM render node and Vulkan >= 1.4,
 restricts Vulkan discovery to the NVIDIA ICD, builds the exact checkout,
