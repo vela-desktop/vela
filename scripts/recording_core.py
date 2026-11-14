@@ -245,8 +245,9 @@ class Desktop:
     @staticmethod
     def daemon_environment(address, home, runtime):
         """The private bus daemon passes its environment on to the services
-        it activates: they must not see the real home or the host's buses."""
-        return {**{key: value for key, value in os.environ.items()
+        it activates: they must not see the real home, the host's buses or
+        its display (they would connect to the session recording runs in)."""
+        return {**{key: value for key, value in harness.environment_without_display().items()
                    if not key.startswith("DBUS_") and key not in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME")},
                 **Desktop.private_user(home, runtime),
                 "DBUS_SESSION_BUS_ADDRESS": address, "DBUS_SYSTEM_BUS_ADDRESS": address}
@@ -268,7 +269,9 @@ class Desktop:
             self.bus = subprocess.Popen(
                 ["dbus-daemon", "--session", "--nofork", "--nopidfile", f"--address={listen}", "--print-address=1"],
                 env=self.daemon_environment(listen, self.private_home, self.private_runtime),
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+                # Its own group: what it activates goes with it (__exit__).
+                start_new_session=True)
             address = self.bus.stdout.readline().strip()
             if not address:
                 raise RuntimeError("the private D-Bus session didn't start")
@@ -319,12 +322,7 @@ class Desktop:
                     self.vela.stop(keep_log=kind is not None)
             finally:
                 if self.bus is not None:
-                    self.bus.terminate()
-                    try:
-                        self.bus.wait(timeout=3)
-                    except subprocess.TimeoutExpired:
-                        self.bus.kill()
-                        self.bus.wait()
+                    harness.stop_process_group(self.bus)
                     if self.bus.stdout:
                         self.bus.stdout.close()
         finally:
