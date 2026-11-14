@@ -98,7 +98,10 @@ start)
         # is saved; never write a preference automatically. Only this first
         # session start launches the dialog, not supervised compositor restarts.
         (
-            prompt_token=$(cat "$STATE") || exit 0
+            # Capture the identity of the login that scheduled this child.
+            # Reading STATE here races a subsequent logout/login if the child
+            # is delayed before its first instruction.
+            prompt_token=$session_token
             attempt=0
             # A fixed sleep is fragile on slow machines: wait until Settings
             # can open or forward to the running instance. Never loop forever.
