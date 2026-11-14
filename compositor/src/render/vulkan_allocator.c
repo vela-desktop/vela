@@ -84,7 +84,7 @@ static struct wlr_buffer *export_buffer(struct vulkan_allocator *alloc, int widt
     struct vela_vulkan *vk = alloc->vk;
     VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     // Match the importing renderer's usage, including its optional blur read.
-    if (vela_vulkan_supports_dmabuf(vk, format->srgb, modifier, usage | VK_IMAGE_USAGE_SAMPLED_BIT)) {
+    if (vela_vulkan_can_export_dmabuf(vk, format->srgb, modifier, usage | VK_IMAGE_USAGE_SAMPLED_BIT)) {
         usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
     }
     if (!vela_vulkan_can_export_dmabuf(vk, format->srgb, modifier, usage)) return NULL;
