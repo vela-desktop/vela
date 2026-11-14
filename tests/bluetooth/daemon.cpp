@@ -190,6 +190,16 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         return writes;
     }
 
+    bool pendingPower(bool on)
+    {
+        bool pending = false;
+        fake->run([&] {
+            const auto& adapter = fake->adapters[hci0];
+            pending = adapter.powerPending && adapter.pendingOn == on;
+        });
+        return pending;
+    }
+
     bool fromDaemon() const { return calledFromDBus() && message().service() == daemonName; }
 
     QStringList agentLog()
@@ -1057,6 +1067,59 @@ private slots:
         QCOMPARE(on.error().message(), QStringLiteral("Bluetooth couldn't be turned on."));
         // Three retries after the first.
         QCOMPARE(fakeWrites().count(QStringLiteral("/org/bluez/hci0 Powered=true")), 4);
+    }
+
+    void powerReversalRetriesBusyWithoutTrustingStaleState_data()
+    {
+        QTest::addColumn<bool>("initialPower");
+        QTest::newRow("off-then-on") << true;
+        QTest::newRow("on-then-off") << false;
+    }
+
+    void powerReversalRetriesBusyWithoutTrustingStaleState()
+    {
+        QFETCH(bool, initialPower);
+        fake->run([&] {
+            fake->setPowered(hci0, initialPower);
+            auto& adapter = fake->adapters[hci0];
+            adapter.busyWhilePending = true;
+            adapter.powerDelayMs = -1; // hold each accepted Set until explicitly released
+        });
+        QTRY_COMPARE(adapterInUse().value(QStringLiteral("powered")).toBool(), initialPower);
+
+        const QString firstWrite = QStringLiteral("/org/bluez/hci0 Powered=")
+            + (initialPower ? QStringLiteral("false") : QStringLiteral("true"));
+        const QString reverseWrite = QStringLiteral("/org/bluez/hci0 Powered=")
+            + (initialPower ? QStringLiteral("true") : QStringLiteral("false"));
+
+        QDBusPendingCall first = start(QStringLiteral("SetPowered"), { !initialPower });
+        QTRY_VERIFY(fakeWrites().contains(firstWrite));
+        QVERIFY(pendingPower(!initialPower));
+
+        QDBusPendingCall reversal = start(QStringLiteral("SetPowered"), { initialPower });
+        QCOMPARE(errorOf(first), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
+        QTRY_VERIFY(fakeWrites().contains(reverseWrite)); // first attempt returns Busy
+
+        // An unrelated adapter update must not complete a reversal using
+        // the cached state from before the first power request.
+        fake->run([&] { fake->setDiscoverableOutside(hci0, true); });
+        QTest::qWait(550); // beyond the first 400 ms retry
+        QVERIFY(pendingPower(!initialPower));
+        QVERIFY2(!reversal.isFinished(), "reversal replied before BlueZ accepted its Set");
+
+        // Release the original transition; the newest Set can now be
+        // accepted, but must still wait for its own Powered change.
+        fake->run([&] { fake->completePendingPower(hci0); });
+        QTRY_VERIFY(pendingPower(initialPower));
+        QVERIFY2(!reversal.isFinished(), "reversal replied before its Powered change");
+        fake->run([&] { fake->completePendingPower(hci0); });
+
+        QCOMPARE(errorOf(reversal, 10000), QString());
+        QTRY_COMPARE(adapterInUse().value(QStringLiteral("powered")).toBool(), initialPower);
+        bool physical = !initialPower;
+        fake->run([&] { physical = fake->adapters[hci0].powered; });
+        QCOMPARE(physical, initialPower);
+        QVERIFY(fakeWrites().count(reverseWrite) >= 2);
     }
 
     void hardBlockIsReported()

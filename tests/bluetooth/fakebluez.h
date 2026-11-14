@@ -57,8 +57,13 @@ public:
         QString alias;
         bool powered = true;
         // How Set Powered goes: done 50 ms later, refused, or accepted and
-        // never done.
+        // never done. Tests may hold an accepted change and reject another
+        // Set as Busy until completePendingPower() applies it.
         enum { Works, Refuses, Never } power = Works;
+        bool busyWhilePending = false;
+        bool powerPending = false;
+        bool pendingOn = false;
+        int powerDelayMs = 50; // negative: finish explicitly in the test
         bool discoverable = false;
         // The clients discovering, by unique name, and each client's
         // Discoverable filter.
@@ -282,6 +287,17 @@ public:
         changed(adapterPath(name), QStringLiteral("org.bluez.Adapter1"), values);
     }
 
+    void completePendingPower(const QString& name)
+    {
+        if (!adapters.contains(name) || !adapters[name].powerPending) {
+            return;
+        }
+        Adapter& adapter = adapters[name];
+        const bool on = adapter.pendingOn;
+        adapter.powerPending = false;
+        setPowered(name, on);
+    }
+
     // BlueZ stops discovering by itself (an adapter reset): every client's
     // session goes, as does the visibility a filter gave.
     void stopDiscoveryOutside(const QString& name)
@@ -484,6 +500,10 @@ private:
         writes << QStringLiteral("%1 %2=%3").arg(path, name, value.toString());
         if (adapters.contains(adapter) && path == adapterPath(adapter)) {
             Adapter& target = adapters[adapter];
+            if (name == QLatin1String("Powered") && target.busyWhilePending && target.powerPending) {
+                send(message.createErrorReply(QStringLiteral("org.bluez.Error.Busy"), QStringLiteral("Power change pending")));
+                return true;
+            }
             if (name == QLatin1String("Powered") && target.power == Adapter::Refuses) {
                 send(message.createErrorReply(QStringLiteral("org.bluez.Error.Failed"), QStringLiteral("Failed")));
                 return true;
@@ -496,11 +516,20 @@ private:
                 changed(path, QStringLiteral("org.bluez.Adapter1"), { { name, value } });
             }
             if (name == QLatin1String("Powered") && target.power == Adapter::Works) {
-                QTimer::singleShot(50, this, [this, adapter, on = value.toBool()] {
-                    if (adapters.contains(adapter)) {
-                        setPowered(adapter, on);
-                    }
-                });
+                const bool on = value.toBool();
+                const int delay = target.powerDelayMs;
+                if (target.busyWhilePending) {
+                    target.powerPending = true;
+                    target.pendingOn = on;
+                }
+                if (delay >= 0) {
+                    QTimer::singleShot(delay, this, [this, adapter, on] {
+                        if (adapters.contains(adapter)) {
+                            adapters[adapter].powerPending = false;
+                            setPowered(adapter, on);
+                        }
+                    });
+                }
             }
             return true;
         }
