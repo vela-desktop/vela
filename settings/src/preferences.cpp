@@ -904,6 +904,11 @@ bool Preferences::secretBackendInstalled() const
     return QFileInfo(binary).isExecutable();
 }
 
+QString Preferences::activeSecretBackend() const
+{
+    return qEnvironmentVariable("VELA_SECRET_BACKEND", QStringLiteral("kwallet"));
+}
+
 QString Preferences::credentialStatus() const
 {
     const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
