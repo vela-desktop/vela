@@ -13,13 +13,19 @@ install(PROGRAMS ${CMAKE_CURRENT_BINARY_DIR}/vela-session DESTINATION ${CMAKE_IN
 install(PROGRAMS vela-session-env DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 install(PROGRAMS vela-cpu-check DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 # A removable compatibility shim until Vela Secrets replaces external stores.
-install(FILES credential-compat/select-backend DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/credential-compat)
+install(FILES credential-compat/select-backend credential-compat/ensure-backend
+    DESTINATION ${CMAKE_INSTALL_LIBEXECDIR}/credential-compat)
+# The build-tree compositor uses the same session hook as the installed one.
+file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/compositor/credential-compat)
+configure_file(credential-compat/ensure-backend
+    ${CMAKE_BINARY_DIR}/compositor/credential-compat/ensure-backend COPYONLY)
 install(FILES vela-gnome-keyring-compat.service vela-kwallet-compat.service
     DESTINATION ${CMAKE_INSTALL_PREFIX}/lib/systemd/user)
 if(VELA_BUILD_TOOLS)
     add_test(NAME session.credential-compat
         COMMAND /bin/sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/credential-compat.sh
-            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/select-backend)
+            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/select-backend
+            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend)
 endif()
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/vela.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
 install(FILES vela-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
