@@ -55,7 +55,11 @@ start)
             dbus-update-activation-environment KDE_SESSION_VERSION
         fi
     fi
-    : > "$STATE"
+    # Retain a per-session token. Do not replace it on a supervised restart:
+    # delayed login prompts must never open in a different session after logout.
+    if [ "$FIRST_START" -eq 1 ]; then
+        printf '%s\n' "$" > "$STATE"
+    fi
     systemctl --user -q mask --runtime "$RESTORE" 2> /dev/null
     credential_issue=0
     if [ "$FIRST_START" -eq 1 ]; then
@@ -80,13 +84,24 @@ start)
         # is saved; never write a preference automatically. Only this first
         # session start launches the dialog, not supervised compositor restarts.
         (
-            sleep 3
-            if command -v vela-settings >/dev/null 2>&1; then
-                vela-settings --page credential-setup
-            else
-                echo "vela-session-env: cannot display credential setup (vela-settings missing)" >&2
-            fi
-        ) >/dev/null 2>&1 &
+            prompt_token=$(cat "$STATE") || exit 0
+            attempt=0
+            # A fixed sleep is fragile on slow machines: wait until Settings
+            # can open or forward to the running instance. Never loop forever.
+            while [ "$attempt" -lt 10 ]; do
+                sleep 2
+                # Stop when this session exits, even if the display name is
+                # reused by another login while this helper was sleeping.
+                [ -r "$STATE" ] || exit 0
+                [ "$(cat "$STATE")" = "$prompt_token" ] || exit 0
+                if command -v vela-settings >/dev/null 2>&1 &&
+                    vela-settings --page credential-setup; then
+                    exit 0
+                fi
+                attempt=$((attempt + 1))
+            done
+            echo "vela-session-env: credential setup could not be opened after retries" >&2
+        ) >/dev/null &
     fi
     if [ "$FIRST_START" -eq 1 ] && [ "$credential_issue" -ne 0 ]; then
         # A real provider failure also deserves a warning. The prompt above is
