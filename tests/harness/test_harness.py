@@ -8,16 +8,87 @@ import io
 import json
 import os
 import shutil
+import socket
 import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zlib
 
-from harness import Image, PrivateBus, Session, State
+from harness import Image, PrivateBus, Session, State, TimeoutError
+
+
+class SessionReconnect(unittest.TestCase):
+    def session(self):
+        session = Session()
+        session.process = Mock()
+        session.process.poll.return_value = None
+        session.log_text = lambda: "restart diagnostic"
+        return session
+
+    def test_restarted_process_can_exist_before_its_socket_listens(self):
+        session = self.session()
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as listener:
+            session.socket_path = os.path.join(directory, "command.sock")
+            listener.bind(session.socket_path)  # The old path can exist but refuse connections.
+            listener.settimeout(2)
+
+            def start_command_socket():
+                time.sleep(0.03)
+                listener.listen()
+                with listener.accept()[0] as connection:
+                    connection.recv(1024)
+                    connection.sendall(b'{"outputs":[{"name":"HEADLESS-1"}]}\n')
+
+            server = threading.Thread(target=start_command_socket)
+            server.start()
+            try:
+                state = session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=1, interval=0.005)
+                self.assertEqual(state["outputs"][0]["name"], "HEADLESS-1")
+            finally:
+                server.join(timeout=3)
+            self.assertFalse(server.is_alive())
+
+    def test_reconnection_errors_are_only_retried_when_requested(self):
+        for error in (FileNotFoundError(), ConnectionRefusedError(), ConnectionResetError(), BrokenPipeError()):
+            with self.subTest(error=type(error).__name__):
+                session = self.session()
+                session.state = Mock(side_effect=[error, State({"outputs": [1]})])
+                with self.assertRaises(type(error)):
+                    session.wait_for(lambda s: s["outputs"])
+                session.state = Mock(side_effect=[error, State({"outputs": [1]})])
+                self.assertTrue(session.wait_for(lambda s: s["outputs"], reconnect=True)["outputs"])
+
+    def test_reconnection_is_bounded_and_reports_the_last_error(self):
+        session = self.session()
+        session.state = Mock(side_effect=ConnectionRefusedError("not ready"))
+        with self.assertRaisesRegex(TimeoutError, "ConnectionRefusedError.*not ready"):
+            session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.01, interval=0.001)
+
+    def test_exited_supervisor_and_unrelated_errors_fail_immediately(self):
+        session = self.session()
+        session.process.poll.return_value = 7
+        session.process.returncode = 7
+        with self.assertRaisesRegex(AssertionError, "supervisor exited.*7"):
+            session.wait_for(lambda s: s["outputs"], reconnect=True)
+        session.process.poll.return_value = None
+        for error in (PermissionError("denied"), json.JSONDecodeError("invalid state", "", 0)):
+            session.state = Mock(side_effect=error)
+            with self.assertRaises(type(error)):
+                session.wait_for(lambda s: s["outputs"], reconnect=True)
+
+    def test_accepted_socket_without_a_reply_still_times_out(self):
+        session = self.session()
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as listener:
+            session.socket_path = os.path.join(directory, "command.sock")
+            listener.bind(session.socket_path)
+            listener.listen()
+            with self.assertRaisesRegex(TimeoutError, "last connection error:.*[Tt]imeout"):
+                session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.02, interval=0.001)
 
 
 class SessionCleanup(unittest.TestCase):

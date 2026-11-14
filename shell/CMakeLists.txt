@@ -319,3 +319,12 @@ qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell vela-bluetooth-
     LUPDATE_TARGET vela-shell_lupdate
     LRELEASE_TARGET vela-shell_lrelease
     LUPDATE_OPTIONS -source-language en -target-language it -no-obsolete -locations none)
+
+if(VELA_BUILD_TOOLS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-iconprovider-test tests/iconprovider.cpp)
+    target_include_directories(vela-iconprovider-test PRIVATE src)
+    target_link_libraries(vela-iconprovider-test PRIVATE vela-controls Qt6::Gui Qt6::Test)
+    add_test(NAME shell-iconprovider COMMAND vela-iconprovider-test)
+    set_tests_properties(shell-iconprovider PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

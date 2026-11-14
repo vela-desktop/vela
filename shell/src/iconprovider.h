@@ -14,6 +14,7 @@
 #include <QPixmap>
 #include <QPixmapCache>
 #include <QQuickImageProvider>
+#include <QStandardPaths>
 #include <QUrl>
 
 #include <algorithm>
@@ -25,6 +26,19 @@
 // with the app's palette: that follows the mode too.
 inline void applyIconTheme(bool light)
 {
+    // Qt's generic platform theme can advertise only :/icons (for example
+    // on a standalone Wayland desktop without the KDE platform plugin).
+    // Preserve platform/custom paths and also discover installed XDG themes.
+    QStringList paths = QIcon::themeSearchPaths();
+    for (const QString& data : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
+        const QString icons = data + QStringLiteral("/icons");
+        if (!paths.contains(icons)) {
+            paths.append(icons);
+        }
+    }
+    if (paths != QIcon::themeSearchPaths()) {
+        QIcon::setThemeSearchPaths(paths);
+    }
     QPalette palette = QGuiApplication::palette();
     const QColor text = light ? QColor(0x1b, 0x1b, 0x1b) : QColor(0xf3, 0xf3, 0xf6);
     const QColor background = light ? QColor(0xf3, 0xf3, 0xf3) : QColor(0x20, 0x20, 0x20);

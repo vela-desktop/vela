@@ -67,6 +67,12 @@ class RealShell(unittest.TestCase):
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
                    VELA_DEBUG_SELECTION="1")
+        # Check with this private HOME/config/bus, not the developer's theme
+        # preferences. Missing theme packages must not masquerade as dozens
+        # of unrelated expressive-QML failures.
+        icons = subprocess.run([SHELL, "--check-icons"], env=dict(env, QT_QPA_PLATFORM="offscreen"),
+                               capture_output=True, text=True, timeout=10 * TIME_SCALE)
+        self.assertEqual(icons.returncode, 0, icons.stderr)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
@@ -215,12 +221,14 @@ class QtShell(RealShell):
         # Allow Config's QFileSystemWatcher/debounce to deliver the update.
         time.sleep(0.5)
 
-        self.vela.keys("super+r")
-        self.vela.wait_for(
-            lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2",
-            timeout=8, what="Run dialog on explicitly selected output")
-        self.vela.keys("Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
+        with self.input_session() as send:
+            send("key", "super+r")
+            self.vela.wait_for(
+                lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2"
+                          and s["focusedLayer"] == "vela-run",
+                timeout=8, what="Run dialog focused on explicitly selected output")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
 
         subprocess.run([
             "gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications",
