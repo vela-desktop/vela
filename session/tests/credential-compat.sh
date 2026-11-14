@@ -342,6 +342,7 @@ unset MOCK_SETTINGS_FAIL_ONCE
 export MOCK_SLEEP_WAIT_MARKER="$tmp/hold-prompt" MOCK_SLEEP_SIGNAL="$tmp/prompt-ready"
 : > "$MOCK_SLEEP_WAIT_MARKER"
 sh "$hook" start
+pending_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
 i=0
 while [ ! -e "$MOCK_SLEEP_SIGNAL" ] && [ "$i" -lt 100 ]; do
     /bin/sleep 0.01
@@ -355,6 +356,7 @@ sh "$hook" start
 # Reusing the same WAYLAND_DISPLAY must not reuse the session's token.
 new_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
 [ "$new_token" != "$initial_token" ]
+[ "$new_token" != "$pending_token" ]
 rm -f "$MOCK_SLEEP_WAIT_MARKER"
 # The old helper must observe the changed session token and exit quietly.
 /bin/sleep 0.10
