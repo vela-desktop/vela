@@ -70,6 +70,15 @@ def available_memory():
     return min(host_available, cgroup_available)
 
 
+def offer_cpu_limit(value):
+    """Vast's effective CPU allocation may be fractional, e.g. 10.6667."""
+    try:
+        cores = float(value)
+        return max(1, math.floor(cores)) if math.isfinite(cores) and cores > 0 else None
+    except (TypeError, ValueError, OverflowError):
+        return None
+
+
 def recommended_jobs(cpus, memory_bytes):
     """Constrain build concurrency by CPU and *available* (not total) RAM."""
     jobs = max(1, min(MAX_JOBS, int(cpus)))
@@ -87,6 +96,9 @@ def main():
     quota = cgroup_cpu_quota()
     if quota is not None:
         cpus = min(cpus, quota)
+    offered = offer_cpu_limit(os.environ.get("VAST_CPU_CORES"))
+    if offered is not None:
+        cpus = min(cpus, offered)
     memory = available_memory()
     jobs = recommended_jobs(cpus, memory)
     print(f"NVIDIA CI build: {cpus} usable CPUs, "
