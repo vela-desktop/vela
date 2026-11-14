@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-FileCopyrightText: 2026 Vela contributors
 # SPDX-License-Identifier: GPL-3.0-or-later
-set -eux
+set -eu
 umask 077
 compat=$1
 ensure=$2
@@ -269,9 +269,13 @@ export XDG_RUNTIME_DIR="$tmp/hook-runtime"
 : > "$MOCK_SYSTEMCTL_CALLS"
 sh "$hook" start
 [ -f "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
+initial_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
+[ -n "$initial_token" ]
 [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
 [ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 sh "$hook" start
+# A supervised compositor restart must retain the session identity.
+[ "$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")" = "$initial_token" ]
 [ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 sh "$hook" stop
 [ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
@@ -348,6 +352,9 @@ sh "$hook" stop
 VELA_SECRET_CONFIGURED=1
 export VELA_SECRET_CONFIGURED
 sh "$hook" start
+# Reusing the same WAYLAND_DISPLAY must not reuse the session's token.
+new_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
+[ "$new_token" != "$initial_token" ]
 rm -f "$MOCK_SLEEP_WAIT_MARKER"
 # The old helper must observe the changed session token and exit quietly.
 /bin/sleep 0.10
