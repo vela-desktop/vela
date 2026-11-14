@@ -1086,6 +1086,39 @@ static void competing_uploads_do_not_starve(void)
     fixture_finish(&f);
 }
 
+// A frame with no rendering (e.g. direct scanout) must still submit uploads
+// recorded by previous buffer commits, even if a deferred upload cannot
+// reserve a staging chunk and records no commands of its own.
+static void blocked_deferred_upload_flushes_prior_commands(void)
+{
+    struct fixture f;
+    fixture_init(&f);
+    const int height = BUDGET / (256 * BPP);
+    struct shm_buffer *first = new_shm(256, height, 1);
+    struct surface *a = attach(&f, first);
+    assert(own(a)->uploaded && f.renderer->upload);
+    assert(upload_chunk_count(f.renderer) == VELA_UPLOAD_MAX_CHUNKS);
+
+    struct shm_buffer *second = new_shm(256, 64, 2);
+    struct surface *b = attach(&f, second);
+    assert(!own(b)->uploaded && own(b)->upload.source && !released(second));
+
+    uint64_t before = f.renderer->last_point;
+    struct vela_upload_progress progress = vela_renderer_continue_uploads(f.renderer);
+    assert(progress.pending == 1 && progress.completed == 0);
+    assert(!f.renderer->upload && f.renderer->last_point > before);
+
+    // The previous staging is now submitted, so the pending buffer can be
+    // copied on the next call without a render pass in between.
+    progress = vela_renderer_continue_uploads(f.renderer);
+    assert(progress.pending == 0 && progress.completed == 1 && released(second));
+    frame(&f);
+    assert(a->shown[0] == 1 && b->shown[0] == 1);
+    drop_shm(first);
+    drop_shm(second);
+    fixture_finish(&f);
+}
+
 // With the GPU behind, staging still in flight counts: a frame copies no
 // more than the budget, the next one nothing until the GPU is done, and what
 // the GPU copies is what the CPU staged (no chunk refilled before its
@@ -1215,6 +1248,7 @@ int main(void)
     deferred_update_switches_atomically();
     new_commit_replaces_pending_upload();
     competing_uploads_do_not_starve();
+    blocked_deferred_upload_flushes_prior_commands();
     in_flight_staging_counts();
     device_loss_releases_pending_uploads();
     uploads_allocate_nothing_once_warm();
