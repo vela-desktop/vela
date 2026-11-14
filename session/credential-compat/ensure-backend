@@ -1,0 +1,101 @@
+#!/bin/sh
+# SPDX-FileCopyrightText: 2026 Vela contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# TEMPORARY until Vela Secrets. Source from vela-session-env on FIRST_START only.
+# Never read credentials or terminate a daemon owned by PAM or another desktop.
+
+vela_credential_owner()
+{
+    # Asking the bus daemon for the PID does NOT activate the secrets service.
+    if ! command -v busctl >/dev/null 2>&1; then
+        printf '%s\n' unknown
+        return
+    fi
+    answer=$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
+        org.freedesktop.DBus GetConnectionUnixProcessID s org.freedesktop.secrets 2>/dev/null) || {
+        printf '%s\n' none
+        return
+    }
+    # Only the exact typed PID response is trusted; do not evaluate bus output.
+    set -- $answer
+    if [ "$#" -ne 2 ] || [ "$1" != u ]; then
+        printf '%s\n' unknown
+        return
+    fi
+    case "$2" in
+        ''|*[!0-9]*) printf '%s\n' unknown; return ;;
+    esac
+    executable=$(readlink "/proc/$2/exe" 2>/dev/null) || {
+        printf '%s\n' unknown
+        return
+    }
+    case "$executable" in
+        */gnome-keyring-daemon|*/gnome-keyring-daemon\ \(deleted\)) printf '%s\n' gnome ;;
+        */kwalletd6|*/kwalletd6\ \(deleted\)|*/ksecretd|*/ksecretd\ \(deleted\))
+            printf '%s\n' kwallet ;;
+        *) printf '%s\n' other ;;
+    esac
+}
+
+vela_credential_mark()
+{
+    # XDG_RUNTIME_DIR is private (0700). Do not write to a predictable /tmp path.
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
+        (umask 077; printf '%s\n' "$1" > "$XDG_RUNTIME_DIR/vela-credential-compat.status")
+    fi
+    if [ "$1" != ok ]; then
+        printf 'vela-session-env: credential compatibility (%s): %s\n' "$1" "$2" >&2
+    fi
+}
+
+vela_credential_ensure()
+(
+    # Parameters are fixed by the caller, not read from untrusted config.
+    backend=$1
+    binary=$2
+    unit=$3
+    current=$(vela_credential_owner)
+    case "$current" in
+        "$backend")
+            # PAM or another session already owns the CORRECT backend.
+            # Do not take ownership or later stop that process.
+            vela_credential_mark ok ''
+            exit 0 ;;
+        none) ;;
+        unknown)
+            vela_credential_mark unverified 'cannot identify the existing Secret Service owner'
+            exit 1 ;;
+        *)
+            vela_credential_mark conflict "Secret Service already belongs to $current, not $backend"
+            exit 1 ;;
+    esac
+
+    if [ ! -x "$binary" ]; then
+        vela_credential_mark missing "$binary is not installed or executable"
+        exit 1
+    fi
+    if ! systemctl --user start "$unit"; then
+        vela_credential_mark failed "cannot start $unit"
+        exit 1
+    fi
+
+    # systemctl start can succeed even if a unit is skipped by a Condition,
+    # and --start may return after attaching to a PAM-owned keyring.
+    # Verify the actual D-Bus owner, not the unit's ActiveState.
+    for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        current=$(vela_credential_owner)
+        case "$current" in
+            "$backend") vela_credential_mark ok ''; exit 0 ;;
+            none) sleep 0.2 ;;
+            unknown)
+                vela_credential_mark unverified 'cannot identify the Secret Service owner'
+                exit 1 ;;
+            *)
+                vela_credential_mark conflict "Secret Service belongs to $current, not $backend"
+                exit 1 ;;
+        esac
+    done
+    vela_credential_mark failed "no Secret Service owner appeared for $backend"
+    exit 1
+)
