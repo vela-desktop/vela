@@ -163,6 +163,14 @@ prebuilt binaries: checksum and Sigstore provenance verification remain
 mandatory, independent steps. Automatic checks and `--check --json` never
 print recipes; JSON stdout stays machine-readable.
 
+For interactive installs with `less` available, the selected recipe opens in a
+**read-only pager**, not in Vim or the user's `$EDITOR`. The updater displays
+instructions before opening it and in the pager's status line: scroll with
+arrow keys or PageUp/PageDown, then press **q** to close the preview and
+continue the update. The viewer runs in `LESSSECURE` mode (no shell escapes).
+For non-interactive runs, or if `less` is unavailable, the recipe is printed
+directly as before without waiting for input. No pager is opened for checks.
+
 ### 5.3 State files
 
 In `${XDG_STATE_HOME:-~/.local/state}/vela-update/`, always written, by a

@@ -509,6 +509,40 @@ class UpdateRevision(UpdateFixture):
         self.assertLess(result.stdout.index("# NVIDIA test package"),
                         result.stdout.index(":: Building the arch package"))
 
+    def test_interactive_recipe_has_a_readonly_pager_with_a_quit_hint(self):
+        # Simulate a terminal without depending on the host's less installation.
+        pager = self.update_script.parent / "less"
+        pager.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, pathlib, sys\n"
+            "pathlib.Path(os.environ['TEST_PAGER_CAPTURE']).write_text(sys.stdin.read())\n"
+            "pathlib.Path(os.environ['TEST_PAGER_ARGS']).write_text(json.dumps("
+            "{'args': sys.argv[1:], 'secure': os.getenv('LESSSECURE'), "
+            "'options': os.getenv('LESS')}))\n")
+        pager.chmod(0o755)
+        capture = self.directory / "recipe-preview.txt"
+        options = self.directory / "pager-options.json"
+        self.env["TEST_PAGER_CAPTURE"] = str(capture)
+        self.env["TEST_PAGER_ARGS"] = str(options)
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                ["sh", str(self.update_script), "--source", str(self.source),
+                 "--branch", "fix/nvidia", "--build"],
+                env=self.env, stdin=slave, stdout=slave, stderr=subprocess.PIPE,
+                text=True, timeout=30)
+        finally:
+            os.close(slave)
+            os.close(master)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("# NVIDIA test package", capture.read_text())
+        self.assertNotIn("# main package", capture.read_text())
+        pager_options = json.loads(options.read_text())
+        self.assertIn("q: close and continue", " ".join(pager_options["args"]))
+        self.assertEqual(pager_options["secure"], "1")
+        self.assertEqual(pager_options["options"], "")
+        self.assertTrue(self.calls("makepkg"))
+
     def test_verified_arch_download_also_shows_recipe(self):
         self.env.update(TEST_CI_RUN="123", TEST_DOWNLOAD_SHA=self.main[:7])
         result = self.run_update("--download")
