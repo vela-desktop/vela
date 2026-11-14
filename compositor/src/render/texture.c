@@ -8,6 +8,7 @@
 #include "render/render.h"
 
 #include "alloc/alloc.h"
+#include "security_policy.h"
 #include "util.h"
 
 #include <assert.h>
@@ -559,6 +560,12 @@ struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer 
             abandon_upload(texture, "the buffer changed format");
             continue;
         }
+        if (upload->source->width != (int)texture->base.width || upload->source->height != (int)texture->base.height
+            || !vela_shm_layout_valid(upload->source->width, upload->source->height, stride, bpp)) {
+            wlr_buffer_end_data_ptr_access(upload->source);
+            abandon_upload(texture, "the buffer's rows don't hold its pixels");
+            continue;
+        }
         start_pieces(texture, cmd);
         VkImage image = upload->image ? upload->image : texture->image;
         while (upload->rect < upload->rect_count) {
@@ -608,6 +615,12 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
         wlr_log(WLR_DEBUG, "Texture: format 0x%08x not supported", drm_format);
         return NULL;
     }
+    // Every copy below reads rows of width * bpp bytes, stride apart.
+    if (!vela_shm_layout_valid(buffer->width, buffer->height, stride, format->bytes_per_pixel)) {
+        wlr_buffer_end_data_ptr_access(buffer);
+        wlr_log(WLR_ERROR, "Texture: %dx%d buffer with stride %zu refused", buffer->width, buffer->height, stride);
+        return NULL;
+    }
     struct vela_extent max = vela_vulkan_shm_max_extent(vk, drm_format);
     // A row must fit in one upload piece: at the limits drivers report (up
     // to 32768 pixels of 8 bytes, 256 KiB) it always does.
@@ -655,7 +668,8 @@ static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffe
     if (!wlr_buffer_begin_data_ptr_access(buffer, WLR_BUFFER_DATA_PTR_ACCESS_READ, &data, &drm_format, &stride)) {
         return false;
     }
-    bool ok = drm_format == texture->format->drm;
+    bool ok = drm_format == texture->format->drm
+        && vela_shm_layout_valid(buffer->width, buffer->height, stride, texture->format->bytes_per_pixel);
     if (ok) {
         pixman_region32_t region;
         pixman_region32_init(&region);
