@@ -56,8 +56,16 @@ static int on_retry(sd_event_source *source, uint64_t usec, void *data)
     struct vela_bt_power *power = &d->power;
     power->timer = sd_event_source_disable_unref(power->timer);
     struct vela_bt_adapter *adapter = vela_bt_adapter_find(d, power->adapter);
-    if (adapter && adapter->powered == power->on) {
+    // A Busy reversal must retry the Set even when the pre-reversal cache
+    // matches our intent. Do not consume rfkill's limited retry budget here.
+    if (adapter && power->set_accepted && adapter->powered == power->on) {
         vela_bt_power_end(d, NULL, false);
+    } else if (power->busy_until) {
+        if (vela_bt_now() < power->busy_until) {
+            send_powered(d);
+        } else {
+            vela_bt_power_end(d, power->on ? &vela_bt_power_on_failed : &vela_bt_power_off_failed, false);
+        }
     } else if (power->attempt < RETRIES) {
         ++power->attempt;
         send_powered(d);
@@ -84,7 +92,20 @@ static int on_powered_set(sd_bus_message *reply, void *data, sd_bus_error *error
     if (sd_bus_message_is_method_error(reply, NULL)) {
         const sd_bus_error *cause = sd_bus_message_get_error(reply);
         vela_bt_log("Set Powered %s: %s: %s", power->on ? "on" : "off", cause->name, cause->message ? cause->message : "");
-        // BlueZ refuses until it notices the unblock.
+        // Cancelling a D-Bus call cannot cancel BlueZ's earlier power
+        // transition. Busy means it is still in progress: retry either
+        // direction, but never indefinitely.
+        if (power->reversing && sd_bus_error_has_name(cause, "org.bluez.Error.Busy")) {
+            if (!power->busy_until) {
+                power->busy_until = vela_bt_now() + VELA_BT_STEP_TIMEOUT_US;
+            }
+            if (vela_bt_now() < power->busy_until) {
+                retry_later(d);
+                return 0;
+            }
+        }
+        power->busy_until = 0;
+        // ON also retries transient errors while rfkill unblocking settles.
         if (power->on && power->attempt < RETRIES) {
             retry_later(d);
             return 0;
@@ -96,6 +117,10 @@ static int on_powered_set(sd_bus_message *reply, void *data, sd_bus_error *error
         vela_bt_power_end(d, failure, false);
         return 0;
     }
+    // Only a successful reply proves BlueZ accepted this request. Before
+    // that, a matching cached Powered value can belong to the old state.
+    power->set_accepted = true;
+    power->busy_until = 0;
     struct vela_bt_adapter *adapter = vela_bt_adapter_find(d, power->adapter);
     if (adapter && adapter->powered == power->on) {
         vela_bt_power_end(d, NULL, false);
@@ -150,6 +175,7 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
         vela_bt_waiters_add(&power->waiters, call);
         return 1;
     }
+    const bool reversing = power->active;
     // A newer OFF also cancels a platform-unblock power-on that is still waiting for an adapter.
     if (!on) {
         d->power_on_until = 0;
@@ -166,7 +192,10 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
         }
         return call ? sd_bus_reply_method_return(call, NULL) : 0;
     }
-    if (adapter->powered == on) {
+    // Cancelling our previous operation cannot undo its Set in BlueZ. The
+    // old change may take effect before its PropertiesChanged reaches us,
+    // so a reversal must send the new intent even if the cached state fits.
+    if (adapter->powered == on && !reversing) {
         return call ? sd_bus_reply_method_return(call, NULL) : 0;
     }
     if (on) {
@@ -182,7 +211,9 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
             }
         }
     }
-    *power = (struct vela_bt_power) { .active = true, .on = on, .adapter = vela_strdup(adapter->path) };
+    *power = (struct vela_bt_power) {
+        .active = true, .on = on, .reversing = reversing, .adapter = vela_strdup(adapter->path)
+    };
     vela_bt_waiters_add(&power->waiters, call);
     send_powered(d);
     return 1;
@@ -195,7 +226,7 @@ void vela_bt_power_adapter_changed(struct vela_bt_daemon *d)
         struct vela_bt_adapter *adapter = vela_bt_adapter_find(d, power->adapter);
         if (!adapter) {
             vela_bt_power_end(d, &vela_bt_adapter_gone, false);
-        } else if (adapter->powered == power->on) {
+        } else if (power->set_accepted && adapter->powered == power->on) {
             vela_bt_power_end(d, NULL, false);
         }
     }

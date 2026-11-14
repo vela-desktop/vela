@@ -116,6 +116,16 @@ private:
         return powered;
     }
 
+    int powerWrites(bool on) const
+    {
+        int count = 0;
+        fake->run([&] {
+            count = fake->writes.count(on ? QStringLiteral("/org/bluez/hci0 Powered=true")
+                                         : QStringLiteral("/org/bluez/hci0 Powered=false"));
+        });
+        return count;
+    }
+
     // The client has read the daemon, and its PresentQuestions() went
     // before this call on the same connection: once this is answered, the
     // daemon has the shell as a presenter, and a device asking by itself is
@@ -457,6 +467,40 @@ private slots:
         QVERIFY(!status.airplaneMode());
         QTRY_VERIFY(adapterPowered());
         QTRY_VERIFY(bluetooth->powered());
+    }
+
+    void airplaneModeCanReverseAnUnreportedPowerChange_data()
+    {
+        QTest::addColumn<bool>("initialPower");
+        QTest::newRow("off-then-on") << true;
+        QTest::newRow("on-then-off") << false;
+    }
+
+    void airplaneModeCanReverseAnUnreportedPowerChange()
+    {
+        QFETCH(bool, initialPower);
+        fake->run([&] { fake->setPowered(hci0, initialPower); });
+        QTRY_COMPARE(bluetooth->adapter().value(QStringLiteral("powered")).toBool(), initialPower);
+        SystemStatus status(bluetooth.get());
+        // Hold the first operation pending. Apply its effect below without
+        // delivering PropertiesChanged yet: the daemon still knows only the
+        // previous state when the user reverses the airplane-mode request.
+        fake->run([&] { fake->adapters[hci0].power = FakeBluez::Adapter::Never; });
+        status.setAirplaneMode(initialPower);
+        QCOMPARE(status.airplaneMode(), initialPower);
+        QTRY_VERIFY(powerWrites(!initialPower) > 0);
+        fake->run([&] {
+            fake->adapters[hci0].powered = !initialPower;
+            fake->adapters[hci0].power = FakeBluez::Adapter::Works;
+        });
+        QCOMPARE(adapterPowered(), !initialPower);
+        status.setAirplaneMode(!initialPower);
+        QCOMPARE(status.airplaneMode(), !initialPower);
+        // The newer intent must be sent to BlueZ even though it matches
+        // the daemon's last reported value. Verify the physical fake too.
+        QTRY_VERIFY(powerWrites(initialPower) > 0);
+        QTRY_COMPARE(adapterPowered(), initialPower);
+        QTRY_COMPARE(bluetooth->powered(), initialPower);
     }
 
 private:
