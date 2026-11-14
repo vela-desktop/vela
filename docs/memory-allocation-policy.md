@@ -7,11 +7,11 @@
 > (#246): `VELA_MUST` and the classification of library results, the local
 > paths for descriptor exhaustion, the fallbacks removed with the baseline
 > at zero, and the C++ new handler. Step 6 is done: the frame path draws
-> without allocating, measured on the CPU and on a GPU. Step 7's Vulkan
-> part is implemented: the image-extent cap, and upload staging in pieces
+> without allocating, measured on the CPU and on a GPU. Step 7 is done,
+> and with it the migration: the image-extent cap, upload staging in pieces
 > under a byte budget, with deferred uploads that switch atomically and
-> progress oldest first (point 6, "As implemented"); the icon-cache budget
-> is the rest of step 7 (see "Migration order"). Every factual claim names the
+> progress oldest first (point 6, "As implemented"), and the icon cache's
+> entry budget (see "Migration order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -331,10 +331,22 @@ migration step 1; the others belong to later steps.
    for the whole session; every miss also costs a search of the icon theme
    on disk. Different output scales add entries for the same app.
 
-   `vela_icons_app` returns a pointer into the cache. Its only caller
-   (`decoration.c`) copies the pixels immediately, so eviction is safe
-   today; the contract "valid until the next call" becomes part of the
-   function's documentation before eviction is added.
+   `vela_icons_app` returned a pointer into the cache. Its only caller
+   (`decoration.c`) copied the pixels immediately, so eviction was already
+   safe in practice.
+
+   **Fixed in step 7.** The cache is `icon_cache.c`: at most
+   `VELA_ICON_CACHE_BUDGET` (256) entries, hits and misses together, in a
+   hash table with a use list; a full cache frees the least recently used
+   entry first (`vela_icon_cache_insert`), and a successful lookup counts
+   as a use (`vela_icon_cache_find`). `vela_icons_app` now returns a copy
+   of the pixels that the caller owns (`icons.h`); `decoration.c` hands
+   that copy to `set_image`, so an entry can be evicted while a title bar
+   shows its icon. Pointers returned by `vela_icon_cache_find` and
+   `vela_icon_cache_insert` are valid only until the next insert
+   (`icon_cache.h`). An `app_id` longer than `VELA_ICON_APP_ID_MAX` (255
+   bytes) gets no entry and no search (`vela_icons_app`); before, it was
+   searched under its first 255 bytes (`icon_name`'s `char id[256]`).
 
 3. **Upload staging is budgeted by count, not by size.** `stage`
    (`render/renderer.c`) creates a chunk of `max(size, 8 MiB)` when no
@@ -495,7 +507,7 @@ see that. Every long-lived pool was checked:
 
 | Pool | Grows with | Bound today | Policy |
 |---|---|---|---|
-| Icon cache (`icons.c`) | Every distinct `(app_id, size)`, including misses | None, never evicted | Fixed entry budget with LRU eviction, and a hash or direct lookup instead of a list |
+| Icon cache (`icons.c`, `icon_cache.c`) | Every distinct `(app_id, size)`, including misses | Since step 7: at most `VELA_ICON_CACHE_BUDGET` (256) entries, hits and misses together; a full cache frees the least recently used entry first, and a successful lookup counts as a use (`vela_icon_cache_insert`, `vela_icon_cache_find`). Before: none, never evicted | Done: a hash table with chaining, its buckets fixed at creation (at least twice the budget), and a use list (`icon_cache.c`); an `app_id` longer than `VELA_ICON_APP_ID_MAX` (255) gets no entry and no search (`vela_icons_app`) |
 | Upload staging (`render/renderer.c`) | Size and number of shm uploads in one frame | Since step 7: at most 16 chunks of 8 MiB (128 MiB), idle, being filled or in flight; idle ones beyond two freed after a second at rest. Before: two idle chunks per kind, of any size, and nothing bounded a frame's peak | Byte budget over every upload chunk, in flight included, like readback; uploads copied in fixed-size pieces (point 6). Done |
 | Readback staging | Screen capture requests | 128 MiB including chunks in flight, with eviction (`make_readback_room`) | Already compliant: this is the model |
 | Per-client protocol objects | Client requests | Freed when the client disconnects | **Known risk, out of scope here.** A sandboxed client can keep creating objects while connected, and libwayland has no per-client limit; the problem is shared with every wlroots compositor. This policy does not make it worse: under overcommit, exhaustion ends in the OOM killer rather than in a failed `malloc`, and today only three sites answer a failure with `wl_client_post_no_memory` while the rest already crash on `NULL`. Per-client quotas, with their tests, are separate work |
@@ -1119,6 +1131,17 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   its byte budget, both after one oversized shm buffer and while several
   surfaces commit large shm buffers in the same frame, and every surface
   still ends up showing its whole buffer.
+
+  **As implemented** (icon cache): `compositor.icon-cache`
+  (`compositor/tests/icon_cache_test.c`, CPU) checks the cache against a
+  model, and that the count never exceeds the budget while cycling app
+  ids, sizes and misses. `compositor.icons`
+  (`compositor/tests/icons_test.c`, CPU) goes through `vela_icons_app` on
+  a theme the test writes, including a held icon whose entry is evicted
+  and is then drawn again (the cases that draw an icon need librsvg).
+  `functional-decorations` `IconCache` (GPU) has a client cycle 600 app
+  ids with `vela-pattern --cycle-app-ids`: the other window's bar keeps
+  its icon, and the evicted icon is drawn again. Upload staging is below.
 - **Deferred uploads:**
   - every frame presented while an upload spans several frames shows the
     surface's previous buffer complete, never a mix (checked with a
@@ -1439,7 +1462,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
 7. The Vulkan caps and budgets: the image-extent cap, upload staging in
    pieces under a byte budget with atomic presentation and oldest-first
    progress, and the icon-cache budget.
-   **Vulkan part done** (point 6, "As implemented"). The code matched the
+   **Done.** The Vulkan part first (point 6, "As implemented"). The code matched the
    audit: `upload` staged each damaged rectangle whole through
    `vela_renderer_stage`, and the dmabuf probe dropped `maxExtent`. Two
    parts of the design changed with the evidence: the limit checked is the
@@ -1464,6 +1487,12 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    client, buffer reuse: 180.0 fps, p95 5.75–5.84 ms on both; 3840x2160:
    176.9–177.7 against 177.3–178.3 fps). A whole buffer copied when it
    comes costs the same CPU time as before (above).
+   The icon cache: `icon_cache.c` keeps 256 entries with LRU eviction and
+   a hash lookup, and `vela_icons_app` returns copies (defect 2, "Fixed in
+   step 7"). The code matched the audit there too: a list, searched
+   linearly, never evicted, with misses stored. Measured with
+   `compositor.icon-cache`, `compositor.icons` and `functional-decorations`
+   `IconCache` (see Tests).
 
 ## Options considered
 
@@ -1494,7 +1523,12 @@ and document.
 
 - **Lock state after a crash:** option a, b or c (recommended: c, plus an
   allocation-free fatal path).
-- **Budget values:** icon-cache entries. Upload staging (answered in
+- **Budget values:** answered. Icon-cache entries (step 7): 256. A
+  session needs one per app with a Vela title bar per output scale (about
+  a hundred in a busy session, an estimate, *to verify* in a real
+  session), and a full cache holds about 1 MiB of pixels at 200% (4 MiB at
+  400%) plus at most 64 KiB of keys; the reasoning is next to
+  `VELA_ICON_CACHE_BUDGET` in `icon_cache.h`. Upload staging (answered in
   step 7, point 6): a budget of its own of 128 MiB, the readback figure
   but a separate pool, so captures and uploads cannot evict each other;
   pieces of 8 MiB.
