@@ -5,16 +5,19 @@
 
 import contextlib
 import io
+import json
 import os
+import shutil
 import struct
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 import zlib
 
-from harness import Image, Session, State
+from harness import Image, PrivateBus, Session, State
 
 
 class SessionCleanup(unittest.TestCase):
@@ -136,6 +139,90 @@ class SessionCleanup(unittest.TestCase):
         self.assertTrue(session.log.closed)
 
 
+@unittest.skipUnless(shutil.which("dbus-daemon") and shutil.which("dbus-send"), "needs dbus-daemon and dbus-send")
+class PrivateBusCleanup(unittest.TestCase):
+    """What a private bus activates must neither reach the host session nor
+    outlive the bus (it once kept the desktop portal of every test run
+    connected to the developer's compositor)."""
+
+    HOST = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0", "WAYLAND_SOCKET": "3",
+            "XDG_RUNTIME_DIR": "/run/user/1000"}
+
+    def activated_service(self, directory, ignore_term=False):
+        """A .service file whose program reports its pid and environment."""
+        report = os.path.join(directory, "report.json")
+        program = os.path.join(directory, "service.py")
+        with open(program, "w") as file:
+            file.write("import json, os, signal, sys, time\n"
+                       + ("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if ignore_term else "")
+                       + "with open(sys.argv[1] + '.part', 'w') as f:\n"
+                       "    json.dump({'pid': os.getpid(), 'env': dict(os.environ)}, f)\n"
+                       "os.rename(sys.argv[1] + '.part', sys.argv[1])\n"
+                       "while True: time.sleep(1)\n")
+        services = os.path.join(directory, "services")
+        os.mkdir(services)
+        with open(os.path.join(services, "org.vela.TestService.service"), "w") as file:
+            file.write(f"[D-BUS Service]\nName=org.vela.TestService\nExec={sys.executable} {program} {report}\n")
+        return services, report
+
+    @staticmethod
+    def start_service(bus, name):
+        return subprocess.run(["dbus-send", f"--bus={bus.address}", "--print-reply", "--reply-timeout=500",
+                               "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus",
+                               "org.freedesktop.DBus.StartServiceByName", f"string:{name}", "uint32:0"],
+                              capture_output=True, text=True, timeout=10)
+
+    @staticmethod
+    def identity(pid):
+        """The pid with its start time: a reused pid is another process."""
+        try:
+            with open(f"/proc/{pid}/stat") as stat:
+                return pid, stat.read().rsplit(")", 1)[1].split()[19]
+        except FileNotFoundError:
+            return None
+
+    def check_activated_child_is_stopped(self, ignore_term):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, self.HOST):
+            services, report = self.activated_service(directory, ignore_term)
+            bus = PrivateBus(services=services)
+            bus.start()
+            self.addCleanup(bus.stop)
+            self.assertEqual(os.getsid(bus.process.pid), bus.process.pid)
+            self.start_service(bus, "org.vela.TestService") # it never takes the name: a timeout
+            deadline = time.monotonic() + 10
+            while not os.path.exists(report) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            with open(report) as file:
+                child = json.load(file)
+            identity = self.identity(child["pid"])
+            self.assertIsNotNone(identity)
+            for key in ("WAYLAND_DISPLAY", "DISPLAY", "WAYLAND_SOCKET"):
+                self.assertNotIn(key, child["env"])
+            runtime = child["env"]["XDG_RUNTIME_DIR"]
+            self.assertEqual(os.path.dirname(runtime), bus.directory)
+            private = bus.directory
+            bus.stop()
+            self.assertNotEqual(self.identity(child["pid"]), identity, "the activated service outlived its bus")
+            self.assertFalse(os.path.exists(private))
+
+    def test_activated_service_stops_with_the_bus(self):
+        self.check_activated_child_is_stopped(ignore_term=False)
+
+    def test_activated_service_ignoring_sigterm_is_killed(self):
+        self.check_activated_child_is_stopped(ignore_term=True)
+
+    def test_default_bus_activates_nothing(self):
+        with PrivateBus() as bus:
+            result = self.start_service(bus, "org.freedesktop.portal.Desktop")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("org.freedesktop.DBus.Error.ServiceUnknown", result.stderr)
+
+    def test_failed_start_leaves_no_directory(self):
+        bus = PrivateBus()
+        with patch("harness.subprocess.Popen", side_effect=FileNotFoundError("dbus-daemon")), \
+                self.assertRaises(FileNotFoundError):
+            bus.start()
+        self.assertIsNone(bus.directory)
 
 
 class ClientStartupDiagnostics(unittest.TestCase):
