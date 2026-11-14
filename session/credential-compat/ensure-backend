@@ -7,6 +7,10 @@
 
 vela_credential_owner()
 {
+    # Do not autoactivate either service while identifying the current owner.
+    # KWallet's native API (kwalletd6) and Secret Service (ksecretd) are
+    # separate in recent KDE versions; both names must be distinguishable.
+    bus_name=${1:-org.freedesktop.secrets}
     # Asking the bus daemon for the PID does NOT activate the secrets service.
     if ! command -v busctl >/dev/null 2>&1; then
         printf '%s\n' unknown
@@ -15,7 +19,7 @@ vela_credential_owner()
     # NameHasOwner has a typed boolean reply and distinguishes "no owner"
     # from a bus error. Never start a second provider on an inaccessible bus.
     present=$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
-        org.freedesktop.DBus NameHasOwner s org.freedesktop.secrets 2>/dev/null) || {
+        org.freedesktop.DBus NameHasOwner s "$bus_name" 2>/dev/null) || {
         printf '%s\n' unknown
         return
     }
@@ -25,7 +29,7 @@ vela_credential_owner()
         *) printf '%s\n' unknown; return ;;
     esac
     answer=$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
-        org.freedesktop.DBus GetConnectionUnixProcessID s org.freedesktop.secrets 2>/dev/null) || {
+        org.freedesktop.DBus GetConnectionUnixProcessID s "$bus_name" 2>/dev/null) || {
         printf '%s\n' unknown
         return
     }
@@ -84,7 +88,26 @@ vela_credential_ensure()
             # Do not take ownership or later stop that process.
             vela_credential_mark ok ''
             exit 0 ;;
-        none) ;;
+        none)
+            if [ "$backend" = kwallet ]; then
+                # Native KWallet may be available even without a Secret Service
+                # implementation. Do not launch a second kwalletd6 daemon.
+                # This is only partial functionality: libsecret/gh still need
+                # org.freedesktop.secrets, so never report an unconditional OK.
+                native=$(vela_credential_owner org.kde.kwalletd6)
+                case "$native" in
+                    kwallet)
+                        vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; enable the KWallet Secret Service backend'
+                        exit 1 ;;
+                    none) ;;
+                    unknown)
+                        vela_credential_mark unverified 'cannot check the existing KWallet service'
+                        exit 1 ;;
+                    *)
+                        vela_credential_mark conflict "org.kde.kwalletd6 belongs to $native"
+                        exit 1 ;;
+                esac
+            fi ;;
         unknown)
             vela_credential_mark unverified 'cannot identify the existing Secret Service owner'
             exit 1 ;;
@@ -128,6 +151,25 @@ vela_credential_ensure()
                 exit 1 ;;
         esac
     done
+    if [ "$backend" = kwallet ]; then
+        native=$(vela_credential_owner org.kde.kwalletd6)
+        case "$native" in
+            kwallet)
+                # The unit started successfully and its native API works.
+                # Keep OUR unit running for native KWallet applications, but
+                # expose the missing Secret Service API as a limited state.
+                vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; enable the KWallet Secret Service backend'
+                exit 1 ;;
+            unknown)
+                vela_credential_stop_started_unit
+                vela_credential_mark unverified 'cannot check the KWallet service'
+                exit 1 ;;
+            other|gnome)
+                vela_credential_stop_started_unit
+                vela_credential_mark conflict "org.kde.kwalletd6 belongs to $native"
+                exit 1 ;;
+        esac
+    fi
     vela_credential_stop_started_unit
     vela_credential_mark failed "no Secret Service owner appeared for $backend"
     exit 1
