@@ -26,7 +26,7 @@ import urllib.request
 VAST = "https://console.vast.ai/api"
 GITHUB = "https://api.github.com"
 # GeForce RTX cards, from the RTX 2060 up: the drivers Vulkan 1.4 needs no
-# longer support anything before Turing. The price cap decides among them.
+# longer support anything before Turing. Offers are ranked within the cap.
 GPUS = (
     "RTX 2060", "RTX 2060S", "RTX 2070", "RTX 2070S", "RTX 2080", "RTX 2080S", "RTX 2080 Ti",
     "RTX 3050", "RTX 3060", "RTX 3060 Ti", "RTX 3070", "RTX 3070 Ti",
@@ -264,7 +264,7 @@ def main():
     parser.add_argument("--image")
     parser.add_argument("--runner-version")
     parser.add_argument("--max-price", type=float, default=0.12)
-    parser.add_argument("--gpu", default="", help="One GPU from the list instead of the cheapest")
+    parser.add_argument("--gpu", default="", help="Restrict the rental to one RTX GPU model instead of automatic ranking")
     args = parser.parse_args()
     if args.gpu and args.gpu not in GPUS:
         parser.error(f"--gpu must be one of: {', '.join(GPUS)}")
