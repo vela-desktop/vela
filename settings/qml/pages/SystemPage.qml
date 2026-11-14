@@ -50,6 +50,8 @@ Page {
                 ? qsTr("This password manager will be used after signing out and back in. The running session still uses the previous choice.")
                 : Prefs.credentialStatus === "conflict"
                 ? qsTr("Another password manager owns Secret Service. Your choice is not active; check the Vela session log. No passwords were migrated.")
+                : Prefs.credentialStatus === "limited"
+                ? qsTr("KWallet's native API is available, but Secret Service is not. Some KDE/Chromium apps may work, but libsecret clients may fail. Enable KWallet's Secret Service support and sign in again.")
                 : Prefs.credentialStatus === "missing" || Prefs.credentialStatus === "unverified" || Prefs.credentialStatus === "failed"
                 ? qsTr("The selected password manager could not be verified or started. Check the session log. Changing the choice requires a new login.")
                 : qsTr("Use this existing password store for apps. No passwords are transferred. Changes take effect after signing out and back in.")
