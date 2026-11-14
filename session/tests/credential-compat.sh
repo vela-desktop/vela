@@ -241,10 +241,20 @@ EOF
 # No real UI is opened in tests: capture the first-login prompt invocation.
 cat > "$mockbin/vela-settings" <<'EOF'
 #!/bin/sh
+if [ -n "${MOCK_SETTINGS_FAIL_ONCE:-}" ] && [ -e "$MOCK_SETTINGS_FAIL_ONCE" ]; then
+    rm -f "$MOCK_SETTINGS_FAIL_ONCE"
+    exit 1
+fi
 printf '%s\n' "$*" >> "$MOCK_SETTINGS_CALLS"
 EOF
 cat > "$mockbin/sleep" <<'EOF'
 #!/bin/sh
+if [ "$1" = 2 ] && [ -n "${MOCK_SLEEP_WAIT_MARKER:-}" ] && [ -f "$MOCK_SLEEP_WAIT_MARKER" ]; then
+    : > "$MOCK_SLEEP_SIGNAL"
+    while [ -f "$MOCK_SLEEP_WAIT_MARKER" ]; do
+        /bin/sleep 0.01
+    done
+fi
 exit 0
 EOF
 chmod 700 "$mockbin/"*
@@ -297,4 +307,52 @@ sh "$hook" start
 [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 1 ]
 sh "$hook" stop
 
-echo "credential selection, first-login prompt, owner validation and restart lifecycle OK"
+# Deferring the choice must prompt again on the NEXT actual login.
+VELA_SECRET_CONFIGURED=0
+export VELA_SECRET_CONFIGURED
+sh "$hook" start
+i=0
+while [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -lt 2 ] && [ "$i" -lt 100 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 2 ]
+sh "$hook" stop
+
+# A transient Settings launch failure must be retried, not silently lost.
+export MOCK_SETTINGS_FAIL_ONCE="$tmp/fail-once"
+: > "$MOCK_SETTINGS_FAIL_ONCE"
+sh "$hook" start
+i=0
+while [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -lt 3 ] && [ "$i" -lt 100 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ ! -e "$MOCK_SETTINGS_FAIL_ONCE" ]
+[ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 3 ]
+sh "$hook" stop
+unset MOCK_SETTINGS_FAIL_ONCE
+
+# A delayed child from a logged-out session must not prompt during a new
+# session, even if the same WAYLAND_DISPLAY is reused.
+export MOCK_SLEEP_WAIT_MARKER="$tmp/hold-prompt" MOCK_SLEEP_SIGNAL="$tmp/prompt-ready"
+: > "$MOCK_SLEEP_WAIT_MARKER"
+sh "$hook" start
+i=0
+while [ ! -e "$MOCK_SLEEP_SIGNAL" ] && [ "$i" -lt 100 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ -e "$MOCK_SLEEP_SIGNAL" ]
+sh "$hook" stop
+VELA_SECRET_CONFIGURED=1
+export VELA_SECRET_CONFIGURED
+sh "$hook" start
+rm -f "$MOCK_SLEEP_WAIT_MARKER"
+# The old helper must observe the changed session token and exit quietly.
+/bin/sleep 0.10
+[ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 3 ]
+sh "$hook" stop
+unset MOCK_SLEEP_WAIT_MARKER MOCK_SLEEP_SIGNAL
+
+echo "credential selection, prompt/retry/logout safety, owner validation and restart lifecycle OK"
