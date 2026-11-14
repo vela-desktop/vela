@@ -234,6 +234,20 @@ cat > "$mockbin/readlink" <<'EOF'
 #!/bin/sh
 printf '%s\n' /usr/bin/kwalletd6
 EOF
+# Optionally delay the old prompt child's *first* read of STATE so a logout
+# and new login can happen before that read completes.
+cat > "$mockbin/cat" <<'EOF'
+#!/bin/sh
+if [ "$#" -eq 1 ] &&
+    [ "$1" = "$XDG_RUNTIME_DIR/vela-session-$WAYLAND_DISPLAY" ] &&
+    [ -n "${MOCK_CAT_WAIT_MARKER:-}" ] && [ -f "$MOCK_CAT_WAIT_MARKER" ]; then
+    : > "$MOCK_CAT_SIGNAL"
+    while [ -f "$MOCK_CAT_WAIT_MARKER" ]; do
+        /bin/sleep 0.01
+    done
+fi
+exec /bin/cat "$@"
+EOF
 cat > "$mockbin/dbus-update-activation-environment" <<'EOF'
 #!/bin/sh
 exit 0
@@ -363,5 +377,34 @@ rm -f "$MOCK_SLEEP_WAIT_MARKER"
 [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 3 ]
 sh "$hook" stop
 unset MOCK_SLEEP_WAIT_MARKER MOCK_SLEEP_SIGNAL
+
+# A second scheduling race: the old prompt child might not start executing
+# until AFTER the new login has written a different STATE. Its token must
+# come from the parent login, not the latest file content. A mocked cat traps
+# the old implementation before its first STATE read; the new implementation
+# pauses at its first sleep. Either way, restarting the login must not open
+# the stale prompt.
+VELA_SECRET_CONFIGURED=0
+export VELA_SECRET_CONFIGURED
+export MOCK_CAT_WAIT_MARKER="$tmp/hold-token-read" MOCK_CAT_SIGNAL="$tmp/token-read-ready"
+export MOCK_SLEEP_WAIT_MARKER="$tmp/hold-first-sleep" MOCK_SLEEP_SIGNAL="$tmp/first-sleep-ready"
+: > "$MOCK_CAT_WAIT_MARKER"
+: > "$MOCK_SLEEP_WAIT_MARKER"
+sh "$hook" start
+i=0
+while [ ! -e "$MOCK_CAT_SIGNAL" ] && [ ! -e "$MOCK_SLEEP_SIGNAL" ] && [ "$i" -lt 100 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ -e "$MOCK_CAT_SIGNAL" ] || [ -e "$MOCK_SLEEP_SIGNAL" ]
+sh "$hook" stop
+VELA_SECRET_CONFIGURED=1
+export VELA_SECRET_CONFIGURED
+sh "$hook" start
+rm -f "$MOCK_CAT_WAIT_MARKER" "$MOCK_SLEEP_WAIT_MARKER"
+/bin/sleep 0.10
+[ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 3 ]
+sh "$hook" stop
+unset MOCK_CAT_WAIT_MARKER MOCK_CAT_SIGNAL MOCK_SLEEP_WAIT_MARKER MOCK_SLEEP_SIGNAL
 
 echo "credential selection, prompt/retry/logout safety, owner validation and restart lifecycle OK"
