@@ -1,39 +1,109 @@
 # Temporary credential backend compatibility
 
-**Remove this entire compatibility layer when Vela Secrets is ready.**
+**Delete this shim when Vela Secrets is ready.** It is not a password-provider
+framework: it never opens, reads, deletes, migrates, or copies credential files.
 
-This is a narrowly scoped workaround for #222, not a credential-provider
-framework. No credential files are read or migrated.
+## Choice and first login
 
-- `secret-backend=kwallet` (default, preserving Vela's pre-existing behavior)
-  exports `XDG_CURRENT_DESKTOP=Vela:KDE`.
-- `secret-backend=gnome` exports `XDG_CURRENT_DESKTOP=Vela:GNOME`
-  and leaves `KDE_SESSION_VERSION` unset.
-- The setting lives in `~/.config/vela/vela.conf` and is edited via
-  Settings > System. The selection is made in `vela-session` **before**
-  the compositor/supervisor starts. Apply changes by logging out and back in.
-- The session hook starts a Vela-owned compatibility unit exactly once per
-  session; service shutdown follows `vela-session.target`. GNOME's `--start`
-  should reuse an existing PAM-unlocked daemon when available. The unit
-  cannot promise automatic unlocking without appropriate distro PAM setup.
-- `DesktopNames=Vela;` prevents desktop-manager startup from eagerly
-  selecting KWallet before this user choice is applied.
-- Neither switching providers nor uninstalling Vela Secrets migrates the
-  encrypted data in KWallet or GNOME Keyring.
+- `secret-backend=kwallet` exports `XDG_CURRENT_DESKTOP=Vela:KDE` and
+  `KDE_SESSION_VERSION=6` for Chromium/Electron compatibility with Plasma.
+- `secret-backend=gnome` exports `XDG_CURRENT_DESKTOP=Vela:GNOME` and removes
+  `KDE_SESSION_VERSION`, so Chromium/Electron select GNOME's password store.
+- `DesktopNames=Vela;` in the session entry avoids overriding the choice
+  before `vela-session` reads `~/.config/vela/vela.conf`.
+- When the key is **not configured**, the previous KWallet behavior is retained
+  for upgrades. This is *not* a decision on the user's behalf: Settings >
+  System shows an unselected choice and Vela offers a first-login reminder.
+  Choosing even the already-used KWallet persists the decision explicitly.
+- The choice is fixed before the compositor/supervisor and autostarts launch.
+  Changing it requires a full logout/login. No password migration takes place.
+- `VELA_SECRET_CONFIGURED` only communicates whether the choice was explicit
+  during this session; it does not change the selected provider.
 
-## Outstanding acceptance checks (draft)
+## Secret Service verification and lifecycle
 
-- Live login under Fedora Workstation 44 GDM with an existing GNOME login
-  keyring (Brave/Chromium, Electron, `gh auth status`, Secret Service owner).
-- Live login under Arch/Plasma SDDM with an existing KWallet (same clients).
-- Sign out / sign in with another DE; compositor crash + supervised restart;
-  ensure the session does not kill a PAM-owned daemon or steal a bus name.
-- First-login guidance when backend selection is absent; GNOME installations
-  currently start with the previous `kwallet` default until changed in Settings.
+On the first compositor start in a real session, `vela-session-env` sources
+`ensure-backend`, which queries the *actual* `org.freedesktop.secrets` bus
+owner using `busctl --user` and `GetConnectionUnixProcessID`:
+
+1. If the **correct** daemon already owns Secret Service (for example one
+   unlocked by PAM), do not launch or manage it.
+2. If **another** daemon owns the bus name, report a conflict. Do not replace,
+   terminate, or reconfigure someone else's password store.
+3. If no owner exists, check the selected daemon executable explicitly.
+   Start the matching Vela-owned systemd unit, then verify the bus owner.
+   `ConditionFileIsExecutable` and a successful `systemctl start` on their
+   own **do not** prove that the provider is usable.
+4. If the bus response is unreadable, no owner appears, or the selected
+   executable is missing, report the failure without claiming success.
+
+The result is written to `$XDG_RUNTIME_DIR/vela-credential-compat.status`
+with a private umask: `ok`, `missing`, `conflict`, `unverified`, or `failed`.
+Settings > System displays persistent failure guidance; notification delivery
+is best effort after Vela's notification server starts. Logs also explain
+failures. This state is removed at session teardown.
+
+Only the two Vela-owned compatibility units are stopped at logout; pre-existing
+PAM/user daemon processes are not stopped. A supervised compositor restart
+keeps the initial selection and does not re-run the provider startup. The
+GNOME `--start` command can reuse a daemon initialized or unlocked by PAM.
+Automatic unlocking itself depends on the host distribution's PAM configuration
+and is not promised by this workaround. `busctl` is provided by systemd on
+supported distributions.
+
+**Caveat:** `XDG_CURRENT_DESKTOP=Vela:GNOME` intentionally influences more
+than Chromium. It also matches `OnlyShowIn=GNOME;` XDG autostarts and some
+desktop-specific integrations. Vela needs to audit those autostarts on each
+supported distribution; the compatibility shim never claims to isolate GNOME
+autostarts. The Vela-specific portal configuration must remain the preferred
+configuration. Avoid adding GNOME-only units to Vela's package dependencies.
+
+## Validation
+
+CPU-only deterministic tests:
+
+```sh
+ctest --test-dir build -R session.credential-compat --output-on-failure
+```
+
+They cover explicit/unset/invalid selection, selection precedence, a
+pre-existing PAM daemon, a wrong bus owner, a missing daemon, failed systemd
+start, an unrecognizable D-Bus response, and successful startup.
+
+**Manual acceptance before merge:**
+
+- Fedora 44/45 GDM + a real existing GNOME login keyring: select GNOME,
+  login again, check stored Brave/Chromium/Electron sessions and `gh auth status`,
+  and confirm that the provider's process owns `org.freedesktop.secrets`.
+- Arch SDDM + an existing KWallet: select KWallet, login again, check the
+  same clients and confirm the KWallet owner. Verify that a missing
+  `kwalletd6` is clearly reported.
+- Verify first-login notification and selection in Settings; verify choosing
+  KWallet when it was only the implicit default writes the key to `vela.conf`.
+- With GNOME and with Plasma active on another VT, confirm that Vela neither
+  steals their bus name nor stops their daemon. Switch desktop environments
+  and confirm previous credentials remain available.
+- Crash and restart the supervised compositor: the chosen backend and its
+  bus owner must remain unchanged; there must be no second provider start.
+- Inspect `/etc/xdg/autostart` and `~/.config/autostart` for entries with
+  `OnlyShowIn=GNOME;` or `OnlyShowIn=KDE;` and verify no unwanted autostart
+  side-effects under the chosen desktop alias. Check portal selection as well.
+- Confirm that no passwords are migrated and no empty wallet is silently
+  treated as the originally selected one.
+
+For a failing session, inspect:
+
+```sh
+cat "${XDG_RUNTIME_DIR}/vela-credential-compat.status"
+busctl --user status org.freedesktop.secrets
+systemctl --user status vela-gnome-keyring-compat.service vela-kwallet-compat.service
+```
 
 ## Removal plan
 
-Delete `session/credential-compat/`, the two `*-compat.service` units,
-their install entries, session hook branches and `VELA_SECRET_BACKEND` handling.
-Delete the Settings preference and System card. Restore a Vela-only desktop
-identity after checking Chromium uses libsecret with Vela Secrets.
+Delete `session/credential-compat/`, both `*-compat.service` units,
+their CMake and packaging entries, session hook branches, and
+`VELA_SECRET_BACKEND` / `VELA_SECRET_CONFIGURED` handling. Remove the
+Settings preferences and cards, the `secret-backend` config documentation,
+and the reporting test fixture. Restore Vela-only desktop identity after
+verifying Chromium uses libsecret with Vela Secrets.
