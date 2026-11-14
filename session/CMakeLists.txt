@@ -25,7 +25,8 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME session.credential-compat
         COMMAND /bin/sh ${CMAKE_CURRENT_SOURCE_DIR}/tests/credential-compat.sh
             ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/select-backend
-            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend)
+            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend
+            ${CMAKE_CURRENT_SOURCE_DIR}/vela-session-env)
 endif()
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/vela.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
 install(FILES vela-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
