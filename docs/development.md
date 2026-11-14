@@ -284,6 +284,8 @@ caffeine status
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness. `watch capture` keeps the connection open and sends who captures the screen after every change, and `test-shell <pid>` names the real shell a test started itself (headless only); see [screen sharing](screen-sharing.md) §4.
 
+The socket accepts only processes of the same user outside a sandbox. `test-output`, `test-power` and `test-shell` are refused unless the compositor runs headless with `VELA_TEST_COMMANDS=1`, which the functional harness sets; see the [security model](security-model.md#command-socket).
+
 ### Release promo recordings
 
 `scripts/record-promo.py` produces authentic release footage from a **single
