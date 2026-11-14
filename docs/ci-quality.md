@@ -220,8 +220,8 @@ result alone is never reported as an Intel compositor pass.
 The Intel build uses up to **eight concurrent compiler jobs** (bounded
 by `nproc`) on the 8 GB machine, with a 180-minute job timeout. The
 `ccache` compilation cache persists in the runner user's home directory
-across workflow runs; monitor memory pressure under the higher job cap. It executes the same
-GPU-labeled functional, sharpness and sharpness-cpu suites, retains
+across workflow runs; monitor memory pressure under the higher job cap.
+It executes the same GPU-labeled functional, sharpness and sharpness-cpu suites, retains
 strict no-skip/no-missing-test enforcement, shutdown stress and
 validation layers, and uploads Intel-specific Vulkan/CTest/JUnit
 diagnostics. Optional coverage (`gpu-intel`) and promo smoke tests
