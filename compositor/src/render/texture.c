@@ -24,6 +24,7 @@
 
 static const struct wlr_texture_impl texture_impl;
 static const struct wlr_addon_interface texture_addon_impl;
+static void abandon_upload(struct vela_texture *texture, const char *why);
 
 struct vela_texture *vela_texture_from_wlr_texture(struct wlr_texture *texture)
 {
@@ -47,6 +48,9 @@ static void retire(struct vela_texture *texture)
     if (texture->buffer) {
         wlr_addon_finish(&texture->addon);
         texture->buffer = NULL;
+    }
+    if (texture->upload.source) {
+        abandon_upload(texture, NULL);
     }
     if (texture->image) {
         vela_renderer_retire_image(texture->renderer, texture->image, texture->view, texture->memory);
@@ -88,25 +92,28 @@ static void texture_destroy(struct wlr_texture *wlr)
     }
 }
 
-static bool create_view(struct vela_texture *texture)
+static bool create_view(struct vela_vulkan *vk, const struct vela_pixel_format *format, VkImage image,
+    VkImageView *view)
 {
     const VkImageViewCreateInfo info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .image = texture->image,
+        .image = image,
         .viewType = VK_IMAGE_VIEW_TYPE_2D,
-        .format = texture->format->unorm,
+        .format = format->unorm,
         // X... formats have an undefined fourth channel: it counts as 1.
         .components = {
             VK_COMPONENT_SWIZZLE_IDENTITY,
             VK_COMPONENT_SWIZZLE_IDENTITY,
             VK_COMPONENT_SWIZZLE_IDENTITY,
-            texture->format->alpha ? VK_COMPONENT_SWIZZLE_IDENTITY : VK_COMPONENT_SWIZZLE_ONE,
+            format->alpha ? VK_COMPONENT_SWIZZLE_IDENTITY : VK_COMPONENT_SWIZZLE_ONE,
         },
         .subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 },
     };
-    VkDevice device = texture->renderer->vk->device;
-    return vela_vulkan_result(texture->renderer->vk,
-        vkCreateImageView(device, &info, NULL, &texture->view), "vkCreateImageView(texture)");
+    if (!vela_vulkan_result(vk, vkCreateImageView(vk->device, &info, NULL, view), "vkCreateImageView(texture)")) {
+        *view = VK_NULL_HANDLE;
+        return false;
+    }
+    return true;
 }
 
 static struct vela_texture *new_texture(struct vela_renderer *renderer, const struct vela_pixel_format *format,
@@ -118,8 +125,29 @@ static struct vela_texture *new_texture(struct vela_renderer *renderer, const st
     texture->format = format;
     texture->dmabuf_fd = -1;
     texture->refs = 1;
+    wl_list_init(&texture->upload.link);
     wl_list_insert(&renderer->textures, &texture->link);
     return texture;
+}
+
+// --------------------------------------------------------- image extent --
+
+// A client buffer the device can't make an image of is refused here, before
+// vkCreateImage, where it would be invalid usage rather than an error
+// (docs/memory-allocation-policy.md, point 6). The surface keeps what it
+// showed: wlroots keeps its previous buffer when no texture comes.
+static bool extent_allowed(struct vela_renderer *renderer, const struct wlr_buffer *buffer, int width, int height,
+    struct vela_extent max, bool dmabuf)
+{
+    if (width > 0 && height > 0 && (uint32_t)width <= max.width && (uint32_t)height <= max.height) {
+        return true;
+    }
+    renderer->extent_rejected = (struct vela_extent_rejection) { buffer, width, height, max.width, max.height,
+        dmabuf };
+    ++renderer->upload_stats.rejected;
+    wlr_log(WLR_DEBUG, "Texture: %s %dx%d refused, above %ux%u", dmabuf ? "dmabuf" : "buffer", width, height,
+        max.width, max.height);
+    return false;
 }
 
 // --------------------------------------------------------------- dmabuf --
@@ -147,10 +175,14 @@ static struct wlr_texture *import_dmabuf(struct vela_renderer *renderer, struct 
             dmabuf->modifier);
         return NULL;
     }
+    if (!extent_allowed(renderer, buffer, dmabuf->width, dmabuf->height,
+            vela_vulkan_dmabuf_max_extent(vk, dmabuf->format, dmabuf->modifier), true)) {
+        return NULL;
+    }
     struct vela_texture *texture = new_texture(renderer, format, dmabuf->width, dmabuf->height);
     if (!vela_vulkan_import_dmabuf(vk, dmabuf, format->unorm,
             VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT, &texture->image, &texture->memory)
-        || !create_view(texture)) {
+        || !create_view(vk, format, texture->image, &texture->view)) {
         wlr_log(WLR_ERROR, "Texture: can't import the dmabuf");
         retire(texture);
         return NULL;
@@ -189,7 +221,60 @@ static void image_barrier(VkCommandBuffer cmd, VkImage image, VkImageLayout from
     vkCmdPipelineBarrier2(cmd, &dependency);
 }
 
-// Copies the `rects` zones of the `data` pixels into the image.
+// What drawing and readback do with a texture image, and what a copy into it
+// does: the two ends of every barrier around an upload.
+#define SHOWN_STAGES (VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COPY_BIT)
+#define SHOWN_ACCESS (VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT)
+
+static void to_copy_destination(VkCommandBuffer cmd, VkImage image, bool has_content)
+{
+    image_barrier(cmd, image, has_content ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, SHOWN_STAGES, SHOWN_ACCESS, VK_PIPELINE_STAGE_2_COPY_BIT,
+        VK_ACCESS_2_TRANSFER_WRITE_BIT);
+}
+
+static void to_shown(VkCommandBuffer cmd, VkImage image)
+{
+    image_barrier(cmd, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, SHOWN_STAGES, SHOWN_ACCESS);
+}
+
+// Copies the rows of `rect` from `row` on into `image`, in pieces staged by
+// the renderer (vela_renderer_stage_rows), until the rectangle is done or the
+// upload budget is used up. Returns the next row to copy.
+static int32_t copy_pieces(struct vela_renderer *renderer, VkCommandBuffer cmd, VkImage image, const uint8_t *data,
+    size_t stride, uint32_t bpp, const pixman_box32_t *rect, int32_t row)
+{
+    uint32_t width = (uint32_t)(rect->x2 - rect->x1);
+    size_t row_bytes = (size_t)width * bpp;
+    while (width > 0 && row < rect->y2) {
+        uint32_t rows = 0;
+        struct vela_staging staging;
+        if (!vela_renderer_stage_rows(renderer, row_bytes, (uint32_t)(rect->y2 - row), &rows, &staging)) {
+            break;
+        }
+        const uint8_t *src = data + (size_t)row * stride + (size_t)rect->x1 * bpp;
+        if (stride == row_bytes) {
+            memcpy(staging.data, src, row_bytes * rows);
+        } else {
+            for (uint32_t y = 0; y < rows; ++y) {
+                memcpy(staging.data + y * row_bytes, src + y * stride, row_bytes);
+            }
+        }
+        const VkBufferImageCopy copy = {
+            .bufferOffset = staging.offset,
+            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+            .imageOffset = { rect->x1, row, 0 },
+            .imageExtent = { width, rows, 1 },
+        };
+        vkCmdCopyBufferToImage(cmd, staging.buffer, image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        row += (int32_t)rows;
+    }
+    return row;
+}
+
+// Copies the `rects` zones of the `data` pixels into the image, now: the
+// caller has reserved the staging (vela_renderer_reserve_upload).
 static bool upload(struct vela_texture *texture, const uint8_t *data, size_t stride, const pixman_box32_t *rects,
     int count)
 {
@@ -198,46 +283,304 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
     VkCommandBuffer cmd = vela_renderer_upload_commands(renderer);
     if (!cmd) return false;
 
-    image_barrier(cmd, texture->image,
-        texture->uploaded ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
-        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT, VK_PIPELINE_STAGE_2_COPY_BIT,
-        VK_ACCESS_2_TRANSFER_WRITE_BIT);
-
+    to_copy_destination(cmd, texture->image, texture->uploaded);
     bool ok = true;
+    for (int i = 0; i < count && ok; ++i) {
+        ok = copy_pieces(renderer, cmd, texture->image, data, stride, bpp, &rects[i], rects[i].y1) >= rects[i].y2;
+    }
+    if (vela_vulkan_unusable(renderer->vk)) return false;
+    to_shown(cmd, texture->image);
+    texture->uploaded = true;
+    ++renderer->upload_stats.in_place;
+    return ok;
+}
+
+// An image of ours for a texture: device memory, with its view.
+static bool create_image(struct vela_renderer *renderer, const struct vela_pixel_format *format, uint32_t width,
+    uint32_t height, VkImage *image, VkDeviceMemory *memory, VkImageView *view)
+{
+    struct vela_vulkan *vk = renderer->vk;
+    *image = VK_NULL_HANDLE;
+    *memory = VK_NULL_HANDLE;
+    *view = VK_NULL_HANDLE;
+    const VkImageCreateInfo image_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+        .imageType = VK_IMAGE_TYPE_2D,
+        .format = format->unorm,
+        .extent = { width, height, 1 },
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = VK_SAMPLE_COUNT_1_BIT,
+        .tiling = VK_IMAGE_TILING_OPTIMAL,
+        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+    };
+    if (!vela_vulkan_result(vk, vkCreateImage(vk->device, &image_info, NULL, image), "vkCreateImage(texture)")) {
+        *image = VK_NULL_HANDLE;
+        return false;
+    }
+    VkMemoryRequirements requirements;
+    vkGetImageMemoryRequirements(vk->device, *image, &requirements);
+    const VkMemoryAllocateInfo alloc_info = {
+        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex = vela_vulkan_memory_type(vk, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
+    };
+    bool ok = alloc_info.memoryTypeIndex != UINT32_MAX
+        && vela_vulkan_result(vk, vkAllocateMemory(vk->device, &alloc_info, NULL, memory),
+            "vkAllocateMemory(texture)");
+    if (!ok) *memory = VK_NULL_HANDLE;
+    ok = ok
+        && vela_vulkan_result(vk, vkBindImageMemory(vk->device, *image, *memory, 0), "vkBindImageMemory(texture)")
+        && create_view(vk, format, *image, view);
+    if (!ok) {
+        // Nothing of it has reached the GPU yet.
+        vkDestroyImage(vk->device, *image, NULL);
+        if (*memory) vkFreeMemory(vk->device, *memory, NULL);
+        *image = VK_NULL_HANDLE;
+        *memory = VK_NULL_HANDLE;
+        *view = VK_NULL_HANDLE;
+    }
+    return ok;
+}
+
+// ------------------------------------------------- deferred uploads --
+//
+// docs/memory-allocation-policy.md, point 6. An upload that doesn't fit in
+// what is left of the upload budget when its buffer is committed, or that
+// comes while older ones are waiting, is not copied then: the texture locks
+// the client's buffer and copies it over the next frames, oldest upload
+// first, as far as the budget goes each time. It never shows half of it: the
+// pieces go into an image of their own (made for the upload, starting as a
+// copy of the image shown when the damage is partial), and the texture
+// switches to it only after the last piece. A texture with no content yet
+// fills its own image and is not drawn until then.
+
+static void finish_upload(struct vela_texture *texture)
+{
+    struct vela_upload *upload = &texture->upload;
+    wl_list_remove(&upload->link);
+    wl_list_init(&upload->link);
+    struct wlr_buffer *source = upload->source;
+    upload->source = NULL;
+    // Last: unlocking may release the buffer to its client.
+    wlr_buffer_unlock(source);
+}
+
+// An upload that won't be finished: its image goes, the texture keeps what it
+// shows.
+static void abandon_upload(struct vela_texture *texture, const char *why)
+{
+    struct vela_upload *upload = &texture->upload;
+    struct vela_renderer *renderer = texture->renderer;
+    if (why) {
+        wlr_log(WLR_ERROR, "Texture: %dx%d upload abandoned: %s", texture->base.width, texture->base.height, why);
+    }
+    if (upload->image) {
+        // Recorded pieces may still be waiting for their submission.
+        vela_renderer_retire_image(renderer, upload->image, upload->view, upload->memory);
+        upload->image = VK_NULL_HANDLE;
+        upload->view = VK_NULL_HANDLE;
+        upload->memory = VK_NULL_HANDLE;
+    }
+    ++renderer->upload_stats.abandoned;
+    finish_upload(texture);
+}
+
+static bool covers(const pixman_box32_t *rects, int count, int width, int height)
+{
+    return count == 1 && rects[0].x1 <= 0 && rects[0].y1 <= 0 && rects[0].x2 >= width && rects[0].y2 >= height;
+}
+
+// The rectangles of `region`, at most VELA_UPLOAD_MAX_RECTS of them.
+static int upload_rects(const pixman_region32_t *region, pixman_box32_t *out)
+{
+    int count = 0;
+    const pixman_box32_t *rects = pixman_region32_rectangles((pixman_region32_t *)region, &count);
+    // Too many little pieces: better a single copy of the rectangle
+    // containing them.
+    if (count > VELA_UPLOAD_MAX_RECTS) {
+        rects = pixman_region32_extents((pixman_region32_t *)region);
+        count = 1;
+    }
+    int kept = 0;
     for (int i = 0; i < count; ++i) {
-        const pixman_box32_t *r = &rects[i];
-        uint32_t width = (uint32_t)(r->x2 - r->x1);
-        uint32_t height = (uint32_t)(r->y2 - r->y1);
-        if (width == 0 || height == 0) {
+        if (rects[i].x2 > rects[i].x1 && rects[i].y2 > rects[i].y1) {
+            out[kept++] = rects[i];
+        }
+    }
+    return kept;
+}
+
+// `buffer` (data, of the texture's format and size) brings `rects` to copy,
+// and they don't fit now: it becomes the texture's pending upload, at the end
+// of the queue. A pending upload it replaces had a buffer the client sent
+// before: that one is released unseen, and what it had left to copy is
+// copied from the new buffer instead.
+static bool defer_upload(struct vela_texture *texture, struct wlr_buffer *buffer, const pixman_box32_t *rects,
+    int count)
+{
+    struct vela_renderer *renderer = texture->renderer;
+    struct vela_upload *upload = &texture->upload;
+    int width = (int)texture->base.width;
+    int height = (int)texture->base.height;
+    if (upload->source) {
+        // What the shown image lacks: everything the replaced uploads
+        // brought, and the new damage.
+        pixman_region32_t region;
+        pixman_region32_init_rects(&region, upload->rects, upload->rect_count);
+        for (int i = 0; i < count; ++i) {
+            vela_region_ok(pixman_region32_union_rect(&region, &region, rects[i].x1, rects[i].y1,
+                (unsigned)(rects[i].x2 - rects[i].x1), (unsigned)(rects[i].y2 - rects[i].y1)));
+        }
+        if (!pixman_region32_selfcheck(&region)) {
+            // No memory for the union: the whole buffer is what it lacks.
+            pixman_region32_fini(&region);
+            pixman_region32_init_rect(&region, 0, 0, (unsigned)width, (unsigned)height);
+        }
+        upload->rect_count = upload_rects(&region, upload->rects);
+        pixman_region32_fini(&region);
+        struct wlr_buffer *replaced = upload->source;
+        upload->source = wlr_buffer_lock(buffer);
+        wl_list_remove(&upload->link);
+        wlr_buffer_unlock(replaced);
+        ++renderer->upload_stats.replaced;
+    } else {
+        upload->copy_shown = false;
+        if (texture->uploaded) {
+            if (!create_image(renderer, texture->format, (uint32_t)width, (uint32_t)height, &upload->image,
+                    &upload->memory, &upload->view)) {
+                return false;
+            }
+            upload->copy_shown = !covers(rects, count, width, height);
+        }
+        memcpy(upload->rects, rects, (size_t)count * sizeof(*rects));
+        upload->rect_count = count;
+        upload->started = false;
+        upload->frames = 0;
+        upload->source = wlr_buffer_lock(buffer);
+        ++renderer->upload_stats.deferred;
+    }
+    upload->rect = 0;
+    upload->row = upload->rect_count > 0 ? upload->rects[0].y1 : 0;
+    wl_list_insert(renderer->uploads.prev, &upload->link);
+    return true;
+}
+
+// The first commands of an upload, or of its next frame: the image it fills
+// becomes a copy destination.
+static void start_pieces(struct vela_texture *texture, VkCommandBuffer cmd)
+{
+    struct vela_upload *upload = &texture->upload;
+    if (upload->started) {
+        // The pieces of an earlier submission come first.
+        image_barrier(cmd, upload->image ? upload->image : texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+            VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+            VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
+        return;
+    }
+    upload->started = true;
+    if (!upload->image) {
+        to_copy_destination(cmd, texture->image, false);
+        return;
+    }
+    to_copy_destination(cmd, upload->image, false);
+    if (!upload->copy_shown) return;
+    // What the damage leaves out is what is shown now.
+    image_barrier(cmd, texture->image, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, SHOWN_STAGES, SHOWN_ACCESS, VK_PIPELINE_STAGE_2_COPY_BIT,
+        VK_ACCESS_2_TRANSFER_READ_BIT);
+    const VkImageCopy copy = {
+        .srcSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
+        .extent = { texture->base.width, texture->base.height, 1 },
+    };
+    vkCmdCopyImage(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, upload->image,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    image_barrier(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+        SHOWN_STAGES, VK_ACCESS_2_NONE);
+}
+
+// The last piece is recorded: the texture shows the new image from the next
+// drawing on, the old one goes when the GPU is done with it.
+static void switch_image(struct vela_texture *texture, VkCommandBuffer cmd)
+{
+    struct vela_renderer *renderer = texture->renderer;
+    struct vela_upload *upload = &texture->upload;
+    if (upload->image) {
+        to_shown(cmd, upload->image);
+        vela_renderer_retire_image(renderer, texture->image, texture->view, texture->memory);
+        texture->image = upload->image;
+        texture->view = upload->view;
+        texture->memory = upload->memory;
+        upload->image = VK_NULL_HANDLE;
+        upload->view = VK_NULL_HANDLE;
+        upload->memory = VK_NULL_HANDLE;
+    } else {
+        to_shown(cmd, texture->image);
+    }
+    texture->uploaded = true;
+    texture->content = ++renderer->upload_content;
+    ++renderer->upload_stats.completed;
+    wlr_log(WLR_DEBUG, "Texture: %ux%u upload done over %u frame(s)", texture->base.width, texture->base.height,
+        upload->frames);
+    finish_upload(texture);
+}
+
+struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer *renderer)
+{
+    struct vela_upload_progress progress = { 0 };
+    VkCommandBuffer cmd = VK_NULL_HANDLE;
+    struct vela_texture *texture, *tmp;
+    wl_list_for_each_safe (texture, tmp, &renderer->uploads, upload.link) {
+        if (vela_vulkan_unusable(renderer->vk)) break;
+        struct vela_upload *upload = &texture->upload;
+        uint32_t bpp = texture->format->bytes_per_pixel;
+        if (upload->rect < upload->rect_count) {
+            // Not even its next row fits: the oldest waits, and the newer
+            // ones wait behind it.
+            const pixman_box32_t *rect = &upload->rects[upload->rect];
+            const pixman_box32_t next = { rect->x1, upload->row, rect->x2, upload->row + 1 };
+            if (!vela_renderer_reserve_upload(renderer, &next, 1, bpp)) break;
+        }
+        if (!cmd && !(cmd = vela_renderer_upload_commands(renderer))) break;
+        void *data = NULL;
+        uint32_t drm_format = 0;
+        size_t stride = 0;
+        if (!wlr_buffer_begin_data_ptr_access(upload->source, WLR_BUFFER_DATA_PTR_ACCESS_READ, &data, &drm_format,
+                &stride)) {
+            abandon_upload(texture, "the buffer can't be read any more");
             continue;
         }
-        size_t row_bytes = (size_t)width * bpp;
-        struct vela_staging staging;
-        if (!vela_renderer_stage(renderer, row_bytes * height, &staging)) {
-            ok = false;
-            break;
+        if (drm_format != texture->format->drm) {
+            wlr_buffer_end_data_ptr_access(upload->source);
+            abandon_upload(texture, "the buffer changed format");
+            continue;
         }
-        const uint8_t *src = data + (size_t)r->y1 * stride + (size_t)r->x1 * bpp;
-        for (uint32_t y = 0; y < height; ++y) {
-            memcpy(staging.data + y * row_bytes, src + y * stride, row_bytes);
+        start_pieces(texture, cmd);
+        VkImage image = upload->image ? upload->image : texture->image;
+        while (upload->rect < upload->rect_count) {
+            const pixman_box32_t *rect = &upload->rects[upload->rect];
+            upload->row = copy_pieces(renderer, cmd, image, data, stride, bpp, rect, upload->row);
+            if (upload->row < rect->y2) break; // the budget is used up
+            if (++upload->rect < upload->rect_count) upload->row = upload->rects[upload->rect].y1;
         }
-        const VkBufferImageCopy copy = {
-            .bufferOffset = staging.offset,
-            .imageSubresource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1 },
-            .imageOffset = { r->x1, r->y1, 0 },
-            .imageExtent = { width, height, 1 },
-        };
-        vkCmdCopyBufferToImage(cmd, staging.buffer, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+        wlr_buffer_end_data_ptr_access(upload->source);
+        ++upload->frames;
+        if (upload->rect < upload->rect_count) break; // the oldest waits: the newer ones wait behind it
+        switch_image(texture, cmd);
+        ++progress.completed;
     }
-
-    if (vela_vulkan_unusable(renderer->vk)) return false;
-    image_barrier(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-        VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-        VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COPY_BIT,
-        VK_ACCESS_2_SHADER_SAMPLED_READ_BIT | VK_ACCESS_2_TRANSFER_READ_BIT);
-    texture->uploaded = true;
-    return ok;
+    // Submit even when this call recorded nothing: earlier in-place uploads
+    // may still have commands waiting, including during direct scanout.
+    // Their staging chunks only become reusable after submission.
+    if (!vela_renderer_flush_uploads(renderer)) {
+        wlr_log(WLR_ERROR, "Texture: can't submit the uploads");
+    }
+    progress.pending = wl_list_length(&renderer->uploads);
+    return progress;
 }
 
 static bool shm_format_supported(const struct vela_vulkan *vk, uint32_t drm)
@@ -265,49 +608,31 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
         wlr_log(WLR_DEBUG, "Texture: format 0x%08x not supported", drm_format);
         return NULL;
     }
+    struct vela_extent max = vela_vulkan_shm_max_extent(vk, drm_format);
+    // A row must fit in one upload piece: at the limits drivers report (up
+    // to 32768 pixels of 8 bytes, 256 KiB) it always does.
+    uint32_t piece_width = VELA_UPLOAD_PIECE_BYTES / format->bytes_per_pixel;
+    if (max.width > piece_width) max.width = piece_width;
+    if (!extent_allowed(renderer, buffer, buffer->width, buffer->height, max, false)) {
+        wlr_buffer_end_data_ptr_access(buffer);
+        return NULL;
+    }
 
     struct vela_texture *texture = new_texture(renderer, format, buffer->width, buffer->height);
-    const VkImageCreateInfo image_info = {
-        .sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .imageType = VK_IMAGE_TYPE_2D,
-        .format = format->unorm,
-        .extent = { (uint32_t)buffer->width, (uint32_t)buffer->height, 1 },
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = VK_SAMPLE_COUNT_1_BIT,
-        .tiling = VK_IMAGE_TILING_OPTIMAL,
-        .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-        .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
-    };
-    bool ok = vela_vulkan_result(vk,
-        vkCreateImage(vk->device, &image_info, NULL, &texture->image), "vkCreateImage(texture)");
-    if (ok) {
-        VkMemoryRequirements requirements;
-        vkGetImageMemoryRequirements(vk->device, texture->image, &requirements);
-        const VkMemoryAllocateInfo alloc_info = {
-            .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-            .allocationSize = requirements.size,
-            .memoryTypeIndex
-            = vela_vulkan_memory_type(vk, requirements.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT),
-        };
-        ok = alloc_info.memoryTypeIndex != UINT32_MAX
-            && vela_vulkan_result(vk, vkAllocateMemory(vk->device, &alloc_info, NULL, &texture->memory),
-                "vkAllocateMemory(texture)")
-            && vela_vulkan_result(vk, vkBindImageMemory(vk->device, texture->image, texture->memory, 0),
-                "vkBindImageMemory(texture)") && create_view(texture);
-    }
+    bool ok = create_image(renderer, format, (uint32_t)buffer->width, (uint32_t)buffer->height, &texture->image,
+        &texture->memory, &texture->view);
     if (ok) {
         const pixman_box32_t whole = { 0, 0, buffer->width, buffer->height };
-        ok = upload(texture, data, stride, &whole, 1);
+        if (wl_list_empty(&renderer->uploads)
+            && vela_renderer_reserve_upload(renderer, &whole, 1, format->bytes_per_pixel)) {
+            ok = upload(texture, data, stride, &whole, 1);
+        } else {
+            ok = !vela_vulkan_unusable(vk) && defer_upload(texture, buffer, &whole, 1);
+        }
     }
     wlr_buffer_end_data_ptr_access(buffer);
     if (!ok) {
         wlr_log(WLR_ERROR, "Texture: can't upload a %dx%d buffer", buffer->width, buffer->height);
-        if (!texture->memory && texture->image) {
-            vkDestroyImage(vk->device, texture->image, NULL);
-            texture->image = VK_NULL_HANDLE;
-        }
         retire(texture);
         return NULL;
     }
@@ -319,7 +644,9 @@ static struct wlr_texture *upload_buffer(struct vela_renderer *renderer, struct 
 static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffer, const pixman_region32_t *damage)
 {
     struct vela_texture *texture = (struct vela_texture *)wlr;
-    if (texture->foreign || buffer->width != (int)wlr->width || buffer->height != (int)wlr->height) {
+    struct vela_renderer *renderer = texture->renderer;
+    if (!renderer || vela_vulkan_unusable(renderer->vk) || texture->foreign || buffer->width != (int)wlr->width
+        || buffer->height != (int)wlr->height) {
         return false;
     }
     void *data = NULL;
@@ -332,20 +659,42 @@ static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffe
     if (ok) {
         pixman_region32_t region;
         pixman_region32_init(&region);
-        pixman_region32_intersect_rect(&region, damage, 0, 0, (unsigned)buffer->width, (unsigned)buffer->height);
-        int count = 0;
-        const pixman_box32_t *rects = pixman_region32_rectangles(&region, &count);
-        // Too many little pieces: better a single copy of the rectangle
-        // containing them.
-        if (count > 16) {
-            rects = pixman_region32_extents(&region);
-            count = 1;
+        if (texture->uploaded || texture->upload.source) {
+            pixman_region32_intersect_rect(&region, damage, 0, 0, (unsigned)buffer->width,
+                (unsigned)buffer->height);
+        } else {
+            // Its first upload was abandoned: nothing of it is there yet.
+            pixman_region32_union_rect(&region, &region, 0, 0, (unsigned)buffer->width, (unsigned)buffer->height);
         }
-        ok = upload(texture, data, stride, rects, count);
+        pixman_box32_t rects[VELA_UPLOAD_MAX_RECTS];
+        int count = upload_rects(&region, rects);
         pixman_region32_fini(&region);
+        if (texture->upload.source) {
+            ok = defer_upload(texture, buffer, rects, count); // replaces the pending one
+        } else if (count > 0) {
+            // Oldest first: while uploads wait, a new one waits behind them.
+            if (wl_list_empty(&renderer->uploads)
+                && vela_renderer_reserve_upload(renderer, rects, count, texture->format->bytes_per_pixel)) {
+                ok = upload(texture, data, stride, rects, count);
+            } else {
+                ok = !vela_vulkan_unusable(renderer->vk) && defer_upload(texture, buffer, rects, count);
+            }
+        }
     }
     wlr_buffer_end_data_ptr_access(buffer);
     return ok;
+}
+
+bool vela_texture_shown(struct wlr_texture *wlr)
+{
+    struct vela_texture *texture = vela_texture_from_wlr_texture(wlr);
+    return !texture || texture->foreign || texture->uploaded;
+}
+
+uint64_t vela_texture_content(struct wlr_texture *wlr)
+{
+    struct vela_texture *texture = vela_texture_from_wlr_texture(wlr);
+    return texture ? texture->content : 0;
 }
 
 // ------------------------------------------------------- pixel readback --
@@ -487,7 +836,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 {
     struct vela_texture *texture = (struct vela_texture *)wlr;
     struct vela_renderer *renderer = texture->renderer;
-    if (!renderer || vela_vulkan_unusable(renderer->vk)) return false;
+    if (!renderer || vela_vulkan_unusable(renderer->vk) || !vela_texture_shown(wlr)) return false;
     const struct vela_pixel_format *wanted = vela_pixel_format_from_drm(options->format);
     if (!wanted || wanted->unorm != texture->format->unorm) {
         return false;
@@ -878,6 +1227,19 @@ struct wlr_texture *vela_texture_create(struct vela_renderer *renderer, struct w
 void vela_texture_release(struct vela_texture *texture)
 {
     VkDevice device = texture->renderer->vk->device;
+    struct vela_upload *upload = &texture->upload;
+    if (upload->source) {
+        // The GPU is idle (or lost): the image goes at once.
+        if (upload->image) {
+            vkDestroyImageView(device, upload->view, NULL);
+            vkDestroyImage(device, upload->image, NULL);
+            vkFreeMemory(device, upload->memory, NULL);
+            upload->image = VK_NULL_HANDLE;
+            upload->view = VK_NULL_HANDLE;
+            upload->memory = VK_NULL_HANDLE;
+        }
+        finish_upload(texture);
+    }
     if (texture->image) {
         vkDestroyImageView(device, texture->view, NULL);
         vkDestroyImage(device, texture->image, NULL);

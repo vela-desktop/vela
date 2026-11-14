@@ -7,8 +7,11 @@
 > (#246): `VELA_MUST` and the classification of library results, the local
 > paths for descriptor exhaustion, the fallbacks removed with the baseline
 > at zero, and the C++ new handler. Step 6 is done: the frame path draws
-> without allocating, measured on the CPU and on a GPU. Step 7 follows (see
-> "Migration order"). Every factual claim names the
+> without allocating, measured on the CPU and on a GPU. Step 7 is done,
+> and with it the migration: the image-extent cap, upload staging in pieces
+> under a byte budget, with deferred uploads that switch atomically and
+> progress oldest first (point 6, "As implemented"), and the icon cache's
+> entry budget (see "Migration order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -328,10 +331,22 @@ migration step 1; the others belong to later steps.
    for the whole session; every miss also costs a search of the icon theme
    on disk. Different output scales add entries for the same app.
 
-   `vela_icons_app` returns a pointer into the cache. Its only caller
-   (`decoration.c`) copies the pixels immediately, so eviction is safe
-   today; the contract "valid until the next call" becomes part of the
-   function's documentation before eviction is added.
+   `vela_icons_app` returned a pointer into the cache. Its only caller
+   (`decoration.c`) copied the pixels immediately, so eviction was already
+   safe in practice.
+
+   **Fixed in step 7.** The cache is `icon_cache.c`: at most
+   `VELA_ICON_CACHE_BUDGET` (256) entries, hits and misses together, in a
+   hash table with a use list; a full cache frees the least recently used
+   entry first (`vela_icon_cache_insert`), and a successful lookup counts
+   as a use (`vela_icon_cache_find`). `vela_icons_app` now returns a copy
+   of the pixels that the caller owns (`icons.h`); `decoration.c` hands
+   that copy to `set_image`, so an entry can be evicted while a title bar
+   shows its icon. Pointers returned by `vela_icon_cache_find` and
+   `vela_icon_cache_insert` are valid only until the next insert
+   (`icon_cache.h`). An `app_id` longer than `VELA_ICON_APP_ID_MAX` (255
+   bytes) gets no entry and no search (`vela_icons_app`); before, it was
+   searched under its first 255 bytes (`icon_name`'s `char id[256]`).
 
 3. **Upload staging is budgeted by count, not by size.** `stage`
    (`render/renderer.c`) creates a chunk of `max(size, 8 MiB)` when no
@@ -353,6 +368,11 @@ migration step 1; the others belong to later steps.
    budget (`VELA_READBACK_MAX_BYTES`) that counts every readback chunk,
    including those in flight, with eviction of completed chunks
    (`make_readback_room`).
+
+   **Fixed in step 7** (point 6, "As implemented"): upload chunks are all
+   one piece (8 MiB) and at most 16 of them exist, so upload staging holds
+   at most 128 MiB, in flight included; idle ones beyond two go once they
+   have rested for a second (`vela_renderer_collect`).
 
 4. **Library results are mostly unchecked.**
    - `wl_event_loop_add_fd`/`_timer` are called 22 times; most results are
@@ -446,8 +466,8 @@ Results:
 | External, system D-Bus | `bluetooth/agent.c` (5); `bluez.c`; `model.c` paths and values; `session.c`; `compositor/bluetooth.c` logind path | BlueZ and logind object paths are short; remote device names are capped at 248 bytes by the Bluetooth specification and by BlueZ (*to verify* for the other properties) |
 | Same user | `config.c` (8); `icons.c` theme files; `output_config.c`; `workspace.c` names; `command.c` IPC lines (`MAX_LINE`); `shell.c` IPC line; `session.c` desktop names; every `getline` line; `updates/` state files, session-bus requests and `vela-update` output | IPC is capped by `MAX_LINE`; `vela-update` output by `MAX_OUTPUT` (1 MiB, `updates/src/check.c`); file lines are not capped, but the files belong to the user |
 | External, unbounded, host heap | — | none found |
-| External, unbounded, **host-visible Vulkan memory** | Client shm buffer size → upload staging: `texture.c` `upload_buffer` → `vela_renderer_stage` | **None.** Each damaged rectangle gets its own staging of rectangle width × bytes per pixel × rectangle height, up to the whole buffer, kept as described in defect 3. The client pays for one pool it can reuse; the compositor pays for a copy of it. |
-| External, unbounded, **Vulkan image extent** | Client buffer dimensions → `vkCreateImage` extent: `texture.c` `upload_buffer` (shm) and `vela_vulkan_import_dmabuf` | **No check against the device's limits.** `upload_buffer` passes `buffer->width/height` straight to `vkCreateImage`; the dmabuf format probe in `vulkan.c` calls `vkGetPhysicalDeviceImageFormatProperties2` but ignores `maxExtent`. A shm buffer of 100000×1 needs only a 400 KB pool. An extent above the limit is *invalid usage* in Vulkan (undefined behaviour), not a clean error. |
+| External, unbounded, **host-visible Vulkan memory** | Client shm buffer size → upload staging: `texture.c` `upload_buffer` and `update_from_buffer` → `vela_renderer_stage_rows` | **Bounded since step 7.** Before: each damaged rectangle got its own staging of rectangle width × bytes per pixel × rectangle height, up to the whole buffer, kept as described in defect 3. Now: pieces of whole rows in chunks of `VELA_UPLOAD_PIECE_BYTES` (8 MiB), at most `VELA_UPLOAD_MAX_CHUNKS` (16) upload chunks, 128 MiB in all, in flight included; what does not fit waits for the next frames (point 6). |
+| External, unbounded, **Vulkan image extent** | Client buffer dimensions → `vkCreateImage` extent: `texture.c` `upload_buffer` (shm) and `vela_vulkan_import_dmabuf` | **Capped since step 7.** Before: `upload_buffer` passed `buffer->width/height` straight to `vkCreateImage`, and the dmabuf format probe in `vulkan.c` called `vkGetPhysicalDeviceImageFormatProperties2` but ignored `maxExtent`; a shm buffer of 100000×1 needs only a 400 KB pool, and an extent above the limit is *invalid usage* in Vulkan (undefined behaviour), not a clean error. Now `extent_allowed` (`texture.c`) refuses it first (point 6). |
 
 Conclusion: **no host-heap site has an unbounded external size**, so none
 needs a fallible path. Two unbounded external quantities exist, both in
@@ -457,9 +477,13 @@ Vulkan:
   larger than the device's `maxImageDimension2D`, or the format's
   `maxExtent` for dmabuf, is rejected before `vkCreateImage`.
 - **The staging memory for shm uploads.** The extent cap does not bound it:
-  at the common limits of 16384 and 32768 (*to verify* per driver on the CI
-  runners), one 4-byte-per-pixel buffer is 1 GiB or 4 GiB. It is bounded by
-  a byte budget and copied in pieces (point 6).
+  at the common limits of 16384 and 32768, one 4-byte-per-pixel buffer is
+  1 GiB or 4 GiB. RADV on an RX 9070 XT (Mesa 26.2.6) reports 32768 for
+  shm XRGB8888 (`maxImageDimension2D` 32768) and 16384 for linear XRGB8888
+  dmabufs (the compositor logs both at startup; other drivers and the CI
+  runners *to verify*). A wl_shm pool's size is an `int32_t`, so a client
+  can send at most 2 GiB per pool. It is bounded by a byte budget and
+  copied in pieces (point 6).
 
 The revision-two claim that "no size is controlled by another party" was
 wrong, and so was the revision-four claim that the image-extent cap is the
@@ -483,8 +507,8 @@ see that. Every long-lived pool was checked:
 
 | Pool | Grows with | Bound today | Policy |
 |---|---|---|---|
-| Icon cache (`icons.c`) | Every distinct `(app_id, size)`, including misses | None, never evicted | Fixed entry budget with LRU eviction, and a hash or direct lookup instead of a list |
-| Upload staging (`render/renderer.c`) | Size and number of shm uploads in one frame | Two idle chunks per kind, of any size; nothing bounds a frame's peak | Byte budget over every upload chunk, in flight included, like readback; uploads copied in fixed-size pieces (point 6) |
+| Icon cache (`icons.c`, `icon_cache.c`) | Every distinct `(app_id, size)`, including misses | Since step 7: at most `VELA_ICON_CACHE_BUDGET` (256) entries, hits and misses together; a full cache frees the least recently used entry first, and a successful lookup counts as a use (`vela_icon_cache_insert`, `vela_icon_cache_find`). Before: none, never evicted | Done: a hash table with chaining, its buckets fixed at creation (at least twice the budget), and a use list (`icon_cache.c`); an `app_id` longer than `VELA_ICON_APP_ID_MAX` (255) gets no entry and no search (`vela_icons_app`) |
+| Upload staging (`render/renderer.c`) | Size and number of shm uploads in one frame | Since step 7: at most 16 chunks of 8 MiB (128 MiB), idle, being filled or in flight; idle ones beyond two freed after a second at rest. Before: two idle chunks per kind, of any size, and nothing bounded a frame's peak | Byte budget over every upload chunk, in flight included, like readback; uploads copied in fixed-size pieces (point 6). Done |
 | Readback staging | Screen capture requests | 128 MiB including chunks in flight, with eviction (`make_readback_room`) | Already compliant: this is the model |
 | Per-client protocol objects | Client requests | Freed when the client disconnects | **Known risk, out of scope here.** A sandboxed client can keep creating objects while connected, and libwayland has no per-client limit; the problem is shared with every wlroots compositor. This policy does not make it worse: under overcommit, exhaustion ends in the OOM killer rather than in a failed `malloc`, and today only three sites answer a failure with `wl_client_post_no_memory` while the rest already crash on `NULL`. Per-client quotas, with their tests, are separate work |
 | IPC connections and queued topics (`command.c`) | Same-user processes | One queued line per topic per connection | Same user: not a trust boundary |
@@ -751,6 +775,117 @@ memory (see the audit), and both are capped at texture import:
   released unseen), so a client cannot queue work faster than it is
   served.
 
+**As implemented** (step 7, Vulkan part; checked against `render/vulkan.c`,
+`render/renderer.c`, `render/texture.c`, `render/pass.c`, `scene/frame.c`
+and `scene/surface.c`, and against wlroots 0.20.2's `wlr_compositor.c` and
+`types/buffer/client.c`):
+
+- **Extent.** `query_formats` (`vulkan.c`) keeps, for every shm format, the
+  `maxExtent` of `vkGetPhysicalDeviceImageFormatProperties` for the image
+  `upload_buffer` makes (optimal tiling; sampled, transfer source and
+  destination), and for every (format, modifier) of `texture_formats` the
+  `maxExtent` of `vkGetPhysicalDeviceImageFormatProperties2` for the uses
+  `import_dmabuf` asks for. The limit that matters for `vkCreateImage` is
+  that `maxExtent` (VUID-VkImageCreateInfo-extent-02252), not
+  `maxImageDimension2D` alone, so each is the format's limit clamped to
+  `maxImageDimension2D`; the XRGB8888 ones are logged at startup.
+  `extent_allowed` (`texture.c`) checks shm buffers in `upload_buffer` and
+  dmabufs in `import_dmabuf` before anything is created or imported. A
+  refused buffer gets no texture, and wlroots then keeps the surface's
+  previous buffer (`surface_apply_damage` returns when
+  `wlr_client_buffer_create` fails), as point 6 asks. The refusal is
+  counted (`state`: `upload.rejected`) and remembered with the buffer;
+  the surface's commit handler (`scene/surface.c`) takes it
+  (`vela_renderer_take_extent_rejection`) and logs it once per client: a
+  destroy listener on the `wl_client` marks it as told. Only surfaces the
+  scene watches log; a cursor surface's refusal is only counted. A shm row
+  must also fit in one piece, which every limit a driver reports allows
+  (32768 pixels × 8 bytes is 256 KiB).
+- **Staging in pieces.** Upload chunks are all `VELA_UPLOAD_PIECE_BYTES`
+  (8 MiB), and at most `VELA_UPLOAD_MAX_CHUNKS` (16) of them exist, idle,
+  being filled or in flight, so upload staging never holds more than
+  `VELA_UPLOAD_MAX_BYTES` (128 MiB, plus each allocation's alignment). It
+  is a pool of its own, apart from readback's (`readback_test.c` already
+  required that the two do not evict each other). One chunk is filled at a
+  time (`vela_renderer_stage_rows`): a piece is as many whole rows of its
+  rectangle as fit in what is left of that chunk, or in a fresh one (an
+  idle chunk, else a new one within the budget). A copy made when its
+  buffer comes (in place) is first planned with the same rule by
+  `vela_renderer_reserve_upload`, which also allocates the chunks it needs
+  before the first piece, so a failed allocation can never leave an image
+  half updated. Idle upload chunks beyond two are freed once unused for
+  `VELA_UPLOAD_IDLE_NS` (1 s); before, `vela_renderer_collect` kept two
+  idle chunks of any size.
+- **Deferred uploads and atomic presentation.** A copy that does not fit
+  in what is left of the budget, or that comes while others wait, becomes
+  the texture's pending upload (`struct vela_upload`, inside the texture,
+  so deferring allocates nothing on the heap): the client's buffer is
+  locked until the last piece, so the client gets `wl_buffer.release` only
+  then. `vela_renderer_continue_uploads`, at the start of every output
+  frame (`vela_output_frame_render`, before the scene is flattened), copies
+  the next pieces as far as the budget goes and submits them on their own
+  (`vela_renderer_flush_uploads`), since a frame with nothing to draw has
+  no submission to carry them and their chunks only come back once
+  submitted. The pieces go into an image of the same size made for the
+  upload; when the damage is partial it starts as a GPU copy of the shown
+  image (`vkCmdCopyImage`, no staging). The texture draws its previous
+  image until the last piece, then switches in one step and retires the
+  old image (`switch_image`). The scene sees the switch through
+  `vela_texture_content`, which the frame diff compares (`same_look`), so
+  the texture's area is redrawn although no commit brings that damage.
+  While uploads wait, output frames go on, paced like any other (a frame
+  with nothing else to draw costs almost nothing).
+- **Where the design did not hold as written.** A texture with no previous
+  image cannot keep showing it: the first buffer of a surface, and a buffer
+  of another size, for which wlroots makes a new `wlr_client_buffer` and
+  drops the previous one before the compositor sees the commit
+  (`surface_apply_damage`). Such a texture fills its own image and is not
+  drawn until its last piece (`vela_texture_shown`, checked by the scene
+  and by `prepare_texture`); for those frames the surface shows nothing
+  rather than its previous, differently sized content, which would also
+  need its previous geometry. A half-updated image is never drawn in
+  either case.
+- **Progress.** Uploads are served oldest first, strictly: while one is
+  waiting, a new upload waits behind it even if it would fit, so a small
+  update can be delayed by the uploads ahead of it (by the length of the
+  queue in budgets). A commit on a texture whose upload is pending
+  replaces it: the older buffer is released unseen, and what it had left
+  to copy, together with the new damage, is copied from the new buffer
+  (the rectangles are merged, at most `VELA_UPLOAD_MAX_RECTS`). The
+  replaced upload goes to the back of the queue, which is what keeps a
+  client that commits above the budget every frame from starving the
+  others; the price is that such a client's own new content appears only
+  once it pauses for as long as its copy takes.
+- **Budget values** (the open question): pieces of 8 MiB, the starting
+  point, and an upload budget of its own of 128 MiB, the readback figure.
+  128 MiB lets a whole 7680x4320 buffer at 4 bytes per pixel (126.6 MiB,
+  16 chunks of 273 rows) be copied in place in one frame, as before, so
+  common displays up to 8K keep the behaviour they had; only larger
+  buffers, or several large ones in the same frame, are deferred. Measured
+  on a Ryzen 9 9950X with an RX 9070 XT (Mesa 26.2.6 RADV), with
+  `vela-bigbuffer`: staging and recording 128 MiB costs 7.0–7.8 ms of CPU
+  with chunks already allocated (about 17 GB/s), the same as `main`'s
+  single-chunk copy (7.5–7.7 ms for 126–128 MiB). Chunks allocated fresh
+  cost more: 50 ms for the first 128 MiB of a session in 8 MiB or 16 MiB
+  chunks, 13 ms in 32 MiB chunks, and 51 ms for `main`'s single 512 MiB
+  chunk of a 16384x8192 buffer; a fresh 3840x2160 upload took 8.1 ms in
+  8 MiB chunks, 3.2 ms in a 32 MiB one and 4.7 ms on `main`. 32 MiB
+  pieces were not chosen because the two idle chunks kept would then pin
+  64 MiB of host-visible memory for good, against 16 MiB; the one-second
+  rest before idle chunks go keeps a copy that continues over frames, or
+  comes every frame, on warm chunks. Why amdgpu populates fresh 8 MiB
+  allocations four times more slowly than 32 MiB ones is *to verify*, as
+  are these figures on other drivers.
+- **Device loss and teardown.** On a lost device nothing continues and no
+  new upload starts (`vela_texture_create` and `update_from_buffer`
+  return early). A texture destroyed with an upload pending, or released
+  at the renderer's teardown (`vela_texture_release`), drops the buffer's
+  lock and frees the upload's image, at once when the GPU is idle or
+  through `vela_renderer_retire_image` otherwise.
+- **The frame path** still allocates nothing through Vela's helpers once
+  warm, with uploads in place or deferred and replaced every frame
+  (`compositor.upload-staging`); `functional-frame-path` is unchanged.
+
 Whenever another external size appears, it is capped where it enters, and
 rejected in that boundary's own terms: a protocol error, a declined command,
 a default value. The cap is a named constant with a test at the boundary. If
@@ -996,6 +1131,17 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   its byte budget, both after one oversized shm buffer and while several
   surfaces commit large shm buffers in the same frame, and every surface
   still ends up showing its whole buffer.
+
+  **As implemented** (icon cache): `compositor.icon-cache`
+  (`compositor/tests/icon_cache_test.c`, CPU) checks the cache against a
+  model, and that the count never exceeds the budget while cycling app
+  ids, sizes and misses. `compositor.icons`
+  (`compositor/tests/icons_test.c`, CPU) goes through `vela_icons_app` on
+  a theme the test writes, including a held icon whose entry is evicted
+  and is then drawn again (the cases that draw an icon need librsvg).
+  `functional-decorations` `IconCache` (GPU) has a client cycle 600 app
+  ids with `vela-pattern --cycle-app-ids`: the other window's bar keeps
+  its icon, and the evicted icon is drawn again. Upload staging is below.
 - **Deferred uploads:**
   - every frame presented while an upload spans several frames shows the
     surface's previous buffer complete, never a mix (checked with a
@@ -1004,6 +1150,46 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   - under sustained competing uploads (one client committing a buffer
     above the budget every frame), a second surface's upload still
     completes within a bounded number of frames.
+
+  **As implemented** (upload staging and deferred uploads):
+  `compositor.upload-staging` (`compositor/tests/upload_test.c`, CPU, also
+  in hosted CI) runs the production `renderer.c`, `texture.c` and `pass.c`
+  on a fake device that keeps images and buffers in memory and runs the
+  recorded copies and draws only when its timeline reaches them. Every
+  draw compares the image it reads with the buffers committed, and one
+  that is no whole buffer fails the test: that is the "never a mix" check,
+  exact and for every frame, including a frame the GPU runs late. The
+  budget is the production code with smaller numbers (64 KiB pieces, 8
+  chunks). It covers one buffer of three budgets (four frames, staging
+  never above the budget, no piece above one, the buffer locked until its
+  last piece, its chunks freed after their rest), four surfaces committing
+  in the same frame, a deferred update with full and with partial damage
+  (the previous buffer whole until the last piece, the new one from that
+  frame on, the old image retired after its last use), a commit replacing
+  a pending upload, a second surface completing within three frames while
+  another commits above the budget every frame, staging in flight with the
+  GPU behind, a lost device with uploads pending, and no allocation once
+  warm. Each of these was broken on purpose and the test failed: the
+  budget ignored when allocating a chunk or when planning a copy, chunks
+  reused while in flight, the deferred pieces copied into the shown image,
+  the switch made before the last piece, the copy of the shown image
+  skipped, a first upload drawn before its last piece, a replaced upload
+  kept in its place in the queue or its buffer not released, the buffer
+  not locked while pending, pieces not split, new uploads copied in place
+  while others wait, and idle chunks never freed.
+  `functional-uploads` (`tests/functional/test_uploads.py`, GPU) repeats
+  them through a session with `tools/vela-bigbuffer`, whose buffers are
+  bands with a red per version and a green per band: a 16384x8192 buffer
+  (512 MiB) is deferred, stays within the 16 chunks and is shown whole;
+  so are three buffers of 128–132 MiB committed together; every frame
+  `vela-screen-record` records while a deferred update is copied shows one
+  version (with Vulkan validation on); and a 136 MiB upload completes
+  within 8 frames (2 measured) while another client commits 144 MiB every
+  frame. Comparing `vela_texture_content` in the frame diff is checked
+  there: without it the new buffer never reaches the screen. Not covered:
+  that frames are paced while uploads wait; without the condition in
+  `vela_output_frame_render` the uploads still complete, by retrying at
+  once instead of at the next frame, and no test measures that.
 - **`VELA_MUST`:** prints the expression and call site, through
   `vela_must_failed`.
 - **Event sources:** with the running compositor's `RLIMIT_NOFILE` lowered
@@ -1021,6 +1207,16 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   `maxImageDimension2D` (and a dmabuf above the format's `maxExtent`). The
   buffer is rejected before `vkCreateImage`, and Vulkan validation layers
   report no error.
+
+  **As implemented:** `compositor.upload-staging` gives the fake device
+  limits and checks a shm buffer and a dmabuf at the limit (taken) and one
+  pixel above it in either direction (refused, with no `vkCreateImage` or
+  import call, and reported once); a limit of one pixel less, or no check,
+  makes it fail. `functional-uploads` asks the real device's limits from
+  the log and sends a shm buffer and a linear dmabuf one pixel wider
+  (refused, the window shows nothing, one log line for the client even
+  after a second refused commit) and one at the limit (taken), with Vulkan
+  validation on and no validation error.
 - **Frame path:** a counting wrapper linked only into test binaries
   (`compositor/tests/alloc_count.c`, `-Wl,--wrap` on the `_at` functions)
   counts the helpers' allocations, in two places:
@@ -1266,6 +1462,37 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
 7. The Vulkan caps and budgets: the image-extent cap, upload staging in
    pieces under a byte budget with atomic presentation and oldest-first
    progress, and the icon-cache budget.
+   **Done.** The Vulkan part first (point 6, "As implemented"). The code matched the
+   audit: `upload` staged each damaged rectangle whole through
+   `vela_renderer_stage`, and the dmabuf probe dropped `maxExtent`. Two
+   parts of the design changed with the evidence: the limit checked is the
+   format's `maxExtent` clamped to `maxImageDimension2D`, for shm buffers
+   too, since that is what `vkCreateImage` requires; and a texture with no
+   previous image (a surface's first buffer, or one of a new size, which
+   wlroots gives a new texture) is not drawn until its last piece instead
+   of keeping a previous content it no longer has. Budget values: 8 MiB
+   pieces, 128 MiB of upload staging of its own. Measured with
+   `compositor.upload-staging` and `functional-uploads` (see Tests). The
+   benchmarks show no measurable change, alternating builds of `main`
+   (`79ac129`) and this step on the machine of point 6: the `VELA_STATS=1`
+   frame CPU time at 1920x1080@240, two runs of 24 two-second periods
+   each, median 0.273 and 0.247 ms on `main` against 0.256 and 0.239 ms
+   (the decorated window and dmabuf client of `functional-frame-path`),
+   0.273 and 0.271 against 0.259 and 0.209 ms with `vela-bigbuffer`
+   committing a 1920x1080 shm buffer every frame, 0.275 and 0.270 against
+   0.282 and 0.287 ms with a 3840x2160 one (120 fps, the client's own
+   rate); this figure covers the frame, not the copy made at commit. The
+   capture-stream benchmark of `test_capture.py`, two runs each, gave the
+   same frame rates and p95 within run-to-run spread (2560x1440, one
+   client, buffer reuse: 180.0 fps, p95 5.75–5.84 ms on both; 3840x2160:
+   176.9–177.7 against 177.3–178.3 fps). A whole buffer copied when it
+   comes costs the same CPU time as before (above).
+   The icon cache: `icon_cache.c` keeps 256 entries with LRU eviction and
+   a hash lookup, and `vela_icons_app` returns copies (defect 2, "Fixed in
+   step 7"). The code matched the audit there too: a list, searched
+   linearly, never evicted, with misses stored. Measured with
+   `compositor.icon-cache`, `compositor.icons` and `functional-decorations`
+   `IconCache` (see Tests).
 
 ## Options considered
 
@@ -1296,9 +1523,15 @@ and document.
 
 - **Lock state after a crash:** option a, b or c (recommended: c, plus an
   allocation-free fatal path).
-- **Budget values:** icon-cache entries; upload-staging bytes, which could
-  share the 128 MiB readback figure or have their own; the size of one
-  upload piece.
+- **Budget values:** answered. Icon-cache entries (step 7): 256. A
+  session needs one per app with a Vela title bar per output scale (about
+  a hundred in a busy session, an estimate, *to verify* in a real
+  session), and a full cache holds about 1 MiB of pixels at 200% (4 MiB at
+  400%) plus at most 64 KiB of keys; the reasoning is next to
+  `VELA_ICON_CACHE_BUDGET` in `icon_cache.h`. Upload staging (answered in
+  step 7, point 6): a budget of its own of 128 MiB, the readback figure
+  but a separate pool, so captures and uploads cannot evict each other;
+  pieces of 8 MiB.
 - **Core dumps under memory pressure.** `abort()` during real exhaustion
   starts `systemd-coredump` on a process with large GPU mappings. That adds
   pressure and delays the restart while the screen stays frozen. Options:

@@ -42,6 +42,22 @@ const struct vela_pixel_format *vela_pixel_format_from_drm(uint32_t drm);
 
 #define VELA_MAX_SHM_FORMATS 16
 
+// The largest image of a format the device makes for a use: the maxExtent of
+// vkGetPhysicalDeviceImageFormatProperties2, never above maxImageDimension2D.
+// A client buffer beyond it is refused before vkCreateImage, where it would be
+// invalid usage rather than an error (docs/memory-allocation-policy.md,
+// point 6).
+struct vela_extent {
+    uint32_t width, height;
+};
+
+// The limit of a dmabuf texture of this format and modifier.
+struct vela_dmabuf_extent {
+    uint32_t format;
+    uint64_t modifier;
+    struct vela_extent max;
+};
+
 struct vela_vulkan {
     VkInstance instance;
     VkPhysicalDevice physical;
@@ -62,6 +78,12 @@ struct vela_vulkan {
     // Formats of shared-memory (wl_shm) buffers we can upload.
     uint32_t shm_formats[VELA_MAX_SHM_FORMATS];
     int shm_format_count;
+    // The largest image each of them can be uploaded to (optimal tiling, the
+    // texture's uses), in the same order.
+    struct vela_extent shm_max_extent[VELA_MAX_SHM_FORMATS];
+    // The same for every (format, modifier) of texture_formats.
+    struct vela_dmabuf_extent *texture_extents;
+    int texture_extent_count, texture_extent_capacity;
     // The GPU can export and import semaphores as sync_files (implicit sync
     // with the kernel, §7.3).
     bool sync_file;
@@ -86,6 +108,27 @@ struct vela_vulkan {
 static inline bool vela_vulkan_unusable(const struct vela_vulkan *vk)
 {
     return vk->loss.lost || vk->terminal_error;
+}
+
+// The largest shm texture of this format; 0 x 0 if the format can't be
+// uploaded.
+static inline struct vela_extent vela_vulkan_shm_max_extent(const struct vela_vulkan *vk, uint32_t drm)
+{
+    for (int i = 0; i < vk->shm_format_count; ++i) {
+        if (vk->shm_formats[i] == drm) return vk->shm_max_extent[i];
+    }
+    return (struct vela_extent) { 0, 0 };
+}
+
+// The largest dmabuf texture of this format and modifier; 0 x 0 if unknown.
+static inline struct vela_extent vela_vulkan_dmabuf_max_extent(const struct vela_vulkan *vk, uint32_t drm,
+    uint64_t modifier)
+{
+    for (int i = 0; i < vk->texture_extent_count; ++i) {
+        const struct vela_dmabuf_extent *e = &vk->texture_extents[i];
+        if (e->format == drm && e->modifier == modifier) return e->max;
+    }
+    return (struct vela_extent) { 0, 0 };
 }
 
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bits, VkMemoryPropertyFlags flags);
@@ -167,6 +210,28 @@ struct vela_target {
     bool sampleable; // can also be read as a texture (the blur reads what is behind)
 };
 
+// Upload staging (docs/memory-allocation-policy.md, point 6). Each damaged
+// rectangle of a shared-memory buffer is copied in pieces of whole rows, each
+// in one chunk of VELA_UPLOAD_PIECE_BYTES; at most VELA_UPLOAD_MAX_CHUNKS
+// upload chunks exist, idle, being filled or in flight, so upload staging
+// never holds more than VELA_UPLOAD_MAX_BYTES. A copy that does not fit in
+// what is left waits for the next frames (struct vela_upload).
+// (compositor.upload-staging defines smaller ones before including the code.)
+#ifndef VELA_UPLOAD_PIECE_BYTES
+#define VELA_UPLOAD_PIECE_BYTES (8u * 1024u * 1024u)
+#endif
+#ifndef VELA_UPLOAD_MAX_CHUNKS
+#define VELA_UPLOAD_MAX_CHUNKS 16
+#endif
+// Idle upload chunks beyond two are freed once unused for this long: a copy
+// that spans frames, or comes every frame, reuses them instead of allocating
+// and zeroing its staging again each time.
+#define VELA_UPLOAD_IDLE_NS (1000LL * 1000 * 1000)
+#define VELA_UPLOAD_MAX_BYTES (VELA_UPLOAD_MAX_CHUNKS * VELA_UPLOAD_PIECE_BYTES)
+// The damage of an update is copied as at most this many rectangles (more
+// become the one that contains them).
+#define VELA_UPLOAD_MAX_RECTS 16
+
 // A texture: a buffer's content ready to be read by shaders.
 // - dmabuf: imported as it is, without copies; one import per buffer
 //   (wlr_addon), as long as wlroots uses the texture.
@@ -189,8 +254,33 @@ struct vela_texture {
     int dmabuf_fd;
     bool foreign; // on every use: acquired from the "foreign" queue
 
-    bool uploaded; // our own image: the content is there
+    bool uploaded; // our own image: a complete content is there, it can be drawn
     int refs; // wlroots' references (texture_from_buffer / destroy)
+
+    // A copy that didn't fit in the upload budget when it came: its pieces go
+    // in over the next frames, oldest upload first (texture.c,
+    // vela_renderer_continue_uploads). Until the last one, the texture keeps
+    // drawing its previous image, or nothing if it never had one; then it
+    // switches to the new one in one step. Pending while source is not NULL.
+    struct vela_upload {
+        struct wl_list link; // renderer->uploads, oldest first
+        struct wlr_buffer *source; // the client's buffer, locked until the last piece
+        pixman_box32_t rects[VELA_UPLOAD_MAX_RECTS]; // what to copy, in buffer pixels
+        int rect_count;
+        int rect; // the rectangle being copied
+        int32_t row; // its next row
+        // The image the pieces go into: of the same size, made for this
+        // upload. VK_NULL_HANDLE: the texture's own image, never drawn yet.
+        VkImage image;
+        VkDeviceMemory memory;
+        VkImageView view;
+        bool copy_shown; // starts as a copy of the image shown (the damage is partial)
+        bool started; // its first piece is recorded: the image is a copy destination
+        unsigned frames; // frames it has taken so far
+    } upload;
+    // Changes when a deferred upload switches the image: the scene redraws the
+    // texture's whole area then (no commit brings that damage).
+    uint64_t content;
 };
 
 struct vela_texture *vela_texture_from_wlr_texture(struct wlr_texture *texture);
@@ -208,6 +298,7 @@ struct vela_staging {
 // -------------------------------------------------------- renderer state --
 
 #define VELA_TIMING_SLOTS 64
+
 #define VELA_READBACK_MAX_JOBS 4
 #define VELA_READBACK_MAX_BYTES (128u * 1024u * 1024u)
 
@@ -246,6 +337,7 @@ struct staging_chunk {
     uint64_t point; // last submission reading it; UINT64_MAX: in use by commands not submitted yet
     unsigned readers; // pending CPU readbacks: GPU completion alone cannot recycle the slice
     bool readback; // memory the CPU reads quickly (cached), for copies from the GPU
+    int64_t staged_at; // upload chunks: when a piece last went into it (CLOCK_MONOTONIC)
 };
 
 struct pipeline_entry {
@@ -294,6 +386,12 @@ struct vela_renderer {
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
 
+    struct wl_list uploads; // vela_texture.upload.link: deferred uploads, oldest first
+    VkBuffer upload_chunk; // the upload chunk the next piece goes into, if it fits
+    uint64_t upload_content; // the last vela_texture.content given
+    struct vela_upload_stats upload_stats;
+    struct vela_extent_rejection extent_rejected;
+
     struct vela_readback *readbacks[VELA_READBACK_MAX_JOBS];
     size_t readback_next; // round-robin cursor in the bounded queue
     struct wl_event_source *readback_timer;
@@ -341,7 +439,19 @@ VkCommandBuffer vela_renderer_begin_commands(struct vela_renderer *renderer);
 // Uploads of wl_shm buffers are recorded here and go to the GPU with the next
 // submission, before it.
 VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *renderer);
-bool vela_renderer_stage(struct vela_renderer *renderer, VkDeviceSize size, struct vela_staging *out);
+// Submits the uploads recorded so far on their own, without waiting for the
+// next drawing. false if the submission failed.
+bool vela_renderer_flush_uploads(struct vela_renderer *renderer);
+// Staging for the next upload piece: up to `rows` rows of row_bytes
+// (<= VELA_UPLOAD_PIECE_BYTES), as many as fit in the chunk being filled or
+// in a fresh one; *staged says how many. false: the upload budget is used up.
+bool vela_renderer_stage_rows(struct vela_renderer *renderer, size_t row_bytes, uint32_t rows, uint32_t *staged,
+    struct vela_staging *out);
+// Whether every row of these rectangles fits in the upload budget now, with
+// the chunks it needs allocated: then vela_renderer_stage_rows can't fail
+// for them until the next submission. Nothing is staged.
+bool vela_renderer_reserve_upload(struct vela_renderer *renderer, const pixman_box32_t *rects, int count,
+    uint32_t bytes_per_pixel);
 // The same for copies the CPU reads back (captures): cached memory, where
 // reading is many times faster than from the uncached memory uploads use.
 bool vela_renderer_stage_readback(struct vela_renderer *renderer, VkDeviceSize size, struct vela_staging *out);

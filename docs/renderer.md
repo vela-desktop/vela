@@ -551,8 +551,8 @@ the same synchronization. The code is in `compositor/src/render/`:
 |---|---|
 | `renderer.h` | the public API the rest of the compositor uses; `render.h` holds the structs the render files share |
 | `vulkan.c` | device, importable formats (textures, render targets, wl_shm), dmabuf import |
-| `renderer.c` | GPU submission with a timeline semaphore, deferred destruction (typed lists of retired images and used semaphores, freed when the timeline reaches their point), staging memory for uploads (uncached) and for readbacks (cached: captures read it with the CPU), dmabuf render targets, pipelines; syncobj timeline for app releases and GPU timestamps (S3); the `wlr_renderer` |
-| `texture.c` | textures from dmabuf (one import per buffer) and from memory (upload of changed areas only), pixel reads |
+| `renderer.c` | GPU submission with a timeline semaphore, deferred destruction (typed lists of retired images and used semaphores, freed when the timeline reaches their point), staging memory for uploads (uncached, in 8 MiB pieces within a 128 MiB budget) and for readbacks (cached: captures read it with the CPU), dmabuf render targets, pipelines; syncobj timeline for app releases and GPU timestamps (S3); the `wlr_renderer` |
+| `texture.c` | textures from dmabuf (one import per buffer) and from memory (upload of changed areas only, deferred over frames when above the staging budget), the image-size limits of client buffers, pixel reads |
 | `pass.c` | drawing: textured or solid-color quads, rectangle clipping, barriers, implicit and explicit sync, timing; the `wlr_render_pass`. Passes belong to the renderer: a finished one goes back on its free list (at most four) with its arrays, so a frame allocates nothing once they are large enough ([allocation policy](memory-allocation-policy.md#7-the-frame-path)) |
 | `allocator.c`, `formats.c`, `pixel_buffer.c` | GBM output buffers, the pixel format table, CPU images as `wlr_buffer` |
 
@@ -652,6 +652,19 @@ the surface keeps its previous, ready state, which is what every frame draws
 - with implicit sync, the dmabuf's write fences (`DMA_BUF_IOCTL_EXPORT_SYNC_FILE`
   for reading, one per distinct plane fd), polled in the event loop;
 - shm buffers are always ready.
+
+**Shared-memory buffers: a budget for their copies (allocation policy,
+step 7).** A shm buffer is copied into an image of ours through
+host-visible staging, in pieces of whole rows of at most 8 MiB; all upload
+staging together, in flight included, is at most 128 MiB. A copy that
+doesn't fit when its buffer comes waits for the next frames: the texture
+keeps the client's buffer locked and keeps drawing its previous image,
+the pieces go into an image of their own, and at the last one the texture
+switches to it in one step. Waiting copies are served oldest first, and a
+new commit replaces the one its surface had waiting. A buffer larger than
+the device can make an image of is refused before `vkCreateImage`, and
+the surface keeps what it showed. Details and measurements:
+[memory-allocation-policy.md](memory-allocation-policy.md#6-external-sizes).
 
 Commits stay in order (wlroots applies cached states one after another), frame
 callbacks leave with the commit that carried them, so the app is naturally paced

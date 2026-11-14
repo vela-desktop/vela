@@ -5,6 +5,7 @@
 
 #include "alloc/alloc.h"
 #include "listen.h"
+#include "render/renderer.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "util.h"
@@ -14,6 +15,7 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/util/log.h>
 
 static const struct wlr_addon_interface state_addon;
 
@@ -27,10 +29,42 @@ struct vela_surface_state *vela_surface_state_get(struct wlr_surface *surface)
     return state;
 }
 
+// A client told once that the device can't show a buffer that large.
+static void extent_logged_destroy(struct wl_listener *listener, void *data)
+{
+    wl_list_remove(&listener->link);
+    free(listener);
+}
+
+// The renderer refused the committed buffer for its size (render/texture.c,
+// docs/memory-allocation-policy.md point 6): the surface keeps its previous
+// content, and the log says so once per client.
+static void log_extent_rejection(struct wlr_surface *surface)
+{
+    struct vela_extent_rejection rejection;
+    if (!surface->current.buffer
+        || !vela_renderer_take_extent_rejection(surface->compositor->renderer, surface->current.buffer, &rejection)) {
+        return;
+    }
+    struct wl_client *client = wl_resource_get_client(surface->resource);
+    if (wl_client_get_destroy_listener(client, extent_logged_destroy)) {
+        return;
+    }
+    pid_t pid = 0;
+    wl_client_get_credentials(client, &pid, NULL, NULL);
+    wlr_log(WLR_ERROR, "Client %d: %s of %dx%d refused, the GPU takes at most %ux%u (said once per client)", (int)pid,
+        rejection.dmabuf ? "dmabuf" : "buffer", rejection.width, rejection.height, rejection.max_width,
+        rejection.max_height);
+    struct wl_listener *listener = VELA_NEW(struct wl_listener);
+    listener->notify = extent_logged_destroy;
+    wl_client_add_destroy_listener(client, listener);
+}
+
 // From the commit to the damage of the outputs showing it.
 static void handle_commit(struct wl_listener *listener, void *data)
 {
     struct vela_surface_state *state = wl_container_of(listener, state, commit);
+    log_extent_rejection(state->surface);
     bool shown = false;
     struct vela_output_frame *frame;
     wl_list_for_each (frame, &state->scene->frames, link) {

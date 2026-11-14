@@ -251,8 +251,8 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
     struct visit *v = data;
     const struct vela_build_params *p = v->params;
     struct wlr_texture *texture = wlr_surface_get_texture(surface);
-    if (!texture) {
-        return; // no buffer: nothing to show
+    if (!texture || !vela_texture_shown(texture)) {
+        return; // no buffer, or its first content is still being uploaded: nothing to show
     }
     double lx = v->lx + sx / v->density;
     double ly = v->ly + sy / v->density;
@@ -271,6 +271,7 @@ static void add_surface(struct wlr_surface *surface, int sx, int sy, void *data)
     e->key = surface;
     e->surface = surface;
     e->texture = texture;
+    e->content = vela_texture_content(texture);
     e->src = src;
     e->transform = transform;
     e->box = box;
@@ -378,12 +379,13 @@ static void visit(struct vela_scene *scene, struct vela_node *node, double lx, d
         struct vela_buffer_node *buffer = (struct vela_buffer_node *)node;
         struct wlr_box box = to_pixels(lx, ly, buffer->width, buffer->height, p);
         snap_to_buffer(&box, &buffer->src, buffer->transform, buffer->width, buffer->height, p->scale);
-        if (!on_screen(&box, p) || !buffer->texture) {
+        if (!on_screen(&box, p) || !buffer->texture || !vela_texture_shown(buffer->texture)) {
             break;
         }
         struct vela_element *e = push_element(out);
         e->key = node;
         e->texture = buffer->texture;
+        e->content = vela_texture_content(buffer->texture);
         e->src = buffer->src;
         e->transform = buffer->transform;
         e->box = box;
@@ -518,10 +520,13 @@ static void expand_damage_for_blur(const struct vela_elements *elements, pixman_
 
 // Surface content changes with commits, which bring their exact damage: here
 // only where and how they're drawn matters. For our own nodes the texture too.
+// An upload spread over several frames switches the image after its commit:
+// that switch has no damage of its own, so a new content counts as a change.
 static bool same_look(const struct vela_element *a, const struct vela_element *b)
 {
     bool same_texture = a->surface ? true : a->texture == b->texture;
-    return a->surface == b->surface && same_texture && same_box(&a->box, &b->box) && same_fbox(&a->src, &b->src)
+    return a->surface == b->surface && same_texture && a->content == b->content && same_box(&a->box, &b->box)
+        && same_fbox(&a->src, &b->src)
         && a->transform == b->transform && a->opacity == b->opacity && a->linear == b->linear
         && same_color(&a->color, &b->color) && same_box(&a->shape_rect, &b->shape_rect)
         && a->shape_radius == b->shape_radius && same_box(&a->shadow_window, &b->shadow_window)
@@ -1299,6 +1304,18 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         height = swap;
     }
     const struct wlr_box whole = { 0, 0, width, height };
+    // Uploads spread over several frames take their next pieces before the
+    // scene is flattened, so it sees an image switched now (in its content).
+    struct vela_upload_progress uploads = vela_renderer_continue_uploads(frame->renderer);
+    if (uploads.completed) {
+        // Other outputs may show the texture: they draw it again too.
+        struct vela_output_frame *other;
+        wl_list_for_each (other, &scene->frames, link) {
+            vela_output_schedule_frame(other->owner);
+        }
+    } else if (uploads.pending) {
+        vela_output_schedule_frame(frame->owner);
+    }
     // Even a 90 -> 270 change with identical dimensions invalidates buffer-age
     // history: the old buffers contain pixels in a different orientation.
     if (width != frame->width || height != frame->height || scale != frame->scale
@@ -1370,7 +1387,9 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
 
     bool damaged = pixman_region32_not_empty(&frame->scene_damage)
         || pixman_region32_not_empty(&frame->ring.current) || frame->night_commit_pending;
-    if (!damaged && !output->needs_frame && !pending) {
+    // While uploads wait for their pieces, frames go on (with nothing to
+    // draw, one costs almost nothing), paced by the output like any other.
+    if (!damaged && !output->needs_frame && !pending && !uploads.pending) {
         return false;
     }
     // A failed replacement commit must leave the last delivered state intact.

@@ -43,6 +43,8 @@ static const uint32_t blur_mix_frag[] = {
 #include "blur_mix.frag.spv.inc"
 };
 
+// Readback chunks: at least this large (one per capture, of its size, within
+// VELA_READBACK_MAX_BYTES). Upload chunks are all VELA_UPLOAD_PIECE_BYTES.
 #define STAGING_CHUNK_SIZE (8 * 1024 * 1024)
 #define IDLE_STAGING_CHUNKS_KEPT 2
 
@@ -218,6 +220,7 @@ struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk)
     wl_list_init(&r->passes_free);
     wl_list_init(&r->targets);
     wl_list_init(&r->textures);
+    wl_list_init(&r->uploads);
     for (int i = 0; i < vk->shm_format_count; ++i) {
         wlr_drm_format_set_add(&r->shm_formats, vk->shm_formats[i], DRM_FORMAT_MOD_LINEAR);
     }
@@ -627,6 +630,17 @@ VkCommandBuffer vela_renderer_upload_commands(struct vela_renderer *r)
     return r->upload;
 }
 
+static uint64_t submit(struct vela_renderer *r, VkCommandBuffer cmd, const int *wait_fds, int wait_count,
+    int *release_fd, uint64_t wait_point);
+
+bool vela_renderer_flush_uploads(struct vela_renderer *r)
+{
+    if (!r->upload) return true;
+    VkCommandBuffer cmd = r->upload;
+    r->upload = VK_NULL_HANDLE;
+    return submit(r, cmd, NULL, 0, NULL, r->readback_point) != 0;
+}
+
 // ------------------------------------------------------------- staging --
 
 static bool make_readback_room(struct vela_renderer *r, VkDeviceSize size)
@@ -739,8 +753,11 @@ static struct staging_chunk *new_staging_chunk(struct vela_renderer *r, VkDevice
     return &r->staging[r->staging_count++];
 }
 
-static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, struct vela_staging *out)
+// Readback staging: a slice of the chunk being filled, of one the GPU and the
+// CPU have finished with, or of a new one within VELA_READBACK_MAX_BYTES.
+static bool stage_readback(struct vela_renderer *r, VkDeviceSize size, struct vela_staging *out)
 {
+    const bool readback = true;
     if (vela_vulkan_unusable(r->vk)) return false;
     size = (size + 15) & ~(VkDeviceSize)15;
     uint64_t done = vela_renderer_completed(r);
@@ -775,14 +792,151 @@ static bool stage(struct vela_renderer *r, VkDeviceSize size, bool readback, str
     return true;
 }
 
-bool vela_renderer_stage(struct vela_renderer *r, VkDeviceSize size, struct vela_staging *out)
-{
-    return stage(r, size, false, out);
-}
-
 bool vela_renderer_stage_readback(struct vela_renderer *r, VkDeviceSize size, struct vela_staging *out)
 {
-    return stage(r, size, true, out);
+    return stage_readback(r, size, out);
+}
+
+// Upload staging (render.h, VELA_UPLOAD_PIECE_BYTES). One chunk is filled at
+// a time, r->upload_chunk: a piece that doesn't fit in what is left of it
+// goes into a fresh chunk, and the rest of the old one waits for the
+// submission unused. Both the pieces and the planning in
+// vela_renderer_reserve_upload follow that one rule, so a plan that fits is
+// a copy that fits.
+
+static VkDeviceSize align_piece(VkDeviceSize offset)
+{
+    return (offset + 15) & ~(VkDeviceSize)15; // bufferOffset: texel size and 4
+}
+
+static bool upload_chunk_idle(const struct staging_chunk *chunk, uint64_t done)
+{
+    return !chunk->readback && !chunk->readers && chunk->point != UINT64_MAX && chunk->point <= done;
+}
+
+static int upload_chunk_count(const struct vela_renderer *r)
+{
+    int count = 0;
+    for (int i = 0; i < r->staging_count; ++i) {
+        count += !r->staging[i].readback;
+    }
+    return count;
+}
+
+static struct staging_chunk *current_upload_chunk(struct vela_renderer *r)
+{
+    for (int i = 0; i < r->staging_count && r->upload_chunk; ++i) {
+        struct staging_chunk *chunk = &r->staging[i];
+        if (chunk->buffer == r->upload_chunk) {
+            return !chunk->readback && chunk->point == UINT64_MAX ? chunk : NULL;
+        }
+    }
+    return NULL;
+}
+
+// An idle upload chunk, or a new one if the budget allows it.
+static struct staging_chunk *fresh_upload_chunk(struct vela_renderer *r)
+{
+    uint64_t done = vela_renderer_completed(r);
+    if (vela_vulkan_unusable(r->vk)) return NULL;
+    for (int i = 0; i < r->staging_count; ++i) {
+        if (upload_chunk_idle(&r->staging[i], done)) return &r->staging[i];
+    }
+    int count = upload_chunk_count(r);
+    if (count >= VELA_UPLOAD_MAX_CHUNKS) return NULL;
+    struct staging_chunk *chunk = new_staging_chunk(r, VELA_UPLOAD_PIECE_BYTES, false);
+    if (chunk && count + 1 > r->upload_stats.chunks_peak) r->upload_stats.chunks_peak = count + 1;
+    return chunk;
+}
+
+bool vela_renderer_stage_rows(struct vela_renderer *r, size_t row_bytes, uint32_t rows, uint32_t *staged,
+    struct vela_staging *out)
+{
+    *staged = 0;
+    if (vela_vulkan_unusable(r->vk) || rows == 0 || row_bytes == 0 || row_bytes > VELA_UPLOAD_PIECE_BYTES) {
+        return false;
+    }
+    struct staging_chunk *chunk = current_upload_chunk(r);
+    if (!chunk || chunk->size - chunk->used < row_bytes) {
+        chunk = fresh_upload_chunk(r);
+        if (!chunk) return false;
+        chunk->used = 0;
+        chunk->point = UINT64_MAX; // in use by commands not submitted yet
+        r->upload_chunk = chunk->buffer;
+    }
+    chunk->staged_at = vela_now_ns();
+    VkDeviceSize fit = (chunk->size - chunk->used) / row_bytes;
+    *staged = fit < rows ? (uint32_t)fit : rows;
+    out->buffer = chunk->buffer;
+    out->offset = chunk->used;
+    out->data = chunk->data + chunk->used;
+    VkDeviceSize end = align_piece(chunk->used + (VkDeviceSize)*staged * row_bytes);
+    chunk->used = end < chunk->size ? end : chunk->size;
+    ++r->upload_stats.pieces;
+    return true;
+}
+
+bool vela_renderer_reserve_upload(struct vela_renderer *r, const pixman_box32_t *rects, int count,
+    uint32_t bytes_per_pixel)
+{
+    if (vela_vulkan_unusable(r->vk)) return false;
+    uint64_t done = vela_renderer_completed(r);
+    if (vela_vulkan_unusable(r->vk)) return false;
+    const struct staging_chunk *current = current_upload_chunk(r);
+    VkDeviceSize tail = current ? current->size - current->used : 0;
+    int idle = 0;
+    for (int i = 0; i < r->staging_count; ++i) {
+        idle += upload_chunk_idle(&r->staging[i], done);
+    }
+    const int available = idle + VELA_UPLOAD_MAX_CHUNKS - upload_chunk_count(r);
+    int fresh = 0; // chunks this copy starts
+    for (int i = 0; i < count; ++i) {
+        size_t row_bytes = (size_t)(rects[i].x2 - rects[i].x1) * bytes_per_pixel;
+        int64_t rows = rects[i].y2 - rects[i].y1;
+        if (row_bytes == 0 || rows <= 0) continue;
+        if (row_bytes > VELA_UPLOAD_PIECE_BYTES) return false;
+        while (rows > 0) {
+            if (tail < row_bytes) {
+                if (fresh == available) return false;
+                ++fresh;
+                tail = VELA_UPLOAD_PIECE_BYTES;
+            }
+            VkDeviceSize fit = tail / row_bytes;
+            VkDeviceSize take = fit < (VkDeviceSize)rows ? fit : (VkDeviceSize)rows;
+            VkDeviceSize used = align_piece(take * row_bytes);
+            tail = used < tail ? tail - used : 0;
+            rows -= (int64_t)take;
+        }
+    }
+    // The chunks it needs exist before the first piece: a failed allocation
+    // can't leave the copy half done.
+    for (int missing = fresh - idle; missing > 0; --missing) {
+        struct staging_chunk *chunk = new_staging_chunk(r, VELA_UPLOAD_PIECE_BYTES, false);
+        if (!chunk) return false; // a new chunk's point is 0: idle, the GPU has nothing of it
+        int chunks = upload_chunk_count(r);
+        if (chunks > r->upload_stats.chunks_peak) r->upload_stats.chunks_peak = chunks;
+    }
+    return true;
+}
+
+struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *r)
+{
+    struct vela_upload_stats stats = r->upload_stats;
+    stats.chunks = upload_chunk_count(r);
+    stats.chunks_max = VELA_UPLOAD_MAX_CHUNKS;
+    return stats;
+}
+
+bool vela_renderer_take_extent_rejection(struct wlr_renderer *wlr, const struct wlr_buffer *buffer,
+    struct vela_extent_rejection *out)
+{
+    // The compositor's only wlr_renderer is ours (vela_renderer_create).
+    if (!wlr || !buffer) return false;
+    struct vela_renderer *r = (struct vela_renderer *)wlr;
+    if (r->extent_rejected.buffer != buffer) return false;
+    *out = r->extent_rejected;
+    r->extent_rejected = (struct vela_extent_rejection) { 0 };
+    return true;
 }
 
 // ---------------------------------------------------------- submission --
@@ -1153,13 +1307,18 @@ void vela_renderer_collect(struct vela_renderer *r)
     }
     r->retired_count = kept;
 
-    // Keep a few idle chunks of each kind, so uploads can't evict readback buffers.
+    // Keep a few idle chunks of each kind, so uploads can't evict readback
+    // buffers. Upload chunks beyond those go once they have rested a while
+    // (VELA_UPLOAD_IDLE_NS): all of them are within the upload budget.
     int idle[2] = { 0 };
     kept = 0;
+    const int64_t now = vela_now_ns();
     for (int i = 0; i < r->staging_count; ++i) {
         struct staging_chunk chunk = r->staging[i];
         bool unused = !chunk.readers && chunk.point != UINT64_MAX && chunk.point <= done;
-        if (unused && ++idle[chunk.readback] > IDLE_STAGING_CHUNKS_KEPT) {
+        bool resting = chunk.readback || now - chunk.staged_at > VELA_UPLOAD_IDLE_NS;
+        if (unused && ++idle[chunk.readback] > IDLE_STAGING_CHUNKS_KEPT && resting) {
+            if (chunk.buffer == r->upload_chunk) r->upload_chunk = VK_NULL_HANDLE;
             vkDestroyBuffer(device, chunk.buffer, NULL);
             vkFreeMemory(device, chunk.memory, NULL);
             continue;

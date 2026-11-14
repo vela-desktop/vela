@@ -39,6 +39,11 @@
 // window, as games do, and logs "vela-pattern: pointer-locked" and
 // "vela-pattern: pointer-unlocked"; a middle click lets the pointer go (the
 // lock is destroyed). Implies --log-pointer.
+// --cycle-app-ids N: once the window is shown, sets N distinct app ids
+// ("vela.pattern.cycle0", ...), each with a commit the compositor has
+// handled before the next, then its own again, and logs
+// "vela-pattern: app-ids-cycled": a client that keeps changing its app_id
+// (the icon cache's budget, docs/memory-allocation-policy.md).
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -474,6 +479,7 @@ int main(int argc, char** argv)
     int arg = 1;
     const char* appId = "vela.pattern";
     int decorated = 0;
+    int cycleAppIds = 0;
     for (; arg < argc && !strncmp(argv[arg], "--", 2); ++arg) {
         if (!strcmp(argv[arg], "--scale1")) {
             legacy = 1;
@@ -501,6 +507,8 @@ int main(int argc, char** argv)
             logPointer = lockPointer = 1;
         } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
             fullscreenParent = 1;
+        } else if (!strcmp(argv[arg], "--cycle-app-ids") && arg + 1 < argc) {
+            cycleAppIds = atoi(argv[++arg]);
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
             // For tests that depend on the app (system dialogs).
             appId = argv[++arg];
@@ -557,6 +565,20 @@ int main(int argc, char** argv)
     wl_surface_commit(surface);
 
     while (running && wl_display_dispatch(display) != -1) {
+        if (cycleAppIds > 0 && configured) {
+            for (int i = 0; i < cycleAppIds; ++i) {
+                char cycled[64];
+                snprintf(cycled, sizeof(cycled), "vela.pattern.cycle%d", i);
+                xdg_toplevel_set_app_id(toplevel, cycled);
+                wl_surface_commit(surface);
+                wl_display_roundtrip(display);
+            }
+            xdg_toplevel_set_app_id(toplevel, appId);
+            wl_surface_commit(surface);
+            wl_display_roundtrip(display);
+            cycleAppIds = 0;
+            fprintf(stderr, "vela-pattern: app-ids-cycled\n");
+        }
     }
     return 0;
 }

@@ -129,6 +129,7 @@ add_library(vela-pure STATIC
     src/diagnostics.c
     src/frame_clock.c
     src/geometry.c
+    src/icon_cache.c
     src/legacy_names.c
     src/lock_state.c
     src/motion.c
@@ -329,6 +330,26 @@ if(VELA_BUILD_TOOLS)
     set_tests_properties(compositor.config-read PROPERTIES
         ENVIRONMENT "LD_PRELOAD=${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-getline-fail-preload>")
 
+    # The icon cache's entry budget and least-recently-used eviction.
+    add_executable(vela-icon-cache-test tests/icon_cache_test.c)
+    target_link_libraries(vela-icon-cache-test PRIVATE vela-pure)
+    target_compile_options(vela-icon-cache-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-icon-cache-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.icon-cache COMMAND vela-icon-cache-test)
+
+    # The same budget through the icon loader, on an icon theme the test
+    # writes: icons.c itself, with librsvg when the compositor has it.
+    add_executable(vela-icons-test tests/icons_test.c src/icons.c)
+    target_link_libraries(vela-icons-test PRIVATE vela-pure PkgConfig::WLROOTS)
+    if(RSVG_FOUND)
+        target_link_libraries(vela-icons-test PRIVATE PkgConfig::RSVG)
+        target_compile_definitions(vela-icons-test PRIVATE VELA_HAVE_RSVG=1)
+    endif()
+    target_compile_options(vela-icons-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-icons-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.icons COMMAND vela-icons-test
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
     set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
@@ -487,6 +508,23 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
     set_target_properties(vela-frame-path-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.frame-path COMMAND vela-frame-path-test)
+
+    # Shared-memory uploads under the staging budget, the deferred uploads'
+    # atomic switch and progress, and the image-extent cap: the production
+    # renderer, texture and pass code on a fake device that runs the copies
+    # and draws in memory (docs/memory-allocation-policy.md, point 6).
+    add_executable(vela-upload-test tests/upload_test.c tests/alloc_count.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-upload-test PRIVATE src tests ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR}
+        ${VULKAN_INCLUDE_DIRS})
+    target_compile_definitions(vela-upload-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-upload-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-upload-test PRIVATE -Wl,--gc-sections ${VELA_ALLOC_COUNT_WRAP})
+    target_link_libraries(vela-upload-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-upload-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.upload-staging COMMAND vela-upload-test)
 
     # Real output-source damage/idle policy with GPU work replaced by terminal
     # frame notifications; no private wlroots session state is accessed.
