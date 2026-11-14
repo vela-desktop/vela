@@ -12,9 +12,13 @@ framework: it never opens, reads, deletes, migrates, or copies credential files.
 - `DesktopNames=Vela;` in the session entry avoids overriding the choice
   before `vela-session` reads `~/.config/vela/vela.conf`.
 - When the key is **not configured**, the previous KWallet behavior is retained
-  for upgrades. This is *not* a decision on the user's behalf: Settings >
-  System shows an unselected choice and Vela offers a first-login reminder.
+  for upgrades. This is *not* a decision on the user's behalf: on the first
+  graphical login (and each later login while unset), Vela automatically opens
+  a **choice dialog** in Settings, even if the implicit fallback works. The
+  user can choose KWallet, GNOME Keyring, or defer until the next login.
+  Settings > System also shows an unselected choice until one is saved.
   Choosing even the already-used KWallet persists the decision explicitly.
+  Supervised compositor restarts never relaunch the dialog.
 - The choice is fixed before the compositor/supervisor and autostarts launch.
   Changing it requires a full logout/login. No password migration takes place.
 - `VELA_SECRET_CONFIGURED` only communicates whether the choice was explicit
@@ -40,7 +44,8 @@ owner using `busctl --user` and `GetConnectionUnixProcessID`:
 The result is written to `$XDG_RUNTIME_DIR/vela-credential-compat.status`
 with a private umask: `ok`, `missing`, `conflict`, `unverified`, or `failed`.
 Settings > System displays persistent failure guidance; notification delivery
-is best effort after Vela's notification server starts. Logs also explain
+for actual provider failures is best effort after Vela's notification server
+starts. The missing-choice dialog is separate from those warnings. Logs also explain
 failures. This state is removed at session teardown.
 
 Only the two Vela-owned compatibility units are stopped at logout; pre-existing
@@ -68,7 +73,8 @@ ctest --test-dir build -R session.credential-compat --output-on-failure
 
 They cover explicit/unset/invalid selection, selection precedence, a
 pre-existing PAM daemon, a wrong bus owner, a missing daemon, failed systemd
-start, an unrecognizable D-Bus response, and successful startup.
+start, an unrecognizable D-Bus response, successful startup, and prompt
+launch only on the first start of an unconfigured session.
 
 **Manual acceptance before merge:**
 
@@ -78,8 +84,11 @@ start, an unrecognizable D-Bus response, and successful startup.
 - Arch SDDM + an existing KWallet: select KWallet, login again, check the
   same clients and confirm the KWallet owner. Verify that a missing
   `kwalletd6` is clearly reported.
-- Verify first-login notification and selection in Settings; verify choosing
-  KWallet when it was only the implicit default writes the key to `vela.conf`.
+- Verify the first-login modal appears regardless of the implicit KWallet
+  fallback and repeats on a new login when dismissed; choosing either provider
+  persists `secret-backend` in `vela.conf`. After saving, verify that it
+  does not return, including after a supervised compositor restart. Verify that
+  forwarding to an already-open Settings instance still displays the modal.
 - With GNOME and with Plasma active on another VT, confirm that Vela neither
   steals their bus name nor stops their daemon. Switch desktop environments
   and confirm previous credentials remain available.
