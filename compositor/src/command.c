@@ -940,12 +940,12 @@ void vela_commands_listen(struct vela_server *server)
         unlink(commands->path);
     }
     commands->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-    // The socket is created 0600: there is no moment in which another user
-    // could connect before a chmod.
-    mode_t previous_umask = umask(0177);
-    bool bound = commands->fd >= 0 && bind(commands->fd, (struct sockaddr *)&address, sizeof(address)) == 0;
-    umask(previous_umask);
-    if (!bound || listen(commands->fd, 4) != 0) {
+    // No umask() around bind(): it is process-wide, and other threads (the
+    // Vulkan driver's) could create files meanwhile. The private runtime
+    // directory checked above already keeps other users from reaching the
+    // socket before the chmod below.
+    if (commands->fd < 0 || bind(commands->fd, (struct sockaddr *)&address, sizeof(address)) != 0
+        || listen(commands->fd, 4) != 0) {
         wlr_log_errno(WLR_ERROR, "Can't listen for commands on %s", commands->path);
         if (commands->fd >= 0) {
             close(commands->fd);

@@ -19,10 +19,10 @@ vulnerability, follow [SECURITY.md](../SECURITY.md).
 `$XDG_RUNTIME_DIR/vela-$WAYLAND_DISPLAY.sock` acts on the whole session
 (logout, lock, window actions, end task), so:
 
-- it is created only inside a private `XDG_RUNTIME_DIR` owned by the user, with
-  mode `0600` from the moment it exists (`umask` around `bind`, not a later
-  `chmod`); a pre-existing file with that name is replaced only if it is a
-  socket owned by the user;
+- it is created only inside a private `XDG_RUNTIME_DIR` (mode `0700`, owned by
+  the user), so no other user can reach it, and is then set to mode `0600`; a
+  pre-existing file with that name is replaced only if it is a socket owned by
+  the user;
 - every connection is checked with `SO_PEERCRED`: another user's process, or a
   process inside a Flatpak sandbox, is refused;
 - at most 32 connections are open at once;
