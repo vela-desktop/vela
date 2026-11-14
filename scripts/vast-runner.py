@@ -250,6 +250,7 @@ def start(org, label, image, runner_version, max_price, gpu):
             if output := os.environ.get("GITHUB_OUTPUT"):
                 with open(output, "a", encoding="utf-8") as out:
                     out.write(f"gpu={summary}\n")
+                    out.write(f"cpu_cores={offer['cpu_cores_effective']}\n")
             return
         stop(org, name)
     sys.exit(f"No runner came online after {ATTEMPTS} offers")
