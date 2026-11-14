@@ -12,7 +12,7 @@
 static int fail_at, calls, images, memories, destroys, frees, exports, last_fd;
 static uint32_t plane_count;
 static VkDeviceSize pitch;
-static bool exportable, missing_proc, wrong_modifier;
+static bool exportable, sampled_exportable, missing_proc, wrong_modifier;
 static VkResult failure;
 
 void _wlr_log(enum wlr_log_importance importance, const char *format, ...) {}
@@ -32,7 +32,8 @@ bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, 
 bool vela_vulkan_can_export_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
     VkImageUsageFlags usage)
 {
-    return exportable && modifier == DRM_FORMAT_MOD_LINEAR;
+    return exportable && modifier == DRM_FORMAT_MOD_LINEAR
+        && (!(usage & VK_IMAGE_USAGE_SAMPLED_BIT) || sampled_exportable);
 }
 
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t bits, VkMemoryPropertyFlags flags)
@@ -63,7 +64,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateImage(VkDevice device, const VkImageCreat
 {
     const VkExternalMemoryImageCreateInfo *external = info->pNext;
     assert(external->handleTypes == VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT);
-    assert(info->usage == (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT));
+    assert(info->usage == (VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT
+        | (sampled_exportable ? VK_IMAGE_USAGE_SAMPLED_BIT : 0)));
     assert(info->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT);
     VkResult result = next_result();
     *image = VK_NULL_HANDLE;
@@ -159,6 +161,7 @@ static void reset(void)
     plane_count = 1;
     pitch = 256;
     exportable = true;
+    sampled_exportable = true;
     missing_proc = wrong_modifier = false;
     failure = VK_ERROR_OUT_OF_DEVICE_MEMORY;
     unsetenv("VELA_DEBUG_LINEAR");
@@ -215,6 +218,16 @@ int main(void)
         assert(fcntl(d.fd[0], F_GETFD) >= 0 && destroys == 0);
         wlr_buffer_unlock(buffer);
         for (uint32_t i = 0; i < planes; ++i) assert(fcntl(d.fd[i], F_GETFD) == -1);
+        clean();
+    }
+    // Attachment-only export still works when sampling the same image is unsupported.
+    reset();
+    sampled_exportable = false;
+    {
+        struct vela_vulkan vk = { 0 };
+        struct wlr_buffer *buffer = allocate(&vk, &format);
+        assert(buffer && images == 1 && exports == 1);
+        wlr_buffer_drop(buffer);
         clean();
     }
     for (int stage = 1; stage <= 5; ++stage) {
