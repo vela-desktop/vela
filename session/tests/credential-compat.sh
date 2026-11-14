@@ -181,9 +181,20 @@ cat > "$mockbin/dbus-update-activation-environment" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
+# No real UI is opened in tests: capture the first-login prompt invocation.
+cat > "$mockbin/vela-settings" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$MOCK_SETTINGS_CALLS"
+EOF
+cat > "$mockbin/sleep" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
 chmod 700 "$mockbin/"*
 export PATH="$mockbin:$PATH"
 export MOCK_BUS_CALLS="$tmp/bus-calls" MOCK_SYSTEMCTL_CALLS="$tmp/systemctl-calls"
+export MOCK_SETTINGS_CALLS="$tmp/settings-calls"
+: > "$MOCK_SETTINGS_CALLS"
 export MOCK_GRAPHICAL_ACTIVE=0 VELA_SECRET_BACKEND=kwallet VELA_SECRET_CONFIGURED=1
 export WAYLAND_DISPLAY=wayland-73 XDG_CURRENT_DESKTOP=Vela:KDE
 export XDG_RUNTIME_DIR="$tmp/hook-runtime"
@@ -204,4 +215,29 @@ sh "$hook" start
 [ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
 [ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 
-echo "credential compatibility selection, owner validation, and restart lifecycle OK"
+# A working implicit KWallet fallback must STILL prompt for an explicit
+# choice. Opening the compositor again may not prompt twice in the session.
+MOCK_GRAPHICAL_ACTIVE=0
+VELA_SECRET_CONFIGURED=0
+export MOCK_GRAPHICAL_ACTIVE VELA_SECRET_CONFIGURED
+sh "$hook" start
+i=0
+while [ ! -s "$MOCK_SETTINGS_CALLS" ] && [ "$i" -lt 100 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ "$(cat "$MOCK_SETTINGS_CALLS")" = "--page credential-setup" ]
+sh "$hook" start
+/bin/sleep 0.05
+[ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 1 ]
+sh "$hook" stop
+
+# After a persisted choice, a fresh login no longer requests the dialog.
+VELA_SECRET_CONFIGURED=1
+export VELA_SECRET_CONFIGURED
+sh "$hook" start
+/bin/sleep 0.05
+[ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 1 ]
+sh "$hook" stop
+
+echo "credential selection, first-login prompt, owner validation and restart lifecycle OK"
