@@ -40,9 +40,20 @@ start)
     done
     # shellcheck disable=SC2086
     systemctl --user import-environment $SET
+    # Importing only nonempty variables would preserve a stale KDE marker
+    # in the shared user manager when a GNOME backend is selected.
+    if [ "${VELA_SECRET_BACKEND:-kwallet}" = gnome ]; then
+        systemctl --user unset-environment KDE_SESSION_VERSION
+    fi
     if command -v dbus-update-activation-environment > /dev/null; then
         # shellcheck disable=SC2086
         dbus-update-activation-environment $SET
+        if [ "${VELA_SECRET_BACKEND:-kwallet}" = gnome ]; then
+            # D-Bus activation environment cannot unset a value; clear it.
+            KDE_SESSION_VERSION=
+            export KDE_SESSION_VERSION
+            dbus-update-activation-environment KDE_SESSION_VERSION
+        fi
     fi
     : > "$STATE"
     systemctl --user -q mask --runtime "$RESTORE" 2> /dev/null
