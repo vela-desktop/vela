@@ -12,12 +12,25 @@ vela_credential_owner()
         printf '%s\n' unknown
         return
     fi
+    # NameHasOwner has a typed boolean reply and distinguishes "no owner"
+    # from a bus error. Never start a second provider on an inaccessible bus.
+    present=$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
+        org.freedesktop.DBus NameHasOwner s org.freedesktop.secrets 2>/dev/null) || {
+        printf '%s\n' unknown
+        return
+    }
+    case "$present" in
+        'b false') printf '%s\n' none; return ;;
+        'b true') ;;
+        *) printf '%s\n' unknown; return ;;
+    esac
     answer=$(busctl --user call org.freedesktop.DBus /org/freedesktop/DBus \
         org.freedesktop.DBus GetConnectionUnixProcessID s org.freedesktop.secrets 2>/dev/null) || {
-        printf '%s\n' none
+        printf '%s\n' unknown
         return
     }
     # Only the exact typed PID response is trusted; do not evaluate bus output.
+    # shellcheck disable=SC2086
     set -- $answer
     if [ "$#" -ne 2 ] || [ "$1" != u ]; then
         printf '%s\n' unknown
@@ -42,7 +55,16 @@ vela_credential_mark()
 {
     # XDG_RUNTIME_DIR is private (0700). Do not write to a predictable /tmp path.
     if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
-        (umask 077; printf '%s\n' "$1" > "$XDG_RUNTIME_DIR/vela-credential-compat.status")
+        # Atomically replace the marker instead of following a pre-existing
+        # symlink. mktemp creates a mode-0600 file in the private runtime dir.
+        status_tmp=$(mktemp "$XDG_RUNTIME_DIR/.vela-credential-compat.XXXXXX") || status_tmp=
+        if [ -n "$status_tmp" ]; then
+            if printf '%s\n' "$1" > "$status_tmp"; then
+                mv -f "$status_tmp" "$XDG_RUNTIME_DIR/vela-credential-compat.status"
+            else
+                rm -f "$status_tmp"
+            fi
+        fi
     fi
     if [ "$1" != ok ]; then
         printf 'vela-session-env: credential compatibility (%s): %s\n' "$1" "$2" >&2
