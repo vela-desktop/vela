@@ -33,7 +33,8 @@ void vela_session_set_environment(void)
     free(desktops);
     // The outer vela-session selects the temporary credential backend once.
     // Never turn the GNOME choice back into KDE on compositor restarts.
-    if (getenv("VELA_SECRET_BACKEND") && strcmp(getenv("VELA_SECRET_BACKEND"), "gnome") == 0) {
+    const char *backend = getenv("VELA_SECRET_BACKEND");
+    if (backend && strcmp(backend, "gnome") == 0) {
         unsetenv("KDE_SESSION_VERSION");
     } else {
         setenv("KDE_SESSION_VERSION", "6", 0);
