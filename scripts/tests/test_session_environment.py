@@ -53,17 +53,31 @@ if "cat" in sys.argv:
         imports = [call for call in self.calls() if "import-environment" in call["args"]
                    or call["tool"] == "dbus-update-activation-environment"]
         self.assertEqual(len(imports), 2)
-        for call in imports:
-            self.assertIn("MESA_LOADER_DRIVER_OVERRIDE", call["args"])
-            self.assertEqual(call["mesa"], "zink")
+        systemd = next(call for call in imports if "import-environment" in call["args"])
+        dbus = next(call for call in imports if call["tool"] == "dbus-update-activation-environment")
+        self.assertIn("MESA_LOADER_DRIVER_OVERRIDE", systemd["args"])
+        self.assertEqual(systemd["mesa"], "zink")
+        self.assertNotIn("MESA_LOADER_DRIVER_OVERRIDE", dbus["args"])
         self.log.write_text("")
         self.run_hook("stop")
         calls = self.calls()
         self.assertTrue(any("unset-environment" in call["args"]
                             and "MESA_LOADER_DRIVER_OVERRIDE" in call["args"] for call in calls))
-        self.assertTrue(any(call["tool"] == "dbus-update-activation-environment"
-                            and call["args"] == ["MESA_LOADER_DRIVER_OVERRIDE="] for call in calls))
+        self.assertFalse(any(call["tool"] == "dbus-update-activation-environment" for call in calls))
         self.assertFalse((self.root / "vela-session-wayland-test").exists())
+
+    def test_explicit_driver_override_stays_out_of_dbus(self):
+        self.env["MESA_LOADER_DRIVER_OVERRIDE"] = "virgl"
+        self.run_hook("start")
+        imports = self.calls()
+        systemd = next(call for call in imports if "import-environment" in call["args"])
+        dbus = next(call for call in imports if call["tool"] == "dbus-update-activation-environment")
+        self.assertIn("MESA_LOADER_DRIVER_OVERRIDE", systemd["args"])
+        self.assertEqual(systemd["mesa"], "virgl")
+        self.assertNotIn("MESA_LOADER_DRIVER_OVERRIDE", dbus["args"])
+        self.run_hook("stop")
+        self.assertFalse(any(call["tool"] == "dbus-update-activation-environment"
+                             and "MESA_LOADER_DRIVER_OVERRIDE=" in call["args"] for call in self.calls()))
 
     def test_unspecified_driver_is_not_imported(self):
         self.run_hook("start")
