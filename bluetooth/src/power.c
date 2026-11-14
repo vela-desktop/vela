@@ -150,6 +150,7 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
         vela_bt_waiters_add(&power->waiters, call);
         return 1;
     }
+    const bool reversing = power->active;
     // A newer OFF also cancels a platform-unblock power-on that is still waiting for an adapter.
     if (!on) {
         d->power_on_until = 0;
@@ -166,7 +167,10 @@ int vela_bt_power_set(struct vela_bt_daemon *d, sd_bus_message *call, bool on, s
         }
         return call ? sd_bus_reply_method_return(call, NULL) : 0;
     }
-    if (adapter->powered == on) {
+    // Cancelling our previous operation cannot undo its Set in BlueZ. The
+    // old change may take effect before its PropertiesChanged reaches us,
+    // so a reversal must send the new intent even if the cached state fits.
+    if (adapter->powered == on && !reversing) {
         return call ? sd_bus_reply_method_return(call, NULL) : 0;
     }
     if (on) {
