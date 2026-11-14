@@ -4,6 +4,9 @@ This change replaces presentation-thread waits and full-frame CPU copies for
 `ext-image-copy-capture-v1` output and window SHM captures. Real AMD and NVIDIA
 GPU suites must validate the exact candidate before it is considered fixed.
 
+For existing DMA-BUF alternatives, the one-pass opaque-alpha copy and remaining
+opportunities to avoid full-frame work, see [Lower-cost screen capture](capture-cost.md).
+
 ## What the previous PRs established
 
 | PR | Change and outcome |
