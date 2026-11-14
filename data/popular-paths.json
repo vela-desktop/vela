@@ -1,42 +1,48 @@
 {
-  "collected_at": "2026-11-13T10:57:22+00:00",
+  "collected_at": "2026-11-14T10:24:49+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 567,
+      "count": 590,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 319
+      "uniques": 326
     },
     {
-      "count": 98,
+      "count": 103,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 28
+      "uniques": 27
     },
     {
-      "count": 48,
+      "count": 46,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 12
     },
     {
-      "count": 24,
+      "count": 26,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 10
-    },
-    {
-      "count": 21,
-      "path": "/vela-desktop/vela/tree/main",
-      "title": "/tree/main",
       "uniques": 11
     },
     {
-      "count": 20,
+      "count": 22,
+      "path": "/vela-desktop/vela/tree/main",
+      "title": "/tree/main",
+      "uniques": 12
+    },
+    {
+      "count": 18,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/start.webp",
       "title": "/blob/main/docs/screenshots/start.webp",
-      "uniques": 18
+      "uniques": 17
+    },
+    {
+      "count": 16,
+      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
+      "title": "/blob/main/docs/installation.md",
+      "uniques": 13
     },
     {
       "count": 16,
@@ -55,12 +61,6 @@
       "path": "/vela-desktop/vela/tree/main/compositor/src/render",
       "title": "/tree/main/compositor/src/render",
       "uniques": 9
-    },
-    {
-      "count": 13,
-      "path": "/vela-desktop/vela/blob/main/docs/screenshots/panels.webp",
-      "title": "/blob/main/docs/screenshots/panels.webp",
-      "uniques": 13
     }
   ],
   "schema_version": 1,
