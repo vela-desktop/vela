@@ -230,6 +230,8 @@ public:
     QString secretBackend() const { return m_secretBackend; }
     bool secretBackendConfigured() const { return m_secretBackendConfigured; }
     bool secretBackendInstalled() const;
+    // Check both choices separately before presenting first-login options.
+    Q_INVOKABLE bool isSecretBackendInstalled(const QString& backend) const;
     QString credentialStatus() const;
     QString activeSecretBackend() const;
     void setSecretBackend(const QString& backend);
