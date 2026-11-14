@@ -40,7 +40,9 @@ Page {
             objectName: "temporaryCredentials"
             icon: "dialog-password"
             title: qsTr("Password manager (temporary)")
-            description: !Prefs.secretBackendConfigured
+            description: !Prefs.secretBackendConfigured && !Prefs.secretBackendInstalled
+                ? qsTr("Choose your password manager. The temporary KWallet fallback is not installed on this computer. No passwords are transferred; sign out and back in after choosing.")
+                : !Prefs.secretBackendConfigured
                 ? qsTr("Choose your existing password manager. KWallet is used only as a fallback until you choose. No passwords are transferred; sign out and back in to apply.")
                 : !Prefs.secretBackendInstalled
                 ? qsTr("The selected password manager is not installed. Install it or choose the other provider, then sign out and back in.")
