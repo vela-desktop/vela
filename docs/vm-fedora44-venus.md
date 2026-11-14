@@ -509,7 +509,10 @@ On Venus, this branch automatically selects:
 
 - the **Vulkan DMA-BUF export** allocator for compositor outputs;
 - `MESA_LOADER_DRIVER_OVERRIDE=zink` for OpenGL clients, including the shell
-  and Files, and propagates it to the systemd/D-Bus activation environment.
+  and Files, and propagates it to systemd --user (also used by systemd-activated
+  D-Bus services). Direct dbus-daemon activation does not inherit this
+  override, because its environment cannot unset it at logout; keeping Zink
+  there could break a later desktop on older Mesa.
 
 Setting `QSG_RHI_BACKEND=vulkan` or globally forcing Zink on the host or in
 KDE is unnecessary. Zink is Mesa's
