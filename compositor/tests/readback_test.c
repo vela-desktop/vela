@@ -456,6 +456,84 @@ static void packed_pixels(uint32_t source, uint32_t destination, uint32_t expect
     }
 }
 
+static void copy_rows_all_alignments(void)
+{
+    // Long enough to exercise vector loops and their scalar tails. Source
+    // and destination can have different unaligned strides in real SHM.
+    enum { PIXELS = 257, GUARD = 8, BYTES = PIXELS * 8 };
+    uint8_t source[BYTES + 2 * GUARD], saved[sizeof(source)], destination[sizeof(source)];
+    for (size_t i = 0; i < sizeof(source); ++i) source[i] = (uint8_t)(i * 37 + 13);
+    memcpy(saved, source, sizeof(source));
+    for (size_t src_offset = 0; src_offset < 8; ++src_offset) {
+        for (size_t dst_offset = 0; dst_offset < 8; ++dst_offset) {
+            for (enum readback_alpha alpha = READBACK_ALPHA_NONE; alpha <= READBACK_ALPHA_HALF; ++alpha) {
+                const size_t pixel_bytes = alpha == READBACK_ALPHA_HALF ? 8 : 4;
+                const size_t bytes = PIXELS * pixel_bytes;
+                const uint8_t *src = source + src_offset;
+                uint8_t *dst = destination + dst_offset;
+                memset(destination, 0x5a, sizeof(destination));
+                copy_row(dst, src, bytes, alpha);
+                for (size_t i = 0; i < dst_offset; ++i) assert(destination[i] == 0x5a);
+                for (size_t i = dst_offset + bytes; i < sizeof(destination); ++i) assert(destination[i] == 0x5a);
+                for (size_t i = 0; i < bytes; i += pixel_bytes) {
+                    if (alpha == READBACK_ALPHA_HALF) {
+                        assert(memcmp(dst + i, src + i, 6) == 0);
+                        uint16_t a;
+                        memcpy(&a, dst + i + 6, sizeof(a));
+                        assert(a == 0x3c00);
+                    } else {
+                        uint32_t input, output;
+                        memcpy(&input, src + i, sizeof(input));
+                        memcpy(&output, dst + i, sizeof(output));
+                        uint32_t mask = alpha == READBACK_ALPHA_8 ? UINT32_C(0xff000000)
+                            : alpha == READBACK_ALPHA_2 ? UINT32_C(0xc0000000) : 0;
+                        assert(output == (input | mask));
+                    }
+                }
+                assert(memcmp(source, saved, sizeof(source)) == 0);
+            }
+        }
+    }
+}
+
+static void copy_rows_partial_pixels(void)
+{
+    // Exact-size sources let ASan detect even a read past the last byte.
+    // Short rows exercise every possible partial 4/8-byte pixel; the helper
+    // must preserve that tail without trying to convert an incomplete pixel.
+    for (size_t bytes = 0; bytes <= 33; ++bytes) {
+        uint8_t *source = malloc(bytes ? bytes : 1);
+        uint8_t *destination = malloc(bytes + 2);
+        assert(source && destination);
+        for (size_t i = 0; i < bytes; ++i) source[i] = (uint8_t)(i * 37 + 13);
+        for (enum readback_alpha alpha = READBACK_ALPHA_NONE; alpha <= READBACK_ALPHA_HALF; ++alpha) {
+            memset(destination, 0x5a, bytes + 2);
+            copy_row(destination + 1, source, bytes, alpha);
+            assert(destination[0] == 0x5a && destination[bytes + 1] == 0x5a);
+            const size_t pixel_bytes = alpha == READBACK_ALPHA_HALF ? 8 : 4;
+            const size_t complete = bytes / pixel_bytes * pixel_bytes;
+            for (size_t i = 0; i < complete; i += pixel_bytes) {
+                if (alpha == READBACK_ALPHA_HALF) {
+                    assert(memcmp(destination + 1 + i, source + i, 6) == 0);
+                    uint16_t a;
+                    memcpy(&a, destination + 1 + i + 6, sizeof(a));
+                    assert(a == 0x3c00);
+                } else {
+                    uint32_t input, output;
+                    memcpy(&input, source + i, sizeof(input));
+                    memcpy(&output, destination + 1 + i, sizeof(output));
+                    const uint32_t mask = alpha == READBACK_ALPHA_8 ? UINT32_C(0xff000000)
+                        : alpha == READBACK_ALPHA_2 ? UINT32_C(0xc0000000) : 0;
+                    assert(output == (input | mask));
+                }
+            }
+            assert(memcmp(destination + 1 + complete, source + complete, bytes - complete) == 0);
+        }
+        free(destination);
+        free(source);
+    }
+}
+
 static void cancelled_gpu_allocations_still_count(void)
 {
     struct vela_vulkan vk = { 0 };
@@ -589,6 +667,8 @@ int main(void)
     cancelled_gpu_allocations_still_count();
     shared_staging_retains_other_consumers();
     rearmed_timer_keeps_queued_readbacks();
+    copy_rows_all_alignments();
+    copy_rows_partial_pixels();
     packed_pixels(DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XBGR8888, DRM_FORMAT_ABGR8888, 0xff000000);
     packed_pixels(DRM_FORMAT_XRGB2101010, DRM_FORMAT_ARGB2101010, 0xc0000000);

@@ -809,23 +809,44 @@ static enum readback_alpha opaque_alpha_for(const struct vela_pixel_format *src,
     }
 }
 
-static void copy_row(uint8_t *dst, const uint8_t *src, size_t bytes, enum readback_alpha alpha)
+static void copy_row(uint8_t *restrict dst, const uint8_t *restrict src, size_t bytes, enum readback_alpha alpha)
 {
-    memcpy(dst, src, bytes);
-    if (alpha == READBACK_ALPHA_HALF) {
+    size_t copied;
+    if (alpha == READBACK_ALPHA_NONE) {
+        memcpy(dst, src, bytes);
+        return;
+    } else if (alpha == READBACK_ALPHA_HALF) {
         const uint16_t one = 0x3c00; // IEEE 754 binary16 1.0
-        for (size_t x = 6; x < bytes; x += 8) memcpy(dst + x, &one, sizeof(one));
-    } else if (alpha != READBACK_ALPHA_NONE) {
+        const size_t pixels = bytes / 8;
+        for (size_t i = 0; i < pixels; ++i) {
+            const size_t x = i * 8;
+            memcpy(dst + x, src + x, 6);
+            memcpy(dst + x + 6, &one, sizeof(one));
+        }
+        copied = pixels * 8;
+    } else {
         const uint32_t mask = alpha == READBACK_ALPHA_8 ? UINT32_C(0xff000000) : UINT32_C(0xc0000000);
+        // Copy and make opaque in one pass. A memcpy followed by in-place
+        // alpha fixup reads/writes the whole destination a second time.
+        // Staging and client mappings are disjoint; memcpy word accesses keep
+        // unaligned rows and strict aliasing valid and allow vectorization.
         // Packed 10-bit pixels share the last byte with a color channel.
         // Use native pixel words and preserve every RGB bit, including on an
         // unaligned client row.
-        for (size_t x = 0; x < bytes; x += sizeof(mask)) {
+        const size_t pixels = bytes / sizeof(mask);
+        for (size_t i = 0; i < pixels; ++i) {
+            const size_t x = i * sizeof(mask);
             uint32_t pixel;
-            memcpy(&pixel, dst + x, sizeof(pixel));
+            memcpy(&pixel, src + x, sizeof(pixel));
             pixel |= mask;
             memcpy(dst + x, &pixel, sizeof(pixel));
         }
+        copied = pixels * sizeof(mask);
+    }
+    // Callers use whole-pixel rows. Still bound every conversion by the
+    // complete pixel count, preserving any partial final pixel verbatim.
+    if (copied < bytes) {
+        memcpy(dst + copied, src + copied, bytes - copied);
     }
 }
 
