@@ -531,6 +531,12 @@ own `wlr_allocator` (`wlr_allocator_init` is public): GBM buffers with an
 explicit modifier accepted by the primary plane
 (`wlr_output_get_primary_formats`).
 
+On Venus, the experimental [VM path](virtual-machines.md) allocates output
+images and dedicated DMA-BUF memory on our Vulkan device instead of GBM, then
+exports their actual modifier/plane layout to wlroots. The renderer imports
+that resource through its normal target cache. `VELA_ALLOCATOR` selects the
+allocator for controlled comparisons; physical GPUs keep GBM by default.
+
 **Our renderer also speaks wlroots' language** (chosen in S1). wlroots draws by
 itself in a few places: it prepares the hardware cursor buffer, copies the
 output for screencopy and `ext-image-copy-capture`, and uploads apps' `wl_shm`

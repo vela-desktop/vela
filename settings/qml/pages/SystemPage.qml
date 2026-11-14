@@ -36,6 +36,33 @@ Page {
             description: qsTr("Clipboard history (Win+V), clear")
             onClicked: root.navigate("clipboard")
         }
+        Card {
+            objectName: "temporaryCredentials"
+            icon: "dialog-password"
+            title: qsTr("Password manager (temporary)")
+            description: !Prefs.secretBackendConfigured && !Prefs.secretBackendInstalled
+                ? qsTr("Choose your password manager. The temporary KWallet fallback is not installed on this computer. No passwords are transferred; sign out and back in after choosing.")
+                : !Prefs.secretBackendConfigured
+                ? qsTr("Choose your existing password manager. KWallet is used only as a fallback until you choose. No passwords are transferred; sign out and back in to apply.")
+                : !Prefs.secretBackendInstalled
+                ? qsTr("The selected password manager is not installed. Install it or choose the other provider, then sign out and back in.")
+                : Prefs.secretBackend !== Prefs.activeSecretBackend
+                ? qsTr("This password manager will be used after signing out and back in. The running session still uses the previous choice.")
+                : Prefs.credentialStatus === "conflict"
+                ? qsTr("Another password manager owns Secret Service. Your choice is not active; check the Vela session log. No passwords were migrated.")
+                : Prefs.credentialStatus === "limited"
+                ? qsTr("KWallet's native API is available, but Secret Service is not. Some KDE/Chromium apps may work, but libsecret clients may fail. Enable KWallet's Secret Service support and sign in again.")
+                : Prefs.credentialStatus === "missing" || Prefs.credentialStatus === "unverified" || Prefs.credentialStatus === "failed"
+                ? qsTr("The selected password manager could not be verified or started. Check the session log. Changing the choice requires a new login.")
+                : qsTr("Use this existing password store for apps. No passwords are transferred. Changes take effect after signing out and back in.")
+            trailing: Choice {
+                objectName: "secretBackend"
+                model: [qsTr("KWallet (KDE)"), qsTr("GNOME Keyring")]
+                currentIndex: Prefs.secretBackendConfigured ? (Prefs.secretBackend === "gnome" ? 1 : 0) : -1
+                Accessible.name: qsTr("Select password manager")
+                onChosen: index => Prefs.secretBackend = ["kwallet", "gnome"][index]
+            }
+        }
         LinkCard {
             icon: "system-software-update"
             title: qsTr("Updates")

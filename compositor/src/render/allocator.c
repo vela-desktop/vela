@@ -14,6 +14,7 @@
 #include <drm_fourcc.h>
 #include <gbm.h>
 #include <stdlib.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/render/allocator.h>
@@ -142,6 +143,18 @@ static struct wlr_buffer *create_buffer(struct wlr_allocator *wlr_alloc, int wid
             gbm_bo_destroy(bo);
             free(buffer);
             return NULL;
+        }
+    }
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: GBM allocated %dx%d drm=0x%08x modifier=0x%llx planes=%d",
+            width, height, d->format, (unsigned long long)d->modifier, d->n_planes);
+        for (int i = 0; i < d->n_planes; ++i) {
+            struct stat info;
+            if (fstat(d->fd[i], &info) == 0) {
+                wlr_log(WLR_INFO, "DMABUF trace: GBM plane=%d fd=%d dev=%llu ino=%llu offset=%u stride=%u",
+                    i, d->fd[i], (unsigned long long)info.st_dev, (unsigned long long)info.st_ino,
+                    d->offset[i], d->stride[i]);
+            }
         }
     }
     wlr_buffer_init(&buffer->base, &buffer_impl, width, height);

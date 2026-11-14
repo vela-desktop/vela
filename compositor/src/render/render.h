@@ -87,6 +87,8 @@ struct vela_vulkan {
     // The GPU can export and import semaphores as sync_files (implicit sync
     // with the kernel, §7.3).
     bool sync_file;
+    bool export_buffers; // Venus: allocate with Vulkan, then export to the output
+    bool venus;
 
     PFN_vkGetMemoryFdPropertiesKHR get_memory_fd_properties;
     PFN_vkGetSemaphoreFdKHR get_semaphore_fd;
@@ -132,6 +134,8 @@ static inline struct vela_extent vela_vulkan_dmabuf_max_extent(const struct vela
 uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t type_bits, VkMemoryPropertyFlags flags);
 // A dmabuf of that format and modifier can be imported for that use.
 bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
+    VkImageUsageFlags usage);
+bool vela_vulkan_can_export_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
     VkImageUsageFlags usage);
 // A dmabuf as a VkImage, without copies (all planes in the same dmabuf).
 bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,

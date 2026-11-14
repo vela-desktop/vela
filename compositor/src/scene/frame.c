@@ -1525,7 +1525,13 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
             wlr_log(WLR_INFO, "%s: injected composed commit failure", output->name);
             ok = false;
         } else {
+            if (vela_env_one("VELA_DEBUG_DMABUF")) {
+                wlr_log(WLR_INFO, "DMABUF trace: before frame wlr_output_commit_state output=%s", output->name);
+            }
             ok = wlr_output_commit_state(output, state);
+            if (vela_env_one("VELA_DEBUG_DMABUF")) {
+                wlr_log(WLR_INFO, "DMABUF trace: after frame wlr_output_commit_state output=%s ok=%d", output->name, ok);
+            }
         }
         if (commit_start && vela_env_flag("VELA_STATS")) {
             wlr_log(WLR_INFO, "%s: commit with a gamma LUT: %.2f ms", output->name,
@@ -1736,7 +1742,13 @@ static bool try_scanout(struct vela_output_frame *frame, const struct vela_eleme
         if (!info || info->pacing == output) {
             wlr_presentation_surface_scanned_out_on_output(surface, output);
         }
+        if (vela_env_one("VELA_DEBUG_DMABUF")) {
+            wlr_log(WLR_INFO, "DMABUF trace: before scanout wlr_output_commit_state output=%s", output->name);
+        }
         ok = wlr_output_commit_state(output, &attempt);
+        if (vela_env_one("VELA_DEBUG_DMABUF")) {
+            wlr_log(WLR_INFO, "DMABUF trace: after scanout wlr_output_commit_state output=%s ok=%d", output->name, ok);
+        }
     }
     if (ok && tearing != frame->tearing) {
         wlr_log(WLR_INFO, "%s: tearing %s", output->name, tearing ? "on (the app asks for it)" : "off");

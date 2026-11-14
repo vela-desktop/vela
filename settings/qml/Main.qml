@@ -161,17 +161,34 @@ Window {
     Shortcut { sequences: [StandardKey.Back]; onActivated: root.back() }
     Shortcut { sequences: [StandardKey.Forward]; onActivated: root.forward() }
 
+    // The login session requests this page until a valid preference is saved.
+    // Opening Settings later, or forwarding to an already-running instance,
+    // must obey the same rule; the implicit KWallet fallback is not consent.
+    function showCredentialSetup() {
+        Prefs.reload()
+        root.navigate("system")
+        if (!Prefs.secretBackendConfigured) {
+            credentialSetupDialog.open()
+        }
+    }
+
     Component.onCompleted: {
         if (glass.length) {
             Effects.setBlur(root, glass)
         }
-        navigate(Router.initialPage)
+        if (Router.initialPage === "credential-setup") {
+            showCredentialSetup()
+        } else {
+            navigate(Router.initialPage)
+        }
     }
 
     Connections {
         target: Router
         function onPageRequested(page) {
-            if (page !== "") {
+            if (page === "credential-setup") {
+                root.showCredentialSetup()
+            } else if (page !== "") {
                 root.navigate(page)
             }
             if (root.visibility === Window.Minimized) {
@@ -444,6 +461,32 @@ Window {
             width: implicitWidth
             height: implicitHeight
             anchors { horizontalCenter: pageLoader.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
+        }
+    }
+    // TEMPORARY until Vela Secrets: explicit provider selection on the first
+    // login and every subsequent login where secret-backend is still unset.
+    // Neither Enter nor dismissing this dialog silently chooses KWallet.
+    Dialog {
+        id: credentialSetupDialog
+        objectName: "credentialSetupDialog"
+        parent: root.contentItem
+        dialogWidth: 560
+        title: qsTr("Choose your password manager")
+        text: qsTr("Vela needs to know which existing password store your apps should use. KWallet is only a temporary fallback until you choose. No passwords will be transferred. Your choice will take effect after signing out and back in.")
+            + ((!Prefs.isSecretBackendInstalled("kwallet") || !Prefs.isSecretBackendInstalled("gnome"))
+                ? qsTr(" Unavailable providers are disabled; install the desired provider first.")
+                : "")
+        buttons: [
+            { text: qsTr("KWallet (KDE)"), value: "kwallet", enabled: Prefs.isSecretBackendInstalled("kwallet") },
+            { text: qsTr("GNOME Keyring"), value: "gnome", enabled: Prefs.isSecretBackendInstalled("gnome") },
+            { text: qsTr("Decide later"), value: "cancel" }
+        ]
+        onChosen: value => {
+            if (value === "kwallet" || value === "gnome") {
+                Prefs.secretBackend = value
+                // Failed writes are reported by the visible Settings page;
+                // no persisted key means the prompt returns on next login.
+            }
         }
     }
 }

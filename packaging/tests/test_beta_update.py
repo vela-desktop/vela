@@ -6,6 +6,7 @@
 import hashlib
 import json
 import os
+import pty
 from pathlib import Path
 import shutil
 import subprocess
@@ -233,6 +234,37 @@ class BetaUpdateTests(unittest.TestCase):
         result = self.run_update("--check", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout)["tag"], "v0.99.0")
+
+    def test_beta_interactive_recipe_has_a_readonly_pager_with_quit_hint(self):
+        pager = self.root / "bin/less"
+        pager.write_text(
+            "#!/usr/bin/env python3\n"
+            "import json, os, pathlib, sys\n"
+            "pathlib.Path(os.environ['TEST_PAGER_CAPTURE']).write_text(sys.stdin.read())\n"
+            "pathlib.Path(os.environ['TEST_PAGER_ARGS']).write_text(json.dumps("
+            "{'args': sys.argv[1:], 'secure': os.getenv('LESSSECURE'), "
+            "'options': os.getenv('LESS')}))\n")
+        pager.chmod(0o755)
+        capture = self.root / "recipe-preview.txt"
+        options = self.root / "pager-options.json"
+        self.env.update(TEST_SIGNED_MANIFEST="1", TEST_PAGER_CAPTURE=str(capture),
+                        TEST_PAGER_ARGS=str(options))
+        master, slave = pty.openpty()
+        try:
+            result = subprocess.run(
+                ["sh", str(self.script)], env=self.env,
+                stdin=slave, stdout=slave, stderr=subprocess.PIPE,
+                text=True, timeout=30)
+        finally:
+            os.close(slave)
+            os.close(master)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("pkgname=vela", capture.read_text())
+        pager_options = json.loads(options.read_text())
+        self.assertIn("q: close and continue", " ".join(pager_options["args"]))
+        self.assertEqual(pager_options["secure"], "1")
+        self.assertEqual(pager_options["options"], "")
+        self.assertTrue(self.verified.exists())
 
     def test_beta_install_shows_pinned_arch_pkgbuild(self):
         self.env["TEST_SIGNED_MANIFEST"] = "1"

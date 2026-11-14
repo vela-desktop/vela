@@ -975,7 +975,7 @@ prune() {
 # binary is available or we build it locally. Read the recipe from the pinned
 # commit, never from the updater's own (possibly older) installed files.
 # Checks stay quiet: their JSON output is a public interface.
-showRecipe() {
+showRecipeContent() {
     printf '\n%s\n' ":: Packaging recipe for $backend at $latestFull"
     if [ "$backend" = ubuntu ]; then
         printf '%s\n' "--- packaging/ubuntu/build-depends ---"
@@ -1003,6 +1003,19 @@ showRecipe() {
         fi
     fi
     printf '%s\n\n' ":: End of packaging recipe"
+}
+
+# A plain terminal dump remains useful in logs and automated invocations.
+# In a real terminal, use a read-only pager rather than an editor (never $EDITOR).
+# Always show a quit hint: users do not need to know Vim or less commands.
+showRecipe() {
+    if [ -t 0 ] && [ -t 1 ] && command -v less >/dev/null 2>&1; then
+        printf '\n%s\n' ":: Reviewing the package recipe (read-only). Scroll with arrows/PageUp/PageDown; press q to close and continue."
+        showRecipeContent | LESS= LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
+        printf '%s\n' ":: Recipe preview closed; continuing update."
+    else
+        showRecipeContent
+    fi
 }
 
 showRecipe

@@ -10,10 +10,10 @@
 # graphical session is already active (Plasma on another console, while trying
 # Vela from a VT), nothing is touched, so as not to break it.
 
-VARS="WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP KDE_SESSION_VERSION QT_WAYLAND_RECONNECT XDG_SESSION_TYPE XDG_SESSION_DESKTOP QT_QPA_PLATFORMTHEME XDG_MENU_PREFIX"
+VARS="WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP KDE_SESSION_VERSION VELA_SECRET_BACKEND QT_WAYLAND_RECONNECT XDG_SESSION_TYPE XDG_SESSION_DESKTOP QT_QPA_PLATFORMTHEME XDG_MENU_PREFIX"
 STATE="${XDG_RUNTIME_DIR:-/tmp}/vela-session-${WAYLAND_DISPLAY:-none}"
-# Vela also declares itself KDE (for the keyring), but restoring the apps of
-# the last Plasma session is ksmserver's job, which isn't here: its autostart
+# TEMPORARY: vela-session has chosen GNOME or KWallet before this hook.
+# Restoring the apps of the last Plasma session is ksmserver's job, not ours; its autostart
 # entry is turned off for the duration of the session.
 RESTORE='app-org.kde.plasma\x2dfallback\x2dsession\x2drestore@autostart.service'
 
@@ -28,33 +28,130 @@ start)
         echo "vela-session-env: another graphical session is already running, leaving it alone" >&2
         exit 0
     fi
+    # A restarted compositor reimports environment but must not restart a
+    # credential provider (and certainly not switch it while apps are running).
+    FIRST_START=0
+    [ ! -e "$STATE" ] && FIRST_START=1
     # Only the variables that have a value.
     SET=""
     for var in $VARS; do
         eval "value=\${$var-}"
         [ -n "$value" ] && SET="$SET $var"
     done
+    # D-Bus cannot unset activation variables. Only systemd may receive this
+    # session-local Mesa override; systemd-managed D-Bus services inherit it.
+    SYSTEMD_SET="$SET"
+    [ -n "${MESA_LOADER_DRIVER_OVERRIDE:-}" ] && SYSTEMD_SET="$SET MESA_LOADER_DRIVER_OVERRIDE"
     # shellcheck disable=SC2086
-    systemctl --user import-environment $SET
+    systemctl --user import-environment $SYSTEMD_SET
+    # Importing only nonempty variables would preserve a stale KDE marker
+    # in the shared user manager when a GNOME backend is selected.
+    if [ "${VELA_SECRET_BACKEND:-kwallet}" = gnome ]; then
+        systemctl --user unset-environment KDE_SESSION_VERSION
+    fi
     if command -v dbus-update-activation-environment > /dev/null; then
         # shellcheck disable=SC2086
         dbus-update-activation-environment $SET
+        if [ "${VELA_SECRET_BACKEND:-kwallet}" = gnome ]; then
+            # D-Bus activation environment cannot unset a value; clear it.
+            KDE_SESSION_VERSION=
+            export KDE_SESSION_VERSION
+            dbus-update-activation-environment KDE_SESSION_VERSION
+        fi
     fi
-    : > "$STATE"
+    # The login marker needs a unique value on *every* new session. Reusing
+    # a constant value would let a delayed prompt from an earlier login appear
+    # after a logout/login cycle on the same display.
+    if [ "$FIRST_START" -eq 1 ]; then
+        if [ -r /proc/sys/kernel/random/uuid ]; then
+            session_token=$(cat /proc/sys/kernel/random/uuid)
+        else
+            session_token=
+        fi
+        if [ -z "$session_token" ]; then
+            echo "vela-session-env: cannot create a unique session token" >&2
+            exit 1
+        fi
+        printf '%s\n' "$session_token" > "$STATE"
+    fi
     systemctl --user -q mask --runtime "$RESTORE" 2> /dev/null
+    credential_issue=0
+    if [ "$FIRST_START" -eq 1 ]; then
+        # Select once per outer session, but validate the actual Secret Service
+        # owner. Never start a competing provider or stop one owned by PAM.
+        . "$(dirname "$0")/credential-compat/ensure-backend"
+        case "${VELA_SECRET_BACKEND:-kwallet}" in
+            gnome)
+                vela_credential_ensure gnome /usr/bin/gnome-keyring-daemon \
+                    vela-gnome-keyring-compat.service || credential_issue=1 ;;
+            kwallet)
+                vela_credential_ensure kwallet /usr/bin/kwalletd6 \
+                    vela-kwallet-compat.service || credential_issue=1 ;;
+        esac
+    fi
     if systemctl --user cat vela-session.target > /dev/null 2>&1; then
         systemctl --user --no-block start vela-session.target
+    fi
+    if [ "$FIRST_START" -eq 1 ] && [ "${VELA_SECRET_CONFIGURED:-0}" = 0 ]; then
+        # An implicit KWallet fallback is NOT an explicit user decision.
+        # Show an actual choice dialog on every new login until the preference
+        # is saved; never write a preference automatically. Only this first
+        # session start launches the dialog, not supervised compositor restarts.
+        (
+            # Capture the identity of the login that scheduled this child.
+            # Reading STATE here races a subsequent logout/login if the child
+            # is delayed before its first instruction.
+            prompt_token=$session_token
+            attempt=0
+            # A fixed sleep is fragile on slow machines: wait until Settings
+            # can open or forward to the running instance. Never loop forever.
+            while [ "$attempt" -lt 10 ]; do
+                sleep 2
+                # Stop when this session exits, even if the display name is
+                # reused by another login while this helper was sleeping.
+                [ -r "$STATE" ] || exit 0
+                [ "$(cat "$STATE")" = "$prompt_token" ] || exit 0
+                if command -v vela-settings >/dev/null 2>&1 &&
+                    vela-settings --page credential-setup; then
+                    exit 0
+                fi
+                attempt=$((attempt + 1))
+            done
+            echo "vela-session-env: credential setup could not be opened after retries" >&2
+        ) >/dev/null &
+    fi
+    if [ "$FIRST_START" -eq 1 ] && [ "$credential_issue" -ne 0 ]; then
+        # A real provider failure also deserves a warning. The prompt above is
+        # independent of whether KWallet or GNOME Keyring happens to be installed.
+        (
+            sleep 3
+            if command -v notify-send >/dev/null 2>&1; then
+                if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+                    [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status" 2>/dev/null)" = limited ]; then
+                    notify-send -a "Vela Desktop" -u normal -t 20000 \
+                        "KWallet: limited compatibility" \
+                        "KWallet's native API works, but Secret Service is unavailable. Check Settings > System."
+                else
+                    notify-send -a "Vela Desktop" -u critical -t 20000 \
+                        "Password manager unavailable" \
+                        "Vela could not use the selected password manager. Open Settings > System and check the session log."
+                fi
+            fi
+        ) >/dev/null 2>&1 &
     fi
     ;;
 stop)
     [ -e "$STATE" ] || exit 0
     rm -f "$STATE"
+    [ -z "${XDG_RUNTIME_DIR:-}" ] || rm -f "$XDG_RUNTIME_DIR/vela-credential-compat.status"
+    # Only the services started by Vela. Other user/PAM-owned daemons remain.
+    systemctl --user --no-block stop vela-gnome-keyring-compat.service vela-kwallet-compat.service 2> /dev/null
     if systemctl --user cat vela-session.target > /dev/null 2>&1; then
         systemctl --user --no-block stop vela-session.target
     fi
     systemctl --user -q unmask --runtime "$RESTORE" 2> /dev/null
     # shellcheck disable=SC2086
-    systemctl --user unset-environment $VARS
+    systemctl --user unset-environment $VARS MESA_LOADER_DRIVER_OVERRIDE
     ;;
 *)
     echo "Usage: vela-session-env start|stop" >&2

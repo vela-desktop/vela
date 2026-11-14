@@ -199,6 +199,7 @@ add_library(vela-compositor-objects OBJECT
     src/render/wait_arrays.c
     src/render/texture.c
     src/render/vulkan.c
+    src/render/vulkan_allocator.c
     src/scene/capture.c
     src/scene/output_capture.c
     src/scene/effects.c
@@ -368,6 +369,16 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-vulkan-device-init-test PROPERTIES C_STANDARD 17
         C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.vulkan-device-init COMMAND vela-vulkan-device-init-test)
+
+    add_executable(vela-vulkan-allocator-test tests/vulkan_allocator_test.c src/render/formats.c)
+    target_include_directories(vela-vulkan-allocator-test PRIVATE src)
+    target_compile_definitions(vela-vulkan-allocator-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-vulkan-allocator-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-vulkan-allocator-test PRIVATE vela-pure PkgConfig::VULKAN
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM)
+    set_target_properties(vela-vulkan-allocator-test PROPERTIES C_STANDARD 17
+        C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.vulkan-allocator COMMAND vela-vulkan-allocator-test)
 
     # GPU-free policy test: verifies that the cursor-specific flags cannot
     # leak into ordinary output/capture allocations.
