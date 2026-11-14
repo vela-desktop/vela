@@ -308,15 +308,16 @@ If the harness cannot find a usable GPU, it exits with status 77. CTest marks th
 
 ### GPU CI hardware
 
-The mandatory GPU-dependent suite runs on two machines, with an optional
-experimental Intel runner, using the
+The mandatory GPU-dependent suite runs on two hardware-backed paths
+(AMD self-hosted and NVIDIA rented per run), with an optional experimental
+Intel runner, using the
 [GPU CI workflows](ci-quality.md#gpu-ci-policy):
 
-| GPU | Driver | OS |
+| GPU | Driver | Environment |
 |---|---|---|
-| AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS |
-| NVIDIA GeForce RTX 4070 Laptop GPU | NVIDIA proprietary | Arch/CachyOS |
-| Intel Alder Lake-UP3 UHD Graphics (experimental) | Mesa/ANV | CachyOS |
+| AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS self-hosted |
+| NVIDIA RTX GPU (varies per run) | NVIDIA proprietary | Vast.ai rental, Arch Linux container |
+| Intel Alder Lake-UP3 UHD Graphics (experimental) | Mesa/ANV | CachyOS self-hosted |
 
 The [GPU CI policy](ci-quality.md#gpu-ci-policy) is the single source for
 when these manually triggered runs are required and what counts as a pass.
