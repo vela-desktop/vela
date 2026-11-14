@@ -107,6 +107,10 @@ Without an explicit build type, Vela defaults to `RelWithDebInfo`.
 
 Useful CMake options:
 
+The table lists CMake variable names, without the command-line `-D` prefix.
+To set an option when configuring a build, use `-DNAME=VALUE` (for example,
+`-DVELA_BUILD_SHELL=OFF`). Boolean options accept `ON` or `OFF`.
+
 | Option | Default | Purpose |
 |---|---:|---|
 | `VELA_BUILD_COMPOSITOR` | `ON` | Build the Wayland compositor and session integration. |
