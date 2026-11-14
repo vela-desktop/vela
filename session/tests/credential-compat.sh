@@ -121,6 +121,8 @@ if vela_credential_ensure gnome "$binary" gnome.service; then
     echo 'foreign owner accepted after startup' >&2; exit 1
 fi
 [ "$(cat "$status")" = conflict ]
+# The daemon was ours to start, so this failed attempt must stop its unit.
+grep -q -- '--no-block stop gnome.service' "$calls"
 
 MOCK_OWNER=none
 MOCK_NEXT_OWNER=none
