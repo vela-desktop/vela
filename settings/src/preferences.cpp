@@ -948,6 +948,9 @@ void Preferences::setSecretBackend(const QString& backend)
             m_secretBackend = previous;
             m_secretBackendConfigured = previouslyConfigured;
         }
+        // noteSaveFailure() may have reloaded vela.conf; consume that flag
+        // for this save attempt so it cannot suppress a later rollback.
+        m_restoredFromFile = false;
         emit secretBackendChanged();
     }
 }
