@@ -266,7 +266,7 @@ void Preferences::reloadCompositor()
     emit idleChanged();
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
-    // As the shell reads it
+    // Temporary user-selected credential backend (applies at next login).
     const QString backend = value(QStringLiteral("secret-backend"), QStringLiteral("kwallet"));
     m_secretBackend = backend == QLatin1String("gnome") ? QStringLiteral("gnome") : QStringLiteral("kwallet");
     emit secretBackendChanged();
