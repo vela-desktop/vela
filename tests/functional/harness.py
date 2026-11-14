@@ -390,8 +390,10 @@ class Session:
             connection.connect(self.socket_path)
             connection.sendall((line + "\n").encode())
 
-    def query(self, line):
+    def query(self, line, timeout=None):
         with socket.socket(socket.AF_UNIX) as connection:
+            if timeout is not None:
+                connection.settimeout(timeout)
             connection.connect(self.socket_path)
             connection.sendall((line + "\n").encode())
             data = b""
@@ -402,15 +404,33 @@ class Session:
                 data += chunk
         return json.loads(data)
 
-    def state(self):
-        return State(self.query("state"))
+    def state(self, timeout=None):
+        return State(self.query("state", timeout=timeout))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
-        """Waits until condition(state) is true; returns the state."""
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05,
+                 reconnect=False):
+        """Wait for condition(state). Reconnection is opt-in after an expected crash."""
         deadline = time.monotonic() + timeout * TIME_SCALE
         last = None
+        connection_error = None
         while time.monotonic() < deadline:
-            last = self.state() if read_state else None
+            if reconnect and self.process.poll() is not None:
+                raise AssertionError(f"the supervisor exited (code {self.process.returncode}):\n"
+                                     f"{self.log_text()[-3000:]}")
+            try:
+                if not read_state:
+                    last = None
+                elif reconnect:
+                    last = self.state(timeout=max(0.001, deadline - time.monotonic()))
+                else:
+                    last = self.state()
+            except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError,
+                    socket.timeout) as error:
+                if not reconnect:
+                    raise
+                connection_error = repr(error)
+                time.sleep(interval)
+                continue
             try:
                 if condition(last):
                     return last
@@ -422,6 +442,7 @@ class Session:
         lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
         errors = "".join(line for line in lines if "[ERROR]" in line)
         raise TimeoutError(f"after {timeout * TIME_SCALE:g} s this still isn't true: {what}\nlast state: {last}\n"
+                           f"last connection error: {connection_error}\n"
                            f"--- Vela's errors ---\n{errors[-2500:]}"
                            f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 

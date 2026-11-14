@@ -186,8 +186,17 @@ verified manually. This does **not** yet establish a passing GPU CI baseline.
 Install the [normal build dependencies](development.md#distribution-dependencies)
 plus `vulkan-intel`, `vulkan-tools`, `vulkan-validation-layers`,
 `python-numpy`, `python-pillow`, `python-dbus`, `dbus`,
-`xorg-xwayland`, `xorg-xrandr`, `xorg-xrdb` and `xorg-xprop`
+`xorg-xwayland`, `xorg-xrandr`, `xorg-xrdb`, `xorg-xprop`, `breeze-icons`
 on the host. The workflow never installs packages or uses sudo.
+`hicolor-icon-theme` alone supplies no standard action icons. The real-shell
+tests run `vela-shell --check-icons` with their private HOME and configuration;
+this checks actual Qt rendering in light and dark mode, including SVG loading,
+and names missing icons before exercising QML. The shell adds the standard XDG
+icon directories even without a KDE platform plugin; that plugin is not a
+requirement. Provision a CachyOS/Arch Intel
+runner with `sudo pacman -S --needed breeze-icons qt6-svg`, then rerun the failed
+shell suite. Installing the packages is a host administration step, not a
+workflow action.
 It isolates Intel's Mesa ANV ICD (not `intel_hasvk` or Lavapipe),
 requires `DRIVER_ID_INTEL_OPEN_SOURCE_MESA`, Vulkan >= 1.4 and
 PCI vendor `0x8086`, and verifies the DRM render node actually
