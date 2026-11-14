@@ -102,6 +102,14 @@ vela_credential_ensure()
         exit 1
     fi
 
+    # From here on only, the unit was started by Vela. If verification
+    # fails, stop OUR unit rather than leaving a second competing daemon.
+    # An already-existing PAM-owned provider never reaches this branch.
+    vela_credential_stop_started_unit()
+    {
+        systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
+    }
+
     # systemctl start can succeed even if a unit is skipped by a Condition,
     # and --start may return after attaching to a PAM-owned keyring.
     # Verify the actual D-Bus owner, not the unit's ActiveState.
@@ -111,13 +119,16 @@ vela_credential_ensure()
             "$backend") vela_credential_mark ok ''; exit 0 ;;
             none) sleep 0.2 ;;
             unknown)
+                vela_credential_stop_started_unit
                 vela_credential_mark unverified 'cannot identify the Secret Service owner'
                 exit 1 ;;
             *)
+                vela_credential_stop_started_unit
                 vela_credential_mark conflict "Secret Service belongs to $current, not $backend"
                 exit 1 ;;
         esac
     done
+    vela_credential_stop_started_unit
     vela_credential_mark failed "no Secret Service owner appeared for $backend"
     exit 1
 )
