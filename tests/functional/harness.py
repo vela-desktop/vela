@@ -76,13 +76,35 @@ def environment_without_display():
     return {key: value for key, value in os.environ.items() if key not in HOST_DISPLAY_VARIABLES}
 
 
-def stop_process_group(process, timeout=3):
-    """Stop a process started with start_new_session=True and everything
-    still in its process group: SIGTERM, then SIGKILL after `timeout`.
+def _group_has_live_members(group):
+    """Linux /proc: zombies still have PIDs and a process group, but no fds.
 
-    The group outlives its leader: what the leader started stays in it after
-    the leader exits, so the group is signalled even when the leader is gone.
-    While any member is left, Linux does not reuse the group's number."""
+    Services orphaned by a D-Bus daemon may stay zombies until PID 1 reaps
+    them (which some CI containers never do). killpg(group, 0) reports such
+    a zombie-only group as present even though nothing is running.
+    """
+    with os.scandir("/proc") as processes:
+        for entry in processes:
+            if not entry.name.isdecimal():
+                continue
+            try:
+                with open(f"/proc/{entry.name}/stat") as stat:
+                    fields = stat.read().rsplit(")", 1)[1].split()
+                # Fields after (comm): state, ppid, process group, ...
+                if int(fields[2]) == group and fields[0] not in ("Z", "X", "x"):
+                    return True
+            except (OSError, ValueError, IndexError):
+                # The process can exit while /proc is being inspected.
+                continue
+    return False
+
+
+def stop_process_group(process, timeout=3):
+    """Stop a start_new_session process and its group, TERM then KILL.
+
+    The group can outlive its leader. Wait for all *live* group members,
+    not for orphaned zombies whose resources are already released.
+    """
     group = process.pid
 
     def signal_group(number):
@@ -97,16 +119,20 @@ def stop_process_group(process, timeout=3):
         return
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        process.poll() # reap the leader: a zombie still counts as a member
-        if process.returncode is not None and not signal_group(0):
+        process.poll()  # Reap the leader if it has exited.
+        if not _group_has_live_members(group):
+            process.wait()
             return
         time.sleep(0.02)
     signal_group(signal.SIGKILL)
     process.wait()
-    # Killed members are reaped by whoever adopted them; wait for that.
     deadline = time.monotonic() + timeout
-    while signal_group(0) and time.monotonic() < deadline:
+    while time.monotonic() < deadline:
+        if not _group_has_live_members(group):
+            return
         time.sleep(0.02)
+    if _group_has_live_members(group):
+        raise RuntimeError(f"process group {group} still has live members after SIGKILL")
 
 
 _BUS_CONFIG = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
