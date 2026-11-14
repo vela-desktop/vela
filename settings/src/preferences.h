@@ -91,6 +91,9 @@ class Preferences : public QObject {
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
     // TEMPORARY until Vela Secrets: selected at the next graphical login.
     Q_PROPERTY(QString secretBackend READ secretBackend WRITE setSecretBackend NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendConfigured READ secretBackendConfigured NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendInstalled READ secretBackendInstalled NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString credentialStatus READ credentialStatus NOTIFY secretBackendChanged)
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
@@ -224,6 +227,9 @@ public:
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
     QString secretBackend() const { return m_secretBackend; }
+    bool secretBackendConfigured() const { return m_secretBackendConfigured; }
+    bool secretBackendInstalled() const;
+    QString credentialStatus() const;
     void setSecretBackend(const QString& backend);
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
@@ -418,6 +424,7 @@ private:
     bool m_lockOnIdle = true;
     QString m_language;
     QString m_secretBackend = QStringLiteral("kwallet");
+    bool m_secretBackendConfigured = false;
     QString m_visualTheme;
     QVariantMap m_surfaceStyles;
     QVariantList m_layouts;
