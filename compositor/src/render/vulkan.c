@@ -560,7 +560,7 @@ static void query_formats(struct vela_vulkan *vk)
             for (uint32_t i = 0; i < count; ++i) {
                 uint64_t modifier = modifiers[i].drmFormatModifier;
                 VkImageUsageFlags usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-                if (vk->export_buffers && vela_vulkan_supports_dmabuf(vk, format->srgb, modifier,
+                if (vk->export_buffers && vela_vulkan_can_export_dmabuf(vk, format->srgb, modifier,
                         usage | VK_IMAGE_USAGE_SAMPLED_BIT)) {
                     usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
                 }
