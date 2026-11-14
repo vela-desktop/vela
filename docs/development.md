@@ -280,6 +280,8 @@ caffeine status
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 
+The socket accepts only processes of the same user outside a sandbox. `test-output`, `test-power` and `test-shell` are refused unless the compositor runs headless with `VELA_TEST_COMMANDS=1`, which the functional harness sets; see the [security model](security-model.md#command-socket).
+
 ### Release promo recordings
 
 `scripts/record-promo.py` produces authentic release footage from a **single

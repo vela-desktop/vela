@@ -56,6 +56,11 @@ struct vela_lock {
     int waiting_count;
     int waiting_capacity;
     pid_t launcher_pid; // child process group for a pending locker launch
+    // The Wayland connection handed to that launch (WAYLAND_SOCKET). While
+    // Vela holds the screen locked, only this client may take the lock: any
+    // other could register one and then unlock the desktop.
+    struct wl_client *locker_client;
+    struct wl_listener locker_client_destroy;
     struct wl_event_source *respawn; // relaunches vela-lock if it goes away
     int64_t respawns[VELA_LOCK_RESPAWNS]; // when (ms), so as not to insist forever
     int respawn_count;
