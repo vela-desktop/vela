@@ -313,9 +313,9 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-sd-event-fail-preload PRIVATE ${CMAKE_DL_LIBS})
     target_compile_options(vela-sd-event-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-sd-event-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
-    # setenv and fstatat failures on the supervisor's restart path.
+    # Supervisor libc failures and isolated command-event registration failure.
     add_library(vela-libc-fail-preload MODULE tests/libc_fail_preload.c)
-    target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS})
+    target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS} PkgConfig::WAYLAND_SERVER)
     target_compile_options(vela-libc-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-libc-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_executable(vela-config-read-test tests/config_read_test.c)
