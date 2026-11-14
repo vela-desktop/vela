@@ -275,6 +275,8 @@ class Session:
             "WLR_BACKENDS": "headless",
             "WLR_LIBINPUT_NO_DEVICES": "1",
             "VELA_DEBUG_INPUT": "1",
+            # test-output, test-power, test-shell on the command socket.
+            "VELA_TEST_COMMANDS": "1",
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
             "HOME": os.path.join(self.directory, "home"),

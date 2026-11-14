@@ -15,7 +15,9 @@
 #include "lock.h"
 #include "output.h"
 #include "output_manager.h"
+#include "path_security.h"
 #include "render/renderer.h"
+#include "security_policy.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -35,6 +37,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <wlr/backend/headless.h>
+#include <wlr/backend/multi.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -44,6 +47,9 @@
 #include <wlr/util/log.h>
 
 #define MAX_LINE 4096 // a connection sending more is closed
+// The shell, Settings, the CLI and a few watchers are a handful: a peer that
+// opens more only exhausts descriptors and memory.
+#define MAX_CLIENTS 32
 
 // What a connection can follow with "watch <topic>" (docs/brightness.md
 // §7.2): a name, and the whole state as one line.
@@ -80,6 +86,10 @@ struct vela_commands {
     struct wl_event_source *source;
     char path[108];
     struct wl_list clients;
+    int client_count;
+    // test-output, test-power and test-shell: only in a headless session
+    // started with VELA_TEST_COMMANDS=1 (the functional tests).
+    bool test_commands;
 };
 
 static bool starts_with(const char *text, const char *prefix)
@@ -536,6 +546,10 @@ static void brightness(struct vela_server *server, const char *arguments)
 static void run_command(struct vela_server *server, const char *line)
 {
     struct vela_a11y *a11y = server->a11y;
+    if (vela_command_test_only(line) && !(server->commands && server->commands->test_commands)) {
+        wlr_log(WLR_ERROR, "Refused a test-only command: start a headless compositor with VELA_TEST_COMMANDS=1");
+        return;
+    }
     if (strcmp(line, "logout") == 0) {
         wlr_log(WLR_INFO, "Exit requested by the shell");
         wl_display_terminate(server->display);
@@ -750,6 +764,9 @@ static void client_destroy(struct client *client)
 {
     bool live = client->brightness_live;
     wl_list_remove(&client->link);
+    if (client->server->commands) {
+        --client->server->commands->client_count;
+    }
     wl_event_source_remove(client->source);
     close(client->fd);
     stop_watching(client);
@@ -815,11 +832,66 @@ static int handle_client(int fd, uint32_t mask, void *data)
     return 0;
 }
 
+// The socket file is private to this user, but the descriptor may have been
+// passed on, and the runtime directory may be reachable from a sandbox.
+// Every command acts on the whole session: only this user's unsandboxed
+// processes may talk to it.
+static bool peer_allowed(struct vela_server *server, int fd)
+{
+    struct ucred peer = { 0 };
+    socklen_t length = sizeof(peer);
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &length) != 0 || length != sizeof(peer)) {
+        wlr_log_errno(WLR_ERROR, "Command socket: can't identify a peer; refused");
+        return false;
+    }
+    if (peer.uid != geteuid()) {
+        wlr_log(WLR_ERROR, "Command socket: refused a peer of another user (uid %u)", (unsigned)peer.uid);
+        return false;
+    }
+    if (vela_pid_in_flatpak(peer.pid)) {
+        wlr_log(WLR_ERROR, "Command socket: refused a sandboxed peer (process %d)", (int)peer.pid);
+        return false;
+    }
+    if (server->commands->client_count >= MAX_CLIENTS) {
+        wlr_log(WLR_ERROR, "Command socket: %d connections already open; refused another", MAX_CLIENTS);
+        return false;
+    }
+    return true;
+}
+
+static void find_headless(struct wlr_backend *candidate, void *data)
+{
+    if (wlr_backend_is_headless(candidate)) {
+        *(bool *)data = true;
+    }
+}
+
+// Only the functional tests drive outputs, power and the capture indicator
+// through the socket: they ask for it, and only on the headless backend.
+static bool test_commands_enabled(struct vela_server *server)
+{
+    if (!vela_env_one("VELA_TEST_COMMANDS")) {
+        return false;
+    }
+    bool headless = false;
+    wlr_multi_for_each_backend(server->backend, find_headless, &headless);
+    if (!headless || server->session) {
+        wlr_log(WLR_ERROR, "VELA_TEST_COMMANDS ignored: only for a headless compositor");
+        return false;
+    }
+    wlr_log(WLR_INFO, "VELA_TEST_COMMANDS: test-only commands enabled on the command socket");
+    return true;
+}
+
 static int handle_connection(int fd, uint32_t mask, void *data)
 {
     struct vela_server *server = data;
     int client_fd = accept4(fd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
     if (client_fd < 0) {
+        return 0;
+    }
+    if (!peer_allowed(server, client_fd)) {
+        close(client_fd);
         return 0;
     }
     struct client *client = VELA_NEW(struct client);
@@ -834,6 +906,7 @@ static int handle_connection(int fd, uint32_t mask, void *data)
         return 0;
     }
     wl_list_insert(server->commands->clients.prev, &client->link);
+    ++server->commands->client_count;
     return 0;
 }
 
@@ -843,19 +916,36 @@ void vela_commands_listen(struct vela_server *server)
     commands->fd = -1;
     wl_list_init(&commands->clients);
     server->commands = commands;
+    commands->test_commands = test_commands_enabled(server);
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!runtime_dir
+    if (!runtime_dir || !vela_runtime_dir_private(runtime_dir)
+        || !vela_path_component_safe(server->socket_name)
         || !vela_format(commands->path, sizeof(commands->path), "%s/vela-%s.sock", runtime_dir,
             server->socket_name)) {
+        wlr_log(WLR_ERROR, "No command socket: XDG_RUNTIME_DIR must be a private directory owned by this user");
         commands->path[0] = '\0';
         return;
     }
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     snprintf(address.sun_path, sizeof(address.sun_path), "%s", commands->path);
-    unlink(commands->path); // left over from a previous run
+    // Left over from a previous run: only a socket of ours, never whatever
+    // else has that name.
+    struct stat previous;
+    if (lstat(commands->path, &previous) == 0) {
+        if (!S_ISSOCK(previous.st_mode) || previous.st_uid != geteuid()) {
+            wlr_log(WLR_ERROR, "No command socket: %s exists and is not a socket of this user", commands->path);
+            commands->path[0] = '\0';
+            return;
+        }
+        unlink(commands->path);
+    }
     commands->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
-    if (commands->fd < 0 || bind(commands->fd, (struct sockaddr *)&address, sizeof(address)) != 0
-        || listen(commands->fd, 4) != 0) {
+    // The socket is created 0600: there is no moment in which another user
+    // could connect before a chmod.
+    mode_t previous_umask = umask(0177);
+    bool bound = commands->fd >= 0 && bind(commands->fd, (struct sockaddr *)&address, sizeof(address)) == 0;
+    umask(previous_umask);
+    if (!bound || listen(commands->fd, 4) != 0) {
         wlr_log_errno(WLR_ERROR, "Can't listen for commands on %s", commands->path);
         if (commands->fd >= 0) {
             close(commands->fd);
@@ -864,7 +954,9 @@ void vela_commands_listen(struct vela_server *server)
         }
         return;
     }
-    chmod(commands->path, 0600);
+    if (chmod(commands->path, 0600) != 0) {
+        wlr_log_errno(WLR_ERROR, "Can't restrict %s", commands->path);
+    }
     commands->source = wl_event_loop_add_fd(server->loop, commands->fd, WL_EVENT_READABLE, handle_connection, server);
     if (!commands->source) {
         wlr_log_errno(WLR_ERROR, "Can't watch for commands on %s", commands->path);
