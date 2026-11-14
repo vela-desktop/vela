@@ -2,7 +2,7 @@
 
 For an end-to-end walkthrough starting with host packages and continuing
 through virt-manager, Fedora 44 KDE and a full Vela login, see the
-[Italian setup guide](vm-fedora44-venus.it.md).
+[setup guide](vm-fedora44-venus.md).
 
 The experimental path is **QEMU/KVM + virtio-gpu + Venus**, with a Vulkan 1.4
 host driver. The host GPU remains available to the host desktop; PCI GPU

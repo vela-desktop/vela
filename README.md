@@ -141,7 +141,7 @@ Matrix homeserver works; no `velade.org` account is required.
 - **Using Vela:** [features](docs/features.md) · [installation and updates](docs/installation.md) ·
   [keyboard shortcuts](docs/shortcuts.md) · [configuration](docs/configuration.md) ·
   [hardware coverage](docs/hardware.md) · [release channels](docs/release-channels.md) ·
-  [VM setup (Italian)](docs/vm-fedora44-venus.it.md) ·
+  [VM setup](docs/vm-fedora44-venus.md) ·
   [roadmap](docs/roadmap.md)
 - **Design:** [renderer](docs/renderer.md) · [audio](docs/audio.md) ·
   [Bluetooth](docs/bluetooth.md) · [brightness](docs/brightness.md) ·
