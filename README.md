@@ -146,7 +146,8 @@ Matrix homeserver works; no `velade.org` account is required.
 - **Design:** [renderer](docs/renderer.md) · [audio](docs/audio.md) ·
   [Bluetooth](docs/bluetooth.md) · [brightness](docs/brightness.md) ·
   [screen sharing](docs/screen-sharing.md) · [theme system](docs/theme-system.md) ·
-  [authorization prompt](docs/polkit-agent.md) · [updates](docs/updates.md)
+  [authorization prompt](docs/polkit-agent.md) · [updates](docs/updates.md) ·
+  [compositor security model](docs/security-model.md)
 - **Developing:** [development guide](docs/development.md) · [testing](docs/testing.md) ·
   [performance methodology](docs/performance.md) · [CI and quality](docs/ci-quality.md) ·
   [contributors](CONTRIBUTORS.md)

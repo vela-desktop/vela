@@ -379,6 +379,8 @@ reload-config
 
 `state` returns JSON describing the compositor-visible state. Functional scenarios assert against that state instead of relying on arbitrary sleeps.
 
+The `test-*` commands need a headless compositor started with `VELA_TEST_COMMANDS=1` (the harness sets it); otherwise they are refused and logged. `tests/functional/test_security.py` covers the command socket and the screen lock's trust rules ([security model](security-model.md)).
+
 A simplified scenario looks like:
 
 ```python

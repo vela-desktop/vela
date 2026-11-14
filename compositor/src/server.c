@@ -6,6 +6,7 @@
 #include "alloc/alloc.h"
 #include "a11y.h"
 #include "capture_watch.h"
+#include "client_policy.h"
 #include "bluetooth.h"
 #include "updates.h"
 #include "brightness.h"
@@ -178,6 +179,9 @@ static bool init(struct vela_server *server)
     server->display = wl_display_create();
     server->loop = wl_display_get_event_loop(server->display);
     struct wl_display *display = server->display;
+    // Before any global exists: sandboxed clients and Xwayland must never
+    // see a privileged one, not even briefly.
+    vela_client_policy_init(server);
 
     // Picks the backend by itself: DRM/KMS from a VT, or a Wayland window when
     // launched inside another session (such as KDE) for testing.
@@ -386,6 +390,23 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     server->supervised = supervised;
     snprintf(server->socket_name, sizeof(server->socket_name), "%s", socket);
 
+    // It was locked when the previous compositor went down: start locked,
+    // black screen until vela-lock shows up. With the shared page, only a
+    // page saying "unlocked" and a marker that is positively absent start
+    // unlocked; an older supervisor still passes VELA_START_LOCKED. Decided
+    // and engaged before the backend starts and before any client or output
+    // is served: every output is born behind the black backdrop.
+    bool unreadable = false;
+    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
+        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
+    unsetenv("VELA_START_LOCKED");
+    if (unreadable) {
+        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
+    }
+    if (start_locked) {
+        vela_lock_engage(server->lock);
+    }
+
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "Can't start the backend");
         return false;
@@ -427,20 +448,10 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     wlr_log(WLR_INFO, "Vela running on WAYLAND_DISPLAY=%s%s", socket,
         getenv("VELA_RESTARTED") ? " (restarted after a crash)" : "");
     unsetenv("VELA_RESTARTED");
-    // It was locked when the previous compositor went down: start locked,
-    // black screen until vela-lock shows up. With the shared page, only a
-    // page saying "unlocked" and a marker that is positively absent start
-    // unlocked; an older supervisor still passes VELA_START_LOCKED.
-    bool unreadable = false;
-    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
-        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
-    unsetenv("VELA_START_LOCKED");
-    if (unreadable) {
-        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
-    }
-    if (start_locked) {
+    // Engaged before the backend started (above): now that WAYLAND_DISPLAY
+    // is set, launch the locker.
+    if (server->locked) {
         wlr_log(WLR_INFO, "The screen was locked: restarting locked");
-        vela_lock_engage(server->lock);
         vela_lock_screen(server->lock);
     }
     if (server->nested) {

@@ -32,6 +32,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -166,11 +167,32 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     wlr_log(WLR_ERROR, "Lock: ending session after the black backdrop is committed");
 }
 
+// The launch's connection stops being trusted: a later attempt gets a new
+// one. The client itself goes when its process does.
+static void lock_forget_locker_client(struct vela_lock *lock)
+{
+    if (!lock->locker_client) {
+        return;
+    }
+    lock->locker_client = NULL;
+    wl_list_remove(&lock->locker_client_destroy.link);
+    wl_list_init(&lock->locker_client_destroy.link);
+}
+
+static void handle_locker_client_destroy(struct wl_listener *listener, void *data)
+{
+    struct vela_lock *lock = wl_container_of(listener, lock, locker_client_destroy);
+    lock_forget_locker_client(lock);
+}
+
 // Own a pending locker launcher so a non-registering process cannot survive
 // into the next attempt. The shell is launched in its own session.
 static void lock_stop_launcher(struct vela_lock *lock)
 {
-    if (lock->launcher_pid <= 0) {
+    if (lock) {
+        lock_forget_locker_client(lock);
+    }
+    if (!lock || lock->launcher_pid <= 0) {
         return;
     }
     pid_t pid = lock->launcher_pid;
@@ -185,17 +207,50 @@ static void lock_stop_launcher(struct vela_lock *lock)
     while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
 }
 
+// The locker gets a connection of its own, already open (WAYLAND_SOCKET):
+// the compositor then knows which client it launched. Everything the child
+// needs is prepared before fork(): the compositor has other threads.
 static void lock_start_launcher(struct vela_lock *lock, const char *command)
 {
+    int pair[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair) != 0) {
+        wlr_log_errno(WLR_ERROR, "Lock: unable to create the locker's connection");
+        return; // retry already scheduled
+    }
+    char wrapped[PATH_MAX + 128];
+    if (!vela_format(wrapped, sizeof(wrapped), "export WAYLAND_SOCKET=%d; unset QT_WAYLAND_RECONNECT; %s",
+            pair[1], command)) {
+        wlr_log(WLR_ERROR, "Lock: locker command too long");
+        close(pair[0]);
+        close(pair[1]);
+        return;
+    }
+    struct wl_client *client = wl_client_create(lock->server->display, pair[0]);
+    if (!client) {
+        wlr_log_errno(WLR_ERROR, "Lock: unable to create the locker's client");
+        close(pair[0]);
+        close(pair[1]);
+        return;
+    }
     pid_t pid = fork();
     if (pid < 0) {
         wlr_log_errno(WLR_ERROR, "Lock: unable to launch locker");
+        close(pair[1]);
+        wl_client_destroy(client);
         return; // retry already scheduled
     }
     if (pid == 0) {
-        vela_exec_shell(command);
+        // Async-signal-safe only: keep the locker's end across exec.
+        if (fcntl(pair[1], F_SETFD, 0) != 0) {
+            _exit(127);
+        }
+        vela_exec_shell(wrapped);
     }
+    close(pair[1]);
     lock->launcher_pid = pid;
+    lock->locker_client = client;
+    lock->locker_client_destroy.notify = handle_locker_client_destroy;
+    wl_client_add_destroy_listener(client, &lock->locker_client_destroy);
 }
 
 // All retry paths share this arm operation, including crashes after registration.
@@ -373,6 +428,17 @@ static void handle_new_lock(struct wl_listener *listener, void *data)
     struct wlr_session_lock_v1 *wlr = data;
     if (lock->fatal_exit_pending || lock->lock) {
         wlr_log(WLR_INFO, "Lock: refusing duplicate or unsafe locker registration");
+        wlr_session_lock_v1_destroy(wlr);
+        return;
+    }
+    // Locked by Vela (Win+L, inactivity, a restart, a locker that crashed):
+    // only the locker Vela launched may take over. Whoever holds the lock can
+    // unlock, so any other client would be a way around the password.
+    struct wl_client *client = wl_resource_get_client(wlr->resource);
+    if (server->locked && (!lock->locker_client || client != lock->locker_client)) {
+        pid_t pid = 0;
+        wl_client_get_credentials(client, &pid, NULL, NULL);
+        wlr_log(WLR_ERROR, "Lock: refusing a lock from a client Vela did not launch (process %d)", (int)pid);
         wlr_session_lock_v1_destroy(wlr);
         return;
     }
@@ -666,6 +732,7 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     wl_list_init(&lock->new_surface.link);
     wl_list_init(&lock->unlock.link);
     wl_list_init(&lock->destroy.link);
+    wl_list_init(&lock->locker_client_destroy.link);
 
     lock->manager = VELA_MUST(wlr_session_lock_manager_v1_create(server->display));
     vela_listen(&lock->manager->events.new_lock, &lock->new_lock, handle_new_lock);

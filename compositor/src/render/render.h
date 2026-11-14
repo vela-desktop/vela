@@ -464,6 +464,11 @@ uint64_t vela_renderer_submit(struct vela_renderer *renderer, VkCommandBuffer cm
 // Compositor-owned readback: GPU-wait for earlier draws, then make later
 // submissions GPU-wait for this copy. Queue order alone is not a dependency.
 uint64_t vela_renderer_submit_readback(struct vela_renderer *renderer, VkCommandBuffer cmd);
+// The CPU waits for the GPU to reach `point`, at most this long: longer than
+// the drivers' hang detection (a few seconds), so a real GPU reset is
+// reported as device loss first. Past it the compositor ends (restarted by
+// the supervisor) instead of freezing the session.
+#define VELA_RENDERER_WAIT_TIMEOUT_NS UINT64_C(10000000000)
 bool vela_renderer_wait(struct vela_renderer *renderer, uint64_t point);
 // Frees what the GPU has finished using (retired images, semaphores, extra
 // staging blocks).

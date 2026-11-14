@@ -1234,9 +1234,18 @@ bool vela_renderer_wait(struct vela_renderer *r, uint64_t point)
         .pSemaphores = &r->timeline,
         .pValues = &point,
     };
-    if (!vela_vulkan_result(r->vk, vkWaitSemaphores(r->vk->device, &info, UINT64_MAX),
-            "vkWaitSemaphores")) {
-        if (!r->vk->loss.lost) vela_vulkan_abort(r->vk, "vkWaitSemaphores");
+    // Bounded: a submission can wait on a client's fence, and a fence that
+    // never signals must not freeze the event loop for good. Past the
+    // drivers' own hang detection the GPU is not coming back: end the
+    // compositor (the supervisor restarts it, locked if it was).
+    VkResult waited = vkWaitSemaphores(r->vk->device, &info, VELA_RENDERER_WAIT_TIMEOUT_NS);
+    if (waited == VK_TIMEOUT) {
+        wlr_log(WLR_ERROR, "Renderer: the GPU did not finish within %llu s",
+            (unsigned long long)(VELA_RENDERER_WAIT_TIMEOUT_NS / VELA_NS_PER_SEC));
+    }
+    if (!vela_vulkan_result(r->vk, waited, "vkWaitSemaphores")) {
+        if (!r->vk->loss.lost) vela_vulkan_abort(r->vk, waited == VK_TIMEOUT ? "vkWaitSemaphores(timeout)"
+                                                                              : "vkWaitSemaphores");
         return false;
     }
     bool completed = vela_renderer_completed(r) >= point && !vela_vulkan_unusable(r->vk);

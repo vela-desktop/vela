@@ -8,6 +8,7 @@
 
 #include "alloc/alloc.h"
 #include "util.h"
+#include "security_policy.h"
 #include "sync.h"
 
 #include <drm_fourcc.h>
@@ -754,6 +755,19 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
         }
     }
 
+    // The layout comes from a client. Vulkan does not validate explicit plane
+    // layouts: an offset or stride past the end of the dma-buf would make the
+    // GPU read (textures) or write (screencopy targets) outside it.
+    off_t end = lseek(dmabuf->fd[0], 0, SEEK_END);
+    uint64_t dmabuf_size = end > 0 ? (uint64_t)end : 0;
+    const struct vela_pixel_format *pixel = vela_pixel_format_from_drm(dmabuf->format);
+    if (!pixel || !vela_dmabuf_layout_valid(dmabuf->width, dmabuf->height, dmabuf->n_planes, dmabuf->offset,
+            dmabuf->stride, pixel->bytes_per_pixel, dmabuf_size)) {
+        wlr_log(WLR_ERROR, "DMABUF import: plane layout outside the buffer (%dx%d, %d planes, %llu bytes)",
+            dmabuf->width, dmabuf->height, dmabuf->n_planes, (unsigned long long)dmabuf_size);
+        return false;
+    }
+
     VkSubresourceLayout planes[WLR_DMABUF_MAX_PLANES] = { 0 };
     for (int i = 0; i < dmabuf->n_planes; ++i) {
         planes[i].offset = dmabuf->offset[i];
@@ -808,6 +822,13 @@ bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_a
     }
     if (fd_result != VK_SUCCESS) {
         vela_vulkan_result(vk, fd_result, "vkGetMemoryFdPropertiesKHR");
+        vkDestroyImage(vk->device, *image, NULL);
+        *image = VK_NULL_HANDLE;
+        return false;
+    }
+    if (dmabuf_size > 0 && requirements.size > dmabuf_size) {
+        wlr_log(WLR_ERROR, "DMABUF import: the image needs %llu bytes, the buffer has %llu",
+            (unsigned long long)requirements.size, (unsigned long long)dmabuf_size);
         vkDestroyImage(vk->device, *image, NULL);
         *image = VK_NULL_HANDLE;
         return false;
