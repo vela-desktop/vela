@@ -569,9 +569,10 @@ struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer 
         switch_image(texture, cmd);
         ++progress.completed;
     }
-    // On their own: a frame with nothing to draw has no submission to carry
-    // them, and the chunks they fill come back only once submitted.
-    if (cmd && !vela_renderer_flush_uploads(renderer)) {
+    // Submit even when this call recorded nothing: earlier in-place uploads
+    // may still have commands waiting, including during direct scanout.
+    // Their staging chunks only become reusable after submission.
+    if (!vela_renderer_flush_uploads(renderer)) {
         wlr_log(WLR_ERROR, "Texture: can't submit the uploads");
     }
     progress.pending = wl_list_length(&renderer->uploads);
