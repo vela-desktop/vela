@@ -68,6 +68,12 @@ class RealShell(unittest.TestCase):
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
                    VELA_DEBUG_SELECTION="1", **self.shell_env)
+        # Check with this private HOME/config/bus, not the developer's theme
+        # preferences. Missing theme packages must not masquerade as dozens
+        # of unrelated expressive-QML failures.
+        icons = subprocess.run([SHELL, "--check-icons"], env=dict(env, QT_QPA_PLATFORM="offscreen"),
+                               capture_output=True, text=True, timeout=10 * TIME_SCALE)
+        self.assertEqual(icons.returncode, 0, icons.stderr)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
         # In a session the shell is the compositor's child; here, this one is
@@ -603,12 +609,14 @@ class QtShell(RealShell):
         # Allow Config's QFileSystemWatcher/debounce to deliver the update.
         time.sleep(0.5)
 
-        self.vela.keys("super+r")
-        self.vela.wait_for(
-            lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2",
-            timeout=8, what="Run dialog on explicitly selected output")
-        self.vela.keys("Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
+        with self.input_session() as send:
+            send("key", "super+r")
+            self.vela.wait_for(
+                lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2"
+                          and s["focusedLayer"] == "vela-run",
+                timeout=8, what="Run dialog focused on explicitly selected output")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
 
         self.send_notification("Hotplug notification", body="Must remain actionable after remapping")
         self.vela.wait_for(
@@ -1126,11 +1134,14 @@ class QtShell(RealShell):
             conf.write(f"taskbar-style={style}\n" if style else "")
         self.vela.command("reload-config")
         time.sleep(1.5) # the shell sees both files
-        self.vela.input("key", "super")
-        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
-        layer = self.layer(state, "vela-start-menu")
-        self.vela.input("key", "Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        with self.input_session() as send:
+            send("key", "super")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-start-menu") and s["focusedLayer"] == "vela-start-menu",
+                what="Start open and focused")
+            layer = self.layer(state, "vela-start-menu")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
         return layer["x"] + layer["w"] / 2
 
     def test_start_follows_the_alignment_unless_the_pill_places_the_apps(self):
