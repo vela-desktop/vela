@@ -89,6 +89,12 @@ class Preferences : public QObject {
     // Vela's language (language= in vela.conf): "", "it" or "en". Empty: like
     // the system. The apps apply it themselves (shell/src/language.h).
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    // TEMPORARY until Vela Secrets: selected at the next graphical login.
+    Q_PROPERTY(QString secretBackend READ secretBackend WRITE setSecretBackend NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendConfigured READ secretBackendConfigured NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendInstalled READ secretBackendInstalled NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString credentialStatus READ credentialStatus NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString activeSecretBackend READ activeSecretBackend CONSTANT)
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
@@ -221,6 +227,14 @@ public:
     void setLockOnIdle(bool on);
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
+    QString secretBackend() const { return m_secretBackend; }
+    bool secretBackendConfigured() const { return m_secretBackendConfigured; }
+    bool secretBackendInstalled() const;
+    // Check both choices separately before presenting first-login options.
+    Q_INVOKABLE bool isSecretBackendInstalled(const QString& backend) const;
+    QString credentialStatus() const;
+    QString activeSecretBackend() const;
+    void setSecretBackend(const QString& backend);
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
     void setVisualTheme(const QString& theme);
@@ -348,6 +362,7 @@ signals:
     void batteryChanged();
     void idleChanged();
     void languageChanged();
+    void secretBackendChanged();
     void visualThemeChanged();
     void themesChanged();
     void keyboardChanged();
@@ -412,6 +427,8 @@ private:
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
+    QString m_secretBackend = QStringLiteral("kwallet");
+    bool m_secretBackendConfigured = false;
     QString m_visualTheme;
     QVariantMap m_surfaceStyles;
     QVariantList m_layouts;

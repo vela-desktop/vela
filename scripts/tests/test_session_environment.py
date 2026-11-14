@@ -35,9 +35,16 @@ if "cat" in sys.argv:
             path = self.bin / name
             path.write_text(fake)
             path.chmod(0o755)
+        # These tests exercise Mesa activation, not the first-login credential
+        # wizard. An undecided backend launches the Settings prompt in the
+        # background, and its inherited stderr pipe can keep subprocess.run's
+        # capture_output open until the prompt retries finish (CTest: 30s).
+        # Credential prompt/lifecycle behaviour has its own shell regression
+        # suite: session.credential-compat.
         self.env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.defpath,
                         XDG_RUNTIME_DIR=str(self.root), WAYLAND_DISPLAY="wayland-test",
-                        VELA_ENV_TEST_LOG=str(self.log), VELA_ENV_TEST_ACTIVE="0")
+                        VELA_ENV_TEST_LOG=str(self.log), VELA_ENV_TEST_ACTIVE="0",
+                        VELA_SECRET_CONFIGURED="1", VELA_SECRET_BACKEND="kwallet")
         self.env.pop("MESA_LOADER_DRIVER_OVERRIDE", None)
 
     def run_hook(self, action):
