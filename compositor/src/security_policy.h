@@ -25,12 +25,13 @@ bool vela_command_test_only(const char *line);
 
 // Whether the process at the other end of a Unix socket runs in a Flatpak
 // sandbox, for sandboxes that don't use wp_security_context_v1 (older
-// Flatpak). `pid` is the peer's SO_PEERCRED pid.
+// Flatpak). `pid` is the peer's SO_PEERCRED pid. The peer's identity is tied
+// to the connection with SO_PEERPIDFD (Linux 6.5): without it, unknown.
 enum vela_sandbox {
     VELA_SANDBOX_NONE, // verified: its root has no /.flatpak-info
     VELA_SANDBOX_FLATPAK,
-    // Not established: the peer is gone, outside our pid namespace, or its
-    // root can't be inspected (a non-dumpable process). Callers deny.
+    // Not established: the peer is gone, outside our pid namespace, has no
+    // pidfd, or its root can't be inspected (non-dumpable). Callers deny.
     VELA_SANDBOX_UNKNOWN,
 };
 enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid);

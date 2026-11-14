@@ -55,8 +55,12 @@ sandboxed:
 - the peer's process can't be inspected, for example a non-dumpable process
   whose `/proc/<pid>/root` is unreadable;
 - the peer is in another pid namespace;
-- the peer has already exited. On Linux 6.5 and later `SO_PEERPIDFD` confirms
-  that the inspected pid still belongs to the process that connected.
+- the peer has already exited, or its pid can't be tied to the connection.
+  `SO_PEERPIDFD` (Linux 6.5 and later) provides that tie: the inspected pid
+  must be the pidfd's own process, still alive after the inspection.
+
+Vela therefore needs Linux 6.5 or later. On older kernels every peer counts as
+sandboxed, so the shell can't use the command socket.
 
 The same rule applies to the command socket. The global filter hides the
 globals from the registry and libwayland refuses to bind them, so a client

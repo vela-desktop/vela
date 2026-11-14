@@ -49,8 +49,8 @@ class CommandSocket(unittest.TestCase):
                     idle.append(connection)
                 # One more is accepted by the kernel, then closed unanswered.
                 with socket.socket(socket.AF_UNIX) as extra:
+                    extra.connect(vela.socket_path)  # blocking: waits for backlog room
                     extra.settimeout(5)
-                    extra.connect(vela.socket_path)
                     try:
                         extra.sendall(b"state\n")
                         answer = extra.recv(65536)

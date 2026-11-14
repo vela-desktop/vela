@@ -7,6 +7,7 @@ extern "C" {
 
 #include <gtest/gtest.h>
 #include <cstdint>
+#include <csignal>
 #include <cstring>
 #include <sys/socket.h>
 #include <sys/wait.h>
@@ -53,6 +54,39 @@ TEST(SecurityPolicy, PeerSandbox)
     // Outside our pid namespace, or no pid: never trusted.
     EXPECT_EQ(vela_peer_sandbox(pair[0], 0), VELA_SANDBOX_UNKNOWN);
     EXPECT_EQ(vela_peer_sandbox(pair[0], -1), VELA_SANDBOX_UNKNOWN);
+    close(pair[0]);
+    close(pair[1]);
+}
+
+TEST(SecurityPolicy, PidNotTiedToTheConnectionIsUnknown)
+{
+    // A live, unsandboxed process with this pid exists (this one), but the
+    // descriptor carries no peer pidfd that proves it is the peer: the case
+    // of a reused pid, or of a kernel without SO_PEERPIDFD.
+    int pipe_fds[2];
+    ASSERT_EQ(pipe(pipe_fds), 0);
+    EXPECT_EQ(vela_peer_sandbox(pipe_fds[0], getpid()), VELA_SANDBOX_UNKNOWN);
+    close(pipe_fds[0]);
+    close(pipe_fds[1]);
+    EXPECT_EQ(vela_peer_sandbox(-1, getpid()), VELA_SANDBOX_UNKNOWN);
+}
+
+TEST(SecurityPolicy, PidOfAnotherProcessIsUnknown)
+{
+    // The connection's peer is this process; the pid names another live,
+    // unsandboxed one (as a reused pid would). Liveness of the real peer
+    // must not vouch for it: only the pidfd's own pid is inspected.
+    int pair[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair), 0);
+    pid_t other = fork();
+    ASSERT_GE(other, 0);
+    if (other == 0) {
+        pause();
+        _exit(0);
+    }
+    EXPECT_EQ(vela_peer_sandbox(pair[0], other), VELA_SANDBOX_UNKNOWN);
+    kill(other, SIGKILL);
+    waitpid(other, nullptr, 0);
     close(pair[0]);
     close(pair[1]);
 }

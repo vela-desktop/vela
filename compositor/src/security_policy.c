@@ -66,17 +66,40 @@ bool vela_command_test_only(const char *line)
     return line && (word(line, "test-output") || word(line, "test-power") || word(line, "test-shell"));
 }
 
-// The peer's process as a pidfd, taken by the kernel when it connected: -1
-// on kernels without SO_PEERPIDFD (before 6.5), -2 on any other failure.
+// The peer's process as a pidfd, bound by the kernel to the connection: -1
+// when there is none (Linux before 6.5, a peer already reaped, not a socket).
 static int peer_pidfd(int socket_fd)
 {
     int pidfd = -1;
     socklen_t length = sizeof(pidfd);
-    if (getsockopt(socket_fd, SOL_SOCKET, SO_PEERPIDFD, &pidfd, &length) == 0 && length == sizeof(pidfd)
-        && pidfd >= 0) {
-        return pidfd;
+    if (getsockopt(socket_fd, SOL_SOCKET, SO_PEERPIDFD, &pidfd, &length) != 0 || length != sizeof(pidfd)) {
+        return -1;
     }
-    return errno == ENOPROTOOPT || errno == EINVAL ? -1 : -2;
+    return pidfd;
+}
+
+// The pid a pidfd refers to in our pid namespace, from its fdinfo: 0 when
+// the process is gone or outside the namespace, -1 when it can't be read.
+static long pidfd_pid(int pidfd)
+{
+    char path[64];
+    int written = snprintf(path, sizeof(path), "/proc/self/fdinfo/%d", pidfd);
+    if (written < 0 || (size_t)written >= sizeof(path)) {
+        return -1;
+    }
+    FILE *file = fopen(path, "re");
+    if (!file) {
+        return -1;
+    }
+    long pid = -1;
+    char line[128];
+    while (fgets(line, sizeof(line), file)) {
+        if (sscanf(line, "Pid:\t%ld", &pid) == 1) {
+            break;
+        }
+    }
+    fclose(file);
+    return pid;
 }
 
 enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
@@ -84,8 +107,15 @@ enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
     if (pid <= 0) {
         return VELA_SANDBOX_UNKNOWN; // not in our pid namespace
     }
+    // Without a pidfd the numeric pid can't be tied to the connection: the
+    // peer may have exited and its number gone to an unrelated process.
     int pidfd = peer_pidfd(socket_fd);
-    if (pidfd == -2) {
+    if (pidfd < 0) {
+        return VELA_SANDBOX_UNKNOWN;
+    }
+    // The pid to inspect must be the pidfd's own process.
+    if (pidfd_pid(pidfd) != (long)pid) {
+        close(pidfd);
         return VELA_SANDBOX_UNKNOWN;
     }
     enum vela_sandbox result = VELA_SANDBOX_UNKNOWN;
@@ -104,15 +134,12 @@ enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
         }
         close(root);
     }
-    // Still alive after the inspection: the pid was the peer's all along, not
-    // a number reused after the peer exited. Without a pidfd (older kernels)
-    // a peer that exited has no /proc root left to open: unknown already.
-    if (pidfd >= 0) {
-        if (syscall(SYS_pidfd_send_signal, pidfd, 0, NULL, 0) != 0) {
-            result = VELA_SANDBOX_UNKNOWN;
-        }
-        close(pidfd);
+    // Still alive after the inspection: the pid was the peer's all along. A
+    // live process keeps its number, so /proc/<pid> was the peer's own.
+    if (syscall(SYS_pidfd_send_signal, pidfd, 0, NULL, 0) != 0) {
+        result = VELA_SANDBOX_UNKNOWN;
     }
+    close(pidfd);
     return result;
 }
 

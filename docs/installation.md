@@ -3,7 +3,7 @@
 Vela is beta software. Keep a working desktop or TTY available, and review
 the [hardware coverage](hardware.md) before using a full session.
 
-Vela requires a Vulkan 1.4 GPU and a working PipeWire/WirePlumber audio stack.
+Vela requires Linux 6.5 or later ([why](security-model.md#privileged-protocols)), a Vulkan 1.4 GPU and a working PipeWire/WirePlumber audio stack.
 `vela-update` installs it on Arch, Fedora 44/45 and Ubuntu 26.10 as a native
 package, on one of two [channels](release-channels.md):
 
