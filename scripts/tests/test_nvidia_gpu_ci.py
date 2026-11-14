@@ -137,6 +137,12 @@ class BuildSizingTests(unittest.TestCase):
     def test_memory_pressure_always_leaves_one_job(self):
         self.assertEqual(build_jobs.recommended_jobs(32, 0), 1)
 
+    def test_fractional_vast_cpu_allocation(self):
+        self.assertEqual(build_jobs.offer_cpu_limit("10.6667"), 10)
+        self.assertEqual(build_jobs.offer_cpu_limit("8"), 8)
+        self.assertIsNone(build_jobs.offer_cpu_limit(""))
+        self.assertIsNone(build_jobs.offer_cpu_limit("NaN"))
+
     def test_v2_cgroup_cpu_quota(self):
         def read_text(path, encoding="ascii"):
             if str(path).endswith("/cpu.max"):
