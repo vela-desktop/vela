@@ -57,10 +57,19 @@ MOCK_NEXT_OWNER=none
 MOCK_FAIL=0
 busctl()
 {
-    case "$MOCK_OWNER" in
-        none) return 1 ;;
-        malformed) printf '%s\n' 'not a typed PID'; return 0 ;;
-        *) printf '%s\n' 'u 1234'; return 0 ;;
+    case "$*" in
+        *NameHasOwner*)
+            case "$MOCK_OWNER" in
+                none) printf '%s\n' 'b false' ;;
+                malformed) printf '%s\n' 'not a boolean' ;;
+                busdown) return 1 ;;
+                *) printf '%s\n' 'b true' ;;
+            esac ;;
+        *GetConnectionUnixProcessID*)
+            case "$MOCK_OWNER" in
+                malformed_pid) printf '%s\n' 'not a typed PID' ;;
+                *) printf '%s\n' 'u 1234' ;;
+            esac ;;
     esac
 }
 readlink()
@@ -127,6 +136,12 @@ fi
 [ "$(cat "$status")" = unknown ] && exit 1
 [ "$(cat "$status")" = unverified ]
 
+MOCK_OWNER=busdown
+if vela_credential_ensure gnome "$binary" gnome.service; then
+    echo 'unreachable bus accepted' >&2; exit 1
+fi
+[ "$(cat "$status")" = unverified ]
+
 MOCK_OWNER=none
 MOCK_FAIL=1
 if vela_credential_ensure gnome "$binary" gnome.service; then
@@ -151,7 +166,10 @@ EOF
 cat > "$mockbin/busctl" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_BUS_CALLS"
-printf '%s\n' 'u 1234'
+case "$*" in
+    *NameHasOwner*) printf '%s\n' 'b true' ;;
+    *) printf '%s\n' 'u 1234' ;;
+esac
 EOF
 cat > "$mockbin/readlink" <<'EOF'
 #!/bin/sh
@@ -172,9 +190,9 @@ export XDG_RUNTIME_DIR="$tmp/hook-runtime"
 sh "$hook" start
 [ -f "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
 [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
-[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 1 ]
+[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 sh "$hook" start
-[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 1 ]
+[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 sh "$hook" stop
 [ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
 [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
@@ -182,6 +200,6 @@ MOCK_GRAPHICAL_ACTIVE=1
 export MOCK_GRAPHICAL_ACTIVE
 sh "$hook" start
 [ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
-[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 1 ]
+[ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 
 echo "credential compatibility selection, owner validation, and restart lifecycle OK"
