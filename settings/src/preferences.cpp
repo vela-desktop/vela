@@ -266,7 +266,11 @@ void Preferences::reloadCompositor()
     emit idleChanged();
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
-    // As the shell reads it (themefile.h's configuredName()). Only a change
+    // As the shell reads it
+    const QString backend = value(QStringLiteral("secret-backend"), QStringLiteral("kwallet"));
+    m_secretBackend = backend == QLatin1String("gnome") ? QStringLiteral("gnome") : QStringLiteral("kwallet");
+    emit secretBackendChanged();
+ (themefile.h's configuredName()). Only a change
     // is announced: the Themes page keeps a preview until then.
     QString theme = value(QStringLiteral("theme"), {}).trimmed();
     if (theme.isEmpty()) {
@@ -782,6 +786,8 @@ bool Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, m_lockOnIdle ? QStringLiteral("yes") : QStringLiteral("no") });
         } else if (key == QLatin1String("language")) {
             changes.append({ key, m_language });
+        } else if (key == QLatin1String("secret-backend")) {
+            changes.append({ key, m_secretBackend });
         } else if (key == QLatin1String("theme")) {
             changes.append({ key, m_visualTheme });
         } else if (key.endsWith(QLatin1String("-style")) && m_surfaceStyles.contains(key.chopped(6))) {
@@ -887,6 +893,19 @@ void Preferences::setLanguage(const QString& language)
         m_language = language;
         keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("language") }), m_language, previous);
         emit languageChanged();
+    }
+}
+
+void Preferences::setSecretBackend(const QString& backend)
+{
+    if (backend != QLatin1String("gnome") && backend != QLatin1String("kwallet")) {
+        return;
+    }
+    if (backend != m_secretBackend) {
+        const auto previous = m_secretBackend;
+        m_secretBackend = backend;
+        keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("secret-backend") }), m_secretBackend, previous);
+        emit secretBackendChanged();
     }
 }
 

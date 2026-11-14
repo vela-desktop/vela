@@ -21,4 +21,7 @@ if ! "@CMAKE_INSTALL_FULL_LIBEXECDIR@/vela-cpu-check"; then
     echo "vela-session: CPU compatibility preflight failed; compositor not started" >&2
     exit 1
 fi
+# TEMPORARY until Vela Secrets: fix the credential backend for the entire
+# session before the compositor (or any graphical autostart) is launched.
+. "@CMAKE_INSTALL_FULL_LIBEXECDIR@/credential-compat/select-backend"
 exec "@CMAKE_INSTALL_FULL_BINDIR@/vela-compositor" --supervise -s "@CMAKE_INSTALL_FULL_BINDIR@/vela-shell" "$@"

@@ -1,0 +1,38 @@
+# SPDX-FileCopyrightText: 2026 Vela contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# TEMPORARY: sourced by vela-session, to be removed when Vela Secrets ships.
+# This file intentionally does not start daemons or inspect users' passwords.
+
+vela_credential_backend=kwallet
+vela_credential_file="${XDG_CONFIG_HOME:-$HOME/.config}/vela/vela.conf"
+if [ -r "$vela_credential_file" ]; then
+    # The last value wins, as in the compositor's configuration reader.
+    # Only exact enum values are supported; no eval/source of user config.
+    while IFS= read -r vela_credential_line || [ -n "$vela_credential_line" ]; do
+        case "$vela_credential_line" in
+            secret-backend=*)
+                case "${vela_credential_line#secret-backend=}" in
+                    gnome) vela_credential_backend=gnome ;;
+                    kwallet) vela_credential_backend=kwallet ;;
+                    *) vela_credential_backend=kwallet ;;
+                esac
+                ;;
+        esac
+    done < "$vela_credential_file"
+fi
+
+VELA_SECRET_BACKEND=$vela_credential_backend
+case "$vela_credential_backend" in
+    gnome)
+        XDG_CURRENT_DESKTOP=Vela:GNOME
+        unset KDE_SESSION_VERSION
+        ;;
+    *)
+        XDG_CURRENT_DESKTOP=Vela:KDE
+        KDE_SESSION_VERSION=6
+        export KDE_SESSION_VERSION
+        ;;
+esac
+export VELA_SECRET_BACKEND XDG_CURRENT_DESKTOP
+unset vela_credential_backend vela_credential_file vela_credential_line

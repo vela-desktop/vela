@@ -36,6 +36,18 @@ Page {
             description: qsTr("Clipboard history (Win+V), clear")
             onClicked: root.navigate("clipboard")
         }
+        Card {
+            objectName: "temporaryCredentials"
+            icon: "dialog-password"
+            title: qsTr("Password manager (temporary)")
+            description: qsTr("Choose the existing password store for apps. This does not transfer passwords. Changes take effect after signing out and back in.")
+            trailing: Choice {
+                objectName: "secretBackend"
+                model: [qsTr("KWallet (KDE)"), qsTr("GNOME Keyring")]
+                currentIndex: Prefs.secretBackend === "gnome" ? 1 : 0
+                onChosen: index => Prefs.secretBackend = ["kwallet", "gnome"][index]
+            }
+        }
         LinkCard {
             icon: "system-software-update"
             title: qsTr("Updates")
