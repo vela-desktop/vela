@@ -270,7 +270,7 @@ void Preferences::reloadCompositor()
     const QString backend = value(QStringLiteral("secret-backend"), QStringLiteral("kwallet"));
     m_secretBackend = backend == QLatin1String("gnome") ? QStringLiteral("gnome") : QStringLiteral("kwallet");
     emit secretBackendChanged();
- (themefile.h's configuredName()). Only a change
+    // As the shell reads it (themefile.h's configuredName()). Only a change
     // is announced: the Themes page keeps a preview until then.
     QString theme = value(QStringLiteral("theme"), {}).trimmed();
     if (theme.isEmpty()) {
