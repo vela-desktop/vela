@@ -13,8 +13,9 @@ compatibility fix are explicitly included.
 - 55 source PRs since the branches diverged: 25 maintenance backports,
   7 selective adaptations, 14 excluded changes and 9 already present.
 - This is preparation, not a published release. `project(VERSION ...)` stays
-  at 0.1.1 and the manual Arch Beta fallback stays at v0.1.1. Bump to 0.1.2
-  separately after the final backports and review, before exact-revision release validation.
+  at 0.1.1 and the manual Arch Beta fallback stays at v0.1.1. Bump both to
+  0.1.2 in the release-preparation commit after the final backports and review,
+  before exact-revision release validation.
 
 ## PR decisions
 
@@ -201,9 +202,11 @@ Before publishing:
   [#197](https://github.com/vela-desktop/vela/issues/197).
 - Verify existing GNOME/KWallet credentials and session/PAM behavior on
   Fedora/GDM and Arch/SDDM, plus Settings, updater, lock/recovery and affected UI.
-- After the final version-bump commit, run the complete mandatory AMD and
+- Prepare the final version-bump commit with both the project version and
+  manual Arch Beta fallback set to 0.1.2. Run the complete mandatory AMD and
   NVIDIA GPU suites on that exact revision; Intel remains optional.
 - Rehearse the signed tag pipeline on a public fork with that exact commit,
   including 0.1.1 → 0.1.2 updates, channel transitions and verification failures.
-- Publish only after those gates, verify the assets, and then advance the
-  manual Arch fallback. See [release channels](release-channels.md).
+- Publish only after those gates and verify the assets. Propagate the published
+  manual Arch fallback to other maintained branches as needed; the release tag
+  already contains the matching fallback. See [release channels](release-channels.md).
