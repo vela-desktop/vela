@@ -85,8 +85,17 @@ static void lines_free(struct lines *lines)
 FILE *vela_config_open(const char *path, bool *missing)
 {
     errno = 0;
-    FILE *file = fopen(path, "re");
-    *missing = !file && errno == ENOENT;
+    int fd = vela_path_open_read(path);
+    *missing = fd < 0 && errno == ENOENT;
+    if (fd < 0) {
+        return NULL;
+    }
+    FILE *file = fdopen(fd, "r");
+    if (!file) {
+        int error = errno;
+        close(fd);
+        errno = error;
+    }
     return file;
 }
 
@@ -114,7 +123,8 @@ bool vela_ini_read(const char *path, const char *section, const char *const *key
     for (int i = 0; i < count; ++i) {
         values[i][0] = '\0';
     }
-    FILE *file = fopen(path, "re");
+    bool missing = false;
+    FILE *file = vela_config_open(path, &missing);
     if (!file) {
         return false;
     }
