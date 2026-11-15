@@ -23,8 +23,6 @@ compositor/src/a11y.c calloc 1
 compositor/src/bluetooth.c strdup 1
 compositor/src/brightness.c calloc 3
 compositor/src/brightness.c strdup 1
-compositor/src/capture_watch.c calloc 5
-compositor/src/capture_watch.c strdup 1
 compositor/src/command.c calloc 3
 compositor/src/command.c strdup 2
 compositor/src/config.c asprintf 2
