@@ -74,6 +74,40 @@ class X11(unittest.TestCase):
     def x11_control(self, *args):
         subprocess.run([tool("vela-x11"), *map(str, args)], env=self.env, check=True)
 
+    def test_background_activation_does_not_interrupt_fullscreen(self):
+        path = os.path.join(self.vela.directory, "background-xid")
+        background = self.open_x11("--id-file", path, 300, 200)
+        with open(path, encoding="ascii") as xid_file:
+            xid = xid_file.read().strip()
+        for x11 in (False, True):
+            with self.subTest(x11_game=x11):
+                command = [tool("vela-x11"), "--start-fullscreen", "640", "480"] if x11 else [
+                    tool("vela-pattern"), "--fullscreen-parent", "640", "480"]
+                fullscreen = self.vela.open_window(command=command, env=self.env if x11 else None)
+                self.vela.wait_for(lambda s: s["focused"] == fullscreen and s.window(fullscreen)["fullscreen"],
+                                   what="foreground fullscreen game")
+                baseline = self.vela.pixels()
+                for _ in range(5):
+                    self.x11_control("--activate", xid)
+                    time.sleep(0.05)  # let the XWM receive each asynchronous client message
+                    self.assertEqual(self.vela.state()["focused"], fullscreen)
+                self.assertIsNone(self.vela.pixels().changed_bounds(baseline))
+
+                # Explicit selection still raises the app, including when it
+                # is minimized.
+                self.vela.command(f"window {background} minimize")
+                self.vela.wait_for(lambda s: s.window(background)["minimized"], what="background minimized")
+                self.x11_control("--activate", xid)
+                time.sleep(0.1)
+                state = self.vela.state()
+                self.assertTrue(state.window(background)["minimized"])
+                self.assertEqual(state["focused"], fullscreen)
+                self.vela.command(f"window {background} activate")
+                self.vela.wait_for(lambda s: s["focused"] == background,
+                                   what="explicit window activation")
+                self.vela.command(f"window {fullscreen} close")
+                self.vela.wait_for(lambda s: not s.has(fullscreen), what="game closed")
+
     def test_last_opening_frame_updates_x11_position(self):
         path = os.path.join(self.vela.directory, "opening-xid")
         window = self.open_x11("--id-file", path, 300, 200)

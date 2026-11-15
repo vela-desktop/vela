@@ -503,6 +503,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   decoration.c      Vela's title bar
   snapshot.c        frozen window images for close/minimize/maximize animations
   focus.c           keyboard focus between windows and shell pieces
+  activation.c      app activation tokens and background focus prevention
   interact.c        pointer on windows: move, resize, title bar, keyboard move
   bindings.c        shortcuts, window menu and window actions
   switcher.c        Alt+Tab
