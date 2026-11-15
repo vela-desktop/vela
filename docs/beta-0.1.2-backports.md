@@ -118,7 +118,7 @@ CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
 | Slice | PR | Scope | Changed files |
 | --- | --- | --- | ---: |
 | 1 | [#271](https://github.com/vela-desktop/vela/pull/271) | CI, isolation and UI foundations | 90 |
-| 2 | [#272](https://github.com/vela-desktop/vela/pull/272) | OOM recovery and checked metadata | 63 |
+| 2 | [#272](https://github.com/vela-desktop/vela/pull/272) | OOM recovery and checked metadata | 64 |
 | 3 | [#273](https://github.com/vela-desktop/vela/pull/273) | Allocation migration | 70 |
 | 4 | [#274](https://github.com/vela-desktop/vela/pull/274) | Runtime, render reuse and credentials | 98 |
 | 5 | [#275](https://github.com/vela-desktop/vela/pull/275) | Security, bounded resources and UI fixes | 98 |
@@ -140,8 +140,10 @@ The subsequent differences address the first two CodeRabbit reviews:
 - Recognize parenthesized null `realpath` arguments, wait for the updater
   daemon's state acknowledgement, and include Debug-specific ASan flags when
   configuring preload order and allocation-interposer exclusions.
-- Hold the lock crash fixtures at explicit one-shot barriers and require a
-  confirmed lock-path failure injection. Their GPU execution remains part of
+- Hold every original-compositor locker retry behind a registration barrier
+  until that compositor is stopped; hold blackout exit with a one-shot barrier.
+  Observe an already-held SIGSTOP even after a test-process pause, and require
+  a confirmed lock-path failure injection. Their GPU execution remains part of
   the final hardware validation, after all reviews.
 
 These review fixes are additional maintenance corrections, with no expansion
