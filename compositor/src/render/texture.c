@@ -135,8 +135,8 @@ static struct vela_texture *new_texture(struct vela_renderer *renderer, const st
 
 // A client buffer the device can't make an image of is refused here, before
 // vkCreateImage, where it would be invalid usage rather than an error
-// (docs/memory-allocation-policy.md, point 6). The surface keeps what it
-// showed: wlroots keeps its previous buffer when no texture comes.
+// (docs/memory-allocation-policy.md, point 6). wlroots 0.20.2 retains an
+// existing cached texture on failed import; a first upload has none to show.
 static bool extent_allowed(struct vela_renderer *renderer, const struct wlr_buffer *buffer, int width, int height,
     struct vela_extent max, bool dmabuf)
 {
@@ -288,6 +288,12 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
     if (vela_vulkan_unusable(renderer->vk)) return false;
     to_shown(cmd, texture->image);
     texture->uploaded = true;
+    if (ok && texture->needs_full_upload) {
+        // Recovery changed pixels outside this commit's new damage too.
+        // Make the scene invalidate the texture's whole previous content.
+        texture->content = ++renderer->upload_content;
+    }
+    texture->needs_full_upload = !ok;
     ++renderer->upload_stats.in_place;
     return ok;
 }
@@ -381,6 +387,9 @@ static void abandon_upload(struct vela_texture *texture, const char *why)
         upload->view = VK_NULL_HANDLE;
         upload->memory = VK_NULL_HANDLE;
     }
+    // The old image stays visible, but no longer contains all damage the
+    // client has committed. The next update must copy the whole source.
+    texture->needs_full_upload = true;
     ++renderer->upload_stats.abandoned;
     finish_upload(texture);
 }
@@ -459,6 +468,7 @@ static bool defer_upload(struct vela_texture *texture, struct wlr_buffer *buffer
         upload->source = wlr_buffer_lock(buffer);
         ++renderer->upload_stats.deferred;
     }
+    upload->queued_frame = renderer->upload_frame;
     upload->rect = 0;
     upload->row = upload->rect_count > 0 ? upload->rects[0].y1 : 0;
     wl_list_insert(renderer->uploads.prev, &upload->link);
@@ -495,6 +505,11 @@ static void start_pieces(struct vela_texture *texture, VkCommandBuffer cmd)
     };
     vkCmdCopyImage(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, upload->image,
         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copy);
+    // Initializing the image and overwriting its damaged pieces overlap.
+    // A write-after-write dependency orders both COPY operations.
+    image_barrier(cmd, upload->image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
+        VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT);
     image_barrier(cmd, texture->image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
         VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_PIPELINE_STAGE_2_COPY_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
         SHOWN_STAGES, VK_ACCESS_2_NONE);
@@ -519,8 +534,11 @@ static void switch_image(struct vela_texture *texture, VkCommandBuffer cmd)
         to_shown(cmd, texture->image);
     }
     texture->uploaded = true;
+    texture->needs_full_upload = false;
     texture->content = ++renderer->upload_content;
     ++renderer->upload_stats.completed;
+    uint64_t elapsed = renderer->upload_frame - upload->queued_frame;
+    if (elapsed > renderer->upload_stats.frames_max) renderer->upload_stats.frames_max = elapsed;
     wlr_log(WLR_DEBUG, "Texture: %ux%u upload done over %u frame(s)", texture->base.width, texture->base.height,
         upload->frames);
     finish_upload(texture);
@@ -528,6 +546,7 @@ static void switch_image(struct vela_texture *texture, VkCommandBuffer cmd)
 
 struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer *renderer)
 {
+    ++renderer->upload_frame;
     struct vela_upload_progress progress = { 0 };
     VkCommandBuffer cmd = VK_NULL_HANDLE;
     struct vela_texture *texture, *tmp;
@@ -669,11 +688,11 @@ static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffe
     if (ok) {
         pixman_region32_t region;
         pixman_region32_init(&region);
-        if (texture->uploaded || texture->upload.source) {
+        if ((texture->uploaded && !texture->needs_full_upload) || texture->upload.source) {
             pixman_region32_intersect_rect(&region, damage, 0, 0, (unsigned)buffer->width,
                 (unsigned)buffer->height);
         } else {
-            // Its first upload was abandoned: nothing of it is there yet.
+            // First or abandoned upload: the shown image lacks old damage.
             pixman_region32_union_rect(&region, &region, 0, 0, (unsigned)buffer->width, (unsigned)buffer->height);
         }
         pixman_box32_t rects[VELA_UPLOAD_MAX_RECTS];

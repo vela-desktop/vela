@@ -66,6 +66,7 @@ struct op {
 };
 
 struct fake_cmd {
+    VkImage unsynchronized_copy;
     struct op *ops;
     int count, capacity;
 };
@@ -332,11 +333,13 @@ VKAPI_ATTR VkResult VKAPI_CALL vkAllocateCommandBuffers(VkDevice device, const V
 VKAPI_ATTR VkResult VKAPI_CALL vkResetCommandBuffer(VkCommandBuffer cmd, VkCommandBufferResetFlags flags)
 {
     ((struct fake_cmd *)cmd)->count = 0;
+    ((struct fake_cmd *)cmd)->unsynchronized_copy = VK_NULL_HANDLE;
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd, const VkCommandBufferBeginInfo *info)
 {
     ((struct fake_cmd *)cmd)->count = 0;
+    ((struct fake_cmd *)cmd)->unsynchronized_copy = VK_NULL_HANDLE;
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd)
@@ -391,6 +394,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkDeviceWaitIdle(VkDevice device)
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image,
     VkImageLayout layout, uint32_t count, const VkBufferImageCopy *regions)
 {
+    // A preceding full-image initialization cannot overlap these writes
+    // without a memory dependency, even though the fake executes serially.
+    assert(((struct fake_cmd *)cmd)->unsynchronized_copy != image);
     for (uint32_t i = 0; i < count; ++i) {
         const VkBufferImageCopy *r = &regions[i];
         assert(r->bufferRowLength == 0 && r->bufferImageHeight == 0); // tightly packed rows
@@ -408,6 +414,7 @@ VKAPI_ATTR void VKAPI_CALL vkCmdCopyImage(VkCommandBuffer cmd, VkImage src, VkIm
     VkImageLayout dst_layout, uint32_t count, const VkImageCopy *regions)
 {
     assert(count == 1);
+    ((struct fake_cmd *)cmd)->unsynchronized_copy = dst;
     record_op(cmd, (struct op) { OP_COPY_IMAGE, NULL, 0, (struct fake_image *)src, (struct fake_image *)dst, 0, 0,
         regions[0].extent.width, regions[0].extent.height, NULL });
 }
@@ -470,7 +477,20 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSampler(VkDevice device, const VkSamplerC
 VKAPI_ATTR VkResult VKAPI_CALL vkGetQueryPoolResults(VkDevice device, VkQueryPool pool, uint32_t first,
     uint32_t count, size_t size, void *data, VkDeviceSize stride, VkQueryResultFlags flags) { abort(); }
 
-VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer cmd, const VkDependencyInfo *dependency) {}
+VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer cmd, const VkDependencyInfo *dependency)
+{
+    struct fake_cmd *fake = (struct fake_cmd *)cmd;
+    for (uint32_t i = 0; i < dependency->imageMemoryBarrierCount; ++i) {
+        const VkImageMemoryBarrier2 *barrier = &dependency->pImageMemoryBarriers[i];
+        if (barrier->image == fake->unsynchronized_copy
+            && (barrier->srcStageMask & VK_PIPELINE_STAGE_2_COPY_BIT)
+            && (barrier->dstStageMask & VK_PIPELINE_STAGE_2_COPY_BIT)
+            && (barrier->srcAccessMask & VK_ACCESS_2_TRANSFER_WRITE_BIT)
+            && (barrier->dstAccessMask & VK_ACCESS_2_TRANSFER_WRITE_BIT)) {
+            fake->unsynchronized_copy = VK_NULL_HANDLE;
+        }
+    }
+}
 VKAPI_ATTR void VKAPI_CALL vkCmdBeginRendering(VkCommandBuffer cmd, const VkRenderingInfo *info) {}
 VKAPI_ATTR void VKAPI_CALL vkCmdEndRendering(VkCommandBuffer cmd) {}
 VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer cmd, uint32_t first, uint32_t count,
@@ -1047,6 +1067,45 @@ static void new_commit_replaces_pending_upload(void)
     fixture_finish(&f);
 }
 
+// Abandon region A, then commit only new damage B. The displayed source
+// must include A as well, both for an in-place and a deferred recovery.
+static void abandoned_damage_is_recovered_by_the_next_commit(void)
+{
+    for (int deferred = 0; deferred < 2; ++deferred) {
+        struct fixture f;
+        fixture_init(&f);
+        const int width = 256;
+        const int height = deferred ? 2 * BUDGET / (width * BPP) + 30 : 32;
+        const size_t bytes = (size_t)width * height * BPP;
+        struct shm_buffer *old = new_shm(width, height, 1);
+        struct surface *s = attach(&f, old);
+        while (frame(&f).pending) {}
+        uint64_t content = own(s)->content;
+        struct shm_buffer *a = new_shm(width, height, 2);
+        memcpy(a->pixels + (size_t)(height / 2) * width,
+            old->pixels + (size_t)(height / 2) * width, bytes / 2);
+        pixman_box32_t damage_a = { 0, 0, width, height / 2 };
+        remember(s, a);
+        // Force the pending path even for the small recovery case.
+        assert(defer_upload(own(s), &a->base, &damage_a, 1));
+        abandon_upload(own(s), "test source lost");
+        assert(released(a) && own(s)->uploaded);
+        struct shm_buffer *b = new_shm(width, height, 3);
+        memcpy(b->pixels, a->pixels, bytes);
+        for (int x = 0; x < width; ++x) b->pixels[(size_t)(height - 1) * width + x] = pixel(3, x, height - 1);
+        pixman_box32_t damage_b = { 0, height - 1, width, height };
+        commit(s, b, &damage_b);
+        while (frame(&f).pending) {}
+        frame(&f);
+        assert(s->shown[2] > 0 && released(b) && !own(s)->needs_full_upload);
+        assert(own(s)->content != content); // invalidates old damage in the scene too
+        drop_shm(old);
+        drop_shm(a);
+        drop_shm(b);
+        fixture_finish(&f);
+    }
+}
+
 // One client commits a buffer above the budget every frame; another
 // surface's upload, also above it, still completes within a bounded number of
 // frames: the replaced upload goes behind it.
@@ -1079,6 +1138,9 @@ static void competing_uploads_do_not_starve(void)
     }
     printf("upload: the other surface completed in %d frames under a competing client\n", frames);
     assert(released(other));
+    assert(f.renderer->upload_stats.frames_max >= (uint64_t)frames);
+    assert(f.renderer->upload_stats.frames_max <= 6);
+    assert(vela_renderer_upload_stats(f.renderer).budget_bytes == BUDGET);
     frame(&f);
     assert(b->shown[0] >= 1);
     for (int i = 0; i < greedy_count; ++i) drop_shm(greedy[i]);
@@ -1247,6 +1309,7 @@ int main(void)
     several_surfaces_share_the_budget();
     deferred_update_switches_atomically();
     new_commit_replaces_pending_upload();
+    abandoned_damage_is_recovered_by_the_next_commit();
     competing_uploads_do_not_starve();
     blocked_deferred_upload_flushes_prior_commands();
     in_flight_staging_counts();

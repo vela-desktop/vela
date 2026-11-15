@@ -152,6 +152,8 @@ Item {
             Tasks.setProperty(29, "windowActive", true)
             const last = child(b, "taskButton-29")
             tryVerify(() => apps.fullyVisible(last))
+            tryVerify(() => Tasks.geometries[29] !== undefined)
+            verify(Tasks.geometries[29].width > 0)
             for (const rect of Object.values(Tasks.geometries)) {
                 verify(rect.width > 0)
                 verify(rect.x >= b.buttonsLeft)

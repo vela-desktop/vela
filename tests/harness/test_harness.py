@@ -22,6 +22,41 @@ import zlib
 from harness import Image, PrivateBus, Session, State, TimeoutError, input_sleep_ms
 
 
+class OptionalIconCapability(unittest.TestCase):
+    def test_real_icon_case_gates_only_builds_without_svg(self):
+        from test_decorations import IconCache
+
+        for svg in (False, True):
+            with self.subTest(svg=svg), patch("test_decorations.Session") as factory:
+                factory.return_value.__enter__.return_value.state.return_value = {"capabilities": {"svg_icons": svg}}
+                scene = IconCache("test_evicted_icon_stays_on_screen_and_comes_back")
+                scene.write_icon = Mock(side_effect=RuntimeError("continued past capability gate"))
+                expected = RuntimeError if svg else unittest.SkipTest
+                with self.assertRaises(expected):
+                    scene.test_evicted_icon_stays_on_screen_and_comes_back()
+                self.assertEqual(scene.write_icon.call_count, int(svg))
+
+
+class UploadDeviceExtents(unittest.TestCase):
+    def test_selected_buffers_fit_both_extents_and_exceed_the_actual_budget(self):
+        from test_uploads import upload_extent
+
+        budget = 128 * 1024 * 1024
+        for extent in ((4096, 16384), (16384, 4096), (8192, 5000), (32768, 2048)):
+            for requested in (4 * budget, 9 * budget // 8, 17 * budget // 16):
+                with self.subTest(extent=extent, requested=requested):
+                    width, height = upload_extent(extent, requested, budget, True)
+                    self.assertLessEqual(width, extent[0])
+                    self.assertLessEqual(height, extent[1])
+                    self.assertGreater(width * height * 4, budget)
+        with self.assertRaises(unittest.SkipTest):
+            upload_extent((4096, 4096), 4 * budget, budget, True)
+        width, height = upload_extent((4096, 4096), 4 * budget, budget)
+        self.assertEqual((width, height), (4096, 4096))
+        with self.assertRaises(AssertionError):
+            upload_extent((0, 4096), budget, budget)
+
+
 class InputActionTimeouts(unittest.TestCase):
     def test_action_words_used_as_operands_do_not_extend_the_timeout(self):
         self.assertEqual(input_sleep_ms(("type", "sleep", "key", "Return")), 0)
@@ -203,6 +238,22 @@ class CommandCleanupBarrier(unittest.TestCase):
             self.assertEqual(session.query("state"), {"outputs": []})
             self.assertTrue(eof_observed)
             connection.shutdown.assert_called_once_with(socket.SHUT_WR)
+
+    def test_incomplete_replies_are_connection_errors_but_complete_malformed_json_is_not(self):
+        session = Session()
+        session.socket_path = "/unused-mocked-socket"
+        for chunks in ((b'',), (b'{"outputs":', b'')):
+            with self.subTest(chunks=chunks), patch("harness.socket.socket") as factory:
+                connection = factory.return_value.__enter__.return_value
+                sequence = iter(chunks)
+                connection.recv.side_effect = lambda _size: next(sequence, b'')
+                with self.assertRaises(ConnectionResetError):
+                    session.query("state")
+        with patch("harness.socket.socket") as factory:
+            connection = factory.return_value.__enter__.return_value
+            connection.recv.side_effect = (b'{broken}\n', b'')
+            with self.assertRaises(json.JSONDecodeError):
+                session.query("state")
 
 
 class SessionCleanup(unittest.TestCase):

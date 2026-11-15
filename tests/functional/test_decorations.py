@@ -352,6 +352,8 @@ class IconCache(unittest.TestCase):
 
     def test_evicted_icon_stays_on_screen_and_comes_back(self):
         with Session() as vela:
+            if not vela.state()["capabilities"]["svg_icons"]:
+                self.skipTest("compositor built without librsvg title-bar icons")
             self.write_icon(vela, self.MAGENTA)
             held = vela.open_window(400, 300, app_id="vela.test.held", decorated=True)
             vela.wait_for(lambda s: s["focused"] == held)

@@ -251,6 +251,7 @@ struct vela_texture {
     bool foreign; // on every use: acquired from the "foreign" queue
 
     bool uploaded; // our own image: a complete content is there, it can be drawn
+    bool needs_full_upload; // abandoned damage is absent from the shown image
     int refs; // wlroots' references (texture_from_buffer / destroy)
 
     // A copy that didn't fit in the upload budget when it came: its pieces go
@@ -273,6 +274,7 @@ struct vela_texture {
         bool copy_shown; // starts as a copy of the image shown (the damage is partial)
         bool started; // its first piece is recorded: the image is a copy destination
         unsigned frames; // frames it has taken so far
+        uint64_t queued_frame; // includes time waiting behind earlier uploads
     } upload;
     // Changes when a deferred upload switches the image: the scene redraws the
     // texture's whole area then (no commit brings that damage).
@@ -384,6 +386,7 @@ struct vela_renderer {
 
     struct wl_list uploads; // vela_texture.upload.link: deferred uploads, oldest first
     VkBuffer upload_chunk; // the upload chunk the next piece goes into, if it fits
+    uint64_t upload_frame; // continuation calls, once per rendered output frame
     uint64_t upload_content; // the last vela_texture.content given
     struct vela_upload_stats upload_stats;
     struct vela_extent_rejection extent_rejected;

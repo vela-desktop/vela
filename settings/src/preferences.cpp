@@ -12,6 +12,7 @@ extern "C" {
 
 #include "iconprovider.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QTime>
 #include <QJsonObject>
@@ -324,11 +325,21 @@ bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
         // over the shown values when the file itself cannot be read.
         const QFileInfo info(path);
         if (info.isFile() && info.isReadable()) {
-            QSettings saved = shellSettings();
-            saved.sync();
-            (void)saved.allKeys();
-            if (saved.status() == QSettings::NoError) {
-                loadShell(saved);
+            // A second QSettings for the real path shares its parsed cache,
+            // but not its FormatError. Parse a unique snapshot instead.
+            QFile persisted(path);
+            QTemporaryFile snapshot;
+            if (persisted.open(QIODevice::ReadOnly) && snapshot.open()) {
+                const QByteArray bytes = persisted.readAll();
+                if (persisted.error() == QFileDevice::NoError && snapshot.write(bytes) == bytes.size()
+                    && snapshot.flush()) {
+                    snapshot.close();
+                    QSettings saved(snapshot.fileName(), QSettings::IniFormat);
+                    (void)saved.allKeys();
+                    if (saved.status() == QSettings::NoError) {
+                        loadShell(saved);
+                    }
+                }
             }
         }
         m_shellSaveFailed = true;
@@ -391,13 +402,30 @@ bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
     if (serialized.error() != QFileDevice::NoError) {
         return failed();
     }
-    // QSettings caches by size and timestamp. Ensure equal-size changes
-    // made within one timestamp tick are still seen by existing readers.
-    if (data.size() == original.size()) {
-        data.append('\n');
-    }
+    // QSettings readers cache size and modification time. Give every save
+    // a strictly newer timestamp, even within one clock tick (or after a
+    // clock adjustment), rather than alternating between two file sizes.
+    const QDateTime previousTime = QFileInfo(path).lastModified().toUTC();
     QSaveFile destination(path);
-    if (!vela::openPrivateFile(destination) || destination.write(data) != data.size() || !destination.commit()) {
+    if (!vela::openPrivateFile(destination) || destination.write(data) != data.size() || !destination.flush()) {
+        return failed();
+    }
+    QDateTime revision = QDateTime::currentDateTimeUtc();
+    if (previousTime.isValid() && revision <= previousTime) {
+        revision = previousTime.addMSecs(1);
+    }
+    if (!destination.setFileTime(revision, QFileDevice::FileModificationTime)) {
+        return failed();
+    }
+    // Coarse filesystems may round the millisecond away. Advance by one
+    // FAT timestamp quantum there, then verify the actual stored value.
+    if (previousTime.isValid() && destination.fileTime(QFileDevice::FileModificationTime).toUTC() <= previousTime) {
+        if (!destination.setFileTime(previousTime.addSecs(2), QFileDevice::FileModificationTime)
+            || destination.fileTime(QFileDevice::FileModificationTime).toUTC() <= previousTime) {
+            return failed();
+        }
+    }
+    if (!destination.commit()) {
         return failed();
     }
     // This instance never staged writes to the real file, so sync only

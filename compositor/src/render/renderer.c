@@ -921,6 +921,7 @@ struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *
     struct vela_upload_stats stats = r->upload_stats;
     stats.chunks = upload_chunk_count(r);
     stats.chunks_max = VELA_UPLOAD_MAX_CHUNKS;
+    stats.budget_bytes = (size_t)VELA_UPLOAD_MAX_CHUNKS * VELA_UPLOAD_PIECE_BYTES;
     return stats;
 }
 

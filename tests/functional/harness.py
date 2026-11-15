@@ -423,7 +423,7 @@ class Session:
             while not data.endswith(b"\n"):
                 chunk = connection.recv(65536)
                 if not chunk:
-                    break
+                    raise ConnectionResetError("compositor closed before completing its reply")
                 data += chunk
             # The reply precedes server-side watch cleanup. Half-close after
             # receiving it and wait for EOF so resource-pressure snapshots do
