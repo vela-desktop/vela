@@ -164,9 +164,12 @@ class Uploads(unittest.TestCase):
         with Session(size="1920x1080@60") as vela:
             (shm_w, _), _ = self.limits(vela)
             width = min(shm_w, 8192)
-            # 144 MiB every frame: above the 128 MiB budget each time.
-            greedy, greedy_log = self.open(vela, "--every-frame", "--app-id", "greedy", width, 4608, *WINDOW)
-            self.wait_client(greedy_log, "committed 3")
+            # Two 144 MiB buffers committed together: each exceeds the
+            # 128 MiB budget, even when a slow CPU takes longer to paint than
+            # the compositor takes to upload one. Establish real contention.
+            greedy, greedy_log = self.open(vela, "--burst", "--app-id", "greedy", width, 4608, *WINDOW)
+            vela.wait_for(lambda s: s["upload"]["replaced"] > 0, timeout=20,
+                          what="the greedy client's pending upload replaced")
             # 136 MiB once: two frames of pieces, if it gets them.
             other_log = os.path.join(vela.directory, "other.log")
             with open(other_log, "w") as output:
@@ -180,7 +183,7 @@ class Uploads(unittest.TestCase):
             frames = vela.state().output["frames"] - frames_before
             upload = vela.state()["upload"]
             print(f"the other upload completed within {frames} frames under a client committing above the "
-                  f"budget every frame: {upload}", flush=True)
+                  f"budget in two-buffer bursts: {upload}", flush=True)
             self.assertGreater(upload["replaced"], 0, "the greedy client must have replaced its uploads")
             self.assertLessEqual(frames, 8)
             self.assertLessEqual(upload["chunks_peak"], upload["chunks_max"])

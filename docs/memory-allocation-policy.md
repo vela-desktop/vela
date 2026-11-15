@@ -1245,7 +1245,9 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
     decorated window and a dmabuf client committing every frame with
     explicit sync), then with a capture copying every frame. No allocation
     is allowed outside the per-request sites of point 7, which it names and
-    prints.
+    prints. A complete three-second capture probe warms the output swapchain
+    before measuring: deferred readbacks can require an extra output buffer
+    on NVIDIA. That allocation remains forbidden in the measured window.
 
   The drawing itself is checked on the CPU because its stubbed device is
   deterministic; the session test is there for what a real frame calls
