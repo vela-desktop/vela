@@ -208,6 +208,20 @@ selected paths and working directory. `settings-preferences` covers missing and
 broken folder openers with private helpers instead of opening a real file manager.
 Packaging tests reject UI launch sites that bypass the environment policy.
 
+`settings-preferences` also covers failed and successful shell preference writes,
+both existing and absent keys, multi-key wallpaper and Start icon choices, and
+pending `QSettings` changes surviving a failure. Serialization is staged outside
+the live settings cache, and a separate writer checks that recovery never replays
+a failed update or rollback over a newer external choice. A separate reader process checks
+the persisted file after recovery, independent of the shared settings cache.
+Real Vela switches and Settings drop-downs are exercised offscreen with refused
+writes and then successful retries; appearance helpers are private probes. The
+suite also checks busy writers, independent shell/compositor errors and existing
+compositor rollback. Theme, style and Reset tests keep Undo available after a
+successful compositor save while a shell save error is still displayed. The additional read-only-file case skips when running as root, which
+bypasses Unix permissions; directory-path blockers cover failed writes on root
+CI runners too.
+
 This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
 using `QQuickRenderControl`, an explicit render target and synchronous readback.
 It does not use Qt Quick's software painter, which cannot reproduce the native

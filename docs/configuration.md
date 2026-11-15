@@ -202,6 +202,13 @@ The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Shell settings
 
+If Settings cannot save a choice, it shows the affected configuration file and
+keeps the saved value selected. Wallpaper and its recent-image list, and the
+Start icon kind and picture, are saved together. App-mode changes reach GTK and
+KDE only after the shell configuration is saved. Failures in the shell and
+compositor files are reported independently; a successful write clears the
+error for that file.
+
 The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time), the notification ones (Settings → System → Notifications) and the battery ones (Settings → System → Power, Settings → Bluetooth & devices):
 
 | Key | Default | Meaning |

@@ -214,7 +214,8 @@ if(VELA_BUILD_TOOLS)
         ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c)
     target_include_directories(vela-preferences-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
     target_compile_options(vela-preferences-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-preferences-test PRIVATE vela-theme-tokens vela-process
+    target_compile_definitions(vela-preferences-test PRIVATE SETTINGS_QML_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+    target_link_libraries(vela-preferences-test PRIVATE vela-theme-tokens vela-process vela-controls vela-controlsplugin
         Qt6::DBus Qt6::Gui Qt6::Network Qt6::Quick Qt6::Test)
     add_test(NAME settings-preferences COMMAND vela-preferences-test)
     set_tests_properties(settings-preferences PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

@@ -52,6 +52,7 @@ QtObject {
     property var calls: []
 
     function reset() {
+        saveError = ""
         accent = "#0078d4"
         accentSource = "theme"
         appTheme = "dark"
