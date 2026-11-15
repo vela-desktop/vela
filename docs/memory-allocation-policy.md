@@ -1252,7 +1252,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   The drawing itself is checked on the CPU because its stubbed device is
   deterministic; the session test is there for what a real frame calls
   besides the pass. The headless fixture needs a real GPU (it never falls
-  back to software rendering), and it showed no GPU-specific flakiness:
+  back to software rendering). The initial AMD measurements showed no growth:
   the renderer's persistent arrays (command buffers, semaphores, retired
   images), which a slower GPU could make grow, stayed at their warmed size
   in 10 runs of 10 here.

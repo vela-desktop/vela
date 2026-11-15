@@ -95,9 +95,9 @@ jobs:
           # Diagnostic-only counters: no change to GPU test scheduling or assertions.
           echo "VELA_FUNCTIONAL_PROFILE=1" >> "$GITHUB_ENV"
           echo "VELA_GPU_EXPECT_VENDOR=0x8086" >> "$GITHUB_ENV"
-          # Qualify 1440p/4K SHM streaming at 60 Hz on the shared iGPU engine.
+          # Qualify 1440p/4K SHM streaming at 120 Hz on the shared iGPU engine.
           # AMD retains the 180 Hz workload; all capture assertions still run.
-          echo "VELA_CAPTURE_TEST_REFRESH_HZ=60" >> "$GITHUB_ENV"
+          echo "VELA_CAPTURE_TEST_REFRESH_HZ=120" >> "$GITHUB_ENV"
           # Thirty Vulkan teardown cycles with validation on actual Intel hardware.
           echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
           echo "VELA_SHUTDOWN_VALIDATE=1" >> "$GITHUB_ENV"

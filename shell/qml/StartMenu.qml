@@ -73,6 +73,10 @@ Window {
             else
                 pinnedSelection = -1
         }
+        // Changing the header's height can leave GridView at the old content
+        // offset, with restored pins above the viewport. Reposition after
+        // the header and delegates have completed their layout.
+        Qt.callLater(() => grid.positionViewAtBeginning())
     }
 
     // The Start menu is above the taskbar, centered or at the left: from its

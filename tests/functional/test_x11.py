@@ -80,9 +80,10 @@ class X11(unittest.TestCase):
         with open(path, encoding="ascii") as source:
             xid = source.read().strip()
         frame = self.vela.state().window(window)
-        self.assertEqual(self.x11_geometry(xid),
-                         (frame["x"], frame["y"] + 32, frame["w"], frame["h"] - 32),
-                         "Xwayland kept the position from before the last opening frame")
+        expected = (frame["x"], frame["y"] + 32, frame["w"], frame["h"] - 32)
+        # XWM configuration and this query travel over separate X connections.
+        self.vela.wait_for(lambda _: self.x11_geometry(xid) == expected, read_state=False,
+                           what="X11 position from the last opening frame")
 
     def x11_geometry(self, xid):
         # Query the X11 server, not the Wayland compositor's scene geometry.

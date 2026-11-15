@@ -236,7 +236,10 @@ across workflow runs; monitor memory pressure under the higher job cap.
 It executes the same GPU-labeled functional, sharpness and sharpness-cpu suites, retains
 strict no-skip/no-missing-test enforcement, shutdown stress and
 validation layers, and uploads Intel-specific Vulkan/CTest/JUnit
-diagnostics. Optional coverage (`gpu-intel`) and promo smoke tests
+diagnostics. The sustained 1440p/4K SHM capture workload uses a 120 Hz desktop
+(`VELA_CAPTURE_TEST_REFRESH_HZ`), with the same fps, latency and missed-slot
+limits as AMD's 180 Hz workload; this qualifies the stated refresh rather
+than claiming 180 Hz performance on the iGPU. Optional coverage (`gpu-intel`) and promo smoke tests
 mirror AMD; the coverage upload is performed by a separate
 GitHub-hosted job, not the self-hosted runner.
 
