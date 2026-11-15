@@ -160,6 +160,22 @@ The subsequent differences address the CodeRabbit reviews:
 - Synchronize IPC queries with server-side descriptor cleanup, assert the updater's
   completion signal payload, and detect ASan from the effective C++ compiler flags.
   CPU regressions cover these paths; credential mocks wait for worker completion.
+- Recover all cumulative damage after abandoning a deferred upload, including
+  scene invalidation for an in-place recovery; order overlapping image copies
+  with a Vulkan write-after-write dependency. CPU pixel and barrier regressions
+  reject the previous behavior.
+- Restore failed preference saves only from an independently validated snapshot.
+  Give committed preferences a monotonically increasing modification time so a
+  cached reader sees two equal-length writes before its next synchronization.
+- Treat truncated IPC replies as reconnectable connection failures. Report SVG
+  support to optional icon tests, choose upload sizes from both device extents
+  and the actual staging budget, and measure upload latency at renderer events
+  while retaining the eight-frame functional bound and strict CPU bounds.
+  Mandatory hardware no-skip gates remain in place.
+- Require taskbar geometry before checking its bounds, acknowledge Bluetooth Busy
+  retries before releasing a held transition, and enable test commands in the
+  documented manual launch. Metadata fixtures use private build directories,
+  closing the SonarCloud temporary-directory finding without suppression.
 - Reject incomplete compositor startup if shell supervision cannot be reserved.
 - Remove unpinned historical GPU claims from the allocation policy, and attribute
   upstream measurements without treating them as validation of this backport.
@@ -173,7 +189,7 @@ series has finished review; each current head must pass CodeQL first.
 Local validation (hardware runs remain deferred):
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 365 selected CPU/QML CTest entries pass on security-slice commit `790de14`
+- 365 selected CPU/QML CTest entries pass on security-slice commit `7222da8`
   after the runtime and credential-transition review fixes; the runtime slice independently passes 350.
   This includes documentation, reporter and preference fixtures adapted to 0.1.
 - Debug-only `-fsanitize=address` configuration: the configuration-read test
