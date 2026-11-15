@@ -40,7 +40,22 @@ ALLOCATORS = ("malloc", "calloc", "realloc", "reallocarray", "strdup", "strndup"
 # A call, not a member (x.malloc, x->malloc) or part of a longer name.
 CALL = re.compile(r"(?<![\w.$])(?<!->)\b(" + "|".join(ALLOCATORS + ("realpath", "getline", "getdelim"))
                   + r")\s*\(")
-NULL_ARGUMENT = {"NULL", "0", "nullptr", "(void *)0", "((void *)0)"}
+NULL_ARGUMENT = {"NULL", "0", "nullptr", "(void*)0"}
+
+
+def is_null_argument(argument: str) -> bool:
+    """Ignore whitespace and parentheses enclosing the entire null constant."""
+    text = re.sub(r"\s+", "", argument)
+    while text.startswith("(") and text.endswith(")"):
+        depth = 0
+        for i, char in enumerate(text):
+            depth += (char == "(") - (char == ")")
+            if depth == 0:
+                break
+        if i != len(text) - 1:
+            break
+        text = text[1:-1]
+    return text in NULL_ARGUMENT
 
 
 def blank(text: str) -> str:
@@ -133,7 +148,7 @@ def scan(text: str) -> list[tuple[int, str]]:
         name = match[1]
         args, end = arguments(code, match.end() - 1)
         if name == "realpath":
-            if len(args) < 2 or args[1] not in NULL_ARGUMENT:
+            if len(args) < 2 or not is_null_argument(args[1]):
                 continue
         elif name in ("getline", "getdelim"):
             if getline_follows_policy(code, match.start(), end):

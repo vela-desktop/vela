@@ -11,6 +11,7 @@
 #include "updates/updates.h"
 
 #include <QDBusVirtualObject>
+#include <QDBusVariant>
 #include <QSignalSpy>
 
 #include <memory>
@@ -159,6 +160,18 @@ private Q_SLOTS:
     // vela.conf that cannot be read to the end is never rewritten from what
     // was read: the daemon's settings changes fail instead of dropping the
     // rest of the user's settings.
+private:
+    QVariant daemonAutoCheck()
+    {
+        QDBusMessage get = QDBusMessage::createMethodCall(service, objectPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+        get << service << QStringLiteral("AutoCheck");
+        const QDBusMessage reply = bus().call(get, QDBus::Block, 5000);
+        return reply.type() == QDBusMessage::ReplyMessage
+            ? reply.arguments().value(0).value<QDBusVariant>().variant() : QVariant();
+    }
+
+private slots:
     void unreadableSettingsAreNeverRewritten()
     {
 #ifndef VELA_GETLINE_FAIL_PRELOAD
@@ -173,7 +186,9 @@ private Q_SLOTS:
         QTRY_VERIFY(updates->available());
         updates->setAutoCheck(false); // the daemon logs the failure
         QTRY_VERIFY(!updates->autoCheck());
-        QTest::qWait(300);
+        // The daemon publishes this after its attempted write; the client's
+        // requested value alone is not an acknowledgement.
+        QTRY_COMPARE(daemonAutoCheck(), QVariant(false));
         QCOMPARE(read(conf), content);
 #endif
     }
