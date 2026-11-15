@@ -473,9 +473,11 @@ at 2560x1440@180 Hz and fails on any capture error. When the allocated readback
 staging memory is cached, it also requires fewer missed vblanks than captures.
 The persistent-stream cases require at least 60/30 fps with reused buffers at
 1440p/4K, bound the 95th-percentile latency, and allow at most 5% missed
-presentation slots. `VELA_CAPTURE_TEST_REFRESH_HZ` selects the desktop refresh
-(minimum 60, default 180); the Intel iGPU workflow uses 120 Hz because the
-180 Hz 4K composition/readback workload exceeds that shared engine's budget.
+presentation slots. `VELA_CAPTURE_TEST_REFRESH_HZ` selects the minimum desktop
+refresh (minimum 60, default 180). Each stream gets at least two presentation
+slots per target capture per client. Intel uses a 60 Hz baseline, raised to
+120 Hz for the single-client 1440p stream's 60 fps floor: 180 Hz 4K
+composition/readback exceeds the shared iGPU engine's budget.
 AMD retains the 180 Hz workload and the same assertions. Pixel, ownership,
 cancellation and queue-limit tests still run on every GPU. Coverage builds
 and hosts using `VELA_TEST_TIME_SCALE>1` report capture metrics and check
