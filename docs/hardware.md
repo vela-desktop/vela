@@ -34,9 +34,11 @@ Vela needs a GPU and driver exposing **Vulkan 1.4** with the dmabuf/DRM capabili
 
 ## Evidence, not a compatibility guarantee
 
-Two machines provide mandatory GPU-labeled test coverage (functional,
-sharpness and sharpness-cpu): an **AMD Radeon RX 9070 XT** and an
-**NVIDIA GeForce RTX 4070 Laptop GPU**. A third, experimental manual Intel
+Two hardware-backed paths provide mandatory GPU-labeled test coverage
+(functional, sharpness and sharpness-cpu): the self-hosted
+**AMD Radeon RX 9070 XT** and a **rented NVIDIA RTX GPU on Vast.ai**,
+whose model may vary by run. The RTX 4070 laptop was used by the previous
+NVIDIA runner, not the current CI. A third, experimental manual Intel
 ANV runner has been added, but has no confirmed passing full-suite baseline. See the
 [GPU CI policy](ci-quality.md#gpu-ci-policy) for mandatory coverage,
 candidate revision checks and release rules.
@@ -44,7 +46,7 @@ candidate revision checks and release rules.
 | Environment | What has been established | What remains uncertain |
 |---|---|---|
 | AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine and the AMD GPU CI runner: the GPU suites run on it for relevant GPU changes and releases, and it is used daily as a DRM session | Not representative of every AMD generation or every multi-display setup |
-| NVIDIA GeForce RTX 4070 Laptop GPU + proprietary driver, Arch/CachyOS | The NVIDIA GPU CI runner: the same GPU suites for relevant GPU changes and releases; driver-specific synchronization handling; manual tester reports | The runner's suites are headless, so DRM/KMS, screen sharing and suspend/resume rely on manual reports; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
+| NVIDIA RTX GPU + proprietary driver, Vast.ai rental (Arch Linux container) | The current NVIDIA GPU CI rents a supported single-GPU instance per run to execute the same GPU suites; actual model and driver vary | Runs are headless, so physical DRM/KMS, screen sharing and suspend/resume still need manual verification; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
 | Intel Alder Lake-UP3 UHD Graphics (8086:46b3) + Mesa/ANV 26.2.5, CachyOS | Hardware Vulkan 1.4 and required DRM/dma-buf extensions confirmed; experimental manual Intel GPU CI workflow added | Full-suite baseline not yet established; timing-sensitive synchronization on a shared GPU engine and physical KMS need further testing |
 | NVK | Listed as an intended Vulkan driver option | Compatibility is not demonstrated by the AMD test runs |
 | VMs and virtio/Venus | One Fedora 44 KDE guest verified with [Vulkan output allocation and Zink clients](virtual-machines.md), without GPU passthrough: nested and DRM/KMS login, Vulkan/X11 windows, capture and 125% scale | Other stacks, full GPU suites, lock/unlock and logout remain unverified; a client stall and KDE autostart observation are recorded in the VM guide |
@@ -153,7 +155,7 @@ the announcement that teardown is about to start. On dedicated GPU CI runners,
 `VELA_SHUTDOWN_STRESS_CYCLES=30 VELA_SHUTDOWN_VALIDATE=1` enables thirty
 consecutive exits and Vulkan validation for these scenarios. Ensure
 `VK_LAYER_KHRONOS_validation` is installed: the harness fails when requested
-validation cannot be enabled. AMD and NVIDIA self-hosted workflows still use
+validation cannot be enabled. AMD and NVIDIA GPU CI workflows still use
 the **headless** backend and cannot exercise connector power cycling.
 
 Before merging a change to teardown behavior, verify on **AMD RADV, NVIDIA
