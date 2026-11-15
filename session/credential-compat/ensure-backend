@@ -15,6 +15,42 @@ vela_credential_session_current()
         [ "$(cat "$VELA_CREDENTIAL_SESSION_STATE")" = "$VELA_CREDENTIAL_SESSION_TOKEN" ]
 }
 
+# Serialize login changes and side effects on the shared user manager/status.
+# Never unlink this lock: all sessions must keep using the same inode.
+vela_credential_lock()
+{
+    [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] || return 1
+    umask 077
+    exec 9>"$XDG_RUNTIME_DIR/vela-credential-compat.lock" || return 1
+    flock -x 9
+}
+
+vela_credential_unlock()
+{
+    flock -u 9
+    exec 9>&-
+}
+
+vela_credential_action()
+{
+    if [ -z "${VELA_CREDENTIAL_SESSION_TOKEN:-}" ]; then
+        "$@"
+        return $?
+    fi
+    (
+        vela_credential_lock || exit 1
+        vela_credential_session_current || exit 0
+        "$@"
+    )
+}
+
+vela_credential_activate_session()
+{
+    if systemctl --user cat vela-session.target > /dev/null 2>&1; then
+        systemctl --user --no-block start vela-session.target
+    fi
+}
+
 vela_credential_owner()
 {
     # Do not autoactivate either service while identifying the current owner.
@@ -67,7 +103,11 @@ vela_credential_owner()
 
 vela_credential_mark()
 {
-    vela_credential_session_current || return 0
+    vela_credential_action vela_credential_write_status "$@"
+}
+
+vela_credential_write_status()
+{
     # XDG_RUNTIME_DIR is private (0700). Do not write to a predictable /tmp path.
     if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
         # Atomically replace the marker instead of following a pre-existing
@@ -133,7 +173,7 @@ vela_credential_ensure()
         exit 1
     fi
     vela_credential_session_current || exit 0
-    if ! systemctl --user start "$unit"; then
+    if ! vela_credential_action systemctl --user --no-block start "$unit"; then
         vela_credential_mark failed "cannot start $unit"
         exit 1
     fi
@@ -143,8 +183,7 @@ vela_credential_ensure()
     # An already-existing PAM-owned provider never reaches this branch.
     vela_credential_stop_started_unit()
     {
-        vela_credential_session_current || return 0
-        systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
+        vela_credential_action systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
     }
 
     # systemctl start can succeed even if a unit is skipped by a Condition,

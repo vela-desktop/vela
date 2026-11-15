@@ -602,7 +602,7 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
     set_target_properties(vela-process-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     target_link_options(vela-process-test PRIVATE -Wl,--gc-sections
-        -Wl,--wrap=wl_event_loop_add_fd -Wl,--wrap=fork)
+        -Wl,--wrap=wl_event_loop_add_fd -Wl,--wrap=wl_event_loop_add_timer -Wl,--wrap=fork)
     add_test(NAME compositor.process COMMAND vela-process-test)
 
 

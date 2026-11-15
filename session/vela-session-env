@@ -18,6 +18,10 @@ STATE="${XDG_RUNTIME_DIR:-/tmp}/vela-session-${WAYLAND_DISPLAY:-none}"
 RESTORE='app-org.kde.plasma\x2dfallback\x2dsession\x2drestore@autostart.service'
 
 command -v systemctl > /dev/null || exit 0
+. "$(dirname "$0")/credential-compat/ensure-backend"
+# The startup hook holds this only through environment/state updates. Provider
+# queries run outside it; their short side effects take the same lock again.
+vela_credential_lock || exit 1
 
 case "$1" in
 start)
@@ -26,6 +30,7 @@ start)
     # change).
     if [ ! -e "$STATE" ] && systemctl --user -q is-active graphical-session.target; then
         echo "vela-session-env: another graphical session is already running, leaving it alone" >&2
+        vela_credential_unlock
         exit 0
     fi
     # A restarted compositor reimports environment but must not restart a
@@ -76,9 +81,10 @@ start)
         # The hook itself must return before a GUI provider needs Wayland.
         # Verification runs independently while the compositor dispatches.
         (
+            # Do not inherit the parent's open-file-description lock.
+            exec 9>&-
             VELA_CREDENTIAL_SESSION_STATE=$STATE
             VELA_CREDENTIAL_SESSION_TOKEN=$session_token
-            . "$(dirname "$0")/credential-compat/ensure-backend"
             vela_credential_session_current || exit 0
             credential_issue=0
             case "${VELA_SECRET_BACKEND:-kwallet}" in
@@ -91,10 +97,7 @@ start)
             esac
             # Keep autostart activation behind provider verification, while
             # allowing the compositor itself to dispatch the provider's GUI.
-            vela_credential_session_current || exit 0
-            if systemctl --user cat vela-session.target > /dev/null 2>&1; then
-                systemctl --user --no-block start vela-session.target
-            fi
+            vela_credential_action vela_credential_activate_session
             if [ "$credential_issue" -ne 0 ]; then
                 sleep 3
                 vela_credential_session_current || exit 0
@@ -124,6 +127,7 @@ start)
         # is saved; never write a preference automatically. Only this first
         # session start launches the dialog, not supervised compositor restarts.
         (
+            exec 9>&-
             # Capture the identity of the login that scheduled this child.
             # Reading STATE here races a subsequent logout/login if the child
             # is delayed before its first instruction.
@@ -148,7 +152,10 @@ start)
     fi
     ;;
 stop)
-    [ -e "$STATE" ] || exit 0
+    if [ ! -e "$STATE" ]; then
+        vela_credential_unlock
+        exit 0
+    fi
     rm -f "$STATE"
     [ -z "${XDG_RUNTIME_DIR:-}" ] || rm -f "$XDG_RUNTIME_DIR/vela-credential-compat.status"
     # Only the services started by Vela. Other user/PAM-owned daemons remain.
@@ -165,3 +172,4 @@ stop)
     exit 1
     ;;
 esac
+vela_credential_unlock
