@@ -133,16 +133,6 @@ class Personalization(ShellChoices):
         self.assertLess(len(colors(without)), len(colors(before)) / 3, "the date's line is still drawn")
         self.check_desktop()
 
-    def test_the_clock_turns_12_hour(self):
-        # 13:45 reads 1:45 PM.
-        self.toggles_clock("clock/hours", "12", "24")
-        self.check_desktop()
-
-    def test_the_clock_shows_seconds(self):
-        # 13:45 reads 13:45:07, the clock wider.
-        self.toggles_clock("taskbar/clockSeconds", "true", "false")
-        self.check_desktop()
-
     def test_the_clock_hides_the_number_of_notifications(self):
         # One notification: "1" by the clock, until Settings hides it.
         test_shell.QtShell.send_notification(self, "Counted", actions="[]", expire_timeout=1500)

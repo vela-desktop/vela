@@ -1084,12 +1084,14 @@ Window {
                 // 24-hour or 12-hour, with or without the seconds (Settings >
                 // Taskbar). Digits all as wide, so the clock doesn't twitch
                 // every second.
+                objectName: "taskbarTime"
                 text: Qt.formatTime(clock.now, Config.clockFormat)
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
                 font.features: { "tnum": 1 }
             }
             Text {
+                objectName: "taskbarDate"
                 anchors.right: parent.right
                 visible: Config.clockDate
                 text: Qt.formatDate(clock.now, "dd/MM/yyyy")
