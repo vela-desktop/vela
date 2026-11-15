@@ -154,7 +154,8 @@ The subsequent differences address the CodeRabbit reviews:
   Verify credential providers after the startup hook returns, with login-token
   guards and session activation held until verification completes. A shared
   runtime lock serializes status/unit/target actions with login transitions;
-  tests hold actions after token validation and verify logout waits for cleanup.
+  tests hold status, target and delayed-notification actions after token validation
+  and verify logout waits for cleanup.
 - Synchronize IPC queries with server-side descriptor cleanup, assert the updater's
   completion signal payload, and detect ASan from the effective C++ compiler flags.
   CPU regressions cover these paths; credential mocks wait for worker completion.
@@ -171,7 +172,7 @@ series has finished review; each current head must pass CodeQL first.
 Local validation (hardware runs remain deferred):
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 365 selected CPU/QML CTest entries pass on security-slice commit `8868189`
+- 365 selected CPU/QML CTest entries pass on security-slice commit `790de14`
   after the runtime and credential-transition review fixes; the runtime slice independently passes 350.
   This includes documentation, reporter and preference fixtures adapted to 0.1.
 - Debug-only `-fsanitize=address` configuration: the configuration-read test
