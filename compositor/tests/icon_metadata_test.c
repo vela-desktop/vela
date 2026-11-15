@@ -3,6 +3,7 @@
 
 // Exercise the actual private index.theme reader without loading a renderer.
 #include "../src/icons.c"
+#include <fcntl.h>
 #include <signal.h>
 
 #define CHECK(expr) do { if (!(expr)) { fprintf(stderr, "FAILED: %s\n", #expr); exit(1); } } while (0)
@@ -14,7 +15,9 @@ int main(void)
     char index[PATH_MAX], alias[PATH_MAX];
     snprintf(index, sizeof(index), "%s/index.theme", directory);
     snprintf(alias, sizeof(alias), "%s/alias.theme", directory);
-    FILE *file = fopen(index, "w");
+    int fd = open(index, O_WRONLY | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    CHECK(fd >= 0);
+    FILE *file = fdopen(fd, "w");
     CHECK(file);
     CHECK(fputs("[Icon Theme]\nDirectories=16x16/apps\n[16x16/apps]\nSize=16\nType=Fixed\n", file) >= 0);
     CHECK(fclose(file) == 0);
