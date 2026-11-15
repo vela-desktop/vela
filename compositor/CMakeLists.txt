@@ -257,7 +257,9 @@ if(VELA_BUILD_TOOLS)
     # reach the shim as the next definition.
     set(VELA_TEST_PRELOAD_PREFIX "")
     set(VELA_TEST_ASAN OFF)
-    if(CMAKE_C_FLAGS MATCHES "-fsanitize=[^ ]*address")
+    string(TOUPPER "${CMAKE_BUILD_TYPE}" VELA_TEST_BUILD_TYPE)
+    set(VELA_TEST_C_FLAGS "${CMAKE_C_FLAGS} ${CMAKE_C_FLAGS_${VELA_TEST_BUILD_TYPE}}")
+    if(VELA_TEST_C_FLAGS MATCHES "-fsanitize=[^ ]*address")
         set(VELA_TEST_ASAN ON)
         foreach(runtime libasan.so libclang_rt.asan-x86_64.so)
             execute_process(COMMAND ${CMAKE_C_COMPILER} -print-file-name=${runtime}
@@ -400,6 +402,16 @@ if(VELA_BUILD_TOOLS)
     endif()
     target_link_options(vela-scene-diff-test PRIVATE -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free)
     add_test(NAME compositor.scene-diff COMMAND vela-scene-diff-test --test)
+
+    add_executable(vela-icon-metadata-test tests/icon_metadata_test.c)
+    target_include_directories(vela-icon-metadata-test PRIVATE src)
+    target_compile_definitions(vela-icon-metadata-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-icon-metadata-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter)
+    target_link_options(vela-icon-metadata-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-icon-metadata-test PRIVATE vela-pure PkgConfig::WLROOTS)
+    set_target_properties(vela-icon-metadata-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.icon-metadata COMMAND vela-icon-metadata-test)
 
     # The locker recovery state machine must be exercised on CPU-only CI.
     add_executable(vela-lock-retry-test tests/lock_retry_policy_test.c)

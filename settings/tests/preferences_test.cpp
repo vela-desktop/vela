@@ -176,27 +176,29 @@ private slots:
         QVERIFY(text.contains(QStringLiteral("night-light=yes")));
         QVERIFY(text.contains(QStringLiteral("mouse-primary-button=right")));
 
-        // An immutable file still reads, but QSaveFile cannot replace it.
-        // That is the reload path. chattr is optional; the file-blocker below
-        // covers the same setters when the file cannot be reread.
-        const bool frozen = geteuid() == 0
-            && QProcess::execute(QStringLiteral("chattr"), { QStringLiteral("+i"), conf.fileName() }) == 0;
-        const auto thaw = qScopeGuard([frozen, path = conf.fileName()] {
+        {
+            // An immutable file still reads, but QSaveFile cannot replace it.
+            // That is the reload path. chattr is optional; the file-blocker below
+            // covers the same setters when the file cannot be reread.
+            const bool frozen = geteuid() == 0
+                && QProcess::execute(QStringLiteral("chattr"), { QStringLiteral("+i"), conf.fileName() }) == 0;
+            const auto thaw = qScopeGuard([frozen, path = conf.fileName()] {
+                if (frozen) {
+                    QProcess::execute(QStringLiteral("chattr"), { QStringLiteral("-i"), path });
+                }
+            });
             if (frozen) {
-                QProcess::execute(QStringLiteral("chattr"), { QStringLiteral("-i"), path });
+                prefs.setScreenOffMinutes(9);
+                QCOMPARE(prefs.screenOffMinutes(), 4);
+                QVERIFY(!prefs.saveError().isEmpty());
+                prefs.setLockOnIdle(true);
+                QVERIFY(!prefs.lockOnIdle());
+                prefs.setLanguage(QStringLiteral("en"));
+                QCOMPARE(prefs.language(), QStringLiteral("it"));
+                prefs.setNightLight(false);
+                QVERIFY(prefs.nightLight());
+                expectRejectedChanges(prefs);
             }
-        });
-        if (frozen) {
-            prefs.setScreenOffMinutes(9);
-            QCOMPARE(prefs.screenOffMinutes(), 4);
-            QVERIFY(!prefs.saveError().isEmpty());
-            prefs.setLockOnIdle(true);
-            QVERIFY(!prefs.lockOnIdle());
-            prefs.setLanguage(QStringLiteral("en"));
-            QCOMPARE(prefs.language(), QStringLiteral("it"));
-            prefs.setNightLight(false);
-            QVERIFY(prefs.nightLight());
-            expectRejectedChanges(prefs);
         }
 
         // A file where the config directory should be. Root can still write
