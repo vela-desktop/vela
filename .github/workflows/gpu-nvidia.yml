@@ -26,7 +26,7 @@ on:
         type: string
         default: ''
       gpu:
-        description: Rent this GPU (e.g. RTX 3060) instead of the cheapest that fits
+        description: Pin an RTX GPU (e.g. RTX 3060) instead of an automatic cost/performance choice
         type: string
         default: ''
 
@@ -47,6 +47,7 @@ jobs:
     timeout-minutes: 65
     outputs:
       gpu: ${{ steps.rent.outputs.gpu }}
+      cpu_cores: ${{ steps.rent.outputs.cpu_cores }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,7 +60,7 @@ jobs:
           private-key: ${{ secrets.VELA_RUNNER_APP_KEY }}
           owner: ${{ github.repository_owner }}
           permission-organization-self-hosted-runners: write
-      - name: Rent the cheapest fitting GPU and start a runner on it
+      - name: Select a cost-effective Vast.ai GPU and start a runner on it
         id: rent
         env:
           GH_TOKEN: ${{ steps.app.outputs.token }}
@@ -318,10 +319,13 @@ jobs:
 
       - name: Build exact checked-out revision
         shell: bash
+        env:
+          VAST_CPU_CORES: ${{ needs.start-runner.outputs.cpu_cores }}
         run: |
           set -euo pipefail
-          jobs="$(nproc)"
-          if (( jobs > 8 )); then jobs=8; fi
+          # Respect container CPU quota, affinity and available memory rather
+          # than treating nproc as a guarantee of CPU or RAM resources.
+          jobs="$(python3 scripts/ci-nvidia-build-jobs.py)"
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
 
       - name: Real GPU functional and sharpness suites
