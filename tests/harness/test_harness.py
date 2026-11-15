@@ -17,7 +17,15 @@ import unittest
 from unittest.mock import patch
 import zlib
 
-from harness import Image, PrivateBus, Session, State
+from harness import Image, PrivateBus, Session, State, input_sleep_ms
+
+
+class InputActionTimeouts(unittest.TestCase):
+    def test_action_words_used_as_operands_do_not_extend_the_timeout(self):
+        self.assertEqual(input_sleep_ms(("type", "sleep", "key", "Return")), 0)
+        self.assertEqual(input_sleep_ms(("type", "sleep", "sleep", 75, "key", "sleep")), 75)
+        self.assertEqual(input_sleep_ms(("move", 20, 30, "down", "sleep", 10,
+                                         "up", "right", "click", "sleep", 15)), 25)
 
 
 class SessionCleanup(unittest.TestCase):

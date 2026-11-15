@@ -12,12 +12,15 @@
 //   failure, so only one restart child is affected.
 // "fstatat": while it exists, fstatat() of a name starting with
 //   "vela-locked-" (the lock marker) fails with EIO.
+// "lock-exit-stop": consumed once before the fatal lock path signals its
+//   supervisor; SIGSTOP holds the blackout until the test crashes this child.
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -110,4 +113,20 @@ int fstatat64(int dirfd, const char *name, struct stat64 *info, int flags)
         return -1;
     }
     return real(dirfd, name, info, flags);
+}
+
+int kill(pid_t pid, int sig)
+{
+    static int (*real)(pid_t, int);
+    if (!real) {
+        real = (int (*)(pid_t, int))dlsym(RTLD_NEXT, "kill");
+    }
+    int directory = trigger_directory();
+    if (sig == SIGTERM && pid == getppid() && directory >= 0
+        && unlinkat(directory, "lock-exit-stop", 0) == 0) {
+        static const char message[] = "libc-fail: lock exit barrier\n";
+        (void)!write(STDERR_FILENO, message, sizeof(message) - 1);
+        raise(SIGSTOP);
+    }
+    return real(pid, sig);
 }

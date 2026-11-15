@@ -135,6 +135,14 @@ class Scan(unittest.TestCase):
         names = {call for _, call in wanted}
         self.assertEqual(names, set(m.ALLOCATORS) | {"realpath", "getline", "getdelim"})
 
+    def test_parenthesized_null_realpath_is_rejected(self):
+        for null in ("(NULL)", "((0))", "(nullptr)", "(void*)0", "(( void * ) 0)"):
+            with self.subTest(null=null):
+                self.assertEqual(m.scan(f"realpath(path, {null});"), [(1, "realpath")])
+        for buffer in ("(buffer)", "(void*)buffer", "(buffer)+(0)"):
+            with self.subTest(buffer=buffer):
+                self.assertEqual(m.scan(f"realpath(path, {buffer});"), [])
+
     def test_no_allowed_form_is_reported(self):
         self.assertEqual(m.scan(ALLOWED), [])
 

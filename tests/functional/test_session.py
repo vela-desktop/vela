@@ -409,7 +409,7 @@ class DamageFailure(unittest.TestCase):
                     vela.command("lock")
                     vela.wait_for_log("vela-testlock: locked")
                     time.sleep(0.2 * TIME_SCALE)
-                    self.disarm(vela)
+                    self.assertTrue(self.disarm(vela), f"no {operation} failure was injected while locking")
                     image = vela.pixels()
                     lock_color = (16, 32, 64)  # what vela-testlock paints
                     for y in range(0, image.height, 16):
@@ -838,26 +838,16 @@ class Supervisor(unittest.TestCase):
     CRASHES = (signal.SIGSEGV, signal.SIGABRT)  # SIGABRT: what vela_oom will raise
     LIBC_SHIM = os.path.join(BUILD, "compositor", "libvela-libc-fail-preload.so")
 
-    def _stop_once_logged(self, vela, compositor, text):
-        """Run the compositor in 2 ms slices until `text` is logged, and leave
-        it stopped there (the windows these tests aim at last a frame or more)."""
+    def _wait_stopped(self, compositor):
+        """Wait for a test barrier's SIGSTOP without advancing the compositor."""
         deadline = time.monotonic() + 5 * TIME_SCALE
-        os.kill(compositor, signal.SIGSTOP)
-        while text not in vela.log_text():
-            self.assertLess(time.monotonic(), deadline, f"never logged: {text}")
-            os.kill(compositor, signal.SIGCONT)
-            time.sleep(0.002)
-            os.kill(compositor, signal.SIGSTOP)
-        # SIGSTOP takes effect asynchronously: wait until the process is
-        # really stopped (and not gone).
-        state = None
-        for _ in range(200):
+        while time.monotonic() < deadline:
             with open(f"/proc/{compositor}/stat") as stat:
                 state = stat.read().rsplit(")", 1)[1].split()[0]
-            if state != "R" and state != "S" and state != "D":
-                break
+            if state == "T":
+                return
             time.sleep(0.005)
-        self.assertEqual(state, "T", "stopped, not exited")
+        self.fail("compositor did not stop at the test barrier")
 
     def _crash_stopped(self, compositor, signum):
         os.kill(compositor, signum)
@@ -875,22 +865,23 @@ class Supervisor(unittest.TestCase):
         return options, setenv, fstatat
 
     def test_crash_during_lock_blackout_restarts_locked(self):
-        # The marker cannot be created, so the lock takes its fatal path: a
-        # blackout, then the end of the session. A crash anywhere during that
-        # window used to restart unlocked (no marker); the shared lock state
-        # now restarts it locked.
+        # Hold the fatal path immediately before it signals the supervisor.
+        # Test-process scheduling cannot let the blackout expire past this point.
         for signum in self.CRASHES:
             with self.subTest(signal=signal.Signals(signum).name):
-                with Session(supervise=True, lock_hold_ms=1000) as vela:
+                options, setenv, _ = self._libc_failures()
+                barrier = os.path.join(os.path.dirname(setenv), "lock-exit-stop")
+                with open(barrier, "w"):
+                    pass
+                with Session(supervise=True, lock_hold_ms=1000, **options) as vela:
                     marker = self._marker(vela)
                     compositor = child_compositor(vela.process.pid)
-                    os.mkdir(marker, 0o700)  # renaming a file over it fails
+                    os.mkdir(marker, 0o700)
                     try:
                         vela.command("lock")
-                        self._stop_once_logged(vela, compositor, "ending session after the black backdrop")
+                        vela.wait_for_log("libc-fail: lock exit barrier")
+                        self._wait_stopped(compositor)
                     finally:
-                        # Without the directory the restarted compositor can
-                        # create the marker; the page alone keeps it locked.
                         os.rmdir(marker)
                     self._crash_stopped(compositor, signum)
                     vela.wait_for_log("restarting locked")
@@ -901,13 +892,19 @@ class Supervisor(unittest.TestCase):
                     vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_crash_while_locking_restarts_locked(self):
-        # Between the lock engaging and the locker being told "locked".
+        # The first locker cannot register before its compositor crashes.
         for signum in self.CRASHES:
-            with self.subTest(signal=signal.Signals(signum).name):
-                with Session(supervise=True, lock_hold_ms=1000) as vela:
+            with self.subTest(signal=signal.Signals(signum).name), tempfile.TemporaryDirectory() as directory:
+                barrier = os.path.join(directory, "registration")
+                with open(barrier, "w"):
+                    pass
+                with Session(supervise=True, lock_hold_ms=1000,
+                             env={"VELA_TEST_LOCK_REGISTER_BARRIER": barrier}) as vela:
                     compositor = child_compositor(vela.process.pid)
                     vela.command("lock")
-                    self._stop_once_logged(vela, compositor, "Screen locked")
+                    vela.wait_for_log("vela-testlock: registration barrier reached")
+                    os.kill(compositor, signal.SIGSTOP)
+                    self._wait_stopped(compositor)
                     self.assertNotIn("vela-testlock: locked", vela.log_text())
                     self._crash_stopped(compositor, signum)
                     vela.wait_for_log("restarting locked")
