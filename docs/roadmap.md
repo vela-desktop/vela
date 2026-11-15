@@ -2,16 +2,16 @@
 
 Where Vela is now, which capabilities are next, and how the desktop may
 evolve. This is **a direction, not a calendar**: there are no release dates.
-The 0.1 and 0.2 scopes below reflect current project decisions; release
-targets for **0.3–0.6 are estimates** that can change after design, testing,
-and feedback. Implementation work can start before its target release
-without merging into `main`.
+The 0.1 history is fixed. The **0.2 plan now reflects major work already
+merged into main** plus a small list of possible finishing features.
+Targets for **0.3–0.6 remain estimates** and can change with design,
+validation and feedback. There is no committed release calendar.
 
 Vela **0.1 is the first beta**, released as
 [`v0.1.0`](https://github.com/vela-desktop/vela/releases/tag/v0.1.0) on
-31 October 2026. "Done" means
-implemented and tested, not validated on every GPU and driver: see
-[hardware coverage](hardware.md) for current limits. Larger changes get
+31 October 2026. "Done" means implemented on **main**, not
+necessarily available in the latest tagged Beta or validated on every GPU
+and driver: see [hardware coverage](hardware.md) for current limits. Larger changes get
 their own design documents; the roadmap records intent rather than replacing
 those specifications.
 
@@ -76,103 +76,130 @@ the only feature exception.
   found two release-only pipeline bugs, fixed before the real tag
   ([#177](https://github.com/vela-desktop/vela/pull/177)).
 
-**Feature-freeze rule:** no new user-facing features are added to 0.1. Core
-Wayland `text-input-v3`/`input-method-v2` and on-screen keyboard work target
-0.2 instead. Bug fixes, reliability work and necessary packaging are not
-reclassified as new features.
+**Feature freeze:** 0.1.x remains a maintenance series, without new
+user-facing features. The [0.1.2 tracker #225](https://github.com/vela-desktop/vela/issues/225)
+is separate from the next minor release. The
+[OOM policy #148](https://github.com/vela-desktop/vela/pull/148) has
+already merged into main as post-0.1 work, not an outstanding beta blocker.
 
-**Stabilization proposal still open:**
-[OOM contract #148](https://github.com/vela-desktop/vela/pull/148). Whether
-it blocks a release depends on review and reproducible severity, not on the
-existence of a design draft.
+## 0.2 — Personalization, productivity and architectural hardening
 
-## 0.2 — Touch, pen, input methods and completion of existing feature PRs
+Vela 0.2 need not wait for touch, pen or the on-screen keyboard.
+Those projects are substantial and now provisionally target 0.3.
+Distinguish **merged on main**, **candidate for 0.2**, and
+**shipped in a tagged Beta**: these are not interchangeable statuses.
 
-This version has a **defined feature scope**, not a tentative list of new
-ideas. Its two large projects are the complete touch/pen design and a
-native on-screen keyboard, including their Wayland input foundations.
+**Already merged into main since the 0.1 branch split:**
 
-- **Wayland input foundations:** `text-input-v3` and `input-method-v2`;
-  proper focus, preedit/commit, text input and input-method integration,
-  with real IME test cases (e.g. fcitx5/IBus). This work is **in 0.2,
-  not 0.1**.
-- **Complete [touch/pen design #94](https://github.com/vela-desktop/vela/pull/94):**
-  T0–T5 (native `wl_touch`, emulated pointer where needed including X11,
-  touchscreen gestures, decorations, shell and app interactions without
-  hover), P1–P2 (pen over `tablet-v2` with pressure, tilt, eraser,
-  buttons and pressure curve, plus touchpad use where supported), and M1
-  (tablet mode and sensor-based automatic rotation). Follow the design's
-  explicitly stated hardware limitations: mapping multiple external
-  touchscreens to outputs is **not** silently included.
-- **Complete [on-screen keyboard design #95](https://github.com/vela-desktop/vela/pull/95):**
-  K0–K5 for a native Qt Quick keyboard with hardware layouts, manual
-  and touch-triggered display, docked/floating positions, specialized
-  layouts, variants/emoji/clipboard panels, lock/polkit access and
-  safe input delivery. Reconcile the design's K0/I1 split with the
-  decision that input-method support is delivered in 0.2.
-- **Resolve older open feature PRs:** expanded Snipping Tool
-  [#118](https://github.com/vela-desktop/vela/pull/118) (OCR, timer,
-  color picker and recording) and always-on-top
-  [#108](https://github.com/vela-desktop/vela/pull/108). Each requires
-  review, compatibility work and tests; **merge when ready or close with
-  a documented reason if superseded/rejected**. "Resolve" does not mean
-  blindly merging every draft. The screen-sharing indicator of #72 was
-  closed and started over in
-  [#220](https://github.com/vela-desktop/vela/pull/220).
-- **Screen-sharing indicator** ([design](screen-sharing.md),
-  [#220](https://github.com/vela-desktop/vela/pull/220)): a taskbar icon
-  whenever an app outside the shell captures the screen or a window,
-  through the portal or directly; who and what in its tooltip and menu,
-  the app behind the portal named from PipeWire; Do Not Disturb turned
-  on by itself meanwhile, never touching the user's own, with a switch
-  in Settings. Remaining: tests by hand in a real session (browsers,
-  OBS, wf-recorder, a screenshot that must not count).
-- Finish or explicitly supersede the related touch/keyboard design PRs
-  once their accepted design is integrated into the implementation.
+- **Theme engine and personalization:** declarative themes, per-surface
+  styles, Window Glass and Vela Floating
+  ([#207](https://github.com/vela-desktop/vela/pull/207)); redesigned
+  personalization, one-click theme galleries, previews and Undo
+  ([#212](https://github.com/vela-desktop/vela/pull/212)); accent,
+  clock, taskbar and Start preferences
+  ([#216](https://github.com/vela-desktop/vela/pull/216)); expressive
+  controls ([#244](https://github.com/vela-desktop/vela/pull/244)) and
+  Vela Expressive with wallpaper-derived dynamic color, motion and
+  Start/Quick Settings/notification variants
+  ([#248](https://github.com/vela-desktop/vela/pull/248)).
+- **Daily desktop:** battery notifications for computers and peripherals
+  ([#215](https://github.com/vela-desktop/vela/pull/215));
+  screen-sharing indicator, capture attribution and automatic
+  Do Not Disturb ([#220](https://github.com/vela-desktop/vela/pull/220));
+  right-click notification dismissal
+  ([#188](https://github.com/vela-desktop/vela/pull/188)).
+  Expressive already implements a grouped-notification variant.
+- **Integration and compatibility:** update-check scheduling
+  ([#190](https://github.com/vela-desktop/vela/pull/190));
+  showing packaging recipes during updates
+  ([#247](https://github.com/vela-desktop/vela/pull/247));
+  Fedora 45 packaging ([#224](https://github.com/vela-desktop/vela/pull/224));
+  a temporary choice of secret backend pending Vela Secrets
+  ([#255](https://github.com/vela-desktop/vela/pull/255));
+  and experimental Vulkan Venus virtual-machine support
+  ([#251](https://github.com/vela-desktop/vela/pull/251)).
+  Experimental capabilities still need hardware validation.
+- **Core improvements:** host allocation and OOM handling, renderer
+  pass reuse and bounded GPU/icon memory
+  ([#148](https://github.com/vela-desktop/vela/pull/148),
+  [#243](https://github.com/vela-desktop/vela/pull/243),
+  [#246](https://github.com/vela-desktop/vela/pull/246),
+  [#250](https://github.com/vela-desktop/vela/pull/250),
+  [#252](https://github.com/vela-desktop/vela/pull/252));
+  compositor security hardening
+  ([#258](https://github.com/vela-desktop/vela/pull/258));
+  x86-64-v3 builds ([#245](https://github.com/vela-desktop/vela/pull/245));
+  and experimental Intel ANV GPU CI
+  ([#226](https://github.com/vela-desktop/vela/pull/226)).
 
-**Validation:** physical touchscreen, pressure-sensitive pen and
-convertible/tablet tests; rotation/scaling and gesture regression tests;
-a touch-only lock/unlock and password-entry scenario; real IME and
-Xwayland client interoperability. Existing keyboard, mouse, compositor
-and GPU behavior must not regress.
+**Candidates to evaluate before 0.2, not automatically release blockers:**
 
-## 0.3 — Everyday desktop completeness (indicative)
+- Finish or deliberately defer the existing
+  [Snipping Tool #118](https://github.com/vela-desktop/vela/pull/118)
+  (OCR, timer, color picker, recording) and
+  [always-on-top #108](https://github.com/vela-desktop/vela/pull/108).
+  Both are older draft PRs requiring compatibility work, review and tests;
+  do not merge them solely to satisfy the roadmap.
+- Fix [taskbar overflow #219](https://github.com/vela-desktop/vela/issues/219).
+  Evaluate taskbar app shortcuts (Super+1 through Super+9) and configurable
+  initial NumLock state requested in
+  [community feedback #214](https://github.com/vela-desktop/vela/issues/214).
+- Finish the desktop configuration fix
+  [#235](https://github.com/vela-desktop/vela/pull/235) /
+  [#236](https://github.com/vela-desktop/vela/issues/236)
+  and consistent Settings write-failure handling
+  ([#218](https://github.com/vela-desktop/vela/issues/218));
+  test keyring compatibility on real GNOME/KDE sessions
+  ([#222](https://github.com/vela-desktop/vela/issues/222)).
+- Optionally evaluate taskbar auto-hide, Start file/settings search,
+  and [nested Distrobox #203](https://github.com/vela-desktop/vela/pull/203)
+  only if bounded and well tested.
 
-A focused feature release that closes user-facing gaps without a
-large redesign or renderer overhaul. Candidates:
+**Release gate:** decide the final shortlist, freeze user-facing work and
+validate the exact candidate commit with required AMD/NVIDIA GPU suites,
+real Wayland login sessions, security/lock/crash recovery, keyrings,
+themes, packaging and updater tests. Investigate
+[Ubuntu GPU failures #197](https://github.com/vela-desktop/vela/issues/197).
+Follow the signed-tag rehearsal and
+[release process](release-channels.md). There is **no fixed ship date**;
+0.1.x backports remain independent.
 
-- **Native `xdg-desktop-portal-vela` backend:** design, implement and test
-  Vela's own portal integration as a 0.3 target, replacing the generic GTK
-  backend where it offers a benefit. Retain `xdg-desktop-portal-wlr` for
-  screenshots and screen sharing; its replacement is not part of this work.
+## 0.3 — Touch, pen, input methods and on-screen keyboard (indicative)
 
-- Better window management: app-specific window rules, remembering
-  window position/size, moving windows across outputs/desktops by
-  shortcut, and defined picture-in-picture behavior.
-- Displays and compatibility: projection menu (Super+P), mirroring,
-  refined VRR/animation policy,
-  and external touchscreen/output mapping that was explicitly
-  outside the initial touch design.
-- Shell and Settings: Start search extended beyond existing app search
-  to files/settings, a global emoji picker, taskbar auto-hide,
-  grouped notifications, fullscreen-aware Do Not Disturb (joining the
-  screen-sharing rule of [#220](https://github.com/vela-desktop/vela/pull/220)), brightness
-  key OSD and keyboard backlight controls, and a shortcut editor.
-- Incremental tools: screenshot annotations, batch rename in Files,
-  and a post-crash
-  notification leading to the already implemented `vela-report`.
-- Broaden and physically validate the experimental Ubuntu updater
-  and package integration.
+This moves the original 0.2 input work here as a **proposed** feature
+scope; none of these features is implied to be implemented yet:
 
-The items above are **suggestions, not obligations**; refine based on
-actual 0.2 results and user impact. A standalone full content indexer
-is not implied by extending Start search.
+- **Wayland text input and IMEs:** text-input-v3, input-method-v2,
+  focus and preedit/commit correctness, real fcitx5/IBus interoperability.
+  Reconcile the input-method stages with the OSK design.
+- **Touch, pressure-sensitive pen and tablet mode:**
+  [design #94](https://github.com/vela-desktop/vela/pull/94), stages
+  T0–T5 (native wl_touch, pointer compatibility including X11, gestures,
+  decorations and hover-free UI), P1–P2 (tablet-v2 pressure, tilt, eraser,
+  buttons and curves) and M1 (tablet mode and sensor rotation).
+  Mapping multiple external touchscreens to outputs remains explicitly
+  outside the initial design unless separately scoped.
+- **Native on-screen keyboard:**
+  [design #95](https://github.com/vela-desktop/vela/pull/95), K0–K5,
+  with hardware layouts, manual and touch-triggered invocation,
+  docked/floating and specialized layouts, variants/emoji/clipboard,
+  secure input and touch-only lock/polkit access.
+
+**Validation:** real touchscreen, pen and convertible/tablet testing;
+rotation/scaling and gestures, touch-only unlock and password entry,
+IME/Xwayland interoperability; no regressions for existing desktop
+input, compositor or GPU behavior.
+
+Further everyday-desktop features need an explicit scope decision.
+The former 0.3 completeness wishlist is preserved as an **unassigned
+backlog** below, not silently committed to this release.
 
 ## 0.4 — Coordinated visual redesign (highly indicative)
 
-Possible milestone for a distinctive, coherent Vela visual language
+Possible milestone for a distinctive, coherent default Vela visual language
 across compositor-owned chrome, shell, Settings, Files and first-party
-tools. Candidate supporting UX work: Start's Recommended content and
+tools. The theme system and Vela Expressive already in main are
+not themselves the coordinated default redesign. Candidate supporting UX work: Start's Recommended content and
 pinned-app folders, taskbar layouts (including vertical and uncombined
 buttons), app badges, system sounds, font/regional settings and
 printing/scanning integration. Which of these belongs in 0.4 is
@@ -180,9 +207,8 @@ provisional.
 
 **Design development is intentionally independent of release integration.**
 A dedicated long-lived branch may be used for gradual exploration and
-prototyping **even before 0.2 ships**. It must not merge visual redesign
-changes into `main` during the 0.1/0.2/0.3 scopes merely because the
-experiments began early. Validate reusable components, scaling,
+prototyping **even before 0.2 ships**. Early exploration does not by itself justify merging an unfinished
+cross-desktop redesign into 0.2 or 0.3. Validate reusable components, scaling,
 accessibility and migration before proposing an integration series.
 
 Type and icon work may live in **separate dedicated repositories**
@@ -224,26 +250,33 @@ own design, cost/maintenance analysis and definition of done.
 
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
-| **Host OOM allocation contract** | in the PR | [#148](https://github.com/vela-desktop/vela/pull/148) | draft; release classification after review | to be decided |
-| **Text input and input methods**: `text-input-v3`, `input-method-v2`, IME integration | reconcile with OSK design | — | not implemented | 0.2 |
-| **Touch, pressure-sensitive pen and tablet mode**: full agreed #94 stages T0–T5, P1–P2 and M1 | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design under discussion; implementation pending | 0.2 |
-| **On-screen keyboard**: full #95 K0–K5, including touch-only unlocking | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design under discussion; implementation pending | 0.2 |
-| **Snipping Tool extensions**: OCR, delay, color picker and recording | in the PR | [#118](https://github.com/vela-desktop/vela/pull/118) | draft; requires review and tests | 0.2 |
-| **Screen-sharing indicator and notification protection** (supersedes #72) | [screen-sharing.md](screen-sharing.md) | [#220](https://github.com/vela-desktop/vela/pull/220) | draft; implemented and tested headless, real-session tests by hand pending | 0.2 |
-| **Always-on-top** | in the PR | [#108](https://github.com/vela-desktop/vela/pull/108) | draft; requires review and tests | 0.2 |
+| **Snipping Tool extensions**: OCR, delay, color picker and recording | in PR | [#118](https://github.com/vela-desktop/vela/pull/118) | draft; rebase, review and test | 0.2 candidate |
+| **Always-on-top** | in PR | [#108](https://github.com/vela-desktop/vela/pull/108) | draft; review and test | 0.2 candidate |
+| **Desktop preferences** | [#236](https://github.com/vela-desktop/vela/issues/236) | [#235](https://github.com/vela-desktop/vela/pull/235) | open fix PR | 0.2 stabilization candidate |
+| **Text input and IME** | reconcile with OSK | — | not implemented | 0.3 proposed |
+| **Touch, pen and tablet mode** | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design open, code pending | 0.3 proposed |
+| **On-screen keyboard** | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design open, code pending | 0.3 proposed |
+| **Benchmark suite** | in PR | [#109](https://github.com/vela-desktop/vela/pull/109) | work/review ongoing | unassigned |
 
 ## Next — Not yet assigned to a release
 
-Only work **not already described in the 0.1–0.6 release sections**
-belongs here; those sections are the single reference for their respective
-release candidates. This is an unscheduled backlog, not a commitment.
+This unscheduled backlog includes the previous 0.3 everyday-completeness
+candidates. Do not treat them as promises for the new input-focused 0.3.
 
 | Candidate | Status |
 |---|---|
-| More Wayland protocols (`fifo`, `commit-timing`, `security-context`, `xdg-foreign`, `xdg-toplevel-icon`, `xdg-dialog`) | Evaluate individually when needed |
-| Live blur behind compositor-drawn title bars and caching of unchanged blurred backgrounds | Unscheduled; evaluate alongside visual work |
-| An official pacman package repository for system-managed updates | Unscheduled |
-| More languages and a community translation workflow | Continuous; no fixed release |
+| Native xdg-desktop-portal-vela backend where beneficial | Design separately; retain GTK for generic dialogs and xdg-desktop-portal-wlr for screencast/screenshots until a tested replacement exists |
+| Window rules, remembering position/size, cross-monitor/desktop shortcuts and picture-in-picture | Unscheduled |
+| Super+P projection menu, mirroring and improved VRR/animation policy | Unscheduled; physical display validation required |
+| External touchscreen-to-output mapping beyond initial #94 scope | Unscheduled |
+| Start file/settings search, emoji picker, taskbar auto-hide, keyboard backlight, brightness key OSD and shortcut editor | Unscheduled |
+| Fullscreen-aware DND and broader grouped notifications beyond Expressive | Unscheduled; screen-sharing DND and Expressive grouping already implemented |
+| Screenshot annotations, Files batch rename, post-crash notification leading to vela-report | Unscheduled |
+| Further Ubuntu updater and package integration validation | Continuous |
+| More Wayland protocols (fifo, commit-timing, xdg-foreign, xdg-toplevel-icon, xdg-dialog) | Evaluate individually; security-context support already merged via #258 |
+| Live blur behind compositor title bars and caching unchanged blurred backgrounds | Unscheduled |
+| Official pacman package repository for system-managed updates | Unscheduled |
+| Additional languages and community translation workflow | Continuous |
 
 ## Not planned
 
@@ -263,6 +296,17 @@ Decisions already taken. Each design document explains why.
 - **32-bit builds.**
 
 ## Done
+
+**Done means integrated in main, not necessarily published in 0.1 Beta.**
+Notable post-0.1 work includes the theme/personalization system
+([#207](https://github.com/vela-desktop/vela/pull/207),
+[#212](https://github.com/vela-desktop/vela/pull/212),
+[#216](https://github.com/vela-desktop/vela/pull/216),
+[#248](https://github.com/vela-desktop/vela/pull/248)),
+battery notifications ([#215](https://github.com/vela-desktop/vela/pull/215)),
+screen-sharing indicator ([#220](https://github.com/vela-desktop/vela/pull/220)),
+update scheduling ([#190](https://github.com/vela-desktop/vela/pull/190)),
+memory policy and security hardening described under 0.2.
 
 - **Session**: login entry, systemd and D-Bus, portals, Xwayland, lock screen,
   idle, notifications, system tray, and Vela's own
@@ -310,12 +354,13 @@ This page changes in the same pull request as the work it describes:
 
 - A new design document adds its row to **In progress**.
 - The pull request that finishes the last stage moves that work to **Done**.
-- Keep **0.1 release blockers** separate from the 0.1 release-engineering
-  workstream and from 0.2 input feature development.
-- Respect the agreed **0.2 scope**; finishing old feature PRs means
-  reviewing and resolving them, not merging drafts unconditionally.
-- Mark 0.3–0.6 scope and version assignments as estimates, and revise
-  as designs and testing evolve.
+- Keep 0.1.x maintenance and 0.2 release preparations separate.
+- Distinguish merged main changes, proposed release candidates and
+  actually published Beta features.
+- Finalize the remaining 0.2 scope explicitly; review and either accept
+  or defer old draft PRs, never merge them unconditionally.
+- Touch, pen, IME and OSK provisionally target 0.3, not 0.2.
+- Mark all unreleased targets as estimates and revise them after testing.
 - Work on a future redesign branch or independent font/icon repositories
   may begin early without merging unfinished designs into `main`.
 - When a capability actually ships, move it to **Done** and keep only
