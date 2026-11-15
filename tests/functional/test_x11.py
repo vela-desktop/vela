@@ -9,6 +9,7 @@ it, so its window is created while the X window manager is being set up."""
 
 import os
 import select
+import signal
 import subprocess
 import time
 import unittest
@@ -81,16 +82,22 @@ class X11(unittest.TestCase):
             xid = source.read().strip()
         frame = self.vela.state().window(window)
         expected = (frame["x"], frame["y"] + 32, frame["w"], frame["h"] - 32)
-        # XWM configuration and this query travel over separate X connections.
-        self.vela.wait_for(lambda _: self.x11_geometry(xid) == expected, read_state=False,
-                           what="X11 position from the last opening frame")
+        # XWM configuration and this query travel over separate connections.
+        # Let Xwayland consume pending configuration, but prevent a later
+        # compositor frame from repairing the stale position under test.
+        os.kill(self.vela.process.pid, signal.SIGSTOP)
+        try:
+            self.vela.wait_for(lambda _: self.x11_geometry(xid) == expected, read_state=False,
+                               what="X11 position from the last opening frame")
+        finally:
+            os.kill(self.vela.process.pid, signal.SIGCONT)
 
     def x11_geometry(self, xid):
         # Query the X11 server, not the Wayland compositor's scene geometry.
         # They can disagree when Vela resizes the X11 window *before* moving
         # its scene node into the final fullscreen/restored position.
         result = subprocess.check_output([tool("vela-x11"), "--geometry", xid],
-                                         env=self.env, text=True)
+                                         env=self.env, text=True, timeout=5)
         return tuple(map(int, result.split()))
 
     def assert_x11_geometry_matches(self, view_id, xid, expected_size=True):
