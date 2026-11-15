@@ -99,6 +99,16 @@ class ProvisioningTests(unittest.TestCase):
         self.assertFalse(result)
         self.assertEqual(elapsed, 0)
 
+    def test_fails_fast_when_dns_failure_follows_long_status(self):
+        # The full Vast diagnostic must be checked, even if only its first
+        # 200 characters are displayed in the CI log.
+        result, elapsed = self.probe([
+            {"actual_status": "loading",
+             "status_msg": "pulling image " + "x" * 200 + " no such host"}
+        ])
+        self.assertFalse(result)
+        self.assertEqual(elapsed, 0)
+
     def test_stuck_image_pull_uses_image_timeout(self):
         result, elapsed = self.probe([
             {"actual_status": "loading", "status_msg": "Pulling layer"}
