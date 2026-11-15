@@ -156,6 +156,7 @@ endif()
 # them, and so does the test build that counts allocations (below).
 add_library(vela-compositor-objects OBJECT
     src/a11y.c
+    src/activation.c
     src/error_screen.c
     src/bindings.c
     src/bluetooth.c
@@ -557,6 +558,26 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
     set_target_properties(vela-x11-root-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.x11-root COMMAND vela-x11-root-test)
+
+    # App activation over real Wayland sockets with wlroots' token/serial
+    # validation; focus effects are observed without rendering or a GPU.
+    set(activation_xml ${WAYLAND_PROTOCOLS_DIR}/staging/xdg-activation/xdg-activation-v1.xml)
+    set(activation_client ${VELA_GENERATED_DIR}/xdg-activation-v1-client-protocol.h)
+    set(activation_code ${VELA_GENERATED_DIR}/xdg-activation-v1-client-protocol.c)
+    add_custom_command(OUTPUT ${activation_client} ${activation_code}
+        COMMAND ${WAYLAND_SCANNER} client-header ${activation_xml} ${activation_client}
+        COMMAND ${WAYLAND_SCANNER} private-code ${activation_xml} ${activation_code}
+        DEPENDS ${activation_xml})
+    add_executable(vela-activation-test tests/activation_test.c src/activation.c ${activation_client}
+        ${activation_code} ${VELA_PROTOCOL_HEADERS})
+    target_include_directories(vela-activation-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-activation-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-activation-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-activation-test PRIVATE vela-alloc PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::WAYLAND_CLIENT)
+    set_target_properties(vela-activation-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.activation COMMAND vela-activation-test)
+    set_tests_properties(compositor.activation PROPERTIES TIMEOUT 10)
 
     # The compositor's children on a real event loop, no GPU: an exit reaches
     # its callback, and a child that can't be watched is reaped.
