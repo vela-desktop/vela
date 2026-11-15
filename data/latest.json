@@ -1,9 +1,9 @@
 {
-  "collected_at": "2026-11-14T10:24:49+00:00",
+  "collected_at": "2026-11-15T10:51:36+00:00",
   "downloads_since_previous_snapshot": 9,
-  "previous_snapshot_date": "2026-11-13",
-  "release_asset_downloads_observed_maxima": 329,
-  "release_asset_downloads_total": 150,
+  "previous_snapshot_date": "2026-11-14",
+  "release_asset_downloads_observed_maxima": 338,
+  "release_asset_downloads_total": 159,
   "release_assets": 12,
   "releases": 2,
   "repository": "vela-desktop/vela",
