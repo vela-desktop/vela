@@ -73,6 +73,17 @@ Window {
             else
                 pinnedSelection = -1
         }
+        // Changing the header's height can leave GridView at the old content
+        // offset, with restored pins above the viewport. Reposition after
+        // the header and delegates have completed their layout. If a keyboard
+        // selection is active in all apps, keep it visible instead: otherwise
+        // Enter could launch a tile outside the viewport.
+        Qt.callLater(() => {
+            if (selecting && pinnedSelection < 0 && grid.currentIndex >= 0)
+                grid.positionViewAtIndex(grid.currentIndex, GridView.Contain)
+            else
+                grid.positionViewAtBeginning()
+        })
     }
 
     // The Start menu is above the taskbar, centered or at the left: from its

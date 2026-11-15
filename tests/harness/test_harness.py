@@ -22,6 +22,52 @@ import zlib
 from harness import Image, PrivateBus, Session, State, TimeoutError
 
 
+class PersistentInput(unittest.TestCase):
+    def run_input(self, reply):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        program = os.path.join(directory, "input")
+        commands = os.path.join(directory, "commands")
+        with open(program, "w") as script:
+            script.write(f"#!{sys.executable}\nimport sys\n"
+                         "for number, line in enumerate(sys.stdin):\n"
+                         f"    with open({commands!r}, 'a') as log: log.write(line)\n"
+                         "    if number == 0: print('OK', flush=True)\n"
+                         f"    else: {reply}\n")
+        os.chmod(program, 0o700)
+        self.enterContext(patch("harness.tool", return_value=program))
+        session = Session()
+        session.client_env = dict(os.environ)
+        return session, commands
+
+    def test_one_keyboard_handles_multiple_actions_and_closes_after_a_failure(self):
+        session, commands = self.run_input("print('OK', flush=True)")
+        with self.assertRaisesRegex(RuntimeError, "test failure"):
+            with session.input_session() as send:
+                send("type", "first")
+                send("key", "Return")
+                raise RuntimeError("test failure")
+        # The initialization appears once, before any panel input, and
+        # cleanup closes stdin even when the caller raises inside the scene.
+        with open(commands) as log:
+            self.assertEqual(log.read(), "sleep\t0\ntype\tfirst\nkey\tReturn\n")
+
+    def test_partial_reply_times_out_and_cleans_up(self):
+        session, _ = self.run_input("sys.stdout.write('O'); sys.stdout.flush()")
+        with patch("harness.TIME_SCALE", 0.02):
+            with self.assertRaisesRegex(TimeoutError, "timed out replying"):
+                with session.input_session() as send:
+                    send("key", "Return")
+
+    def test_refused_actions_and_exited_devices_fail(self):
+        for reply, message in (("print('ERROR', flush=True)", "refused"),
+                               ("sys.exit(0)", "exited before replying")):
+            with self.subTest(reply=reply):
+                session, _ = self.run_input(reply)
+                with self.assertRaisesRegex(AssertionError, message):
+                    with session.input_session() as send:
+                        send("key", "Return")
+
+
 class SessionReconnect(unittest.TestCase):
     def session(self):
         session = Session()
