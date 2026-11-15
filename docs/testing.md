@@ -90,6 +90,13 @@ their profile with friendly errors, a missing program completes and recovers,
 and destroying a model terminates its clients without waiting. No real network
 service is used; sound has its own tests, below.
 
+The `shell-taskbar` and `shell-taskbar-no-effects` suites exercise the production
+taskbar QML offscreen with private service models. They cover nearly full bars
+with 12-hour time and seconds, changing tray icons and status indicators, all
+bar layouts, an oversized tray, navigation by pointer and keyboard, app activation
+and jump lists, model shrinkage and minimize targets inside the app area. They require no GPU; a live desktop
+smoke test is still needed to validate the final appearance.
+
 Audio tests:
 
 ```sh
