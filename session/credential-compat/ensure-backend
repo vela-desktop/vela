@@ -51,6 +51,21 @@ vela_credential_activate_session()
     fi
 }
 
+vela_credential_notify_issue()
+{
+    command -v notify-send >/dev/null 2>&1 || return 0
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+        [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status" 2>/dev/null)" = limited ]; then
+        notify-send -a "Vela Desktop" -u normal -t 20000 \
+            "KWallet: limited compatibility" \
+            "KWallet's native API works, but Secret Service is unavailable. Check Settings > System."
+    else
+        notify-send -a "Vela Desktop" -u critical -t 20000 \
+            "Password manager unavailable" \
+            "Vela could not use the selected password manager. Open Settings > System and check the session log."
+    fi
+}
+
 vela_credential_owner()
 {
     # Do not autoactivate either service while identifying the current owner.
