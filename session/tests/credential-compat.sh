@@ -341,7 +341,11 @@ exit 0
 EOF
 cat > "$mockbin/notify-send" <<'EOF'
 #!/bin/sh
-exit 0
+if [ "${MOCK_ACTION_KIND:-}" = notification ] && [ -f "$MOCK_ACTION_WAIT" ]; then
+    : > "$MOCK_ACTION_SIGNAL"
+    while [ -f "$MOCK_ACTION_WAIT" ]; do /bin/sleep 0.01; done
+fi
+printf '%s\n' "$*" >> "$MOCK_NOTIFICATION_CALLS"
 EOF
 # Pause after token validation, inside the status commit or target action.
 cat > "$mockbin/mktemp" <<'EOF'
@@ -365,7 +369,8 @@ EOF
 chmod 700 "$mockbin/"*
 export PATH="$mockbin:$PATH"
 export MOCK_BUS_CALLS="$tmp/bus-calls" MOCK_SYSTEMCTL_CALLS="$tmp/systemctl-calls"
-export MOCK_SETTINGS_CALLS="$tmp/settings-calls"
+export MOCK_SETTINGS_CALLS="$tmp/settings-calls" MOCK_NOTIFICATION_CALLS="$tmp/notification-calls"
+: > "$MOCK_NOTIFICATION_CALLS"
 : > "$MOCK_SETTINGS_CALLS"
 export MOCK_GRAPHICAL_ACTIVE=0 VELA_SECRET_BACKEND=kwallet VELA_SECRET_CONFIGURED=1
 export WAYLAND_DISPLAY=wayland-73 XDG_CURRENT_DESKTOP=Vela:KDE
@@ -549,11 +554,16 @@ unset MOCK_PROVIDER_WAIT_MARKER MOCK_PROVIDER_SIGNAL
 
 # Logout/new login must serialize with an action already past token validation.
 # A held provider query itself must never hold that lock (covered above).
-for action_kind in target status; do
+for action_kind in target status notification; do
     export MOCK_ACTION_KIND=$action_kind
     export MOCK_ACTION_WAIT="$tmp/hold-$action_kind" MOCK_ACTION_SIGNAL="$tmp/$action_kind-ready"
     : > "$MOCK_ACTION_WAIT"
     old_done="$tmp/$action_kind-worker-done"
+    if [ "$action_kind" = notification ]; then
+        # The mock owner is KWallet: choosing GNOME produces the warning.
+        VELA_SECRET_BACKEND=gnome
+        export VELA_SECRET_BACKEND
+    fi
     start_hook_worker "$old_done"
     old_worker=$worker_pid
     i=0
@@ -581,6 +591,8 @@ for action_kind in target status; do
     wait_hook_worker "$old_worker" "$old_done"
     [ -e "$stop_done" ] && [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
     unset MOCK_ACTION_KIND MOCK_ACTION_WAIT MOCK_ACTION_SIGNAL
+    VELA_SECRET_BACKEND=kwallet
+    export VELA_SECRET_BACKEND
 
     # A new login may begin only after old side effects have been cleaned up.
     # Hold its provider lookup and ensure no stale status/target appears.
@@ -588,6 +600,7 @@ for action_kind in target status; do
     export MOCK_PROVIDER_SIGNAL="$tmp/new-$action_kind-ready"
     : > "$MOCK_PROVIDER_WAIT_MARKER"
     targets_before=$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)
+    notifications_before=$(wc -l < "$MOCK_NOTIFICATION_CALLS")
     new_done="$tmp/new-$action_kind-done"
     start_hook_worker "$new_done"
     new_worker=$worker_pid
@@ -598,6 +611,7 @@ for action_kind in target status; do
     done
     [ -e "$MOCK_PROVIDER_SIGNAL" ]
     [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
+    [ "$(wc -l < "$MOCK_NOTIFICATION_CALLS")" -eq "$notifications_before" ]
     [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$targets_before" ]
     rm -f "$MOCK_PROVIDER_WAIT_MARKER"
     wait_hook_worker "$new_worker" "$new_done"
