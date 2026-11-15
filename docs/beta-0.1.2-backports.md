@@ -97,6 +97,19 @@ provenance is retained in the backport commit messages.
   and left alignment, app actions, navigation, clipping, tray growth, model
   shrinkage, active-app reveal and minimize targets. No theme engine is needed.
 
+## CodeQL review follow-up
+
+The nine path-expression findings on the first backport head are addressed by
+upstream commit `a99584e`: configuration and icon metadata are read through
+checked directory-relative opens. Parent traversal, control characters and
+non-regular files are rejected; existing symlink aliases and close-on-exec
+semantics are retained. The getline error-injection fixture also tracks
+`fdopen`, preserving partial-read and OOM coverage. The original unchecked
+reader fails the added traversal regression.
+
+This corrective follow-up is additional to the 55-PR source inventory above.
+GPU runs remain paused while CodeQL and then CodeRabbit review are completed.
+
 ## Validation and release follow-up
 
 Local validation on this backport tree:
