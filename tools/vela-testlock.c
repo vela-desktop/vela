@@ -273,11 +273,11 @@ int main(int argc, char* argv[])
         }
     }
 
-    // One-shot barrier for crash-before-registration tests. The first locker
-    // consumes the token and waits for its compositor connection to close;
-    // a restarted compositor's new locker proceeds normally.
+    // Hold every locker retry while the original compositor runs. The test
+    // removes the barrier only after stopping that compositor, so a restarted
+    // compositor's locker can proceed.
     const char* barrier = getenv("VELA_TEST_LOCK_REGISTER_BARRIER");
-    if (barrier && unlink(barrier) == 0) {
+    if (barrier && access(barrier, F_OK) == 0) {
         fprintf(stderr, "vela-testlock: registration barrier reached\n");
         struct pollfd socket = { .fd = wl_display_get_fd(display), .events = 0 };
         while (poll(&socket, 1, -1) < 0 && errno == EINTR) {

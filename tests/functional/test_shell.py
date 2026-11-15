@@ -18,7 +18,7 @@ import subprocess
 import time
 import unittest
 
-from harness import BUILD, TIME_SCALE, Image, Session, tool
+from harness import BUILD, TIME_SCALE, Image, Session, input_sleep_ms, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
