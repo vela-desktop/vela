@@ -110,13 +110,54 @@ reader fails the added traversal regression.
 This corrective follow-up is additional to the 55-PR source inventory above.
 GPU runs remain paused while CodeQL and then CodeRabbit review are completed.
 
+## Review slices and follow-up
+
+The oversized preparation diff was split into six draft PRs, each below
+CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
+
+| Slice | PR | Scope | Changed files |
+| --- | --- | --- | ---: |
+| 1 | [#271](https://github.com/vela-desktop/vela/pull/271) | CI, isolation and UI foundations | 90 |
+| 2 | [#272](https://github.com/vela-desktop/vela/pull/272) | OOM recovery and checked metadata | 63 |
+| 3 | [#273](https://github.com/vela-desktop/vela/pull/273) | Allocation migration | 70 |
+| 4 | [#274](https://github.com/vela-desktop/vela/pull/274) | Runtime, render reuse and credentials | 98 |
+| 5 | [#275](https://github.com/vela-desktop/vela/pull/275) | Security, bounded resources and UI fixes | 98 |
+| 6 | [#269](https://github.com/vela-desktop/vela/pull/269) | Inventory and release guidance | 4 |
+
+Before review fixes, the reconstructed tree exactly matched `dae1642b`.
+The subsequent differences address the first two CodeRabbit reviews:
+
+- Correct release prerequisites, crash-recovery wording and fork-rehearsal setup.
+- Publish readiness JSON atomically, clean up launcher process groups, thaw
+  immutable test files before directory removal, and parse input actions with
+  their operands, including after the shared-harness refactor.
+- Use the checked opener for the second `index.theme` reader. A CPU regression
+  rejects a FIFO without blocking and retains valid symlink aliases.
+- Insert the supervisor's lock-state option before `--`; preserve operands.
+- Detect empty/broken damage transforms before history is lost, and keep
+  recovery pending until a replacement frame actually reaches the output.
+  CPU negative controls reject all three former failure paths.
+- Recognize parenthesized null `realpath` arguments, wait for the updater
+  daemon's state acknowledgement, and include Debug-specific ASan flags when
+  configuring preload order and allocation-interposer exclusions.
+- Hold the lock crash fixtures at explicit one-shot barriers and require a
+  confirmed lock-path failure injection. Their GPU execution remains part of
+  the final hardware validation, after all reviews.
+
+These review fixes are additional maintenance corrections, with no expansion
+of the agreed feature scope. GPU workflows remain deferred until the complete
+series has finished review; each current head must pass CodeQL first.
+
 ## Validation and release follow-up
 
 Local validation on this backport tree:
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 363 selected CPU/QML CTest entries pass, including passing reruns of the
-  documentation, reporter and preference fixtures after adapting them to 0.1.
+- 365 selected CPU/QML CTest entries pass after the review corrections, including the
+  documentation, reporter and preference fixtures adapted to 0.1.
+- Debug-only `-fsanitize=address` configuration: the configuration-read test
+  passes with the ASan runtime before the shim; the allocator-interposing
+  damage test is excluded from that instrumented configuration.
 - Updater/package contracts: 220 Python tests, 218 passed and 2 skipped because
   this Arch host selects the pacman backend in Debian-derivative detection cases.
 - The text-rendering RHI shader test passes all 15 font/scale combinations
