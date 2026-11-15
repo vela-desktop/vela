@@ -138,3 +138,10 @@ session target starts after verification; a supervised restart reimports the
 environment and does not start a second provider. The worker checks the login
 token before changing status or stopping its own unit, so an older login cannot
 report or tear down a later login's provider.
+
+Login-state changes and credential side effects share a private runtime `flock`
+(util-linux, already a package dependency). Provider discovery never holds it.
+Status replacement, nonblocking unit requests and session-target activation
+hold it through token validation and the action; logout/new login use the same
+lock. An in-flight old action therefore completes before logout cleans it up,
+and cannot run after the next login begins. The lock file is never unlinked.

@@ -27,6 +27,7 @@
 
 static int fail_watches;
 static int fail_forks;
+static int fail_timers;
 
 struct wl_event_source *__real_wl_event_loop_add_fd(struct wl_event_loop *, int, uint32_t,
     wl_event_loop_fd_func_t, void *);
@@ -39,6 +40,30 @@ struct wl_event_source *__wrap_wl_event_loop_add_fd(struct wl_event_loop *loop, 
         return NULL;
     }
     return __real_wl_event_loop_add_fd(loop, fd, mask, callback, data);
+}
+
+struct wl_event_source *__real_wl_event_loop_add_timer(struct wl_event_loop *,
+    wl_event_loop_timer_func_t, void *);
+struct wl_event_source *__wrap_wl_event_loop_add_timer(struct wl_event_loop *loop,
+    wl_event_loop_timer_func_t callback, void *data)
+{
+    if (fail_timers) {
+        --fail_timers;
+        errno = ENOMEM;
+        return NULL;
+    }
+    return __real_wl_event_loop_add_timer(loop, callback, data);
+}
+
+static void initial_watch_failure_is_reported(struct wl_event_loop *loop)
+{
+    struct vela_child child;
+    vela_child_init(&child, "test-reservation", SIGTERM, -1);
+    fail_timers = 1;
+    assert(!vela_child_start(&child, loop, "exit 0"));
+    assert(!fail_timers && !child.fallback && child.pid == -1 && !child.command);
+    // The caller can reject incomplete startup; no untracked process exists.
+    vela_child_stop(&child);
 }
 
 pid_t __real_fork(void);
@@ -172,6 +197,7 @@ int main(void)
 {
     struct wl_event_loop *loop = wl_event_loop_create();
     assert(loop);
+    initial_watch_failure_is_reported(loop);
     exit_reaches_the_callback(loop);
     fallback_reports_a_child_under_descriptor_pressure(loop);
     automatic_relaunch_survives_setup_failure(loop, false);
