@@ -1156,6 +1156,15 @@ Like Windows 11's menus (WinUI), in the dark theme:
 
 ### 14.4 Taskbar: an app button (jump list)
 
+App buttons share the taskbar with the clock, tray and status indicators. When
+space runs out, Previous apps and Next apps scroll the app buttons within the
+remaining space; Start and Task View stay fixed. The space is recalculated when
+the output width, clock format, tray or indicators change. Scrolled buttons keep
+their activation, middle click, jump lists, previews, volume wheel and drag
+reordering. An app activated elsewhere is brought into view. Hidden apps minimize
+towards the corresponding navigation button. A large tray also scrolls its
+icons, leaving space for app navigation and the clock and status controls.
+
 The menu rising from the button, from top to bottom:
 
 - **Pinned**: files pinned for that app (with the pin on hover to unpin them);
