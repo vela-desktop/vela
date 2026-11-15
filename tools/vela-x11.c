@@ -8,6 +8,7 @@
 //                 [--wine-style HEX] [--wine-backdrop] [--checker]
 //                 [--clicks PATH] [--ask-size] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
+//        vela-x11 --activate XID
 //        vela-x11 --state XID below|skip-taskbar on|off
 //        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
@@ -152,7 +153,7 @@ int main(int argc, char** argv)
             || !strcmp(argv[1], "--override-redirect")))
         || (argc == 5 && !strcmp(argv[1], "--state"))
         || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
-            || !strcmp(argv[1], "--geometry")))
+            || !strcmp(argv[1], "--geometry") || !strcmp(argv[1], "--activate")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
     if (!control) {
@@ -252,6 +253,16 @@ int main(int argc, char** argv)
                 atom(connection, "_WINE_HWND_STYLE"), XCB_ATOM_CARDINAL, 32, 1, &style);
         } else if (!strcmp(argv[1], "--delete-wine-style")) {
             cookie = xcb_delete_property_checked(connection, target, atom(connection, "_WINE_HWND_STYLE"));
+        } else if (!strcmp(argv[1], "--activate")) {
+            xcb_client_message_event_t event = { 0 };
+            event.response_type = XCB_CLIENT_MESSAGE;
+            event.window = target;
+            event.type = atom(connection, "_NET_ACTIVE_WINDOW");
+            event.format = 32;
+            event.data.data32[0] = 1; // application source
+            cookie = xcb_send_event_checked(connection, 0, screen->root,
+                XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
+                (const char*)&event);
         } else if (!strcmp(argv[1], "--override-redirect")) {
             if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
                 fprintf(stderr, "vela-x11: expected on or off\n");

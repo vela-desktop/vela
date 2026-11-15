@@ -220,6 +220,21 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `appearance/accentSource` | `theme` | Where the accent comes from: `theme` (the theme's wish: its `color-source`), `wallpaper` (the wallpaper's color) or `chosen` (`appearance/accent`, the color chosen in Settings > Colors). A theme's own `accent` wins over all three ([Expressive look](#expressive-look)) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
 
+## Window activation
+
+An already-running app cannot raise a background window merely because a
+message arrived. This applies with ordinary windows and fullscreen games.
+Wayland activation requires a single-use token issued with a valid seat input
+serial and the keyboard-focused source surface. A valid grant can be passed
+to another app even after its launcher closes. Legacy X11 activation requests
+carry no such grant, so only the foreground window and its transients may
+request focus while another surface has the keyboard; minimized windows and
+windows on another desktop stay where they are.
+
+Selecting a window by clicking it, the taskbar or Alt+Tab remains explicit
+activation. Initial window mapping keeps the existing new-window behavior.
+This policy does not depend on Do not disturb and has no configuration switch.
+
 ## Display configuration
 
 Persistent display layout is stored separately in:
