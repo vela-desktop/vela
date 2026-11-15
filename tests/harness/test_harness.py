@@ -30,6 +30,38 @@ class InputActionTimeouts(unittest.TestCase):
                                          "up", "right", "click", "sleep", 15)), 25)
 
 
+class RealShellInputTimeouts(unittest.TestCase):
+    def test_sleep_text_through_the_actual_shell_input_session(self):
+        from test_shell import RealShell
+
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        program = os.path.join(directory, "input")
+        commands = os.path.join(directory, "commands")
+        with open(program, "w") as script:
+            script.write(f"#!{sys.executable}\nimport sys\n"
+                         "for line in sys.stdin:\n"
+                         f"    with open({commands!r}, 'a') as log: log.write(line)\n"
+                         "    print('OK', flush=True)\n")
+        os.chmod(program, 0o700)
+        scene = RealShell()
+        scene.vela = Session()  # no start(): this regression needs no compositor
+        scene.vela.client_env = dict(os.environ)
+        with patch("test_shell.tool", return_value=program), patch("harness.tool", return_value=program):
+            with scene.input_session() as send:
+                send("type", "sleep", "key", "Return")
+        with open(commands) as log:
+            self.assertEqual(log.readlines()[-1], "type\tsleep\tkey\tReturn\n")
+
+
+class StopBarrierScheduling(unittest.TestCase):
+    def test_a_held_stop_is_observed_even_after_the_test_process_was_paused(self):
+        from test_session import Supervisor
+
+        with patch("test_session.time.monotonic", side_effect=(0, 10)), \
+                patch("builtins.open", side_effect=lambda *args: io.StringIO("123 (vela-compositor) T 1")):
+            Supervisor()._wait_stopped(123)
+
+
 class PersistentInput(unittest.TestCase):
     def run_input(self, reply):
         directory = self.enterContext(tempfile.TemporaryDirectory())
