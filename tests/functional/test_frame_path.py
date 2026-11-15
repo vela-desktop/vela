@@ -25,12 +25,13 @@ once; this test checks that nothing else in a real frame allocates.
 """
 
 import collections
+import json
 import os
 import subprocess
 import time
 import unittest
 
-from harness import ROOT, Session, tool
+from harness import ROOT, TIME_SCALE, Session, tool
 
 # A client's requests, each with the source line that allocates for it.
 PER_REQUEST = {
@@ -114,13 +115,25 @@ class FramePath(unittest.TestCase):
             self.assertGreater(frames, 30, "the scene must redraw every frame")
             self.check(sites, request_sites, f"{frames} frames of a window and a dmabuf client")
 
-            probe = subprocess.Popen([tool("vela-capture-probe"), "bench-reuse", "1", "0"], env=vela.client_env,
-                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-            vela.clients.append(probe)
+            def capture_probe():
+                probe = subprocess.Popen([tool("vela-capture-probe"), "bench-reuse", "1", "0"], env=vela.client_env,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                vela.clients.append(probe)
+                return probe
+
+            # Readback retains output buffers longer than ordinary drawing.
+            # Warm the actual capture workload through a complete probe, so
+            # a lazily created third swapchain buffer is not measured as a
+            # per-frame allocation (notably on NVIDIA).
+            warmup = capture_probe()
+            output, errors = warmup.communicate(timeout=10 * TIME_SCALE)
+            self.assertEqual(warmup.returncode, 0, errors)
+            self.assertGreater(json.loads(output)["frames"], 30, "capture warm-up must actually copy frames")
+            probe = capture_probe()
             time.sleep(WARM_UP_S / 2)  # the probe captures for 3 s
             sites, frames, readbacks = self.window(vela)
-            probe.communicate(timeout=10)
-            self.assertEqual(probe.returncode, 0)
+            _, errors = probe.communicate(timeout=10 * TIME_SCALE)
+            self.assertEqual(probe.returncode, 0, errors)
             self.assertGreater(frames, 30, "the scene must redraw every frame")
             self.assertGreater(readbacks, 30, "the capture must copy every frame")
             # Each capture allocates for its request: a silent log means the

@@ -106,51 +106,8 @@ class RealShell(unittest.TestCase):
         self.addCleanup(process.wait)
         return process
 
-    @contextmanager
     def input_session(self):
-        """One vela-input (and so one virtual keyboard) for a whole scene.
-
-        A new vela-input per action brings its keymap to the seat: the
-        notification center loses the keyboard and closes, like Start."""
-        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-        pending = bytearray()
-
-        def send(*actions):
-            """Execute a command, allowing its requested sleeps plus I/O overhead."""
-            session.stdin.write("\t".join(map(str, actions)) + "\n")
-            session.stdin.flush()
-            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
-                           if action == "sleep")
-            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
-            # select + os.read also bounds partial replies: TextIO.readline()
-            # can block forever after a process writes a non-newline prefix.
-            while b"\n" not in pending:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
-                    self.fail(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
-                chunk = os.read(session.stdout.fileno(), 4096)
-                if not chunk:
-                    self.fail(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
-                pending.extend(chunk)
-                self.assertLessEqual(len(pending), 4096, "vela-input reply exceeded 4096 bytes")
-            line, _, rest = pending.partition(b"\n")
-            pending[:] = rest
-            self.assertEqual(line.decode("utf-8", errors="replace").strip(), "OK",
-                             f"vela-input refused {actions!r}")
-        try:
-            yield send
-        finally:
-            try:
-                session.stdin.close()
-            except BrokenPipeError:
-                pass  # The process may have already died after a timeout.
-            try:
-                session.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                session.kill()
-                session.wait()
-            session.stdout.close()
+        return self.vela.input_session()
 
     @staticmethod
     def layer(state, namespace):

@@ -13,10 +13,12 @@ Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
 import atexit
+from contextlib import contextmanager
 import json
 import math
 import os
 import re
+import select
 import shutil
 import struct
 import signal
@@ -463,6 +465,54 @@ class Session:
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         finally:
             _profile("input-gestures", time.perf_counter() - began)
+
+    @contextmanager
+    def input_session(self):
+        """One vela-input (and so one virtual keyboard) for a whole scene.
+
+        A new vela-input per action brings its keymap to the seat: the
+        notification center loses the keyboard and closes, like Start."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        pending = bytearray()
+
+        def send(*actions):
+            """Execute a command, allowing its requested sleeps plus I/O overhead."""
+            session.stdin.write("\t".join(map(str, actions)) + "\n")
+            session.stdin.flush()
+            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
+                           if action == "sleep")
+            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
+            # select + os.read also bounds partial replies: TextIO.readline()
+            # can block forever after a process writes a non-newline prefix.
+            while b"\n" not in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
+                    raise TimeoutError(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
+                chunk = os.read(session.stdout.fileno(), 4096)
+                if not chunk:
+                    raise AssertionError(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
+                pending.extend(chunk)
+                if len(pending) > 4096:
+                    raise AssertionError("vela-input reply exceeded 4096 bytes")
+            line, _, rest = pending.partition(b"\n")
+            pending[:] = rest
+            if line.decode("utf-8", errors="replace").strip() != "OK":
+                raise AssertionError(f"vela-input refused {actions!r}")
+        try:
+            send("sleep", 0)  # the device and its keymap exist before a panel takes focus
+            yield send
+        finally:
+            try:
+                session.stdin.close()
+            except BrokenPipeError:
+                pass  # The process may have already died after a timeout.
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                session.kill()
+                session.wait()
+            session.stdout.close()
 
     def randr(self, *args):
         """Configures outputs as Settings > Display does (wlr-output-management)."""

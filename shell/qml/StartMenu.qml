@@ -55,6 +55,28 @@ Window {
     property bool selecting: false
     readonly property bool selectionShown: selecting || search.text.length > 0
     onPinnedChanged: pinnedSelection = Math.min(pinnedSelection, pinned.length - 1)
+    // Search hides pins while one is selected: the
+    // selection moves to the first of all apps, so Enter never launches a
+    // tile that isn't there.
+    onShowPinnedChanged: {
+        if (!showPinned && pinnedSelection >= 0) {
+            if (grid.count > 0)
+                select(0, 0)
+            else
+                pinnedSelection = -1
+        }
+        // Changing the header's height can leave GridView at the old content
+        // offset, with restored pins above the viewport. Reposition after
+        // the header and delegates have completed their layout. If a keyboard
+        // selection is active in all apps, keep it visible instead: otherwise
+        // Enter could launch a tile outside the viewport.
+        Qt.callLater(() => {
+            if (selecting && pinnedSelection < 0 && grid.currentIndex >= 0)
+                grid.positionViewAtIndex(grid.currentIndex, GridView.Contain)
+            else
+                grid.positionViewAtBeginning()
+        })
+    }
 
     // The Start menu is above the taskbar, centered or at the left: from its
     // coordinates to the output's, for right-click menus.

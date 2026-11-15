@@ -110,9 +110,11 @@ class PromptTests(unittest.TestCase):
     def setUp(self):
         self.vela = Session()
         self.vela.start()
-
-    def tearDown(self):
-        self.vela.stop()
+        self.addCleanup(self.vela.stop)
+        # Install the keyboard before showing the prompt, then retain it.
+        # Replacing its keymap while Qt's exclusive layer gains focus can
+        # deliver the first password before the field has keyboard focus.
+        self.vela.input = self.enterContext(self.vela.input_session())
 
     def test_answer_is_sent_and_done_closes(self):
         prompt = Prompt(self.vela)

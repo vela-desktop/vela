@@ -602,7 +602,6 @@ void vela_server_output_rendered(struct vela_server *server, struct vela_output 
 
 void vela_server_animate(struct vela_server *server, int64_t present_ns)
 {
-    vela_xwayland_sync(server);
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         vela_view_update_shape(view); // corners and shadow for the current state
@@ -618,6 +617,10 @@ void vela_server_animate(struct vela_server *server, int64_t present_ns)
     running |= vela_snapshots_tick(server, now_ms, wall_ms);
     running |= vela_snap_tick_preview(server, now_ms);
     running |= vela_workspaces_tick(server, now_ms, wall_ms);
+    // Publish the geometry this frame actually shows, including the last
+    // opening frame. Once an animation retires there may be no later frame
+    // to correct Xwayland's old position.
+    vela_xwayland_sync(server);
     if (running) {
         vela_server_schedule_frames(server);
     }
