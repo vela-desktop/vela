@@ -106,6 +106,7 @@ ListView {
                     height: summaryText.height
                     Text {
                         id: summaryText
+                        objectName: "notificationSummary"
                         width: parent.width - timeText.width - 30
                         text: item.summary
                         textFormat: Text.PlainText // the spec's summary has no markup
@@ -116,6 +117,7 @@ ListView {
                     }
                     Text {
                         id: timeText
+                        objectName: "notificationTime"
                         anchors.right: parent.right
                         anchors.rightMargin: 24
                         text: Qt.formatTime(item.time, list.timeFormat)

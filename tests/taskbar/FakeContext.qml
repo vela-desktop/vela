@@ -40,6 +40,8 @@ QtObject {
         property bool startMenuOpen: false
         signal winXRequested()
         signal showDesktopRequested()
+        signal notificationCenterRequested()
+        signal quickSettingsRequested()
         function now() { return new Date(2026, 10, 15, 23, 59, 59) }
         function shiftHeld() { return false }
         function toggleStartMenu() { startMenuOpen = !startMenuOpen }
@@ -73,6 +75,7 @@ QtObject {
         property bool doNotDisturb: false
         property bool silenced: false
         property QtObject history: QtObject { property int count: 0 }
+        function collectPopups() {}
     }
     property QtObject effects: QtObject { function setBlur(window, rects, radius) {} }
     property QtObject apps: QtObject { function actions(id) { return [] } }

@@ -150,41 +150,17 @@ class Personalization(ShellChoices):
         self.wait_region(box, lambda r: r == counted, "the number back")
         self.check_desktop()
 
-    def test_the_notification_center_follows_the_time_format(self):
-        # A notification's time in the center reads as the taskbar's clock.
+    def test_the_notification_center_opens_after_a_notification(self):
+        # Retain the real popup-to-center interaction on the GPU. The time
+        # format bindings are checked directly by shell-clock-formats.
         test_shell.QtShell.send_notification(self, "Time format", actions="[]", expire_timeout=1500)
         self.vela.wait_for(lambda s: self.layer(s, "vela-notifications"), timeout=8, what="the popup shown")
         self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"), timeout=10, what="the popup gone")
 
-        # Keep the same center instance open while toggling. Closing and
-        # reopening it between screenshots also reruns the entrance animation
-        # and shadow/blur composition, which makes full-region pixel equality
-        # a false oracle for whether the timestamp returned to 24-hour time.
-        # One persistent keyboard preserves focus throughout the interaction.
         with self.input_session() as send:
             send("key", "super+n", "sleep", 900)
-            state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"),
-                                       what="the center open")
-            layer = self.layer(state, "vela-notification-center")
-            # Only the first notification's time label, not the header,
-            # translucent shadows or calendar. NotificationCenter.qml places
-            # the panel at (room, room), its 360px-wide first card below the
-            # 50px header and section label, and timeText at its right edge.
-            room = layer["w"] - 372
-            self.assertGreaterEqual(room, 0)
-            box = (layer["x"] + room + 232, layer["y"] + room + 70, 108, 52)
-            hour24 = self.settled_region(box, still=0.5)
-
-            self.write_shell_conf("[clock]\nhours=12\n")
-            self.wait_region(box, lambda shot: shot != hour24,
-                             "notification timestamp changes to 12-hour format")
-            hour12 = self.settled_region(box, still=0.5)
-            self.assertNotEqual(hour12, hour24, "the 12-hour timestamp never settled to a different image")
-            self.write_shell_conf("[clock]\nhours=24\n")
-            self.wait_region(box, lambda shot: shot == hour24,
-                             "notification timestamp returns to 24-hour format")
-            self.assertEqual(self.settled_region(box, still=0.5), hour24,
-                             "the 24-hour timestamp did not remain stable")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-notification-center"),
+                               what="the center open")
             send("key", "Escape")
             self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"),
                                timeout=5, what="the center closed")

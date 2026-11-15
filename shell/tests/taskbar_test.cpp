@@ -33,6 +33,8 @@ public slots:
         QAccessible::setActive(true);
         vela::test::AccessibleProbe::install();
         vela::controls::install(*engine, Appearance::Mode::Apps);
+        qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(SHELL_STYLE_SOURCE)),
+            "Vela.Shell.Test", 1, 0, "Styles");
         QQmlComponent component(engine, QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/FakeContext.qml")));
         QObject* context = component.create();
         if (!context) {
@@ -44,7 +46,7 @@ public slots:
             const QByteArray property = QByteArray(name).toLower();
             engine->rootContext()->setContextProperty(QLatin1String(name), context->property(property).value<QObject*>());
         }
-        if (qEnvironmentVariable("VELA_TEST_TASKBAR_CONFIG") == QLatin1String("real")) {
+        if (qEnvironmentVariable("VELA_TEST_SHELL_CONFIG") == QLatin1String("real")) {
             QCoreApplication::setOrganizationName(QStringLiteral("Vela"));
             QCoreApplication::setApplicationName(QStringLiteral("vela-shell"));
             QLocale::setDefault(QLocale(QLocale::English, QLocale::UnitedStates));
