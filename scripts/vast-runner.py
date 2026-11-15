@@ -183,11 +183,12 @@ def wait_online(org, runner_id, instance_id):
         if state is None or state.get("actual_status") in ("exited", "offline", "error", "failed"):
             print(f"Instance {instance_id} stopped: {state and state.get('status_msg')}", flush=True)
             return False
-        now = (state.get("actual_status"), (state.get("status_msg") or "").strip()[:200])
+        status = state.get("actual_status")
+        message = (state.get("status_msg") or "").strip()
+        now = (status, message[:200])
         if now != last:
             print(f"  {int(time.monotonic() - start)} s: {now[0]}, {now[1]}", flush=True)
             last = now
-        status, message = now
         if status == "running":
             if running_since is None:
                 running_since = time.monotonic()
