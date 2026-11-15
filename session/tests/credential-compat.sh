@@ -273,6 +273,11 @@ mkdir -p "$mockbin" "$tmp/hook-runtime"
 cat > "$mockbin/systemctl" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_SYSTEMCTL_CALLS"
+if [ "$*" = '--user cat vela-session.target' ] &&
+    [ "${MOCK_ACTION_KIND:-}" = target ] && [ -f "$MOCK_ACTION_WAIT" ]; then
+    : > "$MOCK_ACTION_SIGNAL"
+    while [ -f "$MOCK_ACTION_WAIT" ]; do /bin/sleep 0.01; done
+fi
 case "$*" in
     *'is-active graphical-session.target')
         [ "${MOCK_GRAPHICAL_ACTIVE:-0}" = 1 ] ;;
@@ -337,6 +342,25 @@ EOF
 cat > "$mockbin/notify-send" <<'EOF'
 #!/bin/sh
 exit 0
+EOF
+# Pause after token validation, inside the status commit or target action.
+cat > "$mockbin/mktemp" <<'EOF'
+#!/bin/sh
+if [ "${MOCK_ACTION_KIND:-}" = status ] && [ -f "$MOCK_ACTION_WAIT" ]; then
+    : > "$MOCK_ACTION_SIGNAL"
+    while [ -f "$MOCK_ACTION_WAIT" ]; do /bin/sleep 0.01; done
+fi
+exec /usr/bin/mktemp "$@"
+EOF
+cat > "$mockbin/flock" <<'EOF'
+#!/bin/sh
+if [ -n "${MOCK_LOCK_BLOCKED:-}" ] && [ "$*" = '-x 9' ]; then
+    if /usr/bin/flock -n 9; then
+        exit 0
+    fi
+    : > "$MOCK_LOCK_BLOCKED"
+fi
+exec /usr/bin/flock "$@"
 EOF
 chmod 700 "$mockbin/"*
 export PATH="$mockbin:$PATH"
@@ -522,5 +546,65 @@ done
 [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$((targets_before + 1))" ]
 sh "$hook" stop
 unset MOCK_PROVIDER_WAIT_MARKER MOCK_PROVIDER_SIGNAL
+
+# Logout/new login must serialize with an action already past token validation.
+# A held provider query itself must never hold that lock (covered above).
+for action_kind in target status; do
+    export MOCK_ACTION_KIND=$action_kind
+    export MOCK_ACTION_WAIT="$tmp/hold-$action_kind" MOCK_ACTION_SIGNAL="$tmp/$action_kind-ready"
+    : > "$MOCK_ACTION_WAIT"
+    old_done="$tmp/$action_kind-worker-done"
+    start_hook_worker "$old_done"
+    old_worker=$worker_pid
+    i=0
+    while [ ! -e "$MOCK_ACTION_SIGNAL" ] && [ "$i" -lt 200 ]; do
+        /bin/sleep 0.01
+        i=$((i + 1))
+    done
+    [ -e "$MOCK_ACTION_SIGNAL" ]
+    # The side effect owns the same real lock as login/logout.
+    if /usr/bin/flock -n "$XDG_RUNTIME_DIR/vela-credential-compat.lock" true; then
+        echo "$action_kind action was not serialized" >&2; exit 1
+    fi
+    stop_blocked="$tmp/$action_kind-stop-blocked"
+    stop_done="$tmp/$action_kind-stop-done"
+    ( MOCK_LOCK_BLOCKED="$stop_blocked" sh "$hook" stop; : > "$stop_done" ) &
+    stop_pid=$!
+    i=0
+    while [ ! -e "$stop_blocked" ] && [ "$i" -lt 200 ]; do
+        /bin/sleep 0.01
+        i=$((i + 1))
+    done
+    [ -e "$stop_blocked" ] && [ ! -e "$stop_done" ]
+    rm -f "$MOCK_ACTION_WAIT"
+    wait "$stop_pid"
+    wait_hook_worker "$old_worker" "$old_done"
+    [ -e "$stop_done" ] && [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
+    unset MOCK_ACTION_KIND MOCK_ACTION_WAIT MOCK_ACTION_SIGNAL
+
+    # A new login may begin only after old side effects have been cleaned up.
+    # Hold its provider lookup and ensure no stale status/target appears.
+    export MOCK_PROVIDER_WAIT_MARKER="$tmp/new-$action_kind-provider"
+    export MOCK_PROVIDER_SIGNAL="$tmp/new-$action_kind-ready"
+    : > "$MOCK_PROVIDER_WAIT_MARKER"
+    targets_before=$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)
+    new_done="$tmp/new-$action_kind-done"
+    start_hook_worker "$new_done"
+    new_worker=$worker_pid
+    i=0
+    while [ ! -e "$MOCK_PROVIDER_SIGNAL" ] && [ "$i" -lt 200 ]; do
+        /bin/sleep 0.01
+        i=$((i + 1))
+    done
+    [ -e "$MOCK_PROVIDER_SIGNAL" ]
+    [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
+    [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$targets_before" ]
+    rm -f "$MOCK_PROVIDER_WAIT_MARKER"
+    wait_hook_worker "$new_worker" "$new_done"
+    [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
+    [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$((targets_before + 1))" ]
+    sh "$hook" stop
+    unset MOCK_PROVIDER_WAIT_MARKER MOCK_PROVIDER_SIGNAL
+done
 
 echo "credential selection, prompt/retry/logout safety, owner validation and restart lifecycle OK"

@@ -439,6 +439,12 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     }
     if (startup_command && *startup_command) {
         vela_shell_start(server, startup_command);
+        // A fork failure keeps a reserved retry timer. If even that watch
+        // could not be reserved, fail startup rather than run without a shell.
+        if (!server->shell.fallback) {
+            wlr_log(WLR_ERROR, "Can't supervise the shell: refusing incomplete startup");
+            return false;
+        }
     }
     vela_polkit_agent_start(server);
     // Initial state first: a restarted compositor must not allow pairing

@@ -7,7 +7,9 @@
 > (#246): `VELA_MUST` and the classification of library results, the local
 > paths for descriptor exhaustion, the fallbacks removed with the baseline
 > at zero, and the C++ new handler. Step 6 is done: the frame path draws
-> without allocating, measured on the CPU and on a GPU. Step 7 follows (see
+> without allocating in the CPU fixture. Upstream GPU measurements are
+> historical; exact-revision GPU validation of this backport is pending.
+> Step 7 follows (see
 > "Migration order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
@@ -1044,10 +1046,10 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   The drawing itself is checked on the CPU because its stubbed device is
   deterministic; the session test is there for what a real frame calls
   besides the pass. The headless fixture needs a real GPU (it never falls
-  back to software rendering), and it showed no GPU-specific flakiness:
-  the renderer's persistent arrays (command buffers, semaphores, retired
-  images), which a slower GPU could make grow, stayed at their warmed size
-  in 10 runs of 10 here.
+  back to software rendering). Upstream PR #250 reports initial AMD
+  measurements of the renderer's persistent arrays (command buffers,
+  semaphores and retired images). Those historical measurements are not
+  evidence for this backport. Exact-revision GPU validation remains pending.
 - **Transport bounds:**
   - a Wayland client sends a `preserve_position` larger than the documented
     bound, and the connection is refused by libwayland, not allocated;
