@@ -152,11 +152,15 @@ The subsequent differences address the CodeRabbit reviews:
 - Reject invalid latch timers and pace frame retries when latching is unavailable.
 - Read the last duplicate credential preference and normalize duplicates on save.
   Verify credential providers after the startup hook returns, with login-token
-  guards and session activation held until verification completes.
+  guards and session activation held until verification completes. A shared
+  runtime lock serializes status/unit/target actions with login transitions;
+  tests hold actions after token validation and verify logout waits for cleanup.
 - Synchronize IPC queries with server-side descriptor cleanup, assert the updater's
   completion signal payload, and detect ASan from the effective C++ compiler flags.
   CPU regressions cover these paths; credential mocks wait for worker completion.
-- Remove unpinned historical GPU pass counts from the allocation policy.
+- Reject incomplete compositor startup if shell supervision cannot be reserved.
+- Remove unpinned historical GPU claims from the allocation policy, and attribute
+  upstream measurements without treating them as validation of this backport.
 
 These review fixes are additional maintenance corrections, with no expansion
 of the agreed feature scope. GPU workflows remain deferred until the complete
@@ -167,8 +171,8 @@ series has finished review; each current head must pass CodeQL first.
 Local validation (hardware runs remain deferred):
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 365 selected CPU/QML CTest entries pass on security-slice commit `160635e`
-  after the runtime review fixes; the runtime slice independently passes 350.
+- 365 selected CPU/QML CTest entries pass on security-slice commit `8868189`
+  after the runtime and credential-transition review fixes; the runtime slice independently passes 350.
   This includes documentation, reporter and preference fixtures adapted to 0.1.
 - Debug-only `-fsanitize=address` configuration: the configuration-read test
   passes with the ASan runtime before the shim; the allocator-interposing
