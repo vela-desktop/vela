@@ -841,13 +841,13 @@ class Supervisor(unittest.TestCase):
     def _wait_stopped(self, compositor):
         """Wait for a test barrier's SIGSTOP without advancing the compositor."""
         deadline = time.monotonic() + 5 * TIME_SCALE
-        while time.monotonic() < deadline:
+        while True:
             with open(f"/proc/{compositor}/stat") as stat:
                 state = stat.read().rsplit(")", 1)[1].split()[0]
             if state == "T":
                 return
+            self.assertLess(time.monotonic(), deadline, "compositor did not stop at the test barrier")
             time.sleep(0.005)
-        self.fail("compositor did not stop at the test barrier")
 
     def _crash_stopped(self, compositor, signum):
         os.kill(compositor, signum)
@@ -892,7 +892,7 @@ class Supervisor(unittest.TestCase):
                     vela.wait_for(lambda s: not s["locked"], timeout=8, what="unlocked by the new locker")
 
     def test_crash_while_locking_restarts_locked(self):
-        # The first locker cannot register before its compositor crashes.
+        # Every locker retry is held until its compositor has been stopped.
         for signum in self.CRASHES:
             with self.subTest(signal=signal.Signals(signum).name), tempfile.TemporaryDirectory() as directory:
                 barrier = os.path.join(directory, "registration")
@@ -905,6 +905,7 @@ class Supervisor(unittest.TestCase):
                     vela.wait_for_log("vela-testlock: registration barrier reached")
                     os.kill(compositor, signal.SIGSTOP)
                     self._wait_stopped(compositor)
+                    os.unlink(barrier)
                     self.assertNotIn("vela-testlock: locked", vela.log_text())
                     self._crash_stopped(compositor, signum)
                     vela.wait_for_log("restarting locked")
