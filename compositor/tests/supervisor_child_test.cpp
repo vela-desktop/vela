@@ -33,6 +33,23 @@ TEST(SupervisorChild, ArgumentsDropSuperviseAndAddTheLockState)
     EXPECT_EQ(vela_supervisor_arguments(0, argv, "x", 7, option, sizeof(option)), nullptr);
 }
 
+TEST(SupervisorChild, LockStatePrecedesTheOptionTerminator)
+{
+    char self[] = "vela-compositor", supervise[] = "--supervise", shell[] = "-s";
+    char command[] = "vela-shell", end[] = "--";
+    char *argv[] = { self, supervise, shell, command, end, supervise, nullptr };
+    char option[32];
+    char **arguments = vela_supervisor_arguments(6, argv, self, 7, option, sizeof(option));
+    ASSERT_NE(arguments, nullptr);
+    EXPECT_STREQ(arguments[1], "-s");
+    EXPECT_STREQ(arguments[2], "vela-shell");
+    EXPECT_STREQ(arguments[3], "--lock-state-fd=7");
+    EXPECT_STREQ(arguments[4], "--");
+    EXPECT_STREQ(arguments[5], "--supervise"); // an operand after -- is preserved
+    EXPECT_EQ(arguments[6], nullptr);
+    free(arguments);
+}
+
 // Runs the child preparation in a forked child, as the supervisor does, and
 // reports what the exec'd compositor would see. The child ends with exit(),
 // not _exit(), so that coverage builds record what it ran.

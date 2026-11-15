@@ -42,7 +42,9 @@ for name in ("vela", "Vela"):
     result["outside"][name] = (pathlib.Path(os.environ["XDG_CONFIG_HOME"]) / name / "external").exists()
 for name in ("XDG_CACHE_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CONFIG_HOME", "HOME"):
     (pathlib.Path(os.environ[name]) / "test-write").write_text("private")
-path.write_text(json.dumps(result))
+ready = path.with_name(path.name + ".tmp")
+ready.write_text(json.dumps(result))
+ready.replace(path)
 if os.environ.get("VELA_TEST_ORPHAN") == "1":
     orphan = subprocess.Popen(
         [sys.executable, "-c",
@@ -98,6 +100,21 @@ class PrivateSessionTests(unittest.TestCase):
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
+
+    @staticmethod
+    def stop_launcher(process):
+        """Let the supervisor reap detached clients, then kill its whole group."""
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                pass
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        process.wait(timeout=4)
 
     def run_script(self, name, **variables):
         """Run the selected launcher with per-test environment overrides."""
@@ -220,7 +237,7 @@ class PrivateSessionTests(unittest.TestCase):
         process = subprocess.Popen(
             ["sh", str(SCRIPTS / "run-headless.sh"), str(self.build)],
             env=dict(self.env, VELA_TEST_HOLD="1", VELA_TEST_IGNORE_TERM="1"),
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         try:
             for _ in range(200):
                 if self.output.exists():
@@ -234,9 +251,7 @@ class PrivateSessionTests(unittest.TestCase):
             self.assertEqual(process.returncode, 143, error.decode())
             self.assert_clean()
         finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
+            self.stop_launcher(process)
             process.stdout.close()
             process.stderr.close()
 
@@ -256,7 +271,7 @@ class PrivateSessionTests(unittest.TestCase):
         marker = self.root / "terminated.txt"
         process = subprocess.Popen(["sh", str(SCRIPTS / "run-headless.sh"), str(self.build)],
                                    env=dict(self.env, VELA_TEST_HOLD="1", VELA_TEST_SIGNAL_OUTPUT=str(marker)),
-                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                                   stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
         try:
             for _ in range(200):
                 if self.output.exists():
@@ -271,9 +286,7 @@ class PrivateSessionTests(unittest.TestCase):
             self.assertEqual(marker.read_text(), "terminated")
             self.assert_clean()
         finally:
-            if process.poll() is None:
-                process.kill()
-                process.wait()
+            self.stop_launcher(process)
             process.stdout.close()
             process.stderr.close()
 
@@ -380,7 +393,7 @@ class PrivateSessionTests(unittest.TestCase):
                     ["sh", str(SCRIPTS / "run-nested.sh"), str(self.build)],
                     env=dict(self.env, VELA_TEST_OUTPUT=str(path), VELA_TEST_HOLD="1",
                              VELA_TEST_SIGNAL_OUTPUT=str(marker)),
-                    stdout=subprocess.PIPE, stderr=subprocess.PIPE))
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True))
             for _ in range(200):
                 if all(p.exists() for p in paths):
                     break
@@ -398,8 +411,9 @@ class PrivateSessionTests(unittest.TestCase):
                 try:
                     process.communicate(timeout=5)
                 except subprocess.TimeoutExpired:
-                    process.kill()
+                    self.stop_launcher(process)
                     process.communicate()
+                self.stop_launcher(process)
                 process.stdout.close()
                 process.stderr.close()
         self.assertEqual([p.returncode for p in processes], [143, 143])

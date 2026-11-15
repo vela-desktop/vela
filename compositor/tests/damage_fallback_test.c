@@ -162,7 +162,7 @@ static void test_before_drawing(void)
     unsigned long checked = check_damage_before_drawing(&frame, &whole);
     CHECK(frame.damage_unknown && is_rect(&frame.scene_damage, 0, 0, 640, 480));
     CHECK(scheduled == before + 1);
-    check_damage_after_drawing(&frame, checked); // drawn whole
+    check_damage_after_drawing(&frame, checked, true); // drawn whole
     check_damage_before_drawing(&frame, &whole);
     CHECK(scheduled == before + 1);
     frame_finish(&frame);
@@ -236,7 +236,7 @@ static void test_after_drawing(void)
     // Drawn whole: safe, nothing more to schedule.
     frame_init(&frame);
     unsigned before = scheduled;
-    check_damage_after_drawing(&frame, vela_region_failures);
+    check_damage_after_drawing(&frame, vela_region_failures, true);
     CHECK(vela_output_frame_safe(&frame) && scheduled == before);
     frame_finish(&frame);
 
@@ -245,7 +245,7 @@ static void test_after_drawing(void)
     frame_init(&frame);
     unsigned long checked = vela_region_failures;
     CHECK(!vela_region_ok(0));
-    check_damage_after_drawing(&frame, checked);
+    check_damage_after_drawing(&frame, checked, true);
     CHECK(!vela_output_frame_safe(&frame) && scheduled == before + 1);
     CHECK(frame.region_failures_seen == vela_region_failures);
     const struct wlr_box whole = { 0, 0, 640, 480 };
@@ -254,8 +254,42 @@ static void test_after_drawing(void)
     frame_finish(&frame);
 }
 
+static void test_transform_failure(void)
+{
+    pixman_region32_t source, destination;
+    pixman_region32_init_rect(&source, 1, 1, 5, 5);
+    CHECK(pixman_region32_union_rect(&source, &source, 40, 40, 5, 5));
+    pixman_region32_init(&destination);
+    unsigned long before = vela_region_failures;
+    failing = true;
+    transform_damage(&destination, &source, WL_OUTPUT_TRANSFORM_90, 640, 480);
+    failing = false;
+    CHECK(vela_region_failures > before);
+    CHECK(is_rect(&destination, 0, 0, 480, 640));
+    pixman_region32_fini(&source);
+    pixman_region32_fini(&destination);
+}
+
+static void test_undelivered_recovery_stays_pending(void)
+{
+    struct vela_output_frame frame;
+    frame_init(&frame);
+    frame.damage_unknown = true;
+    unsigned before = scheduled;
+    check_damage_after_drawing(&frame, vela_region_failures, false);
+    CHECK(!vela_output_frame_safe(&frame) && scheduled == before + 1);
+    const struct wlr_box whole = { 0, 0, 640, 480 };
+    check_damage_before_drawing(&frame, &whole);
+    CHECK(is_rect(&frame.scene_damage, 0, 0, 640, 480));
+    check_damage_after_drawing(&frame, vela_region_failures, true);
+    CHECK(vela_output_frame_safe(&frame));
+    frame_finish(&frame);
+}
+
 int main(void)
 {
+    test_transform_failure();
+    test_undelivered_recovery_stays_pending();
     test_culling();
     test_before_drawing();
     test_after_ring();

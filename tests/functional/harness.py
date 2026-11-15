@@ -60,6 +60,27 @@ BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
 from renderer_identity import verify_renderer_vendor
 
 
+def input_sleep_ms(actions):
+    """Count explicit sleep actions, respecting vela-input's operand grammar."""
+    total = 0
+    i = 0
+    while i < len(actions):
+        action = str(actions[i])
+        if action in ("move", "rel"):
+            i += 3
+        elif action in ("key", "keydown", "keyup", "type", "scroll", "sleep"):
+            if action == "sleep" and i + 1 < len(actions):
+                total += int(actions[i + 1])
+            i += 2
+        elif action in ("down", "up", "click"):
+            i += 1
+            if i < len(actions) and str(actions[i]) in ("left", "right", "middle", "back", "forward"):
+                i += 1
+        else:
+            i += 1
+    return total
+
+
 def tool(name):
     return os.path.join(BUILD, "tools", name)
 
@@ -480,8 +501,7 @@ class Session:
             """Execute a command, allowing its requested sleeps plus I/O overhead."""
             session.stdin.write("\t".join(map(str, actions)) + "\n")
             session.stdin.flush()
-            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
-                           if action == "sleep")
+            sleep_ms = input_sleep_ms(actions)
             deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
             # select + os.read also bounds partial replies: TextIO.readline()
             # can block forever after a process writes a non-newline prefix.
