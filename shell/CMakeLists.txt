@@ -302,10 +302,12 @@ if(VELA_BUILD_TOOLS)
     endforeach()
 
     # Exercise the real taskbar layout and pointer targets with private services.
-    qt_add_executable(vela-taskbar-test tests/taskbar_test.cpp ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
-    target_compile_definitions(vela-taskbar-test PRIVATE QUICK_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}/tests/taskbar")
+    qt_add_executable(vela-taskbar-test tests/taskbar_test.cpp src/config.cpp src/config.h
+        ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
+    target_compile_definitions(vela-taskbar-test PRIVATE QUICK_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}/tests/taskbar"
+        SHELL_STYLE_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/qml/Styles.qml")
     target_compile_options(vela-taskbar-test PRIVATE -Wall -Wextra)
-    target_include_directories(vela-taskbar-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
+    target_include_directories(vela-taskbar-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
     target_link_libraries(vela-taskbar-test PRIVATE vela-controls vela-controlsplugin Qt6::QuickTest)
     # Compile the production pieces unchanged, with private Styles and Menus
     # singletons in their module (directory imports cannot resolve singletons).
@@ -315,11 +317,17 @@ if(VELA_BUILD_TOOLS)
         set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name} QT_QML_SINGLETON_TYPE TRUE)
     endforeach()
     qt_add_qml_module(vela-taskbar-test URI Vela.Taskbar.Test VERSION 1.0
-        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml ${taskbar_fakes})
+        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml
+        qml/NotificationCenter.qml qml/NotificationList.qml qml/SmallButton.qml qml/ShadowRoom.qml ${taskbar_fakes})
     add_test(NAME shell-taskbar COMMAND vela-taskbar-test)
     add_test(NAME shell-taskbar-no-effects COMMAND vela-taskbar-test)
     set_tests_properties(shell-taskbar-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-taskbar shell-taskbar-no-effects PROPERTIES TIMEOUT 60)
+
+    # The production taskbar and notification timestamps after real atomic
+    # settings writes, independent of acrylic composition and the GPU driver.
+    add_test(NAME shell-clock-formats COMMAND vela-taskbar-test -input ${PROJECT_SOURCE_DIR}/tests/clock)
+    set_tests_properties(shell-clock-formats PROPERTIES TIMEOUT 60 ENVIRONMENT "VELA_TEST_SHELL_CONFIG=real")
 
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h

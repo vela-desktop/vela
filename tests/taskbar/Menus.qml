@@ -12,7 +12,9 @@ QtObject {
     property string panelScreen: ""
     property bool notificationCenterOpen: false
     property bool quickSettingsOpen: false
+    property bool isOpen: false
     property var entries: []
     function setTrayAnchors(screen, anchors) {}
+    function placeTrayPanel(window, anchor, x, width) {}
     function open(items, x, y, options) { entries = items }
 }

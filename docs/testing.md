@@ -57,6 +57,16 @@ CPU tests of the harness and scripts are included in CTest even on GPU-less CI.
 PNG decoding is checked with fixed encoded rows and independently specified
 pixels, including Paeth tie breaking and byte wraparound.
 
+`shell-clock-formats` loads the production taskbar and notification center with
+the real shell `Config` and fixed times. It atomically replaces a private
+`vela-shell.conf` and checks the displayed 12/24-hour text, seconds and restored
+clock width, with and without the date. Notification timestamps cover midnight,
+noon, afternoon and late evening, retain their delegate across format changes,
+and remain without seconds when taskbar seconds are enabled. These format checks
+run offscreen rather than requiring pixel equality across the tray or acrylic
+background. The GPU personalization suite retains the live ticking-clock,
+date-visibility and popup-to-notification-center interaction checks.
+
 ## Run a subset
 
 Compositor unit tests:

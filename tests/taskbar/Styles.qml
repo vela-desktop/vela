@@ -4,8 +4,10 @@
 pragma Singleton
 
 import QtQuick
+import Vela.Shell.Test as ShellTest
 
 QtObject {
+    readonly property QtObject notifications: ShellTest.Styles.notifications
     property QtObject taskbar: QtObject {
         property int height: 48
         property bool floating: false
