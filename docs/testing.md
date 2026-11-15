@@ -188,6 +188,40 @@ python3 tests/functional/run.py --sharpness
 
 The sharpness check additionally needs NumPy and Pillow available to `python3`.
 
+### Process launching
+
+The `process-launch-environment` test exercises actual synchronous and detached
+child processes, preserving user overrides and unrelated environment variables.
+It links Qt Core only and also covers empty overrides and environment changes
+after initialization.
+The same process object is also reused across all supported start forms to check
+that new activation tokens reach every child. The CPU-only `shell-service-menus`
+suite rejects empty service-menu commands and checks real launches preserve the
+selected paths and working directory.
+Packaging tests reject UI launch sites that bypass the environment policy.
+
+### Settings preferences
+
+`settings-preferences` covers missing and broken folder openers with private
+helpers instead of opening a real file manager. It also covers failed and
+successful shell preference writes, both existing and absent keys, multi-key
+wallpaper and Start icon choices, and pending `QSettings` changes surviving a
+failure. Serialization is staged outside the live settings cache, and a separate
+writer checks that recovery never replays a failed update or rollback over a
+newer external choice. A separate reader process checks the persisted file after
+recovery, independent of the shared settings cache.
+
+Real Vela switches and Settings drop-downs are exercised offscreen with refused
+writes and then successful retries; appearance helpers are private probes. The
+suite also checks busy writers, independent shell/compositor errors and existing
+compositor rollback. Theme, style and Reset tests keep Undo available after a
+successful compositor save. This also applies while a shell save error is still
+displayed.
+
+The additional read-only-file case skips when running as root, which bypasses
+Unix permissions. Directory-path blockers cover failed writes on root CI runners
+too.
+
 ### Qt Quick text rendering
 
 ```sh
@@ -196,37 +230,14 @@ build/common/vela-text-rendering-test --capture-dir /tmp/vela-text-frames
 ```
 
 The RHI readback test requires Qt >= 6.6; Vela production still supports Qt
-6.5. CMake omits only this test on older Qt versions. The independent
-`process-launch-environment` test exercises actual synchronous and detached
-child processes, preserving user overrides and unrelated environment variables.
-It links Qt Core only and also covers empty overrides and environment changes
-after initialization.
-The same process object is also reused across all supported start forms to check
-that new activation tokens reach every child. The CPU-only `shell-service-menus`
-suite rejects empty service-menu commands and checks real launches preserve the
-selected paths and working directory. `settings-preferences` covers missing and
-broken folder openers with private helpers instead of opening a real file manager.
-Packaging tests reject UI launch sites that bypass the environment policy.
+6.5. CMake omits only this test on older Qt versions.
 
-`settings-preferences` also covers failed and successful shell preference writes,
-both existing and absent keys, multi-key wallpaper and Start icon choices, and
-pending `QSettings` changes surviving a failure. Serialization is staged outside
-the live settings cache, and a separate writer checks that recovery never replays
-a failed update or rollback over a newer external choice. A separate reader process checks
-the persisted file after recovery, independent of the shared settings cache.
-Real Vela switches and Settings drop-downs are exercised offscreen with refused
-writes and then successful retries; appearance helpers are private probes. The
-suite also checks busy writers, independent shell/compositor errors and existing
-compositor rollback. Theme, style and Reset tests keep Undo available after a
-successful compositor save while a shell save error is still displayed. The additional read-only-file case skips when running as root, which
-bypasses Unix permissions; directory-path blockers cover failed writes on root
-CI runners too.
-
-This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
-using `QQuickRenderControl`, an explicit render target and synchronous readback.
-It does not use Qt Quick's software painter, which cannot reproduce the native
-glyph shader's snapping. Mesa software OpenGL is supported; if an OpenGL RHI
-context cannot be initialized, the test returns 77 (skipped).
+`text-rendering-rhi` runs the explicitly initialized production text policy
+through the OpenGL RHI glyph shaders using `QQuickRenderControl`, an explicit
+render target and synchronous readback. It does not use Qt Quick's software
+painter, which cannot reproduce the native glyph shader's snapping. Mesa software
+OpenGL is supported; if an OpenGL RHI context cannot be initialized, the test
+returns 77 (skipped).
 
 At 100%, 125%, 150%, 175% and 200%, for 12, 14 and 18 px text, it
 checks neutral white coverage with transparent alpha/premultiplication,
