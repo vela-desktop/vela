@@ -125,6 +125,12 @@ git push <fork-remote> :refs/tags/v0.x.y
 then push the tag again. `publish-beta` refuses to replace published
 bytes, and an unchanged tag does not start the pipeline. This works
 because immutable releases are off on the fork; never enable them there.
+For each rehearsal container, edit the installed `vela-update-beta` helper:
+`/usr/lib/vela/vela-update-beta` on Arch, or
+`/usr/libexec/vela/vela-update-beta` on Fedora and Ubuntu. Change its hard-coded
+`REPO=vela-desktop/vela` line to `REPO=<owner>/<fork>` before running the checks.
+An environment variable does not override that assignment. Restore the official
+helper before using that container for official updates.
 Then check:
 
 - a rerun of `publish-beta` keeps the published assets unchanged;

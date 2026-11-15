@@ -57,7 +57,8 @@ desktop feel less modern.
 - **Settings:** displays, sound, network, Bluetooth, input, personalization,
   accessibility and updates.
 - **Session:** a secure lock screen, an authorization prompt for administrator actions,
-  and recovery from compositor, shell and GPU crashes without losing your windows.
+  and recovery from compositor, shell and GPU crashes. Windows stay open after a
+  shell crash; after a compositor or GPU restart, Qt and KDE applications reconnect.
 
 The [feature list](docs/features.md) has the details and more screenshots.
 
@@ -72,7 +73,7 @@ Install the prerequisites for your distribution:
 |---|---|
 | Arch Linux, CachyOS, EndeavourOS | `sudo pacman -S --needed git curl base-devel cosign` |
 | Fedora 44 and 45 | `sudo dnf install git curl rpm-build dnf5-plugins`, plus the [upstream Cosign RPM](docs/installation.md#fedora-44-and-45) |
-| Ubuntu 26.10 (with *universe*) | `sudo apt install git ca-certificates sudo cosign` |
+| Ubuntu 26.10 (with *universe*) | `sudo apt install git curl ca-certificates sudo cosign` |
 
 Then install the current Beta and choose **Vela** at the login screen:
 

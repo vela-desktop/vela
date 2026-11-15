@@ -19,7 +19,15 @@ import unittest
 from unittest.mock import Mock, patch
 import zlib
 
-from harness import Image, PrivateBus, Session, State, TimeoutError
+from harness import Image, PrivateBus, Session, State, TimeoutError, input_sleep_ms
+
+
+class InputActionTimeouts(unittest.TestCase):
+    def test_action_words_used_as_operands_do_not_extend_the_timeout(self):
+        self.assertEqual(input_sleep_ms(("type", "sleep", "key", "Return")), 0)
+        self.assertEqual(input_sleep_ms(("type", "sleep", "sleep", 75, "key", "sleep")), 75)
+        self.assertEqual(input_sleep_ms(("move", 20, 30, "down", "sleep", 10,
+                                         "up", "right", "click", "sleep", 15)), 25)
 
 
 class PersistentInput(unittest.TestCase):
@@ -50,6 +58,13 @@ class PersistentInput(unittest.TestCase):
         # cleanup closes stdin even when the caller raises inside the scene.
         with open(commands) as log:
             self.assertEqual(log.read(), "sleep\t0\ntype\tfirst\nkey\tReturn\n")
+
+    def test_action_words_can_be_typed_without_becoming_timeout_commands(self):
+        session, commands = self.run_input("print('OK', flush=True)")
+        with session.input_session() as send:
+            send("type", "sleep", "key", "Return")
+        with open(commands) as log:
+            self.assertEqual(log.read(), "sleep\t0\ntype\tsleep\tkey\tReturn\n")
 
     def test_partial_reply_times_out_and_cleans_up(self):
         session, _ = self.run_input("sys.stdout.write('O'); sys.stdout.flush()")

@@ -21,12 +21,20 @@ char **vela_supervisor_arguments(int argc, char **argv, const char *self, int lo
     char **arguments = VELA_NEW_N(char *, (size_t)argc + 2);
     int count = 0;
     arguments[count++] = (char *)self;
+    bool options = true;
     for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--supervise") != 0) {
-            arguments[count++] = argv[i];
+        if (options && strcmp(argv[i], "--supervise") == 0) {
+            continue;
         }
+        if (options && strcmp(argv[i], "--") == 0) {
+            arguments[count++] = option;
+            options = false;
+        }
+        arguments[count++] = argv[i];
     }
-    arguments[count++] = option;
+    if (options) {
+        arguments[count++] = option;
+    }
     arguments[count] = NULL;
     return arguments;
 }

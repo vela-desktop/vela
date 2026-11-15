@@ -1039,6 +1039,23 @@ static bool region_valid(pixman_region32_t *region)
     return pixman_region32_selfcheck(region);
 }
 
+// wlroots returns void and can turn nonempty damage into a valid empty
+// region on OOM. Preserve full damage before it reaches the history ring.
+static void transform_damage(pixman_region32_t *destination, const pixman_region32_t *source,
+    enum wl_output_transform transform, int width, int height)
+{
+    bool valid_source = region_valid(source);
+    bool had_damage = pixman_region32_not_empty(source);
+    if (valid_source) {
+        wlr_region_transform(destination, source, transform, width, height);
+    }
+    if (!valid_source || !region_valid(destination) || (had_damage && !pixman_region32_not_empty(destination))) {
+        vela_region_ok(false);
+        bool rotated = transform & WL_OUTPUT_TRANSFORM_90;
+        region_set_whole(destination, rotated ? height : width, rotated ? width : height);
+    }
+}
+
 // The three damage checks of vela_output_frame_render, each covering the
 // failures since the previous one (docs/memory-allocation-policy.md,
 // "Design for (4)"). They return the failure count they checked up to.
@@ -1091,12 +1108,16 @@ static unsigned long check_damage_after_ring(struct vela_output_frame *frame, un
 // After drawing: a failure while drawing (a clip region in the pass) can
 // leave parts of the buffer undrawn. The frame is not safe, and the next
 // one, scheduled now even if nothing else changes, redraws everything.
-static void check_damage_after_drawing(struct vela_output_frame *frame, unsigned long checked)
+static void check_damage_after_drawing(struct vela_output_frame *frame, unsigned long checked, bool delivered)
 {
-    bool drawn_whole = vela_region_failures == checked;
+    bool drawn_whole = delivered && vela_region_failures == checked;
     if (!drawn_whole) {
-        wlr_log(WLR_ERROR, "%s: drawing hit a failed region operation; redrawing the whole output",
-            frame->output->name);
+        if (vela_region_failures != checked) {
+            wlr_log(WLR_ERROR, "%s: drawing hit a failed region operation; redrawing the whole output",
+                frame->output->name);
+        } else {
+            wlr_log(WLR_ERROR, "%s: frame was not delivered; redrawing the whole output", frame->output->name);
+        }
         vela_output_schedule_frame(frame->owner);
     }
     frame->damage_unknown = !drawn_whole;
@@ -1420,12 +1441,14 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
 
     if (!wlr_output_configure_primary_swapchain(output, state, &output->swapchain)) {
         frame->delivered = previous_delivery;
+        check_damage_after_drawing(frame, checked_failures, false);
         wlr_output_state_finish(&own);
         return false;
     }
     struct wlr_buffer *buffer = wlr_swapchain_acquire(output->swapchain);
     if (!buffer) {
         frame->delivered = previous_delivery;
+        check_damage_after_drawing(frame, checked_failures, false);
         wlr_output_state_finish(&own);
         return false;
     }
@@ -1439,15 +1462,15 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
     // The ring requires buffer coordinates, including its full damage for a
     // newly acquired buffer. Never rotate that implicit full damage as though
     // it were upright: a rectangular portrait output would lose a strip.
-    wlr_region_transform(&frame_damage, &frame->scene_damage, to_buffer, width, height);
+    transform_damage(&frame_damage, &frame->scene_damage, to_buffer, width, height);
     wlr_damage_ring_add(&frame->ring, &frame_damage);
     pixman_region32_clear(&frame->scene_damage);
     vela_region_ok(pixman_region32_copy(&frame_damage, &frame->ring.current));
     wlr_damage_ring_rotate_buffer(&frame->ring, buffer, &buffer_damage);
     // Blur dependencies live in upright scene coordinates.
-    wlr_region_transform(&buffer_damage, &buffer_damage, transform, buffer->width, buffer->height);
+    transform_damage(&buffer_damage, &buffer_damage, transform, buffer->width, buffer->height);
     expand_damage_for_blur(elements, &buffer_damage);
-    wlr_region_transform(&buffer_damage, &buffer_damage, to_buffer, width, height);
+    transform_damage(&buffer_damage, &buffer_damage, to_buffer, width, height);
 
     // The damage ring may contain rectangles outside the output (for example
     // when a window crosses a monitor edge). Only valid buffer coordinates
@@ -1569,7 +1592,7 @@ bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double
         // does not mean the gamma LUT was applied.
         night_color_commit_failed(frame);
     }
-    check_damage_after_drawing(frame, drawing_failures);
+    check_damage_after_drawing(frame, drawing_failures, ok);
     pixman_region32_fini(&frame_damage);
     pixman_region32_fini(&buffer_damage);
     return ok;

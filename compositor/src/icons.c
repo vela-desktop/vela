@@ -338,7 +338,8 @@ struct theme_dir {
 static int theme_dirs(const char *index, struct theme_dir **out)
 {
     *out = NULL;
-    FILE *file = fopen(index, "re");
+    bool missing = false;
+    FILE *file = vela_config_open(index, &missing);
     if (!file) {
         return 0;
     }
