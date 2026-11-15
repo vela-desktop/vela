@@ -14,6 +14,16 @@ vulnerability, follow [SECURITY.md](../SECURITY.md).
 | Xwayland | Ordinary windows only: X11 apps capture the screen through the portal. |
 | Other users | None. |
 
+## Configuration and icon metadata paths
+
+The session user chooses the XDG configuration and data roots. Configuration
+and icon INI/desktop metadata are read through directory descriptors, with
+each subsequent filename component checked before `openat`. Parent (`..`)
+components and control characters are refused. Ordinary symlink aliases,
+duplicate separators and `.` components remain supported for dotfile managers.
+The final inode must be a regular file; a FIFO is opened nonblocking and
+rejected without waiting for a writer. Read descriptors are close-on-exec.
+
 ## Command socket
 
 `$XDG_RUNTIME_DIR/vela-$WAYLAND_DISPLAY.sock` acts on the whole session

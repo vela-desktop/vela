@@ -208,6 +208,7 @@ Item {
             const apps = child(b, "taskbarApps")
             const tray = child(b, "taskbarTray")
             tryVerify(() => tray.overflowing)
+            verify(apps.viewportWidth >= 44, "tray leaves room for at least one app")
             separated(b)
             reachLast(b)
             const next = findChild(tray, "nextApps")

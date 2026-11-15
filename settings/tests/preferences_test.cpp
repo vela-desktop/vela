@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// Settings' Preferences (src/preferences.h), Personalization's choices that
+// Settings' Preferences (src/preferences.h), the 0.1 shell choices that
 // live in vela-shell.conf: what they read, the keys they write, when they
 // say they changed. Everything is in a directory of its own (the XDG
 // directories, the runtime directory with no compositor's socket in it), and
@@ -145,11 +145,6 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
-    /** Missing desktop helpers must produce a diagnostic without opening another app. */
-
-    /** An executable whose interpreter is unavailable must report its launch failure. */
-
-    /** The external opener receives the requested surface directory as one argument. */
 
     void init()
     {
@@ -157,13 +152,6 @@ private slots:
         // The apps' mode set: otherwise Preferences asks gsettings.
         write("[appearance]\nappTheme=dark\n");
     }
-
-
-
-    // docs/battery-notifications.md §6.
-
-
-
 
     void shellWriteFailure_data()
     {
@@ -240,8 +228,6 @@ private slots:
         QCOMPARE(member.read(&reloaded), value);
     }
 
-
-
     void wallpaperFailureKeepsThePictureAndHistoryTogether()
     {
         const QString oldPicture = makeFile(QStringLiteral("saved-wallpaper.png"));
@@ -260,7 +246,7 @@ private slots:
         prefs.setShowDesktopCorner(false);
         expectFreshShell({ { QStringLiteral("appearance/wallpaper"), oldPicture },
             { QStringLiteral("appearance/recentWallpapers"), recent },
-            { QStringLiteral("taskbar/showDesktopCorner"), true } });
+            { QStringLiteral("taskbar/showDesktopCorner"), false } });
         prefs.reload();
         QCOMPARE(prefs.wallpaper(), oldPicture);
         prefs.setWallpaper(newPicture);
