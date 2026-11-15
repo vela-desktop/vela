@@ -275,14 +275,24 @@ int main(void)
     serial = focus_client(&clients[0], 0);
     request_token(&clients[0], true, true, serial);
     wl_surface_destroy(clients[0].surface);
+    clients[0].surface = NULL;
     pump(&clients[0]);
     surfaces[0] = NULL;
     activate(&clients[1], clients[0].token, true);
     activate(&clients[1], clients[0].token, false);
 
+    // Release client-side protocol proxies before disconnecting their displays.
+    // wl_display_disconnect() alone does not free these allocations.
+    for (int i = 0; i < 2; ++i) {
+        if (clients[i].surface) {
+            wl_surface_destroy(clients[i].surface);
+        }
+        xdg_activation_v1_destroy(clients[i].activation);
+        wl_seat_destroy(clients[i].seat);
+        wl_compositor_destroy(clients[i].compositor);
+        wl_display_disconnect(clients[i].display);
+    }
     vela_activation_finish(&server);
-    wl_display_disconnect(clients[0].display);
-    wl_display_disconnect(clients[1].display);
     wl_display_destroy_clients(server.display);
     wl_display_destroy(server.display);
     puts("activation: background requests denied; foreground grants preserved");
