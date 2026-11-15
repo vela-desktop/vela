@@ -16,6 +16,7 @@
 
 #include "view.h"
 
+#include "activation.h"
 #include "alloc/alloc.h"
 #include "interact.h"
 #include "focus.h"
@@ -826,7 +827,7 @@ static void handle_request_minimize(struct wl_listener *listener, void *data)
 static void handle_request_activate(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_activate);
-    vela_focus_new_view(view->server, view);
+    vela_activation_request_x11(view);
 }
 
 static void handle_set_title(struct wl_listener *listener, void *data)

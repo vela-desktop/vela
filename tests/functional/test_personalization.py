@@ -13,7 +13,7 @@ import tempfile
 import time
 import unittest
 
-from harness import BUILD, Session
+from harness import BUILD, TIME_SCALE, Session
 import test_shell
 
 LOCK = os.path.join(BUILD, "lock", "vela-lock")
@@ -56,7 +56,7 @@ class ShellChoices(test_shell.RealShell):
     def settled_region(self, box, still=1.0, timeout=15):
         """The region once it stops changing for `still` seconds: at startup
         the bar takes the wallpaper's tint and the tray fills in."""
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         last, since = self.region(*box), time.monotonic()
         while time.monotonic() < deadline:
             time.sleep(0.25)
@@ -78,7 +78,12 @@ class ShellChoices(test_shell.RealShell):
         box = self.clock_box()
         before = self.settled_region(box)
         self.write_shell_conf(f"[{key.split('/')[0]}]\n{key.split('/')[1]}={off}\n")
-        changed = self.wait_region(box, lambda r: r != before, f"the clock with {key}={off}")
+        self.wait_region(box, lambda r: r != before, f"the clock with {key}={off}")
+        # A changed frame can still contain the old layout or tint while Qt
+        # resizes the clock and its neighbours. Finish that transition before
+        # replacing the configuration again.
+        changed = self.settled_region(box)
+        self.assertNotEqual(changed, before, f"the clock with {key}={off} did not stay changed")
         self.write_shell_conf(f"[{key.split('/')[0]}]\n{key.split('/')[1]}={on}\n")
         self.wait_region(box, lambda r: r == before, f"the clock with {key}={on} again")
         return before, changed
@@ -287,22 +292,20 @@ class Personalization(ShellChoices):
             file.write("[Desktop Entry]\nType=Application\nName=Pinned Files\nExec=true\nIcon=system-file-manager\n")
         time.sleep(1.0) # the app list sees it
 
-        def middle():
-            layer = self.open_start()
-            # Between the search box (its caret blinks) and the footer.
-            box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
-            shot = self.region(*box)
-            self.close_start()
-            return shot
-
-        shown = middle()
+        # Keep the same panel open while Settings changes it. Reopening can
+        # compare different entrance/hover frames instead of the pinned apps.
+        self.vela.input("move", 0, 0)
+        layer = self.open_start()
+        # Between the search box (its caret blinks) and the footer.
+        box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
+        shown = self.settled_region(box)
         self.write_shell_conf("[start]\nshowPinned=false\n")
-        time.sleep(1.0)
-        hidden = middle()
-        self.assertTrue(shown != hidden, "Start looks the same with its pinned apps hidden")
+        self.wait_region(box, lambda r: r != shown, "Start without its pinned apps")
+        hidden = self.settled_region(box)
+        self.assertNotEqual(shown, hidden, "Start looks the same with its pinned apps hidden")
         self.write_shell_conf("[start]\nshowPinned=true\n")
-        time.sleep(1.0)
-        self.assertTrue(middle() == shown, "the pinned apps didn't come back")
+        self.wait_region(box, lambda r: r == shown, "the pinned apps back in Start")
+        self.close_start()
         self.check_desktop()
 
 

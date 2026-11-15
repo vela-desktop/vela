@@ -5,7 +5,7 @@
 // budget and image-extent tests (docs/memory-allocation-policy.md, point 6;
 // tests/functional/test_uploads.py).
 //
-// Usage: vela-bigbuffer [--dmabuf] [--next-after MS] [--every-frame] [--app-id ID]
+// Usage: vela-bigbuffer [--dmabuf] [--next-after MS] [--every-frame|--burst] [--app-id ID]
 //                       WIDTH HEIGHT [WINDOW_WIDTH WINDOW_HEIGHT]
 //
 // Opens a window of WINDOW_WIDTH x WINDOW_HEIGHT (default 512x256; the
@@ -19,6 +19,9 @@
 // --next-after MS: MS after version 0 is released (copied), commits version 1.
 // --every-frame: from version 1 on, commits a new version at every frame
 //   callback, into whichever of two buffers the compositor has released.
+// --burst: prepares both free buffers before committing them together, with
+//   one frame callback per burst. Painting on a slow CPU cannot space the
+//   commits far enough apart to avoid replacing a pending upload.
 // --dmabuf: instead, one linear dmabuf (GBM, on the compositor's device)
 //   that claims to be WIDTH x HEIGHT: the memory behind it is as large as
 //   that needs, whatever the device's limits; nothing is drawn in it.
@@ -69,6 +72,7 @@ struct buffer {
 static struct buffer buffers[2];
 static int nextVersion = 1;
 static int everyFrame;
+static int burst;
 static int nextAfterMs = -1;
 static int64_t nextAt; // CLOCK_MONOTONIC ns; 0: not yet
 static int finished;
@@ -111,17 +115,17 @@ static void onRelease(void* data, struct wl_buffer* wl)
 
 static const struct wl_buffer_listener bufferListener = { onRelease };
 
-static void commitBuffer(struct buffer* b);
+static void commitBuffer(struct buffer* b, int requestFrame);
 
 static void onFrame(void* data, struct wl_callback* callback, uint32_t time);
 static const struct wl_callback_listener frameListener = { onFrame };
 
-static void commitBuffer(struct buffer* b)
+static void commitBuffer(struct buffer* b, int requestFrame)
 {
     b->busy = 1;
     wl_surface_attach(surface, b->wl, 0, 0);
     wl_surface_damage_buffer(surface, 0, 0, INT32_MAX, INT32_MAX);
-    if (everyFrame) {
+    if (requestFrame) {
         wl_callback_add_listener(wl_surface_frame(surface), &frameListener, NULL);
     }
     wl_surface_commit(surface);
@@ -130,15 +134,24 @@ static void commitBuffer(struct buffer* b)
 
 static void commitNext(void)
 {
+    if (burst && !buffers[0].busy && !buffers[1].busy) {
+        // Fill before either commit is flushed to the server. Each version
+        // remains a real, fully damaged buffer with its own release event.
+        paint(&buffers[0], nextVersion++);
+        paint(&buffers[1], nextVersion++);
+        commitBuffer(&buffers[0], 0);
+        commitBuffer(&buffers[1], 1);
+        return;
+    }
     for (int i = 0; i < 2; ++i) {
         struct buffer* b = &buffers[(nextVersion + i) % 2];
-        if (!b->busy) {
+        if (!burst && !b->busy) {
             paint(b, nextVersion++);
-            commitBuffer(b);
+            commitBuffer(b, everyFrame);
             return;
         }
     }
-    // Both still held: try again at the next frame.
+    // Not enough free buffers: try again at the next frame.
     wl_callback_add_listener(wl_surface_frame(surface), &frameListener, NULL);
     wl_surface_commit(surface);
 }
@@ -230,7 +243,7 @@ static void onSurfaceConfigure(void* data, struct xdg_surface* xdgSurface, uint3
     if (!configured) {
         configured = 1;
         paint(&buffers[0], 0);
-        commitBuffer(&buffers[0]);
+        commitBuffer(&buffers[0], everyFrame);
     } else {
         wl_surface_commit(surface);
     }
@@ -278,6 +291,8 @@ int main(int argc, char** argv)
             dmabuf = 1;
         } else if (!strcmp(argv[i], "--every-frame")) {
             everyFrame = 1;
+        } else if (!strcmp(argv[i], "--burst")) {
+            everyFrame = burst = 1;
         } else if (!strcmp(argv[i], "--next-after") && i + 1 < argc) {
             nextAfterMs = atoi(argv[++i]);
         } else if (!strcmp(argv[i], "--app-id") && i + 1 < argc) {
@@ -285,7 +300,7 @@ int main(int argc, char** argv)
         } else if (sizeCount < 4 && atoi(argv[i]) > 0) {
             sizes[sizeCount++] = atoi(argv[i]);
         } else {
-            fprintf(stderr, "usage: vela-bigbuffer [--dmabuf] [--next-after MS] [--every-frame] [--app-id ID] "
+            fprintf(stderr, "usage: vela-bigbuffer [--dmabuf] [--next-after MS] [--every-frame|--burst] [--app-id ID] "
                             "WIDTH HEIGHT [WINDOW_WIDTH WINDOW_HEIGHT]\n");
             return 2;
         }
