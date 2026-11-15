@@ -72,6 +72,14 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
 
+## Saving settings
+
+If Settings cannot save a choice, it identifies the affected configuration file
+and keeps the saved value selected. Wallpaper and its recent-image list are
+saved together. App-mode changes reach GTK and KDE only after the shell
+configuration is saved. Shell and compositor errors are independent; a
+successful write clears the error for that file.
+
 ## Window activation
 
 An already-running app cannot raise a background window merely because a
