@@ -204,6 +204,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice device, VkBuffer buff
     VkDeviceSize offset) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image,
     VkImageLayout layout, uint32_t count, const VkBufferImageCopy *regions) { abort(); }
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyImage(VkCommandBuffer cmd, VkImage src, VkImageLayout src_layout, VkImage dst,
+    VkImageLayout dst_layout, uint32_t count, const VkImageCopy *regions) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyImageToBuffer(VkCommandBuffer cmd, VkImage image, VkImageLayout layout,
     VkBuffer buffer, uint32_t count, const VkBufferImageCopy *regions) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdResetQueryPool(VkCommandBuffer cmd, VkQueryPool pool, uint32_t first,
@@ -367,6 +369,7 @@ static void fixture_init(struct fixture *f)
     f->shm->image = HANDLE(VkImage);
     f->shm->view = HANDLE(VkImageView);
     f->shm->memory = HANDLE(VkDeviceMemory);
+    f->shm->uploaded = true; // as if its buffer had been copied: drawn
     f->imported = new_texture(r, format, 300, 200);
     f->imported->image = HANDLE(VkImage);
     f->imported->view = HANDLE(VkImageView);
@@ -437,7 +440,7 @@ static void draw_scene(struct fixture *f, struct vela_pass *pass, int width, int
     };
     pixman_region32_t behind;
     pixman_region32_init_rect(&behind, 0, height - 48, (unsigned)width, 48);
-    vela_pass_add_blur(pass, &panel, &behind, 2.0f, &tint, 1.25f, false);
+    vela_pass_add_blur(pass, &panel, &behind, 2.0f, &tint);
     pixman_region32_fini(&behind);
     vela_pass_add_texture(pass, &panel);
 }

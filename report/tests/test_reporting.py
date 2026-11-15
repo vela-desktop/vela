@@ -504,7 +504,8 @@ class ReportingTests(unittest.TestCase):
         config_home.mkdir()
         template = project / "session/vela-session.in"
         launcher = self.root / "session"
-        launcher.write_text(template.read_text().replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir)))
+        launcher.write_text(template.read_text().replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir))
+                            .replace("@CMAKE_INSTALL_FULL_LIBEXECDIR@", str(helperdir)))
         state = self.home / "state"
         (state / "vela").mkdir(parents=True)
         (state / "vela/vela.log").write_text("previous incident\n")
