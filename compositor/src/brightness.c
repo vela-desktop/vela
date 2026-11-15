@@ -148,6 +148,7 @@ static void close_socket(struct helper *helper)
 static void helper_free(struct helper *helper)
 {
     close_socket(helper);
+    vela_child_stop(&helper->child);
     if (helper->timer) {
         wl_event_source_remove(helper->timer);
     }
@@ -366,12 +367,14 @@ static void start_helper(struct vela_brightness_output *output)
     if (ok) {
         helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
         if (!helper->source) {
-            // Started but unreadable: end and reap it before its watch goes.
+            // Keep the exit watch and helper alive: a hardware probe may be
+            // in D state, so even SIGKILL must never make us wait here.
             wlr_log_errno(WLR_ERROR, "Brightness %s: can't watch the helper", output->connector);
-            kill(helper->child.pid, SIGKILL);
-            waitpid(helper->child.pid, NULL, 0);
-            vela_child_stop(&helper->child);
-            ok = false;
+            close_socket(helper);
+            kill_helper(helper, SIGKILL);
+            output->held = true;
+            fail(output);
+            return;
         }
     }
     if (!ok) {

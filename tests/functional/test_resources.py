@@ -50,7 +50,7 @@ class DescriptorExhaustion(unittest.TestCase):
     def test_a_connection_and_a_timer_fail_locally(self):
         with Session() as vela:
             pid = vela.process.pid
-            vela.state()
+            vela.state()  # query waits for server EOF and watch cleanup
             soft, hard = resource.prlimit(pid, resource.RLIMIT_NOFILE)
             try:
                 # Room for the accepted connection alone: watching it needs a

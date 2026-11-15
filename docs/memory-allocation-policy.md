@@ -1229,8 +1229,11 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      of `ext_handle` already allows. Descriptor exhaustion takes local
      paths at the twelve compositor sources that had none (the IPC
      listener and its connections, the brightness helper's timer and
-     socket, a spawned child's pidfd, which is now stopped and reaped,
-     paste, key repeat, snap layouts, accessibility, the idle timer, and an
+     socket, and a spawned child's pidfd. Child supervision reserves a timer
+     before fork, so failed pidfd watches use nonblocking waitpid polling and
+     failed relaunches remain pending; brightness also retains its exit watch
+     instead of waiting for a killed hardware probe. The remaining local paths
+     cover paste, key repeat, snap layouts, accessibility, the idle timer, and an
      output's latch and virtual vblank) and at the seven unchecked
      `sd_event_add_*` calls of the daemons. `check.c` `on_check_output`
      grows its buffer through `vela_grow` (bounded by `MAX_OUTPUT`), so
@@ -1249,10 +1252,11 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    there and left as they are. Measured with a counting wrapper of the
    helpers: `compositor.frame-path`, on the CPU, 0 allocations in 240
    frames of an output and a capture open at once (a pass created every
-   frame instead: 3840); `functional-frame-path`, on a GPU, 0 in the frame
-   path over 90 frames of a headless session, with and without a capture,
-   where the same window counted 810 in `render/pass.c` before (nine per
-   pass). The benchmarks show no measurable change, before (`7841a9b`) and
+   frame instead: 3840). Historical GPU counts are in the upstream report
+   [#250](https://github.com/vela-desktop/vela/pull/250); that report did not
+   identify the exact measurement revisions, so those counts are not claimed
+   for this maintenance branch. Exact-revision GPU validation is still pending.
+   The benchmarks show no measurable change, before (`7841a9b`) and
    after, alternating builds on one machine (Ryzen 9 9950X, RX 9070 XT,
    Mesa 26.2.6 RADV): the `VELA_STATS=1` frame CPU time of the same scene at
    1920x1080@240, 50 two-second periods each, median 0.281 ms both

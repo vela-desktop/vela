@@ -7,6 +7,7 @@ import contextlib
 import io
 import json
 import os
+import socket
 import shutil
 import struct
 import subprocess
@@ -58,6 +59,27 @@ class StopBarrierScheduling(unittest.TestCase):
         with patch("test_session.time.monotonic", side_effect=(0, 10)), \
                 patch("builtins.open", side_effect=lambda *args: io.StringIO("123 (vela-compositor) T 1")):
             Supervisor()._wait_stopped(123)
+
+
+class CommandCleanupBarrier(unittest.TestCase):
+    def test_query_observes_server_eof_after_the_reply(self):
+        session = Session()
+        session.socket_path = "/unused-mocked-socket"
+        chunks = iter((b'{"outputs":', b'[]}\n', b''))
+        eof_observed = False
+
+        def recv(_size):
+            nonlocal eof_observed
+            chunk = next(chunks)
+            eof_observed = not chunk
+            return chunk
+
+        with patch("harness.socket.socket") as factory:
+            connection = factory.return_value.__enter__.return_value
+            connection.recv.side_effect = recv
+            self.assertEqual(session.query("state"), {"outputs": []})
+            self.assertTrue(eof_observed)
+            connection.shutdown.assert_called_once_with(socket.SHUT_WR)
 
 
 class SessionCleanup(unittest.TestCase):

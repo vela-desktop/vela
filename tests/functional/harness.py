@@ -419,6 +419,12 @@ class Session:
                 if not chunk:
                     break
                 data += chunk
+            # The reply precedes server-side watch cleanup. Half-close after
+            # receiving it and wait for EOF so resource-pressure snapshots do
+            # not include this accepted connection or its event-loop duplicate.
+            connection.shutdown(socket.SHUT_WR)
+            while connection.recv(65536):
+                pass
         return json.loads(data)
 
     def state(self):
