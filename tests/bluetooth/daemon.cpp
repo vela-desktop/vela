@@ -1103,7 +1103,8 @@ private slots:
         // An unrelated adapter update must not complete a reversal using
         // the cached state from before the first power request.
         fake->run([&] { fake->setDiscoverableOutside(hci0, true); });
-        QTest::qWait(550); // beyond the first 400 ms retry
+        QTRY_VERIFY(fakeWrites().count(reverseWrite) >= 2);
+        QTRY_VERIFY(adapterInUse().value(QStringLiteral("discoverable")).toBool());
         QVERIFY(pendingPower(!initialPower));
         QVERIFY2(!reversal.isFinished(), "reversal replied before BlueZ accepted its Set");
 

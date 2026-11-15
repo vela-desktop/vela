@@ -656,8 +656,10 @@ keeps the client's buffer locked and keeps drawing its previous image,
 the pieces go into an image of their own, and at the last one the texture
 switches to it in one step. Waiting copies are served oldest first, and a
 new commit replaces the one its surface had waiting. A buffer larger than
-the device can make an image of is refused before `vkCreateImage`, and
-the surface keeps what it showed. Details and measurements:
+the device can make an image of is refused before `vkCreateImage`. On
+wlroots 0.20.2, a failed import leaves an existing surface's cached texture
+in place; a surface with no previous texture still shows nothing. Details
+and measurements:
 [memory-allocation-policy.md](memory-allocation-policy.md#6-external-sizes).
 
 Commits stay in order (wlroots applies cached states one after another), frame

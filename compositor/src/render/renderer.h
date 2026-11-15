@@ -124,6 +124,8 @@ struct vela_upload_stats {
     int chunks_max; // the budget, in chunks of the same size
     uint64_t in_place, deferred, replaced, completed, abandoned, pieces;
     uint64_t rejected; // client buffers refused for their size
+    uint64_t frames_max; // largest enqueue-to-completion interval
+    size_t budget_bytes;
 };
 struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *renderer);
 // A client buffer refused for its size (a shm buffer above the device's image

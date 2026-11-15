@@ -133,6 +133,11 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     struct vela_view *focused = vela_views_focused(server);
     vela_buffer_appendf(json, "{\"locked\":%s,\"workspace\":%d,\"workspaces\":%d,\"focused\":",
         server->locked ? t : f, server->workspaces->current, server->workspaces->count);
+#if VELA_HAVE_RSVG
+    vela_buffer_append(json, ",\"capabilities\":{\"svg_icons\":true}");
+#else
+    vela_buffer_append(json, ",\"capabilities\":{\"svg_icons\":false}");
+#endif
     struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
     // The private state socket exposes retention and terminal counts so GPU
     // lifecycle tests can prove they cancelled real in-flight work.
@@ -148,11 +153,12 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     struct vela_upload_stats uploads = vela_renderer_upload_stats(server->renderer);
     vela_buffer_appendf(json, ",\"upload\":{\"chunks\":%d,\"chunks_peak\":%d,\"chunks_max\":%d,"
         "\"in_place\":%llu,\"deferred\":%llu,\"replaced\":%llu,\"completed\":%llu,\"abandoned\":%llu,"
-        "\"pieces\":%llu,\"rejected\":%llu}",
+        "\"pieces\":%llu,\"rejected\":%llu,\"frames_max\":%llu,\"budget_bytes\":%zu}",
         uploads.chunks, uploads.chunks_peak, uploads.chunks_max, (unsigned long long)uploads.in_place,
         (unsigned long long)uploads.deferred, (unsigned long long)uploads.replaced,
         (unsigned long long)uploads.completed, (unsigned long long)uploads.abandoned,
-        (unsigned long long)uploads.pieces, (unsigned long long)uploads.rejected);
+        (unsigned long long)uploads.pieces, (unsigned long long)uploads.rejected,
+        (unsigned long long)uploads.frames_max, uploads.budget_bytes);
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;

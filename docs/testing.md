@@ -378,7 +378,7 @@ but may explicitly override it for specialized fixtures.
 
 
 ```sh
-sh scripts/run-headless.sh &
+VELA_TEST_COMMANDS=1 sh scripts/run-headless.sh &
 export WAYLAND_DISPLAY=wayland-1
 ```
 

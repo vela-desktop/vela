@@ -16,6 +16,7 @@
 #include <unistd.h>
 #include <utility>
 
+#include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
@@ -494,6 +495,53 @@ private slots:
         QCOMPARE(file.readAll(), broken);
     }
 
+    void rapidShellWritesRefreshACachedReaderAfterBothWrites()
+    {
+        Preferences prefs;
+        prefs.setAccent(QColor(QStringLiteral("#112233")));
+        QVERIFY(prefs.saveError().isEmpty());
+        // A future seed also exercises a stopped/backward wall clock and
+        // makes timestamp reuse fail deterministically in the old writer.
+        QFile file(confPath());
+        QVERIFY(file.open(QIODevice::ReadWrite));
+        const QDateTime tick = QDateTime::currentDateTimeUtc().addSecs(60);
+        QVERIFY(file.setFileTime(tick, QFileDevice::FileModificationTime));
+        file.close();
+        QDateTime previous = QFileInfo(confPath()).lastModified();
+        QProcess reader;
+        reader.start(QCoreApplication::applicationFilePath(), { QStringLiteral("--watch-shell") });
+        QVERIFY(reader.waitForReadyRead(5000));
+        QCOMPARE(reader.readLine().trimmed(), QByteArray("#112233"));
+        for (const QString& color : { QStringLiteral("#445566"), QStringLiteral("#778899") }) {
+            prefs.setAccent(QColor(color));
+            QVERIFY(prefs.saveError().isEmpty());
+            const QDateTime current = QFileInfo(confPath()).lastModified();
+            QVERIFY2(current > previous, "a save reused a reader-visible timestamp");
+            previous = current;
+        }
+        reader.write("sync\n");
+        QVERIFY(reader.waitForBytesWritten(5000));
+        QVERIFY(reader.waitForFinished(5000));
+        QCOMPARE(reader.exitStatus(), QProcess::NormalExit);
+        QCOMPARE(reader.exitCode(), 0);
+        QCOMPARE(reader.readAllStandardOutput().trimmed(), QByteArray("#778899"));
+    }
+
+    void malformedShellFileKeepsNonDefaultShownValues()
+    {
+        Preferences prefs;
+        prefs.setTaskView(false);
+        QVERIFY(!prefs.taskView());
+        const QByteArray broken = "[appearance]\nappTheme=dark\n[broken\nvalue=1\n";
+        write(broken);
+        prefs.setTaskView(true);
+        QVERIFY(!prefs.taskView());
+        QVERIFY(prefs.saveError().contains(confPath()));
+        QFile file(confPath());
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QCOMPARE(file.readAll(), broken);
+    }
+
     void compositorSaveFailureRestoresTheValue()
     {
         // A file where the config directory should be: the write cannot commit.
@@ -637,6 +685,18 @@ int main(int argc, char** argv)
         QSettings settings(QString::fromLocal8Bit(argv[2]), QSettings::IniFormat);
         settings.setValue(QString::fromLocal8Bit(argv[3]), QString::fromLocal8Bit(argv[4]));
         settings.sync();
+        return settings.status() == QSettings::NoError ? 0 : 1;
+    }
+    if (argc == 2 && QByteArray(argv[1]) == "--watch-shell") {
+        QCoreApplication app(argc, argv);
+        QSettings settings(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
+        settings.setFallbacksEnabled(false);
+        QTextStream output(stdout);
+        output << settings.value(QStringLiteral("appearance/accent")).toString() << Qt::endl;
+        QTextStream input(stdin);
+        (void)input.readLine();
+        settings.sync();
+        output << settings.value(QStringLiteral("appearance/accent")).toString() << Qt::endl;
         return settings.status() == QSettings::NoError ? 0 : 1;
     }
     if (argc == 2 && QByteArray(argv[1]) == "--read-shell") {

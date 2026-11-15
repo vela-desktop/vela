@@ -27,6 +27,28 @@ VALIDATION = {"VELA_VULKAN_VALIDATION": "1"}
 WINDOW = (512, 256)
 
 
+def upload_extent(limit, desired_bytes, budget_bytes, require_deferred=False):
+    """A valid 32-bit buffer, optionally larger than one actual upload budget."""
+    max_width, max_height = limit
+    if max_width <= 0 or max_height <= 0 or budget_bytes <= 0:
+        raise AssertionError("invalid renderer extent or upload budget")
+    capacity = max_width * max_height * 4
+    if require_deferred and capacity <= budget_bytes:
+        raise unittest.SkipTest("device cannot fit a buffer above its upload budget")
+    requested = max(desired_bytes, budget_bytes + 4) if require_deferred else desired_bytes
+    size = min(requested, capacity)
+    width = min(max_width, 16384)
+    height = (size + width * 4 - 1) // (width * 4)
+    if height > max_height:
+        height = max_height
+        width = (size + height * 4 - 1) // (height * 4)
+    if not (0 < width <= max_width and 0 < height <= max_height):
+        raise AssertionError("selected buffer exceeds the device extent")
+    if require_deferred and width * height * 4 <= budget_bytes:
+        raise AssertionError("selected buffer does not exceed the upload budget")
+    return width, height
+
+
 def band_color(version, band):
     return (0x20 + 0x40 * (version % 4), 0x08 + 0x10 * band, 0x40)
 
@@ -42,6 +64,11 @@ class Uploads(unittest.TestCase):
         self.assertIsNotNone(match, "the compositor doesn't log its image limits")
         shm_w, shm_h, dmabuf_w, dmabuf_h = (int(value) for value in match.groups())
         return (shm_w, shm_h), (dmabuf_w, dmabuf_h)
+
+    def size_for(self, vela, budgets, extra=0, require_deferred=False):
+        limit, _ = self.limits(vela)
+        budget = vela.state()["upload"]["budget_bytes"]
+        return upload_extent(limit, int(budgets * budget) + extra, budget, require_deferred)
 
     def open(self, vela, *args, timeout=30):
         """vela-bigbuffer with these arguments: its window and the path of its log."""
@@ -81,8 +108,7 @@ class Uploads(unittest.TestCase):
 
     def test_oversized_buffer_is_copied_within_the_budget(self):
         with Session(size="1920x1080@60") as vela:
-            (shm_w, _), _ = self.limits(vela)
-            width, height = min(shm_w, 16384), 8192  # 512 MiB at 16384: four budgets
+            width, height = self.size_for(vela, 4, require_deferred=True)
             window, log = self.open(vela, width, height, *WINDOW)
             self.wait_client(log, "released 0")
             state = vela.state()
@@ -97,17 +123,16 @@ class Uploads(unittest.TestCase):
 
     def test_several_surfaces_upload_at_once(self):
         with Session(size="1920x1080@60") as vela:
-            (shm_w, _), _ = self.limits(vela)
-            width = min(shm_w, 8192)
             logs, windows = [], []
             for i in range(3):
-                window, log = self.open(vela, "--app-id", f"big-{i}", width, 4096 + i * 64, *WINDOW)
+                width, height = self.size_for(vela, 1, extra=i * 2 * 1024 * 1024)
+                window, log = self.open(vela, "--app-id", f"big-{i}", width, height, *WINDOW)
                 windows.append(window)
                 logs.append(log)
             for log in logs:
                 self.wait_client(log, "released 0")
             upload = vela.state()["upload"]
-            print(f"three {width}x4096 buffers: {upload}", flush=True)
+            print(f"three buffers within the reported extent: {upload}", flush=True)
             self.assertLessEqual(upload["chunks_peak"], upload["chunks_max"])
             time.sleep(0.2)
             image = vela.pixels()
@@ -116,8 +141,7 @@ class Uploads(unittest.TestCase):
 
     def test_deferred_update_is_never_shown_half_done(self):
         with Session(size="1920x1080@60", env=VALIDATION) as vela:
-            (shm_w, _), _ = self.limits(vela)
-            width, height = min(shm_w, 16384), 8192
+            width, height = self.size_for(vela, 4, require_deferred=True)
             window, log = self.open(vela, "--next-after", 1500, width, height, *WINDOW)
             self.wait_client(log, "released 0")
             box = self.window_box(vela, window)
@@ -162,26 +186,28 @@ class Uploads(unittest.TestCase):
 
     def test_competing_uploads_do_not_starve_another(self):
         with Session(size="1920x1080@60") as vela:
-            (shm_w, _), _ = self.limits(vela)
-            width = min(shm_w, 8192)
-            # Two 144 MiB buffers committed together: each exceeds the
-            # 128 MiB budget, even when a slow CPU takes longer to paint than
-            # the compositor takes to upload one. Establish real contention.
-            greedy, greedy_log = self.open(vela, "--burst", "--app-id", "greedy", width, 4608, *WINDOW)
+            width, height = self.size_for(vela, 9 / 8, require_deferred=True)
+            # Two buffers, each larger than the reported upload budget,
+            # committed together. Establish real contention even when a
+            # slow CPU takes longer to paint than one upload takes.
+            greedy, greedy_log = self.open(vela, "--burst", "--app-id", "greedy", width, height, *WINDOW)
             vela.wait_for(lambda s: s["upload"]["replaced"] > 0, timeout=20,
                           what="the greedy client's pending upload replaced")
-            # 136 MiB once: two frames of pieces, if it gets them.
+            width, height = self.size_for(vela, 17 / 16, require_deferred=True)
             other_log = os.path.join(vela.directory, "other.log")
             with open(other_log, "w") as output:
-                other = subprocess.Popen([tool("vela-bigbuffer"), "--app-id", "other", str(width), "4352",
+                other = subprocess.Popen([tool("vela-bigbuffer"), "--app-id", "other", str(width), str(height),
                                           *map(str, WINDOW)], env=vela.client_env, stdout=output,
                                          stderr=subprocess.STDOUT)
             vela.clients.append(other)
             self.wait_client(other_log, "committed 0")
-            frames_before = vela.state().output["frames"]
             self.wait_client(other_log, "released 0")
-            frames = vela.state().output["frames"] - frames_before
             upload = vela.state()["upload"]
+            # Captured at enqueue/completion inside the renderer: caller
+            # scheduling and IPC reads cannot move either measurement point.
+            frames = upload["frames_max"]
+            self.assertGreater(frames, 0)
+            self.assertEqual(upload["abandoned"], 0)
             print(f"the other upload completed within {frames} frames under a client committing above the "
                   f"budget in two-buffer bursts: {upload}", flush=True)
             self.assertGreater(upload["replaced"], 0, "the greedy client must have replaced its uploads")
