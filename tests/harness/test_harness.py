@@ -184,6 +184,27 @@ class SessionReconnect(unittest.TestCase):
                 session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.02, interval=0.001)
 
 
+class CommandCleanupBarrier(unittest.TestCase):
+    def test_query_observes_server_eof_after_the_reply(self):
+        session = Session()
+        session.socket_path = "/unused-mocked-socket"
+        chunks = iter((b'{"outputs":', b'[]}\n', b''))
+        eof_observed = False
+
+        def recv(_size):
+            nonlocal eof_observed
+            chunk = next(chunks)
+            eof_observed = not chunk
+            return chunk
+
+        with patch("harness.socket.socket") as factory:
+            connection = factory.return_value.__enter__.return_value
+            connection.recv.side_effect = recv
+            self.assertEqual(session.query("state"), {"outputs": []})
+            self.assertTrue(eof_observed)
+            connection.shutdown.assert_called_once_with(socket.SHUT_WR)
+
+
 class SessionCleanup(unittest.TestCase):
     def child(self, source):
         process = subprocess.Popen([sys.executable, "-c", source], start_new_session=True,

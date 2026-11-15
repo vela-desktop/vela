@@ -131,3 +131,10 @@ their CMake and packaging entries, session hook branches, and
 Settings preferences and cards, the `secret-backend` config documentation,
 and the reporting test fixture. Restore Vela-only desktop identity after
 verifying Chromium uses libsecret with Vela Secrets.
+
+Provider verification runs in a worker after the synchronous environment hook
+returns, so a KWallet GUI can complete its Wayland initialization. The first
+session target starts after verification; a supervised restart reimports the
+environment and does not start a second provider. The worker checks the login
+token before changing status or stopping its own unit, so an older login cannot
+report or tear down a later login's provider.

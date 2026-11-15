@@ -263,9 +263,9 @@ void Preferences::reloadCompositor()
 
 QString Preferences::compositorValue(const QString& key) const
 {
-    for (const auto& [k, v] : std::as_const(m_compositor)) {
-        if (k == key) {
-            return v;
+    for (auto entry = m_compositor.crbegin(); entry != m_compositor.crend(); ++entry) {
+        if (entry->first == key) {
+            return entry->second;
         }
     }
     return {};
@@ -691,11 +691,14 @@ bool Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
     }
     for (const auto& [key, value] : changes) {
         bool found = false;
-        for (QString& line : lines) {
-            if (line.startsWith(key + u'=')) {
-                line = key + u'=' + value;
-                found = true;
-                break;
+        for (qsizetype i = lines.size(); i-- > 0;) {
+            if (lines.at(i).startsWith(key + u'=')) {
+                if (!found) {
+                    lines[i] = key + u'=' + value;
+                    found = true;
+                } else {
+                    lines.removeAt(i);
+                }
             }
         }
         if (!found) {

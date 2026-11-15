@@ -30,7 +30,8 @@ void vela_spawn(const char *command);
 
 // A child the compositor launches and relaunches when it fails: the shell
 // and the polkit agent (docs/polkit-agent.md §7). A pidfd in the event loop
-// tells when it ends. Not relaunched when it exits cleanly (0 or
+// tells when it ends; a reserved timer polls without blocking if that watch
+// cannot be installed. Not relaunched when it exits cleanly (0 or
 // `final_exit_code`), nor when it keeps failing right after starting.
 //
 // With `exited` set, the owner decides instead: the child is never relaunched
@@ -47,12 +48,14 @@ struct vela_child {
     pid_t pid;
     int pidfd;
     struct wl_event_source *source;
+    struct wl_event_source *fallback; // reserved before fork: poll/retry if a pidfd watch fails
     int64_t started_ns;
     int quick_crashes; // abnormal exits in a row shortly after starting
 };
 
 void vela_child_init(struct vela_child *child, const char *name, int death_signal, int final_exit_code);
-// False when it couldn't be started or watched.
+// False when it could not start. A reserved timer preserves supervision and
+// retries automatic relaunches when pidfd/watch registration or fork fails.
 bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, const char *command);
 // We are shutting down: the child going away must not be relaunched.
 void vela_child_stop(struct vela_child *child);

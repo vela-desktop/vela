@@ -53,7 +53,7 @@ class DescriptorExhaustion(unittest.TestCase):
     def test_command_authentication_fails_closed_without_descriptors(self):
         with Session() as vela:
             pid = vela.process.pid
-            vela.state()
+            vela.state()  # query waits for server EOF and watch cleanup
             soft, hard = resource.prlimit(pid, resource.RLIMIT_NOFILE)
             try:
                 # accept() consumes the last descriptor. Authentication then
