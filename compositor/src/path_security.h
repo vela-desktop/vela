@@ -14,6 +14,12 @@ bool vela_path_component_safe(const char *name);
 // must not be empty, "." or ".."; absolute paths are rejected.
 bool vela_relative_path_safe(const char *path);
 
+// Open a regular file for reading, resolving checked components relative to
+// directory descriptors. Reject parent traversal and control characters;
+// retain ordinary symlink aliases, duplicate separators and '.' components.
+// The returned descriptor is close-on-exec. FIFOs/devices are never read.
+int vela_path_open_read(const char *path);
+
 // Open the actual XDG_RUNTIME_DIR (absolute, private, owned), rejecting a
 // final symlink. Caller owns the returned O_PATH directory fd.
 int vela_runtime_dir_open(const char *path);

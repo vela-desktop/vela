@@ -43,6 +43,83 @@ bool vela_path_component_safe(const char *name)
     return vela_relative_path_safe(name) && strchr(name, '/') == NULL;
 }
 
+int vela_path_open_read(const char *path)
+{
+    if (!path || !*path) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (strnlen(path, PATH_MAX) == PATH_MAX) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    // XDG roots are selected by the session user. Resolve each following
+    // component against the directory already opened, never as a new path.
+    int directory = open(*path == '/' ? "/" : ".", O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (directory < 0) {
+        return -1;
+    }
+    const char *part = path;
+    while (*part) {
+        while (*part == '/') {
+            ++part;
+        }
+        if (!*part) {
+            break;
+        }
+        const char *end = strchr(part, '/');
+        size_t length = end ? (size_t)(end - part) : strlen(part);
+        if (length == 1 && part[0] == '.') {
+            part += length;
+            continue;
+        }
+        char name[NAME_MAX + 1];
+        if (length > NAME_MAX) {
+            close(directory);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        memcpy(name, part, length);
+        name[length] = '\0';
+        if (!vela_path_component_safe(name)) {
+            close(directory);
+            errno = EINVAL;
+            return -1;
+        }
+        // Nonblocking open prevents a FIFO from hanging startup before its
+        // type can be checked. Symlinked configuration files remain supported.
+        bool last = !end;
+        int flags = last ? O_RDONLY | O_NONBLOCK | O_CLOEXEC : O_PATH | O_DIRECTORY | O_CLOEXEC;
+        int next = openat(directory, name, flags);
+        int error = errno;
+        close(directory);
+        if (next < 0) {
+            errno = error;
+            return -1;
+        }
+        if (last) {
+            struct stat info;
+            if (fstat(next, &info) != 0) {
+                error = errno;
+                close(next);
+                errno = error;
+                return -1;
+            }
+            if (!S_ISREG(info.st_mode)) {
+                close(next);
+                errno = EINVAL;
+                return -1;
+            }
+            return next;
+        }
+        directory = next;
+        part += length;
+    }
+    close(directory);
+    errno = EISDIR;
+    return -1;
+}
+
 static bool path_has_component_after(const char *path)
 {
     while (*path) {
