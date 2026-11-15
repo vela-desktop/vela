@@ -112,7 +112,7 @@ GPU runs remain paused while CodeQL and then CodeRabbit review are completed.
 
 ## Review slices and follow-up
 
-The oversized preparation diff was split into six draft PRs, each below
+The oversized preparation diff was split into six draft PRs, each within
 CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
 
 | Slice | PR | Scope | Changed files |
@@ -120,12 +120,12 @@ CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
 | 1 | [#271](https://github.com/vela-desktop/vela/pull/271) | CI, isolation and UI foundations | 90 |
 | 2 | [#272](https://github.com/vela-desktop/vela/pull/272) | OOM recovery and checked metadata | 64 |
 | 3 | [#273](https://github.com/vela-desktop/vela/pull/273) | Allocation migration | 70 |
-| 4 | [#274](https://github.com/vela-desktop/vela/pull/274) | Runtime, render reuse and credentials | 98 |
+| 4 | [#274](https://github.com/vela-desktop/vela/pull/274) | Runtime, render reuse and credentials | 100 |
 | 5 | [#275](https://github.com/vela-desktop/vela/pull/275) | Security, bounded resources and UI fixes | 98 |
 | 6 | [#269](https://github.com/vela-desktop/vela/pull/269) | Inventory and release guidance | 4 |
 
 Before review fixes, the reconstructed tree exactly matched `dae1642b`.
-The subsequent differences address the first two CodeRabbit reviews:
+The subsequent differences address the CodeRabbit reviews:
 
 - Correct release prerequisites, crash-recovery wording and fork-rehearsal setup.
 - Publish readiness JSON atomically, clean up launcher process groups, thaw
@@ -146,24 +146,40 @@ The subsequent differences address the first two CodeRabbit reviews:
   a confirmed lock-path failure injection. Their GPU execution remains part of
   the final hardware validation, after all reviews.
 
+- Reserve child-supervision fallback timers before spawning; keep nonblocking
+  exit observation and restart retries when pidfd/watch setup fails. Brightness
+  cleanup retains exit supervision instead of blocking the compositor.
+- Reject invalid latch timers and pace frame retries when latching is unavailable.
+- Read the last duplicate credential preference and normalize duplicates on save.
+  Verify credential providers after the startup hook returns, with login-token
+  guards and session activation held until verification completes.
+- Synchronize IPC queries with server-side descriptor cleanup, assert the updater's
+  completion signal payload, and detect ASan from the effective C++ compiler flags.
+  CPU regressions cover these paths; credential mocks wait for worker completion.
+- Remove unpinned historical GPU pass counts from the allocation policy.
+
 These review fixes are additional maintenance corrections, with no expansion
 of the agreed feature scope. GPU workflows remain deferred until the complete
 series has finished review; each current head must pass CodeQL first.
 
 ## Validation and release follow-up
 
-Local validation on this backport tree:
+Local validation (hardware runs remain deferred):
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 365 selected CPU/QML CTest entries pass after the review corrections, including the
-  documentation, reporter and preference fixtures adapted to 0.1.
+- 365 selected CPU/QML CTest entries pass on security-slice commit `160635e`
+  after the runtime review fixes; the runtime slice independently passes 350.
+  This includes documentation, reporter and preference fixtures adapted to 0.1.
 - Debug-only `-fsanitize=address` configuration: the configuration-read test
   passes with the ASan runtime before the shim; the allocator-interposing
-  damage test is excluded from that instrumented configuration.
+  damage test is excluded from that instrumented configuration. The global
+  new-handler interposition test returns its expected skip under effective C++
+  Debug ASan flags and passes in the native build.
 - Updater/package contracts: 220 Python tests, 218 passed and 2 skipped because
   this Arch host selects the pacman backend in Debian-derivative detection cases.
-- The text-rendering RHI shader test passes all 15 font/scale combinations
-  with software OpenGL in offscreen mode.
+- Before the review pause, the text-rendering RHI shader test passed all 15
+  font/scale combinations with software OpenGL in offscreen mode. This is
+  historical evidence, not validation of the subsequent review fixes.
 - Settings stays running without QML errors in a five-second offscreen
   credential-setup smoke check with private HOME/XDG directories and D-Bus.
 - Documentation, allocation-site policy, shared values, QML motion and diff
