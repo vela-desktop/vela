@@ -4,6 +4,17 @@
 // The C++ new handler (alloc/new_handler.h): a failed operator new aborts
 // with the policy's one-line report naming the process.
 
+// Detect the actual compiler instrumentation, including per-config flags.
+#ifndef VELA_TEST_ASAN
+#  if defined(__SANITIZE_ADDRESS__)
+#    define VELA_TEST_ASAN 1
+#  elif defined(__has_feature)
+#    if __has_feature(address_sanitizer)
+#      define VELA_TEST_ASAN 1
+#    endif
+#  endif
+#endif
+
 #include "alloc/new_handler.h"
 
 #include <cerrno>

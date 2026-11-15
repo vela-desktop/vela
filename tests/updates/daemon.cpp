@@ -22,9 +22,17 @@ class SignalCounter : public QObject {
 
 public:
     int count = 0;
+    QStringList statuses;
 
 public slots:
-    void received() { ++count; }
+    void received(const QString&, const QVariantMap& changed, const QStringList&)
+    {
+        ++count;
+        const auto status = changed.constFind(QStringLiteral("Status"));
+        if (status != changed.cend()) {
+            statuses.append(status->toString());
+        }
+    }
 };
 
 class UpdatesDaemon : public QObject, protected UpdatesBench {
@@ -407,11 +415,11 @@ private Q_SLOTS:
             { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), QStringLiteral("defer") } }));
         SignalCounter changes;
         QVERIFY(bus().connect(service, objectPath, QStringLiteral("org.freedesktop.DBus.Properties"),
-            QStringLiteral("PropertiesChanged"), &changes, SLOT(received())));
+            QStringLiteral("PropertiesChanged"), &changes, SLOT(received(QString,QVariantMap,QStringList))));
         nextCheck({ { "status", "update-available" }, { "commit", commitB } });
         call(QStringLiteral("Check"));
-        QTRY_VERIFY(changes.count > 0);
-        QTRY_COMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("update-available"));
+        QTRY_VERIFY(changes.statuses.contains(QStringLiteral("update-available")));
+        QCOMPARE(property(QStringLiteral("Status")).toString(), QStringLiteral("update-available"));
 #endif
     }
 

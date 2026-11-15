@@ -505,6 +505,18 @@ static void request_frame(struct vela_output *output)
     // wlr_output_schedule_frame isn't used: it would mark the output as
     // needing a commit even when nothing on it changes (an empty commit, which
     // with DRM blocks until the vblank).
+    bool can_latch = output->latching && output->latch_fd >= 0 && output->latch_source;
+    bool animations_only = !output->frame_requested && !output->wlr->needs_frame;
+    if (!can_latch && animations_only && output->empty_until > vela_now_ns()) {
+        // An unchanged animation retry still needs a future beat. Without a
+        // latch, use the virtual vblank or the backend's own frame pacing.
+        if (output->vblank_fd >= 0) {
+            arm_virtual_vblank(output);
+        } else {
+            wlr_output_schedule_frame(output->wlr);
+        }
+        return;
+    }
     bool waiting = output->vblank_fd >= 0 ? output->awaiting_present : output->wlr->frame_pending;
     if (!waiting && !output->drawing && !output->latch_armed && !output->idle_frame) {
         output->idle_frame = VELA_MUST(wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output));
@@ -527,11 +539,19 @@ static void handle_present(struct wl_listener *listener, void *data)
     collect_costs(output);
 }
 
-static void arm_latch(struct vela_output *output, int64_t when)
+static bool arm_latch(struct vela_output *output, int64_t when)
 {
+    if (!output->latching || output->latch_fd < 0 || !output->latch_source) {
+        return false;
+    }
     const struct itimerspec spec = { .it_value = vela_ns_timespec(when) };
-    timerfd_settime(output->latch_fd, TFD_TIMER_ABSTIME, &spec, NULL);
+    if (timerfd_settime(output->latch_fd, TFD_TIMER_ABSTIME, &spec, NULL) < 0) {
+        wlr_log_errno(WLR_ERROR, "Output latch unavailable; following backend frames");
+        output->latching = false;
+        return false;
+    }
     output->latch_armed = true;
+    return true;
 }
 
 static int handle_latch_timer(int fd, uint32_t mask, void *data)
@@ -568,12 +588,15 @@ static void on_frame_event(struct vela_output *output)
     // elsewhere would draw the same moment again and again until that vblank.
     // A change is planned from now: it may still make that vblank.
     bool animations_only = !output->frame_requested && !output->wlr->needs_frame;
-    int64_t from = animations_only && output->empty_until > now ? output->empty_until : now;
-    output->plan = vela_frame_clock_plan(&output->clock, from, output->latching);
+    bool can_latch = output->latching && output->latch_fd >= 0 && output->latch_source;
+    int64_t from = can_latch && animations_only && output->empty_until > now ? output->empty_until : now;
+    output->plan = vela_frame_clock_plan(&output->clock, from, can_latch);
     output->planned = true;
-    if (output->plan.start - now > 50000) {
-        arm_latch(output, output->plan.start);
-        return;
+    if (can_latch && output->plan.start - now > 50000) {
+        if (arm_latch(output, output->plan.start)) {
+            return;
+        }
+        output->plan = vela_frame_clock_plan(&output->clock, now, false);
     }
     on_frame(output);
 }

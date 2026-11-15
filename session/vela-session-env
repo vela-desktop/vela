@@ -68,24 +68,54 @@ start)
             echo "vela-session-env: cannot create a unique session token" >&2
             exit 1
         fi
+        [ -z "${XDG_RUNTIME_DIR:-}" ] || rm -f "$XDG_RUNTIME_DIR/vela-credential-compat.status"
         printf '%s\n' "$session_token" > "$STATE"
     fi
     systemctl --user -q mask --runtime "$RESTORE" 2> /dev/null
-    credential_issue=0
     if [ "$FIRST_START" -eq 1 ]; then
-        # Select once per outer session, but validate the actual Secret Service
-        # owner. Never start a competing provider or stop one owned by PAM.
-        . "$(dirname "$0")/credential-compat/ensure-backend"
-        case "${VELA_SECRET_BACKEND:-kwallet}" in
-            gnome)
-                vela_credential_ensure gnome /usr/bin/gnome-keyring-daemon \
-                    vela-gnome-keyring-compat.service || credential_issue=1 ;;
-            kwallet)
-                vela_credential_ensure kwallet /usr/bin/kwalletd6 \
-                    vela-kwallet-compat.service || credential_issue=1 ;;
-        esac
+        # The hook itself must return before a GUI provider needs Wayland.
+        # Verification runs independently while the compositor dispatches.
+        (
+            VELA_CREDENTIAL_SESSION_STATE=$STATE
+            VELA_CREDENTIAL_SESSION_TOKEN=$session_token
+            . "$(dirname "$0")/credential-compat/ensure-backend"
+            vela_credential_session_current || exit 0
+            credential_issue=0
+            case "${VELA_SECRET_BACKEND:-kwallet}" in
+                gnome)
+                    vela_credential_ensure gnome /usr/bin/gnome-keyring-daemon \
+                        vela-gnome-keyring-compat.service || credential_issue=1 ;;
+                kwallet)
+                    vela_credential_ensure kwallet /usr/bin/kwalletd6 \
+                        vela-kwallet-compat.service || credential_issue=1 ;;
+            esac
+            # Keep autostart activation behind provider verification, while
+            # allowing the compositor itself to dispatch the provider's GUI.
+            vela_credential_session_current || exit 0
+            if systemctl --user cat vela-session.target > /dev/null 2>&1; then
+                systemctl --user --no-block start vela-session.target
+            fi
+            if [ "$credential_issue" -ne 0 ]; then
+                sleep 3
+                vela_credential_session_current || exit 0
+                if command -v notify-send >/dev/null 2>&1; then
+                    if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+                        [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status" 2>/dev/null)" = limited ]; then
+                        notify-send -a "Vela Desktop" -u normal -t 20000 \
+                            "KWallet: limited compatibility" \
+                            "KWallet's native API works, but Secret Service is unavailable. Check Settings > System."
+                    else
+                        notify-send -a "Vela Desktop" -u critical -t 20000 \
+                            "Password manager unavailable" \
+                            "Vela could not use the selected password manager. Open Settings > System and check the session log."
+                    fi
+                fi
+            fi
+        ) </dev/null >/dev/null &
     fi
-    if systemctl --user cat vela-session.target > /dev/null 2>&1; then
+    if [ "$FIRST_START" -eq 0 ] &&
+        [ -r "${XDG_RUNTIME_DIR:-/nonexistent}/vela-credential-compat.status" ] &&
+        systemctl --user cat vela-session.target > /dev/null 2>&1; then
         systemctl --user --no-block start vela-session.target
     fi
     if [ "$FIRST_START" -eq 1 ] && [ "${VELA_SECRET_CONFIGURED:-0}" = 0 ]; then
@@ -115,25 +145,6 @@ start)
             done
             echo "vela-session-env: credential setup could not be opened after retries" >&2
         ) >/dev/null &
-    fi
-    if [ "$FIRST_START" -eq 1 ] && [ "$credential_issue" -ne 0 ]; then
-        # A real provider failure also deserves a warning. The prompt above is
-        # independent of whether KWallet or GNOME Keyring happens to be installed.
-        (
-            sleep 3
-            if command -v notify-send >/dev/null 2>&1; then
-                if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
-                    [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status" 2>/dev/null)" = limited ]; then
-                    notify-send -a "Vela Desktop" -u normal -t 20000 \
-                        "KWallet: limited compatibility" \
-                        "KWallet's native API works, but Secret Service is unavailable. Check Settings > System."
-                else
-                    notify-send -a "Vela Desktop" -u critical -t 20000 \
-                        "Password manager unavailable" \
-                        "Vela could not use the selected password manager. Open Settings > System and check the session log."
-                fi
-            fi
-        ) >/dev/null 2>&1 &
     fi
     ;;
 stop)
