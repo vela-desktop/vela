@@ -10,7 +10,9 @@
 
 int main(void)
 {
-    char directory[] = "/tmp/vela-icon-metadata-XXXXXX";
+    // CTest runs in the private build tree; keep fixtures out of shared /tmp.
+    // mkdtemp gives the unique parent mode 0700, files below use 0600.
+    char directory[] = "vela-icon-metadata-XXXXXX";
     CHECK(mkdtemp(directory));
     char index[PATH_MAX], alias[PATH_MAX];
     snprintf(index, sizeof(index), "%s/index.theme", directory);
