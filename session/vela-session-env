@@ -92,7 +92,7 @@ start)
                     vela_credential_ensure gnome /usr/bin/gnome-keyring-daemon \
                         vela-gnome-keyring-compat.service || credential_issue=1 ;;
                 kwallet)
-                    vela_credential_ensure kwallet /usr/bin/kwalletd6 \
+                    vela_credential_ensure kwallet /usr/bin/ksecretd \
                         vela-kwallet-compat.service || credential_issue=1 ;;
             esac
             # Keep autostart activation behind provider verification, while

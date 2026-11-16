@@ -5,9 +5,9 @@
 [Unit]
 Description=Vela temporary KWallet compatibility
 PartOf=vela-session.target
-ConditionFileIsExecutable=/usr/bin/kwalletd6
+ConditionFileIsExecutable=/usr/bin/ksecretd
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/kwalletd6
+ExecStart=/usr/bin/ksecretd
 Slice=session.slice

@@ -71,9 +71,64 @@ check kwallet Vela:KDE 6 0
 printf '%s\n' '# secret-backend=gnome' > "$tmp/vela/vela.conf"
 check kwallet Vela:KDE 6 0
 
+# Keep the launcher, installed unit, and Settings in agreement about the
+# KDE Secret Service daemon. kwalletd6 is a separate native API wrapper.
+if [ "$#" -ge 4 ]; then
+    grep -q 'vela_credential_ensure kwallet /usr/bin/ksecretd' "$hook"
+    grep -q '^ConditionFileIsExecutable=/usr/bin/ksecretd$' "$4"
+    grep -q '^ExecStart=/usr/bin/ksecretd$' "$4"
+fi
+
 # A controlled, real POSIX-shell check of the D-Bus ownership policy. No
 # user keyring or systemd service is ever started by this test.
 . "$ensure"
+unset PAM_KWALLET5_LOGIN
+# Exercise the real read-only metadata probe without inspecting host daemons.
+(
+    proc="$tmp/proc"
+    mkdir -p "$proc/self" "$proc/net" "$proc/42"
+    : > "$proc/self/status"
+    printf '%s\n' 'Num RefCount Protocol Flags Type St Inode Path' > "$proc/net/unix"
+    uid=$(id -u)
+    other_uid=$((uid + 1))
+    printf '%s\n' ksecretd > "$proc/42/comm"
+    printf 'State:\tS (sleeping)\nUid:\t%s\t%s\t%s\t%s\n' \
+        "$uid" "$uid" "$uid" "$uid" > "$proc/42/status"
+    ln -s /usr/bin/ksecretd "$proc/42/exe"
+    # Reading either credential-related file would hang this regression.
+    mkfifo "$proc/42/cmdline" "$proc/42/environ"
+    [ "$(vela_credential_kwallet_pending "$proc")" = pending ]
+    rm "$proc/42/exe"
+    ln -s '/usr/bin/ksecretd (deleted)' "$proc/42/exe"
+    [ "$(vela_credential_kwallet_pending "$proc")" = pending ]
+    printf 'State:\tS\nUid:\t%s\t%s\t%s\t%s\n' \
+        "$other_uid" "$other_uid" "$other_uid" "$other_uid" > "$proc/42/status"
+    [ "$(vela_credential_kwallet_pending "$proc")" = none ]
+    printf 'State:\tZ\nUid:\t%s\t%s\t%s\t%s\n' \
+        "$uid" "$uid" "$uid" "$uid" > "$proc/42/status"
+    [ "$(vela_credential_kwallet_pending "$proc")" = none ]
+    printf 'State:\tS\nUid:\t%s\t%s\t%s\t%s\n' \
+        "$uid" "$uid" "$uid" "$uid" > "$proc/42/status"
+    rm "$proc/42/exe"
+    [ "$(vela_credential_kwallet_pending "$proc")" = unknown ]
+    ln -s /usr/bin/another-daemon "$proc/42/exe"
+    [ "$(vela_credential_kwallet_pending "$proc")" = none ]
+    rm -r "$proc/42"
+
+    PAM_KWALLET5_LOGIN="$tmp/pam.socket"
+    export PAM_KWALLET5_LOGIN
+    # A stale inherited marker is not evidence of a pending PAM instance.
+    [ "$(vela_credential_kwallet_pending "$proc")" = none ]
+    # A live PAM listener also detects the interval before ksecretd execs.
+    printf '0000: 2 0 00010000 0001 01 123 %s\n' "$PAM_KWALLET5_LOGIN" > "$proc/net/unix"
+    [ "$(vela_credential_kwallet_pending "$proc")" = pending ]
+    printf '0000: 2 0 00000000 0001 03 123 %s\n' "$PAM_KWALLET5_LOGIN" > "$proc/net/unix"
+    [ "$(vela_credential_kwallet_pending "$proc")" = none ]
+    rm "$proc/net/unix"
+    [ "$(vela_credential_kwallet_pending "$proc")" = unknown ]
+    [ "$(vela_credential_kwallet_pending "$tmp/absent-proc")" = unknown ]
+)
+
 binary="$tmp/daemon"
 : > "$binary"
 chmod 700 "$binary"
@@ -85,6 +140,12 @@ MOCK_NEXT_OWNER=none
 MOCK_NATIVE_OWNER=none
 MOCK_NEXT_NATIVE_OWNER=none
 MOCK_FAIL=0
+MOCK_PENDING=none
+MOCK_SLEEP_COUNT=0
+MOCK_SLEEP_EVENT=
+MOCK_SLEEP_AT=0
+MOCK_SLEEP_OWNER=ksecretd
+vela_credential_kwallet_pending() { printf '%s\n' "$MOCK_PENDING"; }
 busctl()
 {
     case "$*" in
@@ -131,6 +192,7 @@ readlink()
 systemctl()
 {
     printf '%s\n' "$*" >> "$calls"
+    case "$*" in *'start '*) [ "$MOCK_PENDING" = none ] || return 1 ;; esac
     [ "$MOCK_FAIL" -eq 0 ] || return 1
     MOCK_OWNER=$MOCK_NEXT_OWNER
     MOCK_NATIVE_OWNER=$MOCK_NEXT_NATIVE_OWNER
@@ -138,7 +200,16 @@ systemctl()
         printf '%s\n' new-login > "$VELA_CREDENTIAL_SESSION_STATE"
     fi
 }
-sleep() { :; }
+sleep()
+{
+    MOCK_SLEEP_COUNT=$((MOCK_SLEEP_COUNT + 1))
+    if [ "$MOCK_SLEEP_COUNT" -eq "$MOCK_SLEEP_AT" ]; then
+        case "$MOCK_SLEEP_EVENT" in
+            register) MOCK_OWNER=$MOCK_SLEEP_OWNER; MOCK_PENDING=none ;;
+            exit) MOCK_PENDING=none ;;
+        esac
+    fi
+}
 
 : > "$calls"
 MOCK_OWNER=gnome
@@ -162,12 +233,21 @@ vela_credential_ensure kwallet "$tmp/does-not-exist" kwallet.service
 
 MOCK_OWNER=none
 MOCK_NATIVE_OWNER=kwallet
-if vela_credential_ensure kwallet "$binary" kwallet.service; then
-    echo 'native-only KWallet reported fully functional' >&2; exit 1
+MOCK_NEXT_OWNER=ksecretd
+MOCK_NEXT_NATIVE_OWNER=kwallet
+: > "$calls"
+# An existing native wrapper must not prevent starting ksecretd.
+vela_credential_ensure kwallet "$binary" kwallet.service
+[ "$(cat "$status")" = ok ]
+[ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
+if grep -q 'stop kwallet.service' "$calls"; then
+    echo 'working provider was stopped' >&2; exit 1
 fi
-[ "$(cat "$status")" = limited ]
-[ ! -s "$calls" ]
 
+# Each scenario needs a fresh call log: the previous successful start is
+# intentional, but must not be mistaken for a start during a conflict.
+: > "$calls"
+MOCK_OWNER=none
 MOCK_NATIVE_OWNER=other
 if vela_credential_ensure kwallet "$binary" kwallet.service; then
     echo 'foreign native API owner accepted' >&2; exit 1
@@ -207,9 +287,17 @@ if vela_credential_ensure kwallet "$binary" kwallet.service; then
 fi
 [ "$(cat "$status")" = limited ]
 [ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
-if grep -q 'stop kwallet.service' "$calls"; then
-    echo 'native KWallet daemon was incorrectly stopped' >&2; exit 1
+grep -q -- '--no-block stop kwallet.service' "$calls"
+
+# A native-only wallet with no ksecretd executable remains limited.
+MOCK_OWNER=none
+MOCK_NATIVE_OWNER=kwallet
+: > "$calls"
+if vela_credential_ensure kwallet "$tmp/missing" kwallet.service; then
+    echo 'missing ksecretd accepted' >&2; exit 1
 fi
+[ "$(cat "$status")" = limited ]
+[ ! -s "$calls" ]
 
 MOCK_OWNER=none
 MOCK_NEXT_OWNER=none
@@ -238,6 +326,109 @@ if vela_credential_ensure gnome "$binary" gnome.service; then
     echo 'failed systemd start accepted' >&2; exit 1
 fi
 [ "$(cat "$status")" = failed ]
+
+# PAM may have a process/listener without any registered D-Bus name yet.
+# Wait for it to register or exit; a timeout must not start or stop a unit.
+(
+    MOCK_FAIL=0
+    for native in none kwallet; do
+        MOCK_OWNER=none
+        MOCK_NATIVE_OWNER=$native
+        MOCK_NEXT_NATIVE_OWNER=$native
+        MOCK_NEXT_OWNER=none
+        MOCK_PENDING=pending
+        MOCK_SLEEP_EVENT=register
+        MOCK_SLEEP_AT=3
+        MOCK_SLEEP_OWNER=ksecretd
+        : > "$calls"
+        vela_credential_ensure kwallet "$binary" kwallet.service
+        [ "$(cat "$status")" = ok ]
+        [ ! -s "$calls" ]
+    done
+
+    MOCK_OWNER=none
+    MOCK_PENDING=pending
+    MOCK_SLEEP_EVENT='exit'
+    MOCK_SLEEP_AT=1
+    MOCK_NEXT_OWNER=ksecretd
+    : > "$calls"
+    vela_credential_ensure kwallet "$binary" kwallet.service
+    [ "$(cat "$status")" = ok ]
+    [ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
+
+    for pending in pending unknown; do
+        MOCK_PENDING=$pending
+        MOCK_SLEEP_EVENT=
+        MOCK_NEXT_OWNER=none
+        : > "$calls"
+        if vela_credential_ensure kwallet "$binary" kwallet.service; then
+            echo 'unverified pending provider accepted' >&2; exit 1
+        fi
+        [ "$(cat "$status")" = unverified ]
+        [ ! -s "$calls" ]
+    done
+
+    MOCK_PENDING=pending
+    MOCK_SLEEP_EVENT=register
+    MOCK_SLEEP_AT=2
+    MOCK_SLEEP_OWNER=other
+    : > "$calls"
+    if vela_credential_ensure kwallet "$binary" kwallet.service; then
+        echo 'foreign provider accepted during PAM wait' >&2; exit 1
+    fi
+    [ "$(cat "$status")" = conflict ]
+    [ ! -s "$calls" ]
+
+    # Registration during the *last* wait must win over native-only cleanup.
+    for backend in kwallet gnome; do
+        MOCK_PENDING=none
+        MOCK_OWNER=none
+        MOCK_NATIVE_OWNER=kwallet
+        MOCK_NEXT_NATIVE_OWNER=kwallet
+        MOCK_NEXT_OWNER=none
+        MOCK_SLEEP_EVENT=register
+        MOCK_SLEEP_AT=10
+        MOCK_SLEEP_OWNER=$backend
+        : > "$calls"
+        vela_credential_ensure "$backend" "$binary" "$backend.service"
+        [ "$(cat "$status")" = ok ]
+        [ "$(grep -c "start $backend.service" "$calls")" -eq 1 ]
+        if grep -q 'stop ' "$calls"; then
+            echo 'provider registered on the final wait was stopped' >&2; exit 1
+        fi
+    done
+
+    MOCK_SLEEP_OWNER=other
+    : > "$calls"
+    if vela_credential_ensure kwallet "$binary" kwallet.service; then
+        echo 'foreign final-wait provider accepted' >&2; exit 1
+    fi
+    [ "$(cat "$status")" = conflict ]
+    grep -q -- '--no-block stop kwallet.service' "$calls"
+
+    # The native fallback query can itself be slow. A provider that becomes
+    # ready during it must be accepted by the final Secret Service lookup.
+    (
+        owner_file="$tmp/late-native-owner"
+        printf '%s\n' none > "$owner_file"
+        : > "$calls"
+        vela_credential_owner()
+        {
+            if [ "${1:-}" = org.kde.kwalletd6 ]; then
+                [ ! -s "$calls" ] || printf '%s\n' kwallet > "$owner_file"
+                printf '%s\n' kwallet
+            else
+                cat "$owner_file"
+            fi
+        }
+        sleep() { :; }
+        vela_credential_ensure kwallet "$binary" kwallet.service
+        [ "$(cat "$status")" = ok ]
+        if grep -q 'stop ' "$calls"; then
+            echo 'provider became ready during native lookup and was stopped' >&2; exit 1
+        fi
+    )
+)
 
 # Run the actual session hook in an isolated user-manager fixture to verify
 # that the first start probes the owner once, restarts do not, and a competing

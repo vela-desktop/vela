@@ -111,6 +111,13 @@ This corrective follow-up is additional to the 55-PR source inventory above.
 The shared fix is proposed for `main` in [#270](https://github.com/vela-desktop/vela/pull/270)
 and is already included in this maintenance branch through #272.
 
+The subsequent maintenance correction in
+[#277](https://github.com/vela-desktop/vela/pull/277) starts KWallet's separate
+`ksecretd` Secret Service provider, preserves pending PAM instances, and checks
+readiness after the final retry and native lookup. Its 0.1 adaptation retains
+the existing asynchronous startup worker, login-token checks and shared lock.
+This is an additional maintenance fix, with no change to the 0.1 feature scope.
+
 ## Review slices and follow-up
 
 The oversized preparation diff was reviewed in six PRs, each within CodeRabbit's
