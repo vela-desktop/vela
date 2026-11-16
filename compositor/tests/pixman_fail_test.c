@@ -28,7 +28,9 @@ static pixman_bool_t operation(const char *name, pixman_region32_t *dest,
 
 int main(void)
 {
-    char directory[] = "/tmp/vela-pixman-test-XXXXXX";
+    // Keep the shim trigger inside the private CTest build directory.
+    // mkdtemp creates an unpredictable, mode-0700 directory.
+    char directory[] = "./vela-pixman-test-XXXXXX";
     assert(mkdtemp(directory));
     int fd = open(directory, O_RDONLY | O_DIRECTORY);
     assert(fd >= 0);
