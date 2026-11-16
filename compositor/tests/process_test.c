@@ -212,7 +212,12 @@ static void empty_animation_retries_wait_for_the_output_beat(struct wl_event_loo
     }
     struct itimerspec armed;
     assert(timerfd_gettime(fd, &armed) == 0);
-    assert(armed.it_value.tv_sec || armed.it_value.tv_nsec);
+    if (!armed.it_value.tv_sec && !armed.it_value.tv_nsec) {
+        // The 180 Hz one-shot may have expired while this process was descheduled.
+        // A readable timerfd proves that it was armed; a never-armed timer fails.
+        struct pollfd pending = { .fd = fd, .events = POLLIN };
+        assert(poll(&pending, 1, 0) == 1 && (pending.revents & POLLIN));
+    }
     // Real damage, a backend commit, or a working latch may run immediately.
     output.frame_requested = true;
     assert(!defer_animation_frame(&output, now));
