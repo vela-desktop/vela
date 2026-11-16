@@ -438,13 +438,17 @@ private slots:
     void failedWritesDoNotOverrideALaterExternalWriter_data()
     {
         QTest::addColumn<bool>("present");
-        QTest::newRow("key-was-absent") << false;
-        QTest::newRow("key-existed") << true;
+        QTest::addColumn<QString>("externalValue");
+        QTest::newRow("absent-external-left") << false << QStringLiteral("left");
+        QTest::newRow("absent-external-center") << false << QStringLiteral("center");
+        QTest::newRow("present-external-left") << true << QStringLiteral("left");
+        QTest::newRow("present-external-center") << true << QStringLiteral("center");
     }
 
     void failedWritesDoNotOverrideALaterExternalWriter()
     {
         QFETCH(bool, present);
+        QFETCH(QString, externalValue);
         if (present) write("[appearance]\nappTheme=dark\n[taskbar]\nalignment=center\n");
         Preferences prefs;
         BlockedDirectory blocked;
@@ -455,7 +459,7 @@ private slots:
         QVERIFY(blocked.restore());
         QProcess writer;
         writer.start(QCoreApplication::applicationFilePath(), { QStringLiteral("--write-shell"), confPath(),
-            QStringLiteral("taskbar/alignment"), QStringLiteral("left") });
+            QStringLiteral("taskbar/alignment"), externalValue });
         QVERIFY(writer.waitForFinished(5000));
         QCOMPARE(writer.exitStatus(), QProcess::NormalExit);
         QCOMPARE(writer.exitCode(), 0);
@@ -463,8 +467,8 @@ private slots:
         // update or a queued rollback over this legitimate external choice.
         QCoreApplication::processEvents();
         prefs.reload();
-        QCOMPARE(prefs.taskbarAlignment(), QStringLiteral("left"));
-        expectFreshShell({ { QStringLiteral("taskbar/alignment"), QStringLiteral("left") } });
+        QCOMPARE(prefs.taskbarAlignment(), externalValue);
+        expectFreshShell({ { QStringLiteral("taskbar/alignment"), externalValue } });
     }
 
     void busyWriterLeavesTheConfigurationUntouched()

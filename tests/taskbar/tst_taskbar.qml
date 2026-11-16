@@ -244,6 +244,7 @@ Item {
             addTray(6)
             Transfers.activeCount = 1
             Audio.microphoneUsers = [{ name: "Recorder" }]
+            verify(waitForRendering(b.contentItem))
             compare(apps.width, initialWidth)
             b.width = 700
             tryVerify(() => apps.width < initialWidth)
