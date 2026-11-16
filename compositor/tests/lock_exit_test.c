@@ -9,7 +9,9 @@
 
 static void check_exit(bool supervised)
 {
-    char directory[] = "/tmp/vela-lock-exit-XXXXXX";
+    // CTest runs in the build directory, not a shared system temp directory.
+    // mkdtemp creates an unpredictable, mode-0700 directory for the trigger.
+    char directory[] = "./vela-lock-exit-XXXXXX";
     assert(mkdtemp(directory));
     int fd = open(directory, O_RDONLY | O_DIRECTORY);
     assert(fd >= 0);
