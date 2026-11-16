@@ -360,6 +360,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue q, uint32_t count, const V
         struct submission s = { .point = point };
         for (uint32_t j = 0; j < submissions[i].commandBufferInfoCount; ++j) {
             const struct fake_cmd *cmd = (const struct fake_cmd *)submissions[i].pCommandBufferInfos[j].commandBuffer;
+            if (!cmd->count) continue;
             s.ops = realloc(s.ops, (size_t)(s.count + cmd->count + 1) * sizeof(*s.ops));
             assert(s.ops);
             memcpy(s.ops + s.count, cmd->ops, (size_t)cmd->count * sizeof(*s.ops));

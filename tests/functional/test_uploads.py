@@ -15,12 +15,14 @@ the version and whose green says the band, scaled into a small window.
 
 import os
 import re
+import select
+import signal
 import subprocess
 import tempfile
 import time
 import unittest
 
-from harness import Image, Session, tool
+from harness import Image, Session, TIME_SCALE, tool
 
 LIMITS = re.compile(r"client buffers up to (\d+)x(\d+) in shared memory, (\d+)x(\d+) as linear dmabufs")
 VALIDATION = {"VELA_VULKAN_VALIDATION": "1"}
@@ -88,6 +90,32 @@ class Uploads(unittest.TestCase):
             time.sleep(0.02)
         raise AssertionError(f"the client never printed {line!r}:\n{self.client_log(path)[-2000:]}")
 
+    def wait_recorder(self, recorder, timeout=10):
+        """Bound readiness even if the recorder writes only a partial line."""
+        deadline = time.monotonic() + timeout * TIME_SCALE
+        output = bytearray()
+        while b"recording\n" not in output:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([recorder.stdout], [], [], remaining)[0]:
+                break
+            chunk = os.read(recorder.stdout.fileno(), 4096)
+            if not chunk:
+                break
+            output.extend(chunk)
+            if len(output) > 65536:
+                break
+        else:
+            return
+        recorder.terminate()
+        try:
+            tail, _ = recorder.communicate(timeout=2)
+        except subprocess.TimeoutExpired:
+            recorder.kill()
+            tail, _ = recorder.communicate(timeout=5)
+        output.extend(tail or b"")
+        self.fail(f"recorder did not become ready within {timeout * TIME_SCALE:g} s "
+                  f"(exit={recorder.returncode}):\n{output[-4000:].decode(errors='replace')}")
+
     def versions_shown(self, image, box):
         """The version every band of the window shows, or None for a mix."""
         x, y, width, height = box
@@ -135,22 +163,24 @@ class Uploads(unittest.TestCase):
             print(f"three buffers within the reported extent: {upload}", flush=True)
             self.assertLessEqual(upload["chunks_peak"], upload["chunks_max"])
             time.sleep(0.2)
-            image = vela.pixels()
             for window in windows:
-                self.assertEqual(self.versions_shown(image, self.window_box(vela, window)), 0)
+                vela.command(f"window {window} activate")
+                vela.wait_for(lambda s: s["focused"] == window, what="each upload window exposed")
+                self.assertEqual(self.versions_shown(vela.pixels(), self.window_box(vela, window)), 0)
 
     def test_deferred_update_is_never_shown_half_done(self):
         with Session(size="1920x1080@60", env=VALIDATION) as vela:
             width, height = self.size_for(vela, 4, require_deferred=True)
-            window, log = self.open(vela, "--next-after", 1500, width, height, *WINDOW)
+            window, log = self.open(vela, "--next-on-signal", width, height, *WINDOW)
+            client = vela.clients[-1]
             self.wait_client(log, "released 0")
             box = self.window_box(vela, window)
             with tempfile.TemporaryDirectory(dir=vela.directory) as directory:
                 recorder = subprocess.Popen([tool("vela-screen-record"), directory, *map(str, box)],
-                                            env=vela.client_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                                            text=True)
+                                            env=vela.client_env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 vela.clients.append(recorder)
-                self.assertIn("recording", recorder.stdout.readline())
+                self.wait_recorder(recorder)
+                client.send_signal(signal.SIGUSR1)
                 self.wait_client(log, "committed 1")
                 self.wait_client(log, "released 1")
                 time.sleep(0.3)
@@ -180,6 +210,7 @@ class Uploads(unittest.TestCase):
                 shown.append(version)
             print(f"{frames} frames recorded, versions {shown}", flush=True)
             self.assertGreater(frames, 0)
+            self.assertEqual(shown[0], 0, "the recording must include the old buffer before the update")
             self.assertEqual(shown[-1], 1, "the new buffer must end up shown whole")
             self.assertEqual(shown, sorted(shown), "an old buffer came back after the new one")
             self.assertGreaterEqual(vela.state()["upload"]["deferred"], 2)

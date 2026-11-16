@@ -5,7 +5,7 @@
 // budget and image-extent tests (docs/memory-allocation-policy.md, point 6;
 // tests/functional/test_uploads.py).
 //
-// Usage: vela-bigbuffer [--dmabuf] [--next-after MS] [--every-frame|--burst] [--app-id ID]
+// Usage: vela-bigbuffer [--dmabuf] [--next-after MS|--next-on-signal] [--every-frame|--burst] [--app-id ID]
 //                       WIDTH HEIGHT [WINDOW_WIDTH WINDOW_HEIGHT]
 //
 // Opens a window of WINDOW_WIDTH x WINDOW_HEIGHT (default 512x256; the
@@ -17,6 +17,7 @@
 // the wrong place has the wrong green.
 //
 // --next-after MS: MS after version 0 is released (copied), commits version 1.
+// --next-on-signal: commits version 1 on SIGUSR1, after version 0 is released.
 // --every-frame: from version 1 on, commits a new version at every frame
 //   callback, into whichever of two buffers the compositor has released.
 // --burst: prepares both free buffers before committing them together, with
@@ -32,6 +33,7 @@
 #define _GNU_SOURCE
 #include <drm_fourcc.h>
 #include <errno.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <gbm.h>
 #include <stdint.h>
@@ -74,7 +76,11 @@ static int nextVersion = 1;
 static int everyFrame;
 static int burst;
 static int nextAfterMs = -1;
+static int nextOnSignal;
+static volatile sig_atomic_t nextRequested;
 static int64_t nextAt; // CLOCK_MONOTONIC ns; 0: not yet
+
+static void requestNext(int signalNumber) { nextRequested = 1; }
 static int finished;
 
 static void die(const char* what)
@@ -295,12 +301,14 @@ int main(int argc, char** argv)
             everyFrame = burst = 1;
         } else if (!strcmp(argv[i], "--next-after") && i + 1 < argc) {
             nextAfterMs = atoi(argv[++i]);
+        } else if (!strcmp(argv[i], "--next-on-signal")) {
+            nextOnSignal = 1;
         } else if (!strcmp(argv[i], "--app-id") && i + 1 < argc) {
             appId = argv[++i];
         } else if (sizeCount < 4 && atoi(argv[i]) > 0) {
             sizes[sizeCount++] = atoi(argv[i]);
         } else {
-            fprintf(stderr, "usage: vela-bigbuffer [--dmabuf] [--next-after MS] [--every-frame|--burst] [--app-id ID] "
+            fprintf(stderr, "usage: vela-bigbuffer [--dmabuf] [--next-after MS|--next-on-signal] [--every-frame|--burst] [--app-id ID] "
                             "WIDTH HEIGHT [WINDOW_WIDTH WINDOW_HEIGHT]\n");
             return 2;
         }
@@ -311,9 +319,15 @@ int main(int argc, char** argv)
     }
     width = sizes[0];
     height = sizes[1];
-    if (dmabuf && (nextAfterMs >= 0 || everyFrame)) {
-        fprintf(stderr, "vela-bigbuffer: --dmabuf cannot be combined with --next-after or --every-frame\n");
+    if ((dmabuf && (nextAfterMs >= 0 || everyFrame || nextOnSignal))
+        || (nextOnSignal && (nextAfterMs >= 0 || everyFrame))) {
+        fprintf(stderr, "vela-bigbuffer: incompatible buffer update modes\n");
         return 2;
+    }
+    if (nextOnSignal) {
+        struct sigaction action = { .sa_handler = requestNext };
+        sigemptyset(&action.sa_mask);
+        if (sigaction(SIGUSR1, &action, NULL) < 0) die("sigaction");
     }
 
     struct wl_display* display = wl_display_connect(NULL);
@@ -332,7 +346,7 @@ int main(int argc, char** argv)
         dmabufBuffer(&buffers[0]);
     } else {
         shmBuffer(&buffers[0]);
-        if (nextAfterMs >= 0 || everyFrame) shmBuffer(&buffers[1]);
+        if (nextAfterMs >= 0 || everyFrame || nextOnSignal) shmBuffer(&buffers[1]);
     }
 
     xdg_wm_base_add_listener(wmBase, &wmBaseListener, NULL);
@@ -352,6 +366,11 @@ int main(int argc, char** argv)
         wl_display_flush(display);
         if (nextAt && now() >= nextAt) {
             nextAt = 0;
+            commitNext();
+            wl_display_flush(display);
+        }
+        if (nextRequested && configured && nextVersion == 1 && !buffers[0].busy) {
+            nextRequested = 0;
             commitNext();
             wl_display_flush(display);
         }

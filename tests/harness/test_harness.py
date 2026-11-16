@@ -92,6 +92,36 @@ class UploadDeviceExtents(unittest.TestCase):
             upload_extent((0, 4096), budget, budget)
 
 
+class RecorderReadiness(unittest.TestCase):
+    def recorder(self, program):
+        child = subprocess.Popen([sys.executable, "-u", "-c", program],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        def cleanup():
+            if child.poll() is None:
+                child.kill()
+            child.communicate(timeout=5)
+        self.addCleanup(cleanup)
+        return child
+
+    def test_waits_for_a_complete_readiness_line(self):
+        from test_uploads import Uploads
+
+        child = self.recorder("import sys,time; print('starting'); "
+                              "sys.stdout.write('recor'); sys.stdout.flush(); "
+                              "time.sleep(0.05); print('ding'); time.sleep(20)")
+        Uploads().wait_recorder(child)
+        self.assertIsNone(child.poll())
+
+    def test_stalled_partial_line_is_bounded_and_recorder_is_reaped(self):
+        from test_uploads import Uploads
+
+        child = self.recorder("import sys,time; sys.stdout.write('first frame stalled'); "
+                              "sys.stdout.flush(); time.sleep(20)")
+        with self.assertRaisesRegex(AssertionError, "first frame stalled"):
+            Uploads().wait_recorder(child, timeout=0.2)
+        self.assertIsNotNone(child.returncode)
+
+
 class InputActionTimeouts(unittest.TestCase):
     def test_action_words_used_as_operands_do_not_extend_the_timeout(self):
         self.assertEqual(input_sleep_ms(("type", "sleep", "key", "Return")), 0)

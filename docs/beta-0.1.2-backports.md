@@ -179,6 +179,15 @@ The subsequent differences address the CodeRabbit reviews:
   in both SVG-enabled and SVG-disabled builds. A malformed older response fails
   this CPU regression. Wait for actual timer readiness in the readback fixture;
   100 consecutive CPU runs pass without a zero-time readiness race.
+- Keep the full state fixtures linkable under ASan, and avoid a null-source
+  zero-length copy when the upload fixture submits an empty command buffer.
+- Bound recorder readiness even for partial lines, stop and reap stalled
+  recorders, and include their output on failure. Trigger the next buffer only
+  after recorder readiness and require both old and new versions in the capture.
+  Expose each competing window before sampling its pixels.
+- Wait for rendering before comparing unchanged secondary-taskbar geometry.
+  Test failed preference writes against both later external alignment choices,
+  detecting either a stale rollback or replay of the rejected value.
 - Require taskbar geometry before checking its bounds, acknowledge Bluetooth Busy
   retries before releasing a held transition, and enable test commands in the
   documented manual launch. Metadata fixtures use private build directories,
@@ -197,14 +206,14 @@ trusted `backport/**` pushes and PR bases, as well as `main` and `release/**`.
 Local validation (hardware runs remain deferred):
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 367 selected CPU/QML CTest entries pass on security-slice commit `1216726`
+- 367 selected CPU/QML CTest entries pass on security-slice commit `bf53bcb`
   after the runtime and credential-transition review fixes; the runtime slice independently passes 350.
   This includes documentation, reporter and preference fixtures adapted to 0.1.
-- Debug-only `-fsanitize=address` configuration: the configuration-read test
-  passes with the ASan runtime before the shim; the allocator-interposing
-  damage test is excluded from that instrumented configuration. The global
-  new-handler interposition test returns its expected skip under effective C++
-  Debug ASan flags and passes in the native build.
+- Full Debug ASan/UBSan build with leak detection: 365 CPU/QML tests pass and
+  `alloc.new-handler` returns its expected sanitizer skip (366 selected entries).
+  Both real state-JSON variants and the empty-upload submission pass. The
+  allocator-interposing damage test remains excluded from this instrumented
+  configuration; its native variant and the native new-handler test pass.
 - Updater/package contracts: 220 Python tests, 218 passed and 2 skipped because
   this Arch host selects the pacman backend in Debian-derivative detection cases.
 - Before the review pause, the text-rendering RHI shader test passed all 15
