@@ -37,6 +37,41 @@ class OptionalIconCapability(unittest.TestCase):
                 self.assertEqual(scene.write_icon.call_count, int(svg))
 
 
+class TargetUploadObservation(unittest.TestCase):
+    def test_real_contention_case_uses_target_metric_and_requires_overlap(self):
+        from test_uploads import Uploads
+
+        for overlapped in (True, False):
+            with self.subTest(overlapped=overlapped), patch("test_uploads.Session") as factory:
+                vela = factory.return_value.__enter__.return_value
+                observation = {"deferred": True, "pending": True, "overlapped": overlapped, "frames": 0}
+                pending = State({"upload": {"replaced": 1}, "windows": [
+                    {"id": "greedy", "upload": {"pending": True}},
+                    {"id": "other", "upload": observation}]})
+                complete = dict(observation, pending=False, frames=2)
+                vela.state.return_value = State({"windows": [{"id": "other", "upload": complete}],
+                    "upload": {"frames_max": 999, "replaced": 1, "abandoned": 0,
+                               "chunks_peak": 16, "chunks_max": 16}})
+                vela.query.return_value = {"ok": True}
+                def waited(condition, **kwargs):
+                    self.assertTrue(condition(pending), kwargs.get("what", "condition"))
+                    return pending
+                vela.wait_for.side_effect = waited
+                scene = Uploads("test_competing_uploads_do_not_starve_another")
+                scene.size_for = Mock(return_value=(8192, 4608))
+                scene.open = Mock(side_effect=(("greedy", "greedy.log"), ("other", "other.log")))
+                scene.wait_client = Mock()
+                if overlapped:
+                    scene.test_competing_uploads_do_not_starve_another()
+                    scene.wait_client.assert_called_once_with("other.log", "released 0")
+                else:
+                    with self.assertRaises(AssertionError):
+                        scene.test_competing_uploads_do_not_starve_another()
+                    scene.wait_client.assert_not_called()
+                self.assertEqual([call.args[0] for call in vela.query.call_args_list],
+                                 ["test-upload-hold on", "test-upload-hold off"])
+
+
 class UploadDeviceExtents(unittest.TestCase):
     def test_selected_buffers_fit_both_extents_and_exceed_the_actual_budget(self):
         from test_uploads import upload_extent

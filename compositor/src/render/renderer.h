@@ -101,6 +101,15 @@ struct vela_gpu_timing {
 // there.
 bool vela_renderer_read_timing(struct vela_renderer *renderer, int slot, uint64_t point, struct vela_gpu_timing *out);
 
+// A texture's last deferred upload, observed independently of other clients.
+struct vela_upload_observation {
+    uint64_t frames;
+    bool deferred, pending, overlapped;
+};
+struct vela_upload_observation vela_texture_upload_observation(struct wlr_texture *texture);
+// Test-only barrier: callers must enforce VELA_TEST_COMMANDS authorization.
+void vela_renderer_test_hold_uploads(struct vela_renderer *renderer, bool hold);
+
 // The texture is ours and its format has no alpha (an opaque buffer).
 bool vela_texture_is_opaque(struct wlr_texture *texture);
 // The texture has something to draw: false only for one of ours whose first
@@ -124,7 +133,7 @@ struct vela_upload_stats {
     int chunks_max; // the budget, in chunks of the same size
     uint64_t in_place, deferred, replaced, completed, abandoned, pieces;
     uint64_t rejected; // client buffers refused for their size
-    uint64_t frames_max; // largest enqueue-to-completion interval
+    uint64_t frames_max; // largest enqueue-to-completion service-frame interval
     size_t budget_bytes;
 };
 struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *renderer);

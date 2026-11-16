@@ -480,6 +480,31 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
 
+    # Parse the complete production IPC response, with and without librsvg.
+    # Minimal compositor-only builds do not gain a required Qt dependency.
+    find_package(Qt6 6.5 QUIET COMPONENTS Core)
+    if(TARGET Qt6::Core)
+        foreach(state_svg IN ITEMS 0 1)
+            if(state_svg)
+                set(state_target vela-command-state-test)
+                set(state_case compositor.command-state-json)
+            else()
+                set(state_target vela-command-state-no-svg-test)
+                set(state_case compositor.command-state-json-no-svg)
+            endif()
+            add_executable(${state_target} tests/command_state_test.cpp
+                tests/command_state_fixture.c ${VELA_PROTOCOL_HEADERS})
+            target_include_directories(${state_target} PRIVATE src ${VELA_GENERATED_DIR})
+            target_compile_definitions(${state_target} PRIVATE WLR_USE_UNSTABLE VELA_HAVE_RSVG=${state_svg})
+            target_compile_options(${state_target} PRIVATE -ffunction-sections -fdata-sections
+                -Wno-unused-parameter -Wno-missing-field-initializers)
+            target_link_options(${state_target} PRIVATE -Wl,--gc-sections)
+            target_link_libraries(${state_target} PRIVATE vela-pure Qt6::Core
+                PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+            add_test(NAME ${state_case} COMMAND ${state_target})
+        endforeach()
+    endif()
+
     # Production readback helpers: packed alpha, untouched padding and Vulkan
     # allocation/map failures, with Vulkan entry points stubbed instead of a GPU.
     add_executable(vela-readback-test tests/readback_test.c src/render/formats.c

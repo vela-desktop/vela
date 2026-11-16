@@ -34,10 +34,10 @@ TEST(SecurityPolicy, PrivilegedGlobals)
 TEST(SecurityPolicy, TestOnlyCommands)
 {
     for (const char *line : { "test-output add 1920x1080", "test-output remove HEADLESS-2", "test-power off",
-             "test-power on", "test-shell 1234", "test-power" }) {
+             "test-power on", "test-shell 1234", "test-power", "test-upload-hold on", "test-upload-hold off" }) {
         EXPECT_TRUE(vela_command_test_only(line)) << line;
     }
-    for (const char *line : { "state", "lock", "test-outputs", "test-powerful", "", "window active close" }) {
+    for (const char *line : { "state", "lock", "test-outputs", "test-powerful", "test-upload-holder", "", "window active close" }) {
         EXPECT_FALSE(vela_command_test_only(line)) << line;
     }
     EXPECT_FALSE(vela_command_test_only(nullptr));

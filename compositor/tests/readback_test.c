@@ -638,9 +638,14 @@ static void rearmed_timer_keeps_queued_readbacks(void)
     readbacks_done = 0;
     dispatch_readback(renderer.readback_fd, WL_EVENT_READABLE, &renderer);
     assert(readbacks_done == 0 && renderer.readback_failed == 0 && renderer.readback_count == 1);
-    struct itimerspec armed;
-    assert(timerfd_gettime(renderer.readback_fd, &armed) == 0);
-    assert(armed.it_value.tv_sec || armed.it_value.tv_nsec || poll(&expired, 1, 0) == 1);
+    // Expiry and fd readiness are separate observations: gettime may
+    // already report zero before the kernel publishes POLLIN. Wait for the
+    // actual next expiry, proving the pending request remains dispatchable.
+    int ready;
+    do {
+        ready = poll(&expired, 1, 1000);
+    } while (ready < 0 && errno == EINTR);
+    assert(ready == 1 && (expired.revents & POLLIN));
 
     vela_readback_cancel(readback);
     assert(renderer.readback_count == 0 && renderer.staging[0].readers == 0);
