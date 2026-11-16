@@ -659,7 +659,11 @@ static void on_frame(struct vela_output *output)
         request_frame(output); // nothing delivered: no vblank will ask
     }
     if (rendered) {
-        vela_server_output_rendered(output->server, output);
+        // A frame that hit a failed region operation may show stale pixels:
+        // the lock waits for the whole redraw that follows it.
+        if (vela_output_frame_safe(output->frame)) {
+            vela_server_output_rendered(output->server, output);
+        }
         const struct vela_frame_delivered *delivered = &output->frame->delivered;
         struct vela_delivery delivery = {
             output->wlr->commit_seq, plan.start, now, vela_now_ns(), delivered->point, delivered->timing_slot,

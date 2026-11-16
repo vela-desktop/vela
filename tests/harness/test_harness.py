@@ -48,6 +48,15 @@ class RealShellInputTimeouts(unittest.TestCase):
             self.assertEqual(log.readlines()[-1], "type\tsleep\tkey\tReturn\n")
 
 
+class StopBarrierScheduling(unittest.TestCase):
+    def test_a_held_stop_is_observed_even_after_the_test_process_was_paused(self):
+        from test_session import Supervisor
+
+        with patch("test_session.time.monotonic", side_effect=(0, 10)), \
+                patch("builtins.open", side_effect=lambda *args: io.StringIO("123 (vela-compositor) T 1")):
+            Supervisor()._wait_stopped(123)
+
+
 class SessionCleanup(unittest.TestCase):
     def child(self, source):
         process = subprocess.Popen([sys.executable, "-c", source], start_new_session=True,

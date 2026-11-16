@@ -11,6 +11,7 @@
 #include "updates/updates.h"
 
 #include <QDBusVirtualObject>
+#include <QDBusVariant>
 #include <QSignalSpy>
 
 #include <memory>
@@ -153,6 +154,43 @@ private Q_SLOTS:
         QVERIFY(updates.autoCheck());
         QVERIFY(updates.error().isEmpty());
         QCOMPARE(calls(), QStringList {});
+    }
+
+
+    // vela.conf that cannot be read to the end is never rewritten from what
+    // was read: the daemon's settings changes fail instead of dropping the
+    // rest of the user's settings.
+private:
+    QVariant daemonAutoCheck()
+    {
+        QDBusMessage get = QDBusMessage::createMethodCall(service, objectPath,
+            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
+        get << service << QStringLiteral("AutoCheck");
+        const QDBusMessage reply = bus().call(get, QDBus::Block, 5000);
+        return reply.type() == QDBusMessage::ReplyMessage
+            ? reply.arguments().value(0).value<QDBusVariant>().variant() : QVariant();
+    }
+
+private slots:
+    void unreadableSettingsAreNeverRewritten()
+    {
+#ifndef VELA_GETLINE_FAIL_PRELOAD
+        QSKIP("needs the vela-getline-fail-preload target");
+#else
+        const QString conf = m_home.filePath(QStringLiteral("config/vela/vela.conf"));
+        const QByteArray content = "# mine\nupdate-auto-check=yes\ntheme=dark\nlanguage=it\n";
+        QVERIFY(write(conf, content));
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_GETLINE_FAIL_PRELOAD) },
+            { QStringLiteral("VELA_TEST_GETLINE_FAIL"), QStringLiteral("vela.conf 3 EIO") } }));
+        auto updates = client();
+        QTRY_VERIFY(updates->available());
+        updates->setAutoCheck(false); // the daemon logs the failure
+        QTRY_VERIFY(!updates->autoCheck());
+        // The daemon publishes this after its attempted write; the client's
+        // requested value alone is not an acknowledgement.
+        QTRY_COMPARE(daemonAutoCheck(), QVariant(false));
+        QCOMPARE(read(conf), content);
+#endif
     }
 
     void checkFindsAnUpdate()

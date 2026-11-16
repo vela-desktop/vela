@@ -13,6 +13,8 @@
 //                    (the disconnection destroys them, as in a crash)
 
 #define _GNU_SOURCE
+#include <errno.h>
+#include <poll.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -269,6 +271,19 @@ int main(int argc, char* argv[])
             fprintf(stderr, "vela-testlock: keyboard probe needs an active seat keyboard\n");
             return 1;
         }
+    }
+
+    // Hold every locker retry while the original compositor runs. The test
+    // removes the barrier only after stopping that compositor, so a restarted
+    // compositor's locker can proceed.
+    const char* barrier = getenv("VELA_TEST_LOCK_REGISTER_BARRIER");
+    if (barrier && access(barrier, F_OK) == 0) {
+        fprintf(stderr, "vela-testlock: registration barrier reached\n");
+        struct pollfd socket = { .fd = wl_display_get_fd(display), .events = 0 };
+        while (poll(&socket, 1, -1) < 0 && errno == EINTR) {
+        }
+        wl_display_disconnect(display);
+        return 0;
     }
 
     struct ext_session_lock_v1* lock = ext_session_lock_manager_v1_lock(manager);
