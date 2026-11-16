@@ -112,6 +112,58 @@ class ReportingTests(unittest.TestCase):
             self.assertNotIn(b"also-excluded", data)
             self.assertEqual(json.loads(archive.read("manifest.json"))["collectors"]["logs"]["status"], "excluded")
 
+    def test_staging_rejects_unsafe_names_before_writing(self):
+        for name in ("", ".", "..", "../outside", "/absolute", "logs//a", "logs/./a", "logs/a\x00"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self.report.add_text("logs", name, "rejected")
+        self.assertFalse(self.report.artifacts)
+
+    def test_review_validates_names_even_if_artifact_metadata_is_malformed(self):
+        outside = self.report.directory.parent / (self.report.directory.name + "-sentinel")
+        outside.write_text("untouched")
+        self.addCleanup(outside.unlink)
+        name = "../" + outside.name
+        self.report.artifacts[name] = {"collection": "logs", "kind": "text", "size": 9}
+        for action in (self.report.preview, self.report.remove):
+            with self.subTest(action=action.__name__), self.assertRaises(ValueError):
+                action(name)
+        self.assertEqual(outside.read_text(), "untouched")
+        self.assertIn(name, self.report.artifacts)
+
+    def test_staged_parent_symlink_cannot_redirect_reads_writes_or_removal(self):
+        self.report.add_text("logs", "logs/evidence.txt", "original")
+        outside = self.root / "outside"
+        outside.mkdir()
+        sentinel = outside / "evidence.txt"
+        sentinel.write_text("untouched")
+        (self.report.directory / "logs").rename(self.report.directory / "original-logs")
+        (self.report.directory / "logs").symlink_to(outside, target_is_directory=True)
+        actions = [lambda: self.report.preview("logs/evidence.txt"),
+                   lambda: self.report.remove("logs/evidence.txt"),
+                   lambda: self.report.add_text("logs", "logs/evidence.txt", "overwrite"),
+                   lambda: self.report.export(self.root / "escaped.zip")]
+        for action in actions:
+            with self.assertRaises(OSError):
+                action()
+            self.assertEqual(sentinel.read_text(), "untouched")
+            self.assertIn("logs/evidence.txt", self.report.artifacts)
+        self.assertFalse((self.root / "escaped.zip").exists())
+
+    def test_staged_leaf_symlink_is_never_previewed_or_exported(self):
+        name = self.report.add_text("logs", "evidence.txt", "original")
+        outside = self.root / "outside.txt"
+        outside.write_text("private outside data")
+        staged = self.report.directory / name
+        staged.unlink()
+        staged.symlink_to(outside)
+        with self.assertRaises(OSError):
+            self.report.preview(name)
+        with self.assertRaises(OSError):
+            self.report.export(self.root / "escaped.zip")
+        self.report.remove(name)
+        self.assertEqual(outside.read_text(), "private outside data")
+        self.assertFalse(staged.is_symlink())
+
     def test_excluding_resources_removes_derived_observations(self):
         identity = self.fake_process()
         self.report.context = {"processes": [identity], "duration": 1}

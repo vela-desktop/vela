@@ -678,6 +678,9 @@ if(VELA_BUILD_TOOLS)
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)
         target_compile_options(vela-compositor-tests PRIVATE -Wall -Wextra)
+        target_include_directories(vela-compositor-tests PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
+        target_compile_definitions(vela-compositor-tests PRIVATE
+            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
         target_link_libraries(vela-compositor-tests PRIVATE vela-pure GTest::gtest_main)
         include(GoogleTest)
         gtest_discover_tests(vela-compositor-tests TEST_PREFIX "compositor.")

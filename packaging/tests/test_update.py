@@ -204,9 +204,16 @@ elif name == "cosign":
         sys.exit("Unexpected cosign command")
     sha = args[args.index("--certificate-github-workflow-sha") + 1]
     pkg = pathlib.Path(args[-1])
-    if (".g" + sha[:7] + "-" not in pkg.name and
-            ".g" + sha[:7] + "." not in pkg.name):
+    # Real Cosign binds the signed digest/identity, not the local filename.
+    # The verifier deliberately renames its private package snapshot.
+    expected_sha = os.environ.get("TEST_RELEASE_SHA") or os.environ.get("TEST_DOWNLOAD_SHA")
+    if not expected_sha or not sha.startswith(expected_sha):
         sys.exit("Attestation commit mismatch")
+    import base64, hashlib
+    evidence = json.loads(pathlib.Path(args[args.index("--bundle") + 1]).read_text())
+    statement = json.loads(base64.b64decode(evidence["dsseEnvelope"]["payload"]))
+    if statement["subject"][0]["digest"]["sha256"] != hashlib.sha256(pkg.read_bytes()).hexdigest():
+        sys.exit("Attestation digest mismatch")
     if args[args.index("--certificate-github-workflow-repository") + 1] != "vela-desktop/vela":
         sys.exit("Unexpected repository identity")
     if args[args.index("--certificate-oidc-issuer") + 1] != "https://token.actions.githubusercontent.com":

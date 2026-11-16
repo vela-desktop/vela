@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import dataclasses
+import contextlib
 import datetime as dt
 import getpass
 import hashlib
@@ -11,6 +12,7 @@ from pathlib import Path
 import re
 import selectors
 import signal
+import shutil
 import socket
 import stat
 import subprocess
@@ -204,6 +206,44 @@ class Report:
     def close(self):
         self.temporary.cleanup()
 
+    @contextlib.contextmanager
+    def _artifact_parent(self, name, create=False):
+        """Walk archive components from the private staging directory, never symlinks."""
+        if not isinstance(name, str):
+            raise ValueError("Unsafe archive path.")
+        parts = name.split("/")
+        if any(part in ("", ".", "..") or any(ord(c) < 32 or ord(c) == 127 for c in part)
+               for part in parts):
+            raise ValueError("Unsafe archive path.")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+        parent = os.open(self.directory, flags)
+        try:
+            for component in parts[:-1]:
+                if create:
+                    try:
+                        os.mkdir(component, mode=0o700, dir_fd=parent)
+                    except FileExistsError:
+                        pass
+                child = os.open(component, flags, dir_fd=parent)
+                os.close(parent)
+                parent = child
+            yield parent, parts[-1]
+        finally:
+            os.close(parent)
+
+    @contextlib.contextmanager
+    def _open_artifact(self, name):
+        with self._artifact_parent(name) as (parent, leaf):
+            fd = os.open(leaf, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                         dir_fd=parent)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("Staged evidence must be a regular file.")
+            with os.fdopen(fd, "rb", closefd=False) as stream:
+                yield stream
+        finally:
+            os.close(fd)
+
     def add_text(self, collection, name, text, source=None, metadata=None):
         return self.add_bytes(collection, name, self.redactor.text(text).encode(),
                               "text", False, source, metadata)
@@ -213,15 +253,15 @@ class Report:
         return self.add_bytes(collection, name, data, "text", False, source, metadata)
 
     def add_bytes(self, collection, name, data, kind, sensitive, source=None, metadata=None):
-        relative = Path(name)
-        if relative.is_absolute() or ".." in relative.parts:
-            raise ValueError("Unsafe archive path.")
         if sum(item["size"] for key, item in self.artifacts.items() if key != name) + len(data) > ARCHIVE_LIMIT:
             raise ValueError("Included evidence exceeds the 1 GiB report limit. Remove a file first.")
-        path = self.directory / relative
-        path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-        with open(path, "wb") as stream:
-            os.chmod(path, 0o600)
+        with self._artifact_parent(name, create=True) as (parent, leaf):
+            fd = os.open(leaf, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_NOFOLLOW
+                         | os.O_NONBLOCK | os.O_CLOEXEC, 0o600, dir_fd=parent)
+        with os.fdopen(fd, "wb") as stream:
+            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+                raise ValueError("Staged evidence must be a regular file.")
+            os.fchmod(stream.fileno(), 0o600)
             stream.write(data)
         self.artifacts[name] = {"collection": collection, "size": len(data), "kind": kind,
                                 "sensitive": sensitive,
@@ -265,8 +305,10 @@ class Report:
         return name
 
     def remove(self, name):
-        item = self.artifacts.pop(name)
-        (self.directory / name).unlink()
+        item = self.artifacts[name]
+        with self._artifact_parent(name) as (parent, leaf):
+            os.unlink(leaf, dir_fd=parent)
+        del self.artifacts[name]
         collection = item["collection"]
         if not any(a["collection"] == collection for a in self.artifacts.values()):
             self.mark_excluded(collection)
@@ -298,7 +340,7 @@ class Report:
             return ("Binary attachment. Automatic text redaction does not apply.\n"
                     "Review the original file before sharing.\n" +
                     json.dumps(item, indent=2))
-        with open(self.directory / name, "rb") as stream:
+        with self._open_artifact(name) as stream:
             data = stream.read(65537)
         return data[:65536].decode("utf-8", errors="replace") + (
             "\n[Preview limited to 64 KiB; the archive includes the collected file.]\n"
@@ -308,7 +350,7 @@ class Report:
         artifacts = {}
         for name, item in self.artifacts.items():
             digest = hashlib.sha256()
-            with open(self.directory / name, "rb") as stream:
+            with self._open_artifact(name) as stream:
                 for block in iter(lambda: stream.read(65536), b""):
                     digest.update(block)
             artifacts[name] = dict(item, sha256=digest.hexdigest())
@@ -365,7 +407,8 @@ class Report:
                     archive.writestr("report.md", self.markdown())
                     archive.writestr("manifest.json", json.dumps(self.manifest(), indent=2) + "\n")
                     for name in self.artifacts:
-                        archive.write(self.directory / name, name)
+                        with self._open_artifact(name) as source, archive.open(name, "w") as target:
+                            shutil.copyfileobj(source, target)
                 stream.flush()
                 os.fsync(stream.fileno())
             if overwrite:
