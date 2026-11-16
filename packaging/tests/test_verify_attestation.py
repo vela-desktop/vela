@@ -137,6 +137,43 @@ class VerificationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "package changed"):
                 verification.verify(self.package, "vela-desktop/vela", self.commit, "release")
 
+    def test_unchanged_in_directory_symlink_can_be_verified(self):
+        selected = self.package.with_name("selected.rpm")
+        selected.symlink_to(self.package.name)
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run"):
+            verification.verify(selected, "vela-desktop/vela", self.commit, "release")
+
+    def test_retargeting_original_symlink_during_verification_is_rejected(self):
+        selected = self.package.with_name("selected.rpm")
+        selected.symlink_to(self.package.name)
+        other = self.package.with_name("other.rpm")
+        other.write_bytes(b"different package")
+
+        def retarget_selected(command, **kwargs):
+            selected.unlink()
+            selected.symlink_to(other.name)
+
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run", side_effect=retarget_selected):
+            with self.assertRaisesRegex(ValueError, "package changed"):
+                verification.verify(selected, "vela-desktop/vela", self.commit, "release")
+        self.assertEqual(hashlib.sha256(self.package.read_bytes()).hexdigest(), self.digest)
+
+    def test_replacing_original_symlink_with_same_target_is_also_rejected(self):
+        selected = self.package.with_name("selected.rpm")
+        selected.symlink_to(self.package.name)
+
+        def replace_selected(command, **kwargs):
+            replacement = self.package.with_name("replacement-link.rpm")
+            replacement.symlink_to(self.package.name)
+            replacement.replace(selected)
+
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run", side_effect=replace_selected):
+            with self.assertRaisesRegex(ValueError, "package pathname changed"):
+                verification.verify(selected, "vela-desktop/vela", self.commit, "release")
+
     def test_beta_release_identity_pins_exact_tag_and_commit(self):
         with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
              patch.object(verification.subprocess, "run") as run:

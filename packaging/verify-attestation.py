@@ -96,6 +96,8 @@ def validate_signed_provenance(bundle: dict, digest: str) -> None:
 def package_snapshot(package: Path):
     """Confine input to the working directory and pin a private copy for Cosign."""
     root = Path.cwd().resolve(strict=True)
+    selected = package.absolute()
+    selection_before = selected.lstat()
     package = package.resolve(strict=True)
     try:
         relative = package.relative_to(root)
@@ -132,10 +134,18 @@ def package_snapshot(package: Path):
             # returns. Reject in-place edits and pathname replacement as well.
             expected = (before.st_dev, before.st_ino, before.st_size,
                         before.st_mtime_ns, before.st_ctime_ns)
-            for current in (os.fstat(source.fileno()), package.lstat()):
+            for current in (os.fstat(source.fileno()), package.lstat(), selected.stat()):
                 if (current.st_dev, current.st_ino, current.st_size,
                         current.st_mtime_ns, current.st_ctime_ns) != expected:
                     raise ValueError("package changed during signature verification")
+            # resolve() follows an in-directory symlink. The caller still uses
+            # its original spelling, so check that entry as well as its target.
+            selection_after = selected.lstat()
+            if (selection_after.st_dev, selection_after.st_ino, selection_after.st_size,
+                    selection_after.st_mtime_ns, selection_after.st_ctime_ns) != (
+                    selection_before.st_dev, selection_before.st_ino, selection_before.st_size,
+                    selection_before.st_mtime_ns, selection_before.st_ctime_ns):
+                raise ValueError("package pathname changed during signature verification")
 
 
 def verify(package: Path, repository: str, commit: str, kind: str, release_tag: str | None = None) -> None:
