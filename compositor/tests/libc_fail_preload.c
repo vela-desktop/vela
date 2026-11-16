@@ -14,7 +14,9 @@
 // "command-watch": contains a command socket path; while present,
 //   registering an accepted connection on that socket fails with EMFILE.
 // "lock-exit-stop": consumed once before the fatal lock path signals its
-//   supervisor; SIGSTOP holds the blackout until the test crashes this child.
+//   supervisor; SIGSTOP holds the blackout. An optional SIGSEGV/SIGABRT number
+//   makes the stopped thread crash itself after SIGCONT, before the real kill.
+//   Empty content preserves the stop-only mode used by the exit-policy test.
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -152,11 +154,35 @@ int kill(pid_t pid, int sig)
         real = (int (*)(pid_t, int))dlsym(RTLD_NEXT, "kill");
     }
     int directory = trigger_directory();
+    char text[32];
     if (sig == SIGTERM && pid == getppid() && directory >= 0
+        && trigger("lock-exit-stop", text, sizeof(text))
         && unlinkat(directory, "lock-exit-stop", 0) == 0) {
+        char *end = NULL;
+        long crash = *text ? strtol(text, &end, 10) : 0;
+        if (*text && (!end || *end || (crash != SIGSEGV && crash != SIGABRT))) {
+            _exit(125); // malformed test input must never reach the supervisor
+        }
         static const char message[] = "libc-fail: lock exit barrier\n";
         (void)!write(STDERR_FILENO, message, sizeof(message) - 1);
         raise(SIGSTOP);
+        if (crash) {
+            // A process-directed signal can be delivered to a driver worker,
+            // or handled by a library, while this thread resumes the real kill.
+            // Reset the test signal's disposition and unblock it on this thread;
+            // raise() targets the very thread held at the barrier.
+            struct sigaction action = { .sa_handler = SIG_DFL };
+            sigemptyset(&action.sa_mask);
+            sigset_t unblock;
+            sigemptyset(&unblock);
+            sigaddset(&unblock, (int)crash);
+            if (sigaction((int)crash, &action, NULL) != 0
+                || sigprocmask(SIG_UNBLOCK, &unblock, NULL) != 0) {
+                _exit(125);
+            }
+            raise((int)crash);
+            _exit(125); // a failed crash injection cannot send the stop signal
+        }
     }
     return real(pid, sig);
 }

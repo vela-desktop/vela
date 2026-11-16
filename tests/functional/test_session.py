@@ -880,8 +880,8 @@ class Supervisor(unittest.TestCase):
             with self.subTest(signal=signal.Signals(signum).name):
                 options, setenv, _ = self._libc_failures()
                 barrier = os.path.join(os.path.dirname(setenv), "lock-exit-stop")
-                with open(barrier, "w"):
-                    pass
+                with open(barrier, "w") as trigger:
+                    trigger.write(str(int(signum)))
                 with Session(supervise=True, lock_hold_ms=1000, **options) as vela:
                     marker = self._marker(vela)
                     compositor = child_compositor(vela.process.pid)
@@ -892,7 +892,10 @@ class Supervisor(unittest.TestCase):
                         self._wait_stopped(compositor)
                     finally:
                         os.rmdir(marker)
-                    self._crash_stopped(compositor, signum)
+                    # The shim crashes the stopped thread itself. Sending a
+                    # process-wide crash signal here races with the real SIGTERM
+                    # after SIGCONT on multithreaded driver implementations.
+                    os.kill(compositor, signal.SIGCONT)
                     vela.wait_for_log("restarting locked")
                     log = vela.log_text()
                     self.assertIn("the compositor crashed", log)

@@ -658,13 +658,14 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-updates-start-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.updates-start COMMAND vela-updates-start-test)
 
+    find_package(Threads REQUIRED)
     add_executable(vela-lock-exit-test tests/lock_exit_test.c ${VELA_PROTOCOL_HEADERS})
     target_include_directories(vela-lock-exit-test PRIVATE src ${VELA_GENERATED_DIR})
     target_compile_definitions(vela-lock-exit-test PRIVATE WLR_USE_UNSTABLE)
     target_compile_options(vela-lock-exit-test PRIVATE -ffunction-sections -fdata-sections
         -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Werror)
     target_link_options(vela-lock-exit-test PRIVATE -Wl,--gc-sections)
-    target_link_libraries(vela-lock-exit-test PRIVATE vela-pure PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    target_link_libraries(vela-lock-exit-test PRIVATE Threads::Threads vela-pure PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
     set_target_properties(vela-lock-exit-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_dependencies(vela-lock-exit-test vela-libc-fail-preload)
     add_test(NAME compositor.lock-unsafe-exit COMMAND ${CMAKE_COMMAND} -E env
