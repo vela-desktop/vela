@@ -5,6 +5,10 @@
 // Function sections discard command handlers unrelated to the state response.
 #include "../src/command.c"
 
+// ASan keeps the global topics table and its callback even with --gc-sections.
+// The state response never calls this provider; fail if that contract changes.
+void vela_brightness_json(struct vela_server *server, struct vela_buffer *json) { abort(); }
+
 static struct vela_view *focused_view;
 struct vela_view *vela_views_focused(struct vela_server *server) { return focused_view; }
 struct wlr_box vela_view_frame_box(struct vela_view *view) { return (struct wlr_box) { 1, 2, 300, 200 }; }
