@@ -3,6 +3,7 @@
 
 #include "view.h"
 
+#include "activation.h"
 #include "alloc/alloc.h"
 #include "capture_watch.h"
 #include "interact.h"
@@ -34,7 +35,6 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_seat.h>
-#include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/edges.h>
@@ -1511,21 +1511,6 @@ struct vela_view *vela_views_system_prompt(struct vela_server *server)
     return NULL;
 }
 
-// An app asks to bring one of its windows forward (a link opened in an already
-// running Firefox, a click on a notification).
-static void handle_request_activation(struct wl_listener *listener, void *data)
-{
-    struct vela_server *server = wl_container_of(listener, server, request_activation);
-    struct wlr_xdg_activation_v1_request_activate_event *event = data;
-    struct vela_view *view;
-    wl_list_for_each (view, &server->views, link) {
-        if (vela_view_surface(view) == event->surface) {
-            vela_focus_new_view(server, view);
-            return;
-        }
-    }
-}
-
 /** Reject foreign-toplevel capture during lock; accept only visible-session requests. */
 static void handle_capture_request(struct wl_listener *listener, void *data)
 {
@@ -1582,8 +1567,7 @@ void vela_views_init(struct vela_server *server)
     struct wlr_xdg_decoration_manager_v1 *decorations = VELA_MUST(wlr_xdg_decoration_manager_v1_create(display));
     vela_listen(&decorations->events.new_toplevel_decoration, &server->new_decoration, handle_new_decoration);
 
-    struct wlr_xdg_activation_v1 *activation = VELA_MUST(wlr_xdg_activation_v1_create(display));
-    vela_listen(&activation->events.request_activate, &server->request_activation, handle_request_activation);
+    vela_activation_init(server);
 }
 
 void vela_views_finish(struct vela_server *server)
@@ -1591,7 +1575,7 @@ void vela_views_finish(struct vela_server *server)
     vela_unlisten(&server->new_toplevel);
     vela_unlisten(&server->new_capture_request);
     vela_unlisten(&server->new_decoration);
-    vela_unlisten(&server->request_activation);
+    vela_activation_finish(server);
     if (server->output_check) {
         wl_event_source_remove(server->output_check);
         server->output_check = NULL;

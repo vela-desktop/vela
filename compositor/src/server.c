@@ -6,6 +6,7 @@
 #include "alloc/alloc.h"
 #include "a11y.h"
 #include "capture_watch.h"
+#include "client_policy.h"
 #include "bluetooth.h"
 #include "updates.h"
 #include "brightness.h"
@@ -178,6 +179,9 @@ static bool init(struct vela_server *server)
     server->display = wl_display_create();
     server->loop = wl_display_get_event_loop(server->display);
     struct wl_display *display = server->display;
+    // Before any global exists: sandboxed clients and Xwayland must never
+    // see a privileged one, not even briefly.
+    vela_client_policy_init(server);
 
     // Picks the backend by itself: DRM/KMS from a VT, or a Wayland window when
     // launched inside another session (such as KDE) for testing.
@@ -386,6 +390,23 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     server->supervised = supervised;
     snprintf(server->socket_name, sizeof(server->socket_name), "%s", socket);
 
+    // It was locked when the previous compositor went down: start locked,
+    // black screen until vela-lock shows up. With the shared page, only a
+    // page saying "unlocked" and a marker that is positively absent start
+    // unlocked; an older supervisor still passes VELA_START_LOCKED. Decided
+    // and engaged before the backend starts and before any client or output
+    // is served: every output is born behind the black backdrop.
+    bool unreadable = false;
+    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
+        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
+    unsetenv("VELA_START_LOCKED");
+    if (unreadable) {
+        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
+    }
+    if (start_locked) {
+        vela_lock_engage(server->lock);
+    }
+
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "Can't start the backend");
         return false;
@@ -427,20 +448,10 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     wlr_log(WLR_INFO, "Vela running on WAYLAND_DISPLAY=%s%s", socket,
         getenv("VELA_RESTARTED") ? " (restarted after a crash)" : "");
     unsetenv("VELA_RESTARTED");
-    // It was locked when the previous compositor went down: start locked,
-    // black screen until vela-lock shows up. With the shared page, only a
-    // page saying "unlocked" and a marker that is positively absent start
-    // unlocked; an older supervisor still passes VELA_START_LOCKED.
-    bool unreadable = false;
-    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
-        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
-    unsetenv("VELA_START_LOCKED");
-    if (unreadable) {
-        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
-    }
-    if (start_locked) {
+    // Engaged before the backend started (above): now that WAYLAND_DISPLAY
+    // is set, launch the locker.
+    if (server->locked) {
         wlr_log(WLR_INFO, "The screen was locked: restarting locked");
-        vela_lock_engage(server->lock);
         vela_lock_screen(server->lock);
     }
     if (server->nested) {
@@ -602,7 +613,6 @@ void vela_server_output_rendered(struct vela_server *server, struct vela_output 
 
 void vela_server_animate(struct vela_server *server, int64_t present_ns)
 {
-    vela_xwayland_sync(server);
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         vela_view_update_shape(view); // corners and shadow for the current state
@@ -618,6 +628,10 @@ void vela_server_animate(struct vela_server *server, int64_t present_ns)
     running |= vela_snapshots_tick(server, now_ms, wall_ms);
     running |= vela_snap_tick_preview(server, now_ms);
     running |= vela_workspaces_tick(server, now_ms, wall_ms);
+    // Publish the geometry this frame actually shows, including the last
+    // opening frame. Once an animation retires there may be no later frame
+    // to correct Xwayland's old position.
+    vela_xwayland_sync(server);
     if (running) {
         vela_server_schedule_frames(server);
     }

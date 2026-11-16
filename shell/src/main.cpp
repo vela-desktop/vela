@@ -297,6 +297,30 @@ int main(int argc, char* argv[])
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
+    // Source builds and GPU runners need a populated icon theme, not only
+    // hicolor's empty directory skeleton. Check through the same Qt loader
+    // and mode selection as the real shell, before starting any services.
+    if (app.arguments().contains(QStringLiteral("--check-icons"))) {
+        QIcon::setFallbackThemeName(QStringLiteral("hicolor"));
+        bool ok = true;
+        for (bool light : { false, true }) {
+            applyIconTheme(light);
+            for (const char* name : { "system-shutdown", "system-reboot", "system-suspend",
+                     "edit-copy", "window-close", "application-x-executable" }) {
+                const QIcon icon = QIcon::fromTheme(QString::fromLatin1(name));
+                if (icon.isNull() || icon.pixmap(QSize(16, 16), 1.0).isNull()) {
+                    qCritical("Icon theme '%s' cannot render '%s' (%s mode)",
+                        qPrintable(QIcon::themeName()), name, light ? "light" : "dark");
+                    ok = false;
+                }
+            }
+        }
+        if (!ok) {
+            qCritical("Install a complete icon theme (Arch/CachyOS: breeze-icons) and Qt SVG support "
+                      "(qt6-svg). Qt icon search paths: %s", qPrintable(QIcon::themeSearchPaths().join(u':')));
+        }
+        return ok ? 0 : 1;
+    }
     // VELA_STILL (an ISO date and time): still pictures that don't change
     // with when they are taken (scripts/theme-pictures.py). The clock and the
     // calendar show that time (ShellController::now()), carets don't blink.

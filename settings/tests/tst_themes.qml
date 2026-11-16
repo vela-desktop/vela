@@ -94,6 +94,15 @@ Item {
             compare(root.offers.length, 1)
         }
 
+        function test_a_shell_error_does_not_hide_undo_for_a_saved_theme() {
+            Prefs.saveError = "The shell configuration is not writable"
+            mouseClick(tile("Glass"))
+            compare(Prefs.visualTheme, "glass")
+            compare(root.offers.length, 1)
+            root.offers[0].undo()
+            compare(Prefs.visualTheme, "vela")
+        }
+
         function test_the_keyboard_applies_one_too() {
             const mine = tile("Mine")
             mine.forceActiveFocus(Qt.TabFocusReason)
@@ -207,6 +216,19 @@ Item {
             waitForItemPolished(own)
             mouseClick(findChild(own, "openFolder"))
             compare(Prefs.calls, [["openThemesFolder", ""]])
+        }
+
+        function test_a_shell_error_does_not_hide_undo_for_a_saved_reset() {
+            Prefs.visualTheme = "glass"
+            Prefs.setSurfaceStyle("taskbar", "pill")
+            Prefs.saveError = "The shell configuration is not writable"
+            waitForRendering(reset)
+            mouseClick(findChild(reset, "reset"))
+            compare(Prefs.visualTheme, "vela")
+            compare(root.offers.length, 1)
+            root.offers[0].undo()
+            compare(Prefs.visualTheme, "glass")
+            compare(Prefs.surfaceStyles.taskbar, "pill")
         }
 
         function test_reset_and_undo_put_everything_back() {

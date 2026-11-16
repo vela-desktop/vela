@@ -68,6 +68,12 @@ class RealShell(unittest.TestCase):
                    QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
                    VELA_DEBUG_SELECTION="1", **self.shell_env)
+        # Check with this private HOME/config/bus, not the developer's theme
+        # preferences. Missing theme packages must not masquerade as dozens
+        # of unrelated expressive-QML failures.
+        icons = subprocess.run([SHELL, "--check-icons"], env=dict(env, QT_QPA_PLATFORM="offscreen"),
+                               capture_output=True, text=True, timeout=10 * TIME_SCALE)
+        self.assertEqual(icons.returncode, 0, icons.stderr)
         self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
         # In a session the shell is the compositor's child; here, this one is
@@ -104,51 +110,8 @@ class RealShell(unittest.TestCase):
         self.addCleanup(process.wait)
         return process
 
-    @contextmanager
     def input_session(self):
-        """One vela-input (and so one virtual keyboard) for a whole scene.
-
-        A new vela-input per action brings its keymap to the seat: the
-        notification center loses the keyboard and closes, like Start."""
-        session = subprocess.Popen([tool("vela-input"), "-"], env=self.vela.client_env,
-                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
-        pending = bytearray()
-
-        def send(*actions):
-            """Execute a command, allowing its requested sleeps plus I/O overhead."""
-            session.stdin.write("\t".join(map(str, actions)) + "\n")
-            session.stdin.flush()
-            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
-                           if action == "sleep")
-            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
-            # select + os.read also bounds partial replies: TextIO.readline()
-            # can block forever after a process writes a non-newline prefix.
-            while b"\n" not in pending:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
-                    self.fail(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
-                chunk = os.read(session.stdout.fileno(), 4096)
-                if not chunk:
-                    self.fail(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
-                pending.extend(chunk)
-                self.assertLessEqual(len(pending), 4096, "vela-input reply exceeded 4096 bytes")
-            line, _, rest = pending.partition(b"\n")
-            pending[:] = rest
-            self.assertEqual(line.decode("utf-8", errors="replace").strip(), "OK",
-                             f"vela-input refused {actions!r}")
-        try:
-            yield send
-        finally:
-            try:
-                session.stdin.close()
-            except BrokenPipeError:
-                pass  # The process may have already died after a timeout.
-            try:
-                session.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                session.kill()
-                session.wait()
-            session.stdout.close()
+        return self.vela.input_session()
 
     @staticmethod
     def layer(state, namespace):
@@ -603,12 +566,14 @@ class QtShell(RealShell):
         # Allow Config's QFileSystemWatcher/debounce to deliver the update.
         time.sleep(0.5)
 
-        self.vela.keys("super+r")
-        self.vela.wait_for(
-            lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2",
-            timeout=8, what="Run dialog on explicitly selected output")
-        self.vela.keys("Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
+        with self.input_session() as send:
+            send("key", "super+r")
+            self.vela.wait_for(
+                lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2"
+                          and s["focusedLayer"] == "vela-run",
+                timeout=8, what="Run dialog focused on explicitly selected output")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
 
         self.send_notification("Hotplug notification", body="Must remain actionable after remapping")
         self.vela.wait_for(
@@ -1126,11 +1091,14 @@ class QtShell(RealShell):
             conf.write(f"taskbar-style={style}\n" if style else "")
         self.vela.command("reload-config")
         time.sleep(1.5) # the shell sees both files
-        self.vela.input("key", "super")
-        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start open")
-        layer = self.layer(state, "vela-start-menu")
-        self.vela.input("key", "Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        with self.input_session() as send:
+            send("key", "super")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-start-menu") and s["focusedLayer"] == "vela-start-menu",
+                what="Start open and focused")
+            layer = self.layer(state, "vela-start-menu")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
         return layer["x"] + layer["w"] / 2
 
     def test_start_follows_the_alignment_unless_the_pill_places_the_apps(self):

@@ -370,14 +370,12 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     // The app icon, drawn at the exact physical size (§9.6).
     if (rescaled || new_app) {
         int pixels = vela_max(1, (int)lround(VELA_DECORATION_ICON_SIZE * scale));
-        const struct vela_image *icon = vela_icons_app(icon_loader(server), state->app_id, pixels);
-        decoration->has_icon = icon->pixels != NULL;
+        // A copy of its own: the icon cache may evict the entry while this
+        // bar still shows it (icons.h).
+        struct vela_image icon = { 0 };
+        decoration->has_icon = vela_icons_app(icon_loader(server), state->app_id, pixels, &icon);
         if (decoration->has_icon) {
-            size_t pixels = vela_size_mul((size_t)icon->width, (size_t)icon->height);
-            size_t bytes = vela_size_mul(pixels, sizeof(uint32_t));
-            struct vela_image copy = { icon->width, icon->height, VELA_NEW_N(uint32_t, pixels) };
-            memcpy(copy.pixels, icon->pixels, bytes);
-            set_image(decoration, &decoration->icon, &copy, VELA_DECORATION_ICON_X,
+            set_image(decoration, &decoration->icon, &icon, VELA_DECORATION_ICON_X,
                 (HEIGHT - VELA_DECORATION_ICON_SIZE) / 2.0, VELA_DECORATION_ICON_SIZE, VELA_DECORATION_ICON_SIZE);
         } else {
             clear_image(&decoration->icon);

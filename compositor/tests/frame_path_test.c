@@ -204,6 +204,8 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice device, VkBuffer buff
     VkDeviceSize offset) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image,
     VkImageLayout layout, uint32_t count, const VkBufferImageCopy *regions) { abort(); }
+VKAPI_ATTR void VKAPI_CALL vkCmdCopyImage(VkCommandBuffer cmd, VkImage src, VkImageLayout src_layout, VkImage dst,
+    VkImageLayout dst_layout, uint32_t count, const VkImageCopy *regions) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyImageToBuffer(VkCommandBuffer cmd, VkImage image, VkImageLayout layout,
     VkBuffer buffer, uint32_t count, const VkBufferImageCopy *regions) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdResetQueryPool(VkCommandBuffer cmd, VkQueryPool pool, uint32_t first,
@@ -367,6 +369,7 @@ static void fixture_init(struct fixture *f)
     f->shm->image = HANDLE(VkImage);
     f->shm->view = HANDLE(VkImageView);
     f->shm->memory = HANDLE(VkDeviceMemory);
+    f->shm->uploaded = true; // as if its buffer had been copied: drawn
     f->imported = new_texture(r, format, 300, 200);
     f->imported->image = HANDLE(VkImage);
     f->imported->view = HANDLE(VkImageView);

@@ -10,7 +10,7 @@ Vela is a complete desktop environment for Wayland: its own compositor and Vulka
 renderer, a Qt Quick shell, a file manager and a settings app, designed together.
 
 [![Build](https://github.com/vela-desktop/vela/actions/workflows/build.yml/badge.svg)](https://github.com/vela-desktop/vela/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/vela-desktop/vela?include_prereleases&label=release&color=yellow)](https://github.com/vela-desktop/vela/releases)
+[![Release](https://img.shields.io/github/v/release/vela-desktop/vela?label=release&color=yellow)](https://github.com/vela-desktop/vela/releases)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 [Website](https://velade.org) · [Get Vela](#get-vela) · [Features](docs/features.md) ·
@@ -146,7 +146,8 @@ Matrix homeserver works; no `velade.org` account is required.
 - **Design:** [renderer](docs/renderer.md) · [audio](docs/audio.md) ·
   [Bluetooth](docs/bluetooth.md) · [brightness](docs/brightness.md) ·
   [screen sharing](docs/screen-sharing.md) · [theme system](docs/theme-system.md) ·
-  [authorization prompt](docs/polkit-agent.md) · [updates](docs/updates.md)
+  [authorization prompt](docs/polkit-agent.md) · [updates](docs/updates.md) ·
+  [compositor security model](docs/security-model.md)
 - **Developing:** [development guide](docs/development.md) · [testing](docs/testing.md) ·
   [performance methodology](docs/performance.md) · [CI and quality](docs/ci-quality.md) ·
   [contributors](CONTRIBUTORS.md)

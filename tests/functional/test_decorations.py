@@ -6,6 +6,8 @@ xdg-decoration: 32 high, above the content, with the title written by the
 compositor and the three buttons; closing, maximizing with a double click.
 It's found on screen, not from the state."""
 
+import glob
+import os
 import re
 import subprocess
 import time
@@ -309,3 +311,68 @@ class ShellColors(unittest.TestCase):
 
 
 FILL = re.compile(r"animation: close-hover #(\d+) fill ([\d.]+)")
+
+
+class IconCache(unittest.TestCase):
+    """The bar's app icon under a client that keeps changing its app_id
+    (docs/memory-allocation-policy.md, "Aggregate growth"): the icon cache
+    evicts, a bar still shows the icon whose entry went, and an evicted icon
+    is drawn again when asked for. The budget itself is counted by
+    compositor.icon-cache and compositor.icons."""
+
+    # More app ids than VELA_ICON_CACHE_BUDGET (256, icon_cache.h).
+    CYCLED = 600
+    MAGENTA = (255, 0, 255)
+    CYAN = (0, 255, 255)
+
+    @staticmethod
+    def write_icon(vela, color):
+        """The private theme's icon of "vela.test.held": a square of `color`."""
+        theme = os.path.join(vela.env["XDG_DATA_HOME"], "icons", "hicolor")
+        apps = os.path.join(theme, "scalable", "apps")
+        os.makedirs(apps, exist_ok=True)
+        with open(os.path.join(theme, "index.theme"), "w") as index:
+            index.write("[Icon Theme]\nName=Hicolor\nDirectories=scalable/apps\n\n"
+                        "[scalable/apps]\nSize=48\nType=Scalable\n")
+        with open(os.path.join(apps, "vela.test.held.svg"), "w") as svg:
+            svg.write('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
+                      '<rect width="16" height="16" fill="#%02x%02x%02x"/></svg>\n' % color)
+
+    def icon(self, vela, window):
+        """The color at the middle of the window's bar icon (scale 1)."""
+        image = vela.pixels()
+        w = vela.state().window(window)
+        top = bar_top(image, w, 1.0)
+        return image.at(w["x"] + 12 + 8, top + BAR // 2)
+
+    def wait_for_icon(self, vela, window, color, what):
+        def shown(_):
+            return all(abs(a - b) <= 2 for a, b in zip(self.icon(vela, window), color))
+        vela.wait_for(shown, read_state=False, what=what)
+
+    def test_evicted_icon_stays_on_screen_and_comes_back(self):
+        with Session() as vela:
+            self.write_icon(vela, self.MAGENTA)
+            held = vela.open_window(400, 300, app_id="vela.test.held", decorated=True)
+            vela.wait_for(lambda s: s["focused"] == held)
+            self.wait_for_icon(vela, held, self.MAGENTA, "the held window's icon")
+            # From here a cyan icon has been drawn again: its entry was evicted.
+            self.write_icon(vela, self.CYAN)
+            before = set(glob.glob(os.path.join(vela.directory, "client-*.log")))
+            cycler = vela.open_window(command=[tool("vela-pattern"), "--decorated", "--app-id", "vela.test.held",
+                                               "--cycle-app-ids", str(self.CYCLED), "400", "300"])
+            (log,) = set(glob.glob(os.path.join(vela.directory, "client-*.log"))) - before
+
+            def cycled(_):
+                with open(log, errors="replace") as output:
+                    return "vela-pattern: app-ids-cycled" in output.read()
+            vela.wait_for(cycled, timeout=60, read_state=False, what="the app ids cycled")
+            vela.wait_for(lambda s: s["focused"] == cycler)
+            # Back to "vela.test.held", after more app ids than the budget:
+            # searched and drawn again.
+            self.wait_for_icon(vela, cycler, self.CYAN, "the cycling window's icon, drawn again")
+            # The first window's bar was never redrawn: its own copy, whose
+            # cache entry has been evicted, is still on screen.
+            vela.command(f"window {cycler} close")
+            vela.wait_for(lambda s: not s.has(cycler), what="the cycling window closed")
+            self.wait_for_icon(vela, held, self.MAGENTA, "the held window's icon, after its entry was evicted")

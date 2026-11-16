@@ -154,6 +154,60 @@ static bool save_output(void)
     return vela_output_config_save(&output, 1);
 }
 
+static void expect_open_content(const char *path)
+{
+    bool missing = true;
+    FILE *file = vela_config_open(path, &missing);
+    CHECK(file && !missing);
+    CHECK((fcntl(fileno(file), F_GETFD) & FD_CLOEXEC) != 0);
+    char content[32];
+    CHECK(fgets(content, sizeof(content), file));
+    CHECK(strcmp(content, "read-target\n") == 0);
+    CHECK(fclose(file) == 0);
+}
+
+static void test_file_open_boundary(void)
+{
+    char path[640];
+    write_file("read-target.conf", "read-target\n");
+    path_of("read-target.conf", path, sizeof(path));
+    expect_open_content(path);
+    CHECK(snprintf(path, sizeof(path), "%s//./read-target.conf", dir) < (int)sizeof(path));
+    expect_open_content(path);
+
+    // Dotfile-manager aliases, including a linked parent, retain their usual
+    // meaning. The regular-file check is on the opened inode, not the link.
+    path_of("read-link.conf", path, sizeof(path));
+    CHECK(symlink("read-target.conf", path) == 0);
+    expect_open_content(path);
+    char alias[640];
+    CHECK(snprintf(alias, sizeof(alias), "%s/alias", root) < (int)sizeof(alias));
+    CHECK(symlink(dir, alias) == 0);
+    CHECK(snprintf(path, sizeof(path), "%s/read-target.conf", alias) < (int)sizeof(path));
+    expect_open_content(path);
+
+    bool missing = false;
+    path_of("absent.conf", path, sizeof(path));
+    CHECK(!vela_config_open(path, &missing) && missing && errno == ENOENT);
+    // These paths would resolve to an existing file with an unchecked open.
+    CHECK(snprintf(path, sizeof(path), "%s/../vela/read-target.conf", dir) < (int)sizeof(path));
+    CHECK(!vela_config_open(path, &missing) && !missing && errno == EINVAL);
+    path_of("control\nname", path, sizeof(path));
+    CHECK(!vela_config_open(path, &missing) && !missing && errno == EINVAL);
+    CHECK(!vela_config_open(dir, &missing) && !missing && errno == EINVAL);
+
+    // The FIFO must be refused without waiting for a writer. A regression
+    // that opens it in blocking mode fails promptly instead of hanging CI.
+    path_of("read-fifo", path, sizeof(path));
+    CHECK(mkfifo(path, 0600) == 0);
+    alarm(3);
+    CHECK(!vela_config_open(path, &missing) && !missing && errno == EINVAL);
+    alarm(0);
+    char values[1][256];
+    static const char *const keys[] = { "Key" };
+    CHECK(!vela_ini_read(path, "Section", keys, values, 1) && !values[0][0]);
+}
+
 static const char settings[] = "# mine\nscreen-off=10\ntheme=dark\nlanguage=it\n";
 
 static void test_vela_conf(bool root_user)
@@ -444,6 +498,7 @@ int main(void)
     test_read_line_out_of_memory();
     remove_file("probe.conf");
 
+    test_file_open_boundary();
     test_vela_conf(root_user);
     test_outputs_conf(root_user);
     test_ini();

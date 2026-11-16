@@ -13,6 +13,8 @@
 #include <QStringList>
 #include <QVariantList>
 
+class QSettings;
+
 // The user's choices, in the two files holding them:
 // ~/.config/Vela/vela-shell.conf for the shell (wallpaper, accent, mode,
 // taskbar, notifications), which the shell rereads as soon as it changes;
@@ -89,6 +91,12 @@ class Preferences : public QObject {
     // Vela's language (language= in vela.conf): "", "it" or "en". Empty: like
     // the system. The apps apply it themselves (shell/src/language.h).
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    // TEMPORARY until Vela Secrets: selected at the next graphical login.
+    Q_PROPERTY(QString secretBackend READ secretBackend WRITE setSecretBackend NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendConfigured READ secretBackendConfigured NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendInstalled READ secretBackendInstalled NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString credentialStatus READ credentialStatus NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString activeSecretBackend READ activeSecretBackend CONSTANT)
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
@@ -221,6 +229,14 @@ public:
     void setLockOnIdle(bool on);
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
+    QString secretBackend() const { return m_secretBackend; }
+    bool secretBackendConfigured() const { return m_secretBackendConfigured; }
+    bool secretBackendInstalled() const;
+    // Check both choices separately before presenting first-login options.
+    Q_INVOKABLE bool isSecretBackendInstalled(const QString& backend) const;
+    QString credentialStatus() const;
+    QString activeSecretBackend() const;
+    void setSecretBackend(const QString& backend);
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
     void setVisualTheme(const QString& theme);
@@ -328,7 +344,7 @@ public:
     // "Clear clipboard data": the history (except pinned items), in the shell.
     Q_INVOKABLE void clearClipboard();
 
-    // Set when a vela.conf write fails. The shown value stays what was saved.
+    // Set when a shell or compositor write fails. Shown values stay saved values.
     Q_PROPERTY(QString saveError READ saveError NOTIFY saveErrorChanged)
     QString saveError() const { return m_saveError; }
 
@@ -348,6 +364,7 @@ signals:
     void batteryChanged();
     void idleChanged();
     void languageChanged();
+    void secretBackendChanged();
     void visualThemeChanged();
     void themesChanged();
     void keyboardChanged();
@@ -358,7 +375,9 @@ signals:
     void saveErrorChanged();
 
 private:
-    void setShell(const QString& key, const QVariant& value);
+    bool setShell(const QString& key, const QVariant& value);
+    bool saveShell(const QList<QPair<QString, QVariant>>& changes);
+    void loadShell(const QSettings& settings);
     // vela.conf: reread, only these keys changed, then "reload-config".
     // False when the file could not be opened, written or committed.
     bool saveCompositor(const QList<QPair<QString, QString>>& changes);
@@ -381,6 +400,8 @@ private:
     void watchThemes();
     bool saveLayouts();
     QString m_saveError;
+    bool m_shellSaveFailed = false;
+    bool m_compositorSaveFailed = false;
     bool m_restoredFromFile = false;
     bool m_reportingSaveFailure = false;
 
@@ -412,6 +433,8 @@ private:
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
+    QString m_secretBackend = QStringLiteral("kwallet");
+    bool m_secretBackendConfigured = false;
     QString m_visualTheme;
     QVariantMap m_surfaceStyles;
     QVariantList m_layouts;

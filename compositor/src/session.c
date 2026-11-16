@@ -18,15 +18,10 @@
 
 void vela_session_set_environment(void)
 {
-    // Vela uses KDE's services (keyring, portals, app theme): "KDE" after
-    // "Vela" makes Brave, Chrome and Electron apps (VS Code) use KDE's keyring
-    // as they do inside Plasma. Without it they encrypt their data with a
-    // fixed key and can no longer read what they saved in Plasma: site logins
-    // lost, sync and passwords that can't be decrypted. Plasma's autostart
-    // entries don't run: they have X-systemd-skip, except session restore,
-    // which vela-session-env turns off. Plasma Login copies DesktopNames from
-    // the .desktop file as it is ("Vela;KDE;"), while apps expect the names
-    // separated by ':'.
+    // TEMPORARY: the outer session selects Vela:GNOME or Vela:KDE for
+    // Chromium/Electron compatibility. On direct sessions without the
+    // wrapper, the previous KDE default is retained. Plasma Login copies
+    // DesktopNames literally (with ';'), while apps expect ':'.
     const char *current = getenv("XDG_CURRENT_DESKTOP");
     size_t size = vela_size_add(current ? strlen(current) : 0, 16);
     char *desktops = VELA_NEW_N(char, size);
@@ -36,7 +31,14 @@ void vela_session_set_environment(void)
     }
     setenv("XDG_CURRENT_DESKTOP", desktops, 1);
     free(desktops);
-    setenv("KDE_SESSION_VERSION", "6", 0);
+    // The outer vela-session selects the temporary credential backend once.
+    // Never turn the GNOME choice back into KDE on compositor restarts.
+    const char *backend = getenv("VELA_SECRET_BACKEND");
+    if (backend && strcmp(backend, "gnome") == 0) {
+        unsetenv("KDE_SESSION_VERSION");
+    } else {
+        setenv("KDE_SESSION_VERSION", "6", 0);
+    }
     setenv("XDG_SESSION_DESKTOP", "vela", 0);
     setenv("XDG_SESSION_TYPE", "wayland", 1); // from a console it's "tty"
     // Qt and KDE apps with the theme chosen in KDE (style, colors, fonts,

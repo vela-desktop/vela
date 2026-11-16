@@ -8,16 +8,18 @@
 // "vela.conf 2 EIO": a stream opened on a path whose last component is
 // <file name> returns lines 1..<line>-1 normally, then -1 with errno set to
 // EIO or ENOMEM, as many times as it is asked. The variable is read at each
-// fopen, so a test can change it between operations; unset, nothing
+// stream open, so a test can change it between operations; unset, nothing
 // changes.
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
 #include <errno.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <unistd.h>
 
 #define TRACKED 16
 
@@ -80,6 +82,26 @@ FILE *fopen64(const char *path, const char *mode)
     }
     FILE *file = real(path, mode);
     track(file, path);
+    return file;
+}
+
+FILE *fdopen(int fd, const char *mode)
+{
+    static FILE *(*real)(int, const char *);
+    if (!real) {
+        real = (FILE * (*)(int, const char *))next("fdopen");
+    }
+    FILE *file = real(fd, mode);
+    if (file) {
+        char link[64];
+        char path[PATH_MAX];
+        snprintf(link, sizeof(link), "/proc/self/fd/%d", fd);
+        ssize_t length = readlink(link, path, sizeof(path) - 1);
+        if (length >= 0) {
+            path[length] = '\0';
+            track(file, path);
+        }
+    }
     return file;
 }
 

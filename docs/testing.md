@@ -35,6 +35,7 @@ xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ctest --test-dir build -L '^rhi$' --outp
 | **Benchmark presentation probe** (`functional-benchmark-probe`) | Standard presentation feedback, frame identity, clocks, a known client CPU delay, raw F24 fixture input, output apply/read-back and captured marker decoding in an isolated headless session. The fixture input transport does not qualify kernel uinput. This does not establish real-output benchmark validity. | Yes |
 | **Benchmark P4 controller** (`benchmark-p4-integration`) | The production scaling controller's complete 25-case matrix on isolated headless Vela: preferred-scale/configure and native buffer evidence, physical-pixel PNGs, offline pixel re-audit and restored scale 1. Input is a virtual-pointer/keyboard fixture; it does not qualify physical TTY/uinput. Pixel differences remain measured outcomes. P4 CPU tests cover PNG filters/CRC, UID-wide counters/PSS, PID lifetime, phase-specific no-capture execution and export tampering. | Yes |
 | **Compositor / GoogleTest** | FrameClock, vblank grid, late latching, adaptive margin, learned host latency, animation curves, output scale selection, pixel geometry, night light, color filters, sunrise/sunset, `vela.conf` parsing and `outputs.conf` persistence. | No |
+| **App activation** (`compositor.activation`) | Real Wayland clients and wlroots token/serial validation: background tokens with missing seat or source, stale background input and invalid serials cannot raise windows; valid foreground grants survive focus changes and source destruction, remain single-use, and cannot be issued or used while locked. Legacy X11 requests preserve the focused app or panel, minimized state and workspace; foreground dialogs still work. Final focus effects are stubbed. `functional-x11` also checks repeated `_NET_ACTIVE_WINDOW` requests against both Wayland and X11 fullscreen games, including unchanged pixels and explicit restoration of the background app. | Only the functional test |
 | **Files** (`files-copies`, `files-views`) | Copy/move behavior, atomic replacement across file/directory types, failed or unsupported exchanges, processes killed immediately before/after exchange, removal errors, and a simulated full disk with `RLIMIT_FSIZE`. Under Qt Quick Test, on a real `FolderModel` over 300 files: the Details and icon views' recycled delegates take their new file's state without a fade while scrolling, and the command bar's `ToolButton` (colors, `checked`, keys, focus, tooltip) ([visual coherence](visual-coherence.md#68-controls-qt-behaves-vela-looks-d12)). | No |
 | **Shell** (`shell-*`) | `.desktop` `Exec=` parsing, default-app resolution, volume steps, the asynchronous network model with slow, failed or missing services, `Style` following `animation-effects` and `animation-duration` in `vela.conf`, and the Wi-Fi switch and airplane mode moving at once and turning back when a fake NetworkManager on a private bus refuses or never does it (`shell-requested-switches`). The shell's Bluetooth is in the Bluetooth suite. | No |
 | **Vela.Controls** (`controls`, `controls-no-effects`) | Qt Quick Test, offscreen, at three times Vela's durations, then with animation effects off: `Button`, `Switch` and `Slider` reach the color of each state combination, fade and turn back halfway from where they are, take the focus from Tab and not from a click, activate from Space and Enter and set their accessible role and state; a binding on `checked` or `value` survives input; the switch's knob follows a drag and slides only on its own (jumps with effects off); the slider's value is never animated and it reports when the user is done; `PanelMotion` enters, leaves, turns back when reopened without `closed()`, takes no input while leaving (mouse and keys), moves only with effects on, blurs its travel only while moving (cut to its window) and closes at once when asked; `Shadow`'s reach for each depth and its cut above and below; `ListItem`'s colors, keys and ring, `Icon`'s size and source, `Chevron`'s two shapes; `Dialog`'s buttons, Esc, Enter, one choice per opening and fade-out ([visual coherence](visual-coherence.md#68-controls-qt-behaves-vela-looks-d12)). The programs' own pieces have runners of their own, which add fakes of what their windows find in their context (`Vela.Bluetooth`, and the shell's `Shell` and `BluetoothPrompts`): the shell's `CheckBox`, Start's tiles, quick settings' tiles and Do not disturb (their role, name and check state read from their accessible interfaces through `AccessibleProbe`, `common/tests/accessibleprobe.h`, also when a screen reader starts later), the notification toasts and the notification center's list, quick settings' Bluetooth devices and the Bluetooth question dialog (`shell-controls`, `shell-controls-no-effects`); Settings' `RadioButton`, navigation list, theme tiles and accent swatches (their check state through `AccessibleProbe` too), brightness card and Bluetooth pieces: a device's card, a question of the agent for every kind, "Add a device" and the "still visible" line (`settings-controls`, `settings-controls-no-effects`). | No |
@@ -60,6 +61,16 @@ explicitly requires status 1. Unexpected crashes cannot become passing tests.
 CPU tests of the harness and scripts are included in CTest even on GPU-less CI.
 PNG decoding is checked with fixed encoded rows and independently specified
 pixels, including Paeth tie breaking and byte wraparound.
+
+`shell-clock-formats` loads the production taskbar and notification center with
+the real shell `Config` and fixed times. It atomically replaces a private
+`vela-shell.conf` and checks the displayed 12/24-hour text, seconds and restored
+clock width, with and without the date. Notification timestamps cover midnight,
+noon, afternoon and late evening, retain their delegate across format changes,
+and remain without seconds when taskbar seconds are enabled. These format checks
+run offscreen rather than requiring pixel equality across the tray or acrylic
+background. The GPU personalization suite retains the live ticking-clock,
+date-visibility and popup-to-notification-center interaction checks.
 
 ## Run a subset
 
@@ -93,6 +104,13 @@ networks survive errors, timeouts and slow Wi-Fi scans, saved networks reuse
 their profile with friendly errors, a missing program completes and recovers,
 and destroying a model terminates its clients without waiting. No real network
 service is used; sound has its own tests, below.
+
+The `shell-taskbar` and `shell-taskbar-no-effects` suites exercise the production
+taskbar QML offscreen with private service models. They cover nearly full bars
+with 12-hour time and seconds, changing tray icons and status indicators, all
+bar layouts, an oversized tray, navigation by pointer and keyboard, app activation
+and jump lists, model shrinkage and minimize targets inside the app area. They require no GPU; a live desktop
+smoke test is still needed to validate the final appearance.
 
 Audio tests:
 
@@ -185,6 +203,40 @@ python3 tests/functional/run.py --sharpness
 
 The sharpness check additionally needs NumPy and Pillow available to `python3`.
 
+### Process launching
+
+The `process-launch-environment` test exercises actual synchronous and detached
+child processes, preserving user overrides and unrelated environment variables.
+It links Qt Core only and also covers empty overrides and environment changes
+after initialization.
+The same process object is also reused across all supported start forms to check
+that new activation tokens reach every child. The CPU-only `shell-service-menus`
+suite rejects empty service-menu commands and checks real launches preserve the
+selected paths and working directory.
+Packaging tests reject UI launch sites that bypass the environment policy.
+
+### Settings preferences
+
+`settings-preferences` covers missing and broken folder openers with private
+helpers instead of opening a real file manager. It also covers failed and
+successful shell preference writes, both existing and absent keys, multi-key
+wallpaper and Start icon choices, and pending `QSettings` changes surviving a
+failure. Serialization is staged outside the live settings cache, and a separate
+writer checks that recovery never replays a failed update or rollback over a
+newer external choice. A separate reader process checks the persisted file after
+recovery, independent of the shared settings cache.
+
+Real Vela switches and Settings drop-downs are exercised offscreen with refused
+writes and then successful retries; appearance helpers are private probes. The
+suite also checks busy writers, independent shell/compositor errors and existing
+compositor rollback. Theme, style and Reset tests keep Undo available after a
+successful compositor save. This also applies while a shell save error is still
+displayed.
+
+The additional read-only-file case skips when running as root, which bypasses
+Unix permissions. Directory-path blockers cover failed writes on root CI runners
+too.
+
 ### Qt Quick text rendering
 
 ```sh
@@ -193,23 +245,14 @@ build/common/vela-text-rendering-test --capture-dir /tmp/vela-text-frames
 ```
 
 The RHI readback test requires Qt >= 6.6; Vela production still supports Qt
-6.5. CMake omits only this test on older Qt versions. The independent
-`process-launch-environment` test exercises actual synchronous and detached
-child processes, preserving user overrides and unrelated environment variables.
-It links Qt Core only and also covers empty overrides and environment changes
-after initialization.
-The same process object is also reused across all supported start forms to check
-that new activation tokens reach every child. The CPU-only `shell-service-menus`
-suite rejects empty service-menu commands and checks real launches preserve the
-selected paths and working directory. `settings-preferences` covers missing and
-broken folder openers with private helpers instead of opening a real file manager.
-Packaging tests reject UI launch sites that bypass the environment policy.
+6.5. CMake omits only this test on older Qt versions.
 
-This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
-using `QQuickRenderControl`, an explicit render target and synchronous readback.
-It does not use Qt Quick's software painter, which cannot reproduce the native
-glyph shader's snapping. Mesa software OpenGL is supported; if an OpenGL RHI
-context cannot be initialized, the test returns 77 (skipped).
+`text-rendering-rhi` runs the explicitly initialized production text policy
+through the OpenGL RHI glyph shaders using `QQuickRenderControl`, an explicit
+render target and synchronous readback. It does not use Qt Quick's software
+painter, which cannot reproduce the native glyph shader's snapping. Mesa software
+OpenGL is supported; if an OpenGL RHI context cannot be initialized, the test
+returns 77 (skipped).
 
 At 100%, 125%, 150%, 175% and 200%, for 12, 14 and 18 px text, it
 checks neutral white coverage with transparent alpha/premultiplication,
@@ -313,15 +356,16 @@ If the harness cannot find a usable GPU, it exits with status 77. CTest marks th
 
 ### GPU CI hardware
 
-The mandatory GPU-dependent suite runs on two machines, with an optional
-experimental Intel runner, using the
+The mandatory GPU-dependent suite runs on two hardware-backed paths
+(AMD self-hosted and NVIDIA rented per run), with an optional experimental
+Intel runner, using the
 [GPU CI workflows](ci-quality.md#gpu-ci-policy):
 
-| GPU | Driver | OS |
+| GPU | Driver | Environment |
 |---|---|---|
-| AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS |
-| NVIDIA GeForce RTX 4070 Laptop GPU | NVIDIA proprietary | Arch/CachyOS |
-| Intel Alder Lake-UP3 UHD Graphics (experimental) | Mesa/ANV | CachyOS |
+| AMD Radeon RX 9070 XT | Mesa/RADV | CachyOS self-hosted |
+| NVIDIA RTX GPU (varies per run) | NVIDIA proprietary | Vast.ai rental, Arch Linux container |
+| Intel Alder Lake-UP3 UHD Graphics (experimental) | Mesa/ANV | CachyOS self-hosted |
 
 The [GPU CI policy](ci-quality.md#gpu-ci-policy) is the single source for
 when these manually triggered runs are required and what counts as a pass.
@@ -383,6 +427,8 @@ reload-config
 ```
 
 `state` returns JSON describing the compositor-visible state. Functional scenarios assert against that state instead of relying on arbitrary sleeps.
+
+The `test-*` commands need a headless compositor started with `VELA_TEST_COMMANDS=1` (the harness sets it); otherwise they are refused and logged. `tests/functional/test_security.py` covers the command socket and the screen lock's trust rules ([security model](security-model.md)).
 
 A simplified scenario looks like:
 
@@ -473,6 +519,18 @@ from `state` the missed vblanks, the frames shown and the commits held back:
 `tests/functional/test_capture.py` captures during four maximize/restore cycles
 at 2560x1440@180 Hz and fails on any capture error. When the allocated readback
 staging memory is cached, it also requires fewer missed vblanks than captures.
+The persistent-stream cases require at least 60/30 fps with reused buffers at
+1440p/4K, bound the 95th-percentile latency, and allow at most 5% missed
+presentation slots. `VELA_CAPTURE_TEST_REFRESH_HZ` selects the minimum desktop
+refresh (minimum 60, default 180). Each stream gets at least two presentation
+slots per target capture per client. Intel uses a 60 Hz baseline, raised to
+120 Hz for the single-client 1440p stream's 60 fps floor: 180 Hz 4K
+composition/readback exceeds the shared iGPU engine's budget.
+AMD retains the 180 Hz workload and the same assertions. Pixel, ownership,
+cancellation and queue-limit tests still run on every GPU. Coverage builds
+and hosts using `VELA_TEST_TIME_SCALE>1` report capture metrics and check
+successful repeated completion without imposing throughput floors, including
+the animation-capture case.
 GPUs that fall back to uncached staging must still capture successfully, but
 cannot be expected to meet this performance target. The compositor logs
 `Vulkan readback staging: uncached fallback` when this happens; historically,
@@ -560,6 +618,17 @@ descriptor exhaustion, including removing derived summaries during review.
 Both sharpness suites honor `VELA_BUILD`, including build paths with spaces,
 and fail immediately if an executable is missing.
 
+## Icon cache budget
+
+The title bars' icon cache keeps at most `VELA_ICON_CACHE_BUDGET` entries
+and evicts the least recently used
+([allocation policy](memory-allocation-policy.md#aggregate-growth)).
+`compositor.icon-cache` (CPU) checks the cache on its own, against a model;
+`compositor.icons` (CPU) checks it through `vela_icons_app` on an icon theme
+the test writes, including a held icon whose entry is evicted (the cases
+that draw an icon need librsvg). `functional-decorations` (GPU) has a
+client cycle through 600 app ids with `vela-pattern --cycle-app-ids`.
+
 ## Frame-path allocations
 
 The frame path draws without allocating once warmed
@@ -581,6 +650,27 @@ The counted compositor also answers "what allocates here?" in other
 scenarios: open a log file for appending, start
 `Session(binary="vela-compositor-alloc-count",
 env={"VELA_TEST_ALLOC_LOG_FD": str(fd)}, pass_fds=(fd,))`, then read the log.
+
+## Upload staging and image limits
+
+Shared-memory uploads are copied in pieces under a byte budget, deferred
+over frames when they don't fit, and client buffers above the device's
+image limits are refused
+([allocation policy](memory-allocation-policy.md#6-external-sizes)):
+
+- `compositor.upload-staging` (CPU, also in hosted CI) runs the production
+  `renderer.c`, `texture.c` and `pass.c` on a fake Vulkan device that keeps
+  images and buffers in memory and runs the recorded copies and draws when
+  its timeline reaches them; every draw must read a whole committed buffer.
+  The budget is the production code with smaller numbers. It is linked with
+  the allocation counter, like `compositor.frame-path`.
+- `functional-uploads` (GPU) uses `tools/vela-bigbuffer`, a client with
+  buffers of any size (banded per version and per row band, scaled into a
+  small window, or a linear dmabuf claiming any size), and checks the
+  budget, the atomic switch frame by frame with `vela-screen-record`, the
+  progress of one upload under a client committing above the budget every
+  frame, and the limits the compositor logs at startup, with Vulkan
+  validation on.
 
 ## Vulkan validation and renderer diagnosis
 

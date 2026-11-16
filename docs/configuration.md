@@ -35,6 +35,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
+| `secret-backend` | `kwallet` | **Temporary until Vela Secrets:** `kwallet` or `gnome` (GNOME Keyring). When absent, the old KWallet behavior is retained but Settings asks for an explicit choice. The chosen provider must be installed and own `org.freedesktop.secrets`; errors appear in Settings and the session log. Changes require a new login and never migrate passwords. |
 | `bluetooth-adapter` | empty | The address of the Bluetooth adapter to use when there are two or more ([Bluetooth](bluetooth.md#62-the-model)), written by Settings > Bluetooth & devices > Advanced. Empty, or an adapter that isn't there: the first one. |
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
@@ -201,6 +202,13 @@ The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Shell settings
 
+If Settings cannot save a choice, it shows the affected configuration file and
+keeps the saved value selected. Wallpaper and its recent-image list, and the
+Start icon kind and picture, are saved together. App-mode changes reach GTK and
+KDE only after the shell configuration is saved. Failures in the shell and
+compositor files are reported independently; a successful write clears the
+error for that file.
+
 The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time), the notification ones (Settings → System → Notifications) and the battery ones (Settings → System → Power, Settings → Bluetooth & devices):
 
 | Key | Default | Meaning |
@@ -218,6 +226,21 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
 | `appearance/accentSource` | `theme` | Where the accent comes from: `theme` (the theme's wish: its `color-source`), `wallpaper` (the wallpaper's color) or `chosen` (`appearance/accent`, the color chosen in Settings > Colors). A theme's own `accent` wins over all three ([Expressive look](#expressive-look)) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
+
+## Window activation
+
+An already-running app cannot raise a background window merely because a
+message arrived. This applies with ordinary windows and fullscreen games.
+Wayland activation requires a single-use token issued with a valid seat input
+serial and the keyboard-focused source surface. A valid grant can be passed
+to another app even after its launcher closes. Legacy X11 activation requests
+carry no such grant, so only the foreground window and its transients may
+request focus while another surface has the keyboard; minimized windows and
+windows on another desktop stay where they are.
+
+Selecting a window by clicking it, the taskbar or Alt+Tab remains explicit
+activation. Initial window mapping keeps the existing new-window behavior.
+This policy does not depend on Do not disturb and has no configuration switch.
 
 ## Display configuration
 

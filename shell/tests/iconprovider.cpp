@@ -9,6 +9,7 @@
 
 #include <QGuiApplication>
 #include <QImage>
+#include <QScopeGuard>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -52,6 +53,43 @@ private slots:
     void notAColor()
     {
         QVERIFY(drawn(QStringLiteral("tzzzzzz/")) != QColor(0x10, 0x20, 0x30));
+    }
+
+    void xdgThemesWithoutAPlatformPlugin()
+    {
+        const auto originalPaths = QIcon::themeSearchPaths();
+        const auto originalTheme = QIcon::themeName();
+        const auto originalData = qgetenv("XDG_DATA_HOME");
+        const auto restore = qScopeGuard([&] {
+            QIcon::setThemeSearchPaths(originalPaths);
+            QIcon::setThemeName(originalTheme);
+            if (originalData.isNull()) qunsetenv("XDG_DATA_HOME");
+            else qputenv("XDG_DATA_HOME", originalData);
+        });
+        const QString data = m_dir.filePath(QStringLiteral("data"));
+        for (const QString& name : { QStringLiteral("vela-test-icons"), QStringLiteral("vela-test-icons-dark") }) {
+            const QString theme = data + QStringLiteral("/icons/") + name;
+            QVERIFY(QDir().mkpath(theme + QStringLiteral("/16x16/actions")));
+            QFile index(theme + QStringLiteral("/index.theme"));
+            QVERIFY(index.open(QIODevice::WriteOnly));
+            index.write("[Icon Theme]\nName=Vela test icons\nDirectories=16x16/actions\n"
+                        "[16x16/actions]\nSize=16\nType=Fixed\nContext=Actions\n");
+            index.close();
+            QVERIFY(QFile::copy(m_icon, theme + QStringLiteral("/16x16/actions/vela-test-action.png")));
+        }
+        qputenv("XDG_DATA_HOME", data.toUtf8());
+        QIcon::setThemeSearchPaths({ QStringLiteral(":/icons") });
+        QIcon::setThemeName(QStringLiteral("vela-test-icons"));
+        QVERIFY(QIcon::fromTheme(QStringLiteral("vela-test-action")).isNull());
+        for (bool light : { false, true }) {
+            applyIconTheme(light);
+            QCOMPARE(QIcon::themeName(), light ? QStringLiteral("vela-test-icons") : QStringLiteral("vela-test-icons-dark"));
+            QVERIFY(QIcon::themeSearchPaths().contains(QStringLiteral(":/icons")));
+            IconProvider provider;
+            const auto pixmap = provider.requestPixmap(QStringLiteral("vela-test-action"), nullptr, QSize(16, 16));
+            QVERIFY(!pixmap.isNull());
+            QCOMPARE(pixmap.toImage().pixelColor(8, 8), QColor(200, 30, 30));
+        }
     }
 };
 

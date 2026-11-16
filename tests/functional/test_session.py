@@ -798,7 +798,7 @@ class Supervisor(unittest.TestCase):
             vela.wait_for_log("restarted after a crash")
             second = vela.wait_for(lambda s: child_compositor(vela.process.pid) not in (None, first),
                                    read_state=False, what="a new compositor")
-            vela.wait_for(lambda s: s["outputs"], what="the new compositor responds")
+            vela.wait_for(lambda s: s["outputs"], what="the new compositor responds", reconnect=True)
 
     def test_unwritable_lock_marker_ends_session_without_restart(self):
         # Replacing a non-empty directory with the marker must fail.
@@ -853,7 +853,7 @@ class Supervisor(unittest.TestCase):
             os.kill(second, signal.SIGSEGV)
             vela.wait_for(lambda s: child_compositor(vela.process.pid) not in (None, second),
                           read_state=False, what="a third compositor")
-            vela.wait_for(lambda s: s["outputs"], what="the third compositor responds")
+            vela.wait_for(lambda s: s["outputs"], what="the third compositor responds", reconnect=True)
             self.assertFalse(vela.state()["locked"])
             self.assertEqual(vela.log_text().count("restarting locked"), 1)
 
