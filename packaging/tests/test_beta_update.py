@@ -186,6 +186,29 @@ class BetaUpdateTests(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)["status"], "up-to-date")
         self.assertFalse(self.calls.exists())
 
+    def test_numbered_releases_are_discovered_with_either_github_flag(self):
+        for prerelease in (False, True):
+            with self.subTest(prerelease=prerelease):
+                releases = json.loads(self.env["TEST_RELEASE_LIST"])
+                for release in releases:
+                    release["prerelease"] = prerelease
+                self.env["TEST_RELEASE_LIST"] = json.dumps(releases)
+                result = self.run_update("--check", "--json")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["tag"], "v0.1.11")
+                self.assertFalse(self.calls.exists())
+
+    def test_reclassified_release_can_be_pinned_and_installed(self):
+        releases = json.loads(self.env["TEST_RELEASE_LIST"])
+        for release in releases:
+            release["prerelease"] = False
+        self.env["TEST_RELEASE_LIST"] = json.dumps(releases)
+        self.env["TEST_SIGNED_MANIFEST"] = "1"
+        result = self.run_update("--tag=v0.1.11")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.calls.exists())
+        self.assertTrue(self.verified.exists())
+
     def test_human_check_exit_codes(self):
         self.assertEqual(self.run_update("--check").returncode, 0)
         self.env["TEST_INSTALLED"] = "0.1.11-1"
@@ -512,6 +535,10 @@ class BetaUpdateTests(unittest.TestCase):
         for release in releases:
             release["body"] = "Notes of " + release["tag_name"]
         releases.append({"tag_name": "v0.1.10", "prerelease": True, "draft": False, "body": "Ten"})
+        # A reclassified latest release and older prereleases contribute notes.
+        for release in releases:
+            if release["tag_name"] == "v0.1.11":
+                release["prerelease"] = False
         self.env["TEST_RELEASE_LIST"] = json.dumps(releases)
         result = self.run_update("--check", "--json")
         self.assertEqual(result.returncode, 0, result.stderr)
