@@ -28,9 +28,12 @@ if(VELA_BUILD_TOOLS)
             ${CMAKE_CURRENT_SOURCE_DIR}/vela-session-env
             ${CMAKE_CURRENT_SOURCE_DIR}/vela-kwallet-compat.service)
     set_tests_properties(session.credential-compat PROPERTIES TIMEOUT 30)
+    add_executable(vela-credential-pending-fixture tests/credential-pending.c)
+    set_target_properties(vela-credential-pending-fixture PROPERTIES OUTPUT_NAME ksecretd)
     add_test(NAME session.credential-pending
         COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/credential-pending.py
-            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend)
+            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend
+            $<TARGET_FILE:vela-credential-pending-fixture>)
     set_tests_properties(session.credential-pending PROPERTIES TIMEOUT 30)
 endif()
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/vela.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)

@@ -106,7 +106,7 @@ configuration. Avoid adding GNOME-only units to Vela's package dependencies.
 CPU-only deterministic tests:
 
 ```sh
-ctest --test-dir build -R session.credential-compat --output-on-failure
+ctest --test-dir build -R '^session\.credential-(compat|pending)$' --output-on-failure
 ```
 
 They cover explicit/unset/invalid selection, selection precedence, a

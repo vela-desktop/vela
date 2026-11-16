@@ -16,12 +16,14 @@ import unittest
 
 
 ENSURE = str(Path(sys.argv.pop(1)).resolve())
+FIXTURE = Path(sys.argv.pop(1)).resolve()
 
 
 class PendingMetadata(unittest.TestCase):
     def setUp(self):
-        self.root = Path(self.enterContext(tempfile.TemporaryDirectory(
-            prefix="vela-credential-pending-")))
+        directory = tempfile.TemporaryDirectory(prefix="vela-credential-pending-")
+        self.addCleanup(directory.cleanup)
+        self.root = Path(directory.name)
         self.proc = self.root / "proc"
         (self.proc / "self").mkdir(parents=True)
         (self.proc / "self/status").touch()
@@ -40,14 +42,12 @@ class PendingMetadata(unittest.TestCase):
         return result.stdout.strip()
 
     def test_unregistered_process_and_deleted_executable(self):
-        # A harmless coreutils binary has the same kernel identity as a
-        # provider before it registers on D-Bus. It never touches a wallet.
+        # A harmless signal-waiting fixture has the same kernel identity as
+        # a provider before D-Bus registration, without coreutils wrappers.
         binary = self.root / "ksecretd"
-        shutil.copyfile("/bin/sleep", binary)
+        shutil.copyfile(FIXTURE, binary)
         binary.chmod(0o700)
-        # Ubuntu may provide a multicall coreutils binary: select its sleep
-        # applet through argv[0], while /proc still identifies the copied exe.
-        child = subprocess.Popen(["sleep", "30"], executable=str(binary))
+        child = subprocess.Popen([str(binary)])
         def stop():
             if child.poll() is None:
                 child.kill()
@@ -69,7 +69,8 @@ class PendingMetadata(unittest.TestCase):
 
     def test_pam_listener_before_exec_and_stale_marker_after_exit(self):
         marker = self.root / "pam.socket"
-        listener = self.enterContext(socket.socket(socket.AF_UNIX, socket.SOCK_STREAM))
+        listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.addCleanup(listener.close)
         listener.bind(str(marker))
         listener.listen(1)
         # No daemon process exists yet, but PAM's handoff is already listening.
