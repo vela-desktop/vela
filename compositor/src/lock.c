@@ -809,6 +809,9 @@ void vela_lock_engage(struct vela_lock *lock)
     // First, before anything else can fail or crash: from here on a restart
     // starts locked even if the marker below cannot be created.
     vela_lock_state_store(server->lock_state, true);
+    // Mark the start of the lock phase for failure-injection tests. Persist
+    // secure lock state first: logging must never precede crash-safe storage.
+    wlr_log(WLR_INFO, "Screen lock engaged");
     // The fatal path is reachable from now on: reserve what it needs.
     lock_reserve_fatal_waiting(lock);
     vela_bluetooth_report_lock(server, true);
