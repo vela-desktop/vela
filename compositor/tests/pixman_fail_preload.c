@@ -14,6 +14,10 @@
 // "pixman-fail: injected <operation> failure". Calls that need no memory (one
 // rectangle) never count. A new <id> starts counting again. Other processes
 // inheriting LD_PRELOAD are never affected (the pid must match).
+// Optional fifth word "force": if the chosen operation takes an allocation-free
+// fast path, break its destination through a real failing pixman allocation.
+// The lock scene is often a single rectangle; its error contract must still be
+// exercised independently of whether that geometry happens to allocate.
 
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -100,7 +104,7 @@ static int trigger_directory(void)
     return end && !*end && fd >= 0 && fd < 1024 ? (int)fd : -1;
 }
 
-static long armed(const char *operation)
+static long armed(const char *operation, bool *force)
 {
     int directory = trigger_directory();
     if (directory < 0) {
@@ -132,6 +136,10 @@ static long armed(const char *operation)
     if (!next_number(&cursor, &skip) || !next_number(&cursor, &id) || skip < 0) {
         return -1;
     }
+    *force = strcmp(cursor, " force") == 0;
+    if (*cursor && !*force) {
+        return -1;
+    }
     if (id != trigger_id) {
         trigger_id = id;
         skipped = 0;
@@ -159,7 +167,8 @@ typedef pixman_bool_t (*rect_op)(pixman_region32_t *, const pixman_region32_t *,
 // Let `skip` allocating calls through, then fail the next allocating one.
 #define INJECT(operation, call)                                                \
     do {                                                                       \
-        long skip = armed(operation);                                          \
+        bool force = false;                                                    \
+        long skip = armed(operation, &force);                                          \
         if (skip < 0) {                                                        \
             return call;                                                       \
         }                                                                      \
@@ -174,7 +183,13 @@ typedef pixman_bool_t (*rect_op)(pixman_region32_t *, const pixman_region32_t *,
             return ok;                                                         \
         }                                                                      \
         failing = true;                                                        \
-        return finish(operation, call);                                        \
+        pixman_bool_t ok = call;                                               \
+        if (ok && force) {                                                     \
+            pixman_region32_fini(dest);                                        \
+            const pixman_box32_t boxes[] = { { 0, 0, 1, 1 }, { 2, 2, 3, 3 } };   \
+            ok = pixman_region32_init_rects(dest, boxes, 2);                     \
+        }                                                                      \
+        return finish(operation, ok);                                          \
     } while (0)
 
 // Resolved before any failure is armed: dlsym may allocate.

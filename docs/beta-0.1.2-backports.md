@@ -253,3 +253,41 @@ Before publishing:
 - Publish only after those gates and verify the assets. Propagate the published
   manual Arch fallback to other maintained branches as needed; the release tag
   already contains the matching fallback. See [release channels](release-channels.md).
+
+## GPU CI follow-up — 16 November 2026
+
+The full GPU suites ran on release head `db05195`:
+[AMD](https://github.com/vela-desktop/vela/actions/runs/43887171681/job/133368376201),
+[NVIDIA](https://github.com/vela-desktop/vela/actions/runs/43887186102/job/133370458275),
+and optional [Intel](https://github.com/vela-desktop/vela/actions/runs/43887200068/job/133368476067).
+All three failed the session suite; AMD and Intel also failed animation pacing.
+These runs are failures, not release acceptance.
+
+The maintenance follow-up addresses three causes:
+
+- Fatal lock exit tested an inherited environment variable that startup had
+  already consumed. Use the validated `server.supervised` state so the
+  supervisor receives its stop signal after blackout. Preserve the dedicated
+  unsafe-lock diagnostic when that signal arrives before the exit is reaped.
+- The lock's simple rectangular scene often makes pixman operations allocation
+  free. Add an explicit shim mode that, after such a successful fast path,
+  breaks the destination through a real failed pixman allocation. The lock test
+  requires an injected failure and unchanged lock pixels; the unlocked damage
+  tests retain their natural-allocation coverage.
+- Recheck pacing when a queued frame event runs. An animation-only callback
+  queued before an empty frame must wait for that output's next beat when
+  latching is unavailable. Real damage and working latches retain their paths.
+  The animation frame-count bounds remain unchanged.
+
+Local follow-up validation uses a Debug build with shell and polkit disabled:
+304 selected non-GPU, non-distro-packaging CTests pass. The lock-exit and
+process/pacing regressions also pass with ASan/UBSan and leak detection.
+The pixman allocator-interposing regression runs only in native builds.
+Negative controls reject the former environment guard, missing forced-failure
+fallback and disabled empty-frame pacing. The broad suite and leak detection
+require execution outside the restricted sandbox for Unix sockets, process
+metadata and LeakSanitizer access.
+
+These CPU checks do not establish a successful GPU rerun. Keep the follow-up
+in draft until review and hardware validation; rerun the complete required
+AMD/NVIDIA suites on the final revision, with Intel as additional coverage.

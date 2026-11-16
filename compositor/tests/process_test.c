@@ -193,6 +193,47 @@ static void latch_failures_leave_frames_unarmed(struct wl_event_loop *loop)
     close(fd);
 }
 
+static void empty_animation_retries_wait_for_the_output_beat(struct wl_event_loop *loop)
+{
+    int fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+    assert(fd >= 0);
+    struct wlr_output wlr = { 0 };
+    struct vela_output output = { .wlr = &wlr, .vblank_fd = fd, .latch_fd = -1 };
+    vela_frame_clock_init(&output.clock);
+    vela_frame_clock_set_mode_refresh(&output.clock, 180000);
+    int64_t now = vela_now_ns();
+    output.last_vblank = now;
+    output.empty_until = now + vela_frame_clock_period(&output.clock);
+    // A callback already queued before the empty frame must defer too. Repeated
+    // requests share one timer, without an immediate idle or latch callback.
+    for (int i = 0; i < 100; ++i) {
+        assert(defer_animation_frame(&output, now + i * 1000));
+        assert(output.vblank_armed && !output.idle_frame && !output.latch_armed);
+    }
+    struct itimerspec armed;
+    assert(timerfd_gettime(fd, &armed) == 0);
+    assert(armed.it_value.tv_sec || armed.it_value.tv_nsec);
+    // Real damage, a backend commit, or a working latch may run immediately.
+    output.frame_requested = true;
+    assert(!defer_animation_frame(&output, now));
+    output.frame_requested = false;
+    wlr.needs_frame = true;
+    assert(!defer_animation_frame(&output, now));
+    wlr.needs_frame = false;
+    output.latching = true;
+    output.latch_fd = fd;
+    output.latch_source = wl_event_loop_add_fd(loop, fd, WL_EVENT_READABLE, latch_ready, NULL);
+    assert(output.latch_source);
+    assert(!defer_animation_frame(&output, now));
+    wl_event_source_remove(output.latch_source);
+    output.latch_source = NULL;
+    // Latching configured but unavailable still follows the output beat.
+    assert(defer_animation_frame(&output, now));
+    assert(!defer_animation_frame(&output, output.empty_until));
+    assert(!defer_animation_frame(&output, output.empty_until + 1));
+    close(fd);
+}
+
 int main(void)
 {
     struct wl_event_loop *loop = wl_event_loop_create();
@@ -203,6 +244,7 @@ int main(void)
     automatic_relaunch_survives_setup_failure(loop, false);
     automatic_relaunch_survives_setup_failure(loop, true);
     latch_failures_leave_frames_unarmed(loop);
+    empty_animation_retries_wait_for_the_output_beat(loop);
     wl_event_loop_destroy(loop);
     puts("process: ok");
     return 0;
