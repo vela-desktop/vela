@@ -5,9 +5,9 @@ name: CodeQL
 
 on:
   push:
-    branches: [main, 'release/**']
+    branches: [main, 'release/**', 'backport/**']
   pull_request:
-    branches: [main, 'release/**']
+    branches: [main, 'release/**', 'backport/**']
   schedule:
     - cron: '23 4 * * 3'
   workflow_dispatch:
