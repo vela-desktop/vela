@@ -255,7 +255,9 @@ if not isinstance(releases, list):
     raise SystemExit("vela-update: invalid releases response")
 found = []
 for rel in releases:
-    if not isinstance(rel, dict) or rel.get("draft") or not rel.get("prerelease"):
+    # The numbered tag defines Beta; GitHub's prerelease flag is presentation
+    # metadata and can change after publication without changing the package.
+    if not isinstance(rel, dict) or rel.get("draft"):
         continue
     tag = rel.get("tag_name", "")
     if not isinstance(tag, str) or not re.fullmatch(r"v0\.[0-9]+\.[0-9]+", tag):
