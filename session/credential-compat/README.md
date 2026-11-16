@@ -106,7 +106,7 @@ configuration. Avoid adding GNOME-only units to Vela's package dependencies.
 CPU-only deterministic tests:
 
 ```sh
-ctest --test-dir build -R session.credential-compat --output-on-failure
+ctest --test-dir build -R '^session\.credential-(compat|pending)$' --output-on-failure
 ```
 
 They cover explicit/unset/invalid selection, selection precedence, a
@@ -163,3 +163,17 @@ their CMake and packaging entries, session hook branches, and
 Settings preferences and cards, the `secret-backend` config documentation,
 and the reporting test fixture. Restore Vela-only desktop identity after
 verifying Chromium uses libsecret with Vela Secrets.
+
+Provider verification runs in a worker after the synchronous environment hook
+returns, so a KWallet GUI can complete its Wayland initialization. The first
+session target starts after verification; a supervised restart reimports the
+environment and does not start a second provider. The worker checks the login
+token before changing status or stopping its own unit, so an older login cannot
+report or tear down a later login's provider.
+
+Login-state changes and credential side effects share a private runtime `flock`
+(util-linux, already a package dependency). Provider discovery never holds it.
+Status replacement, nonblocking unit requests and session-target activation
+hold it through token validation and the action; logout/new login use the same
+lock. An in-flight old action therefore completes before logout cleans it up,
+and cannot run after the next login begins. The lock file is never unlinked.

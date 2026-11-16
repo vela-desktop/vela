@@ -6,6 +6,34 @@ umask 077
 compat=$1
 ensure=$2
 hook=$3
+# Sourcing with the hook as argv[0] keeps its relative helper paths intact.
+# Ordinary cases wait for all workers; race cases get an explicit completion
+# acknowledgement from the exact old hook worker.
+hook_start()
+{
+    sh -c '. "$0"; wait' "$hook" start
+}
+
+start_hook_worker()
+{
+    worker_done=$1
+    ( hook_start; : > "$worker_done" ) &
+    worker_pid=$!
+}
+
+wait_hook_worker()
+{
+    waited_pid=$1
+    waited_done=$2
+    waited=0
+    while [ ! -e "$waited_done" ] && [ "$waited" -lt 500 ]; do
+        /bin/sleep 0.01
+        waited=$((waited + 1))
+    done
+    [ -e "$waited_done" ] || { echo "old hook worker did not finish" >&2; return 1; }
+    wait "$waited_pid"
+}
+
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 mkdir -p "$tmp/vela" "$tmp/runtime"
@@ -168,6 +196,9 @@ systemctl()
     [ "$MOCK_FAIL" -eq 0 ] || return 1
     MOCK_OWNER=$MOCK_NEXT_OWNER
     MOCK_NATIVE_OWNER=$MOCK_NEXT_NATIVE_OWNER
+    if [ -n "${MOCK_ROLLOVER_SESSION:-}" ]; then
+        printf '%s\n' new-login > "$VELA_CREDENTIAL_SESSION_STATE"
+    fi
 }
 sleep()
 {
@@ -402,11 +433,42 @@ fi
 # Run the actual session hook in an isolated user-manager fixture to verify
 # that the first start probes the owner once, restarts do not, and a competing
 # graphical session is left untouched. No real systemd or keyring is contacted.
+# An old provider checker must not start or stop units, or overwrite the
+# status marker, after the same display belongs to a different login.
+VELA_CREDENTIAL_SESSION_STATE="$tmp/provider-session"
+VELA_CREDENTIAL_SESSION_TOKEN=old-login
+printf '%s\n' new-login > "$VELA_CREDENTIAL_SESSION_STATE"
+: > "$calls"
+previous_status=$(cat "$status")
+vela_credential_ensure kwallet "$binary" kwallet.service
+[ ! -s "$calls" ]
+[ "$(cat "$status")" = "$previous_status" ]
+# Rollover while systemctl start was in flight also must not stop a unit
+# that may now be needed by the new login.
+printf '%s\n' old-login > "$VELA_CREDENTIAL_SESSION_STATE"
+MOCK_FAIL=0
+MOCK_OWNER=none
+MOCK_NATIVE_OWNER=none
+MOCK_NEXT_OWNER=other
+MOCK_ROLLOVER_SESSION=1
+vela_credential_ensure kwallet "$binary" kwallet.service
+[ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
+if grep -q 'stop kwallet.service' "$calls"; then
+    echo 'old checker stopped a later login unit' >&2; exit 1
+fi
+[ "$(cat "$status")" = "$previous_status" ]
+unset VELA_CREDENTIAL_SESSION_STATE VELA_CREDENTIAL_SESSION_TOKEN MOCK_ROLLOVER_SESSION
+
 mockbin="$tmp/mockbin"
 mkdir -p "$mockbin" "$tmp/hook-runtime"
 cat > "$mockbin/systemctl" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$MOCK_SYSTEMCTL_CALLS"
+if [ "$*" = '--user cat vela-session.target' ] &&
+    [ "${MOCK_ACTION_KIND:-}" = target ] && [ -f "$MOCK_ACTION_WAIT" ]; then
+    : > "$MOCK_ACTION_SIGNAL"
+    while [ -f "$MOCK_ACTION_WAIT" ]; do /bin/sleep 0.01; done
+fi
 case "$*" in
     *'is-active graphical-session.target')
         [ "${MOCK_GRAPHICAL_ACTIVE:-0}" = 1 ] ;;
@@ -415,6 +477,12 @@ esac
 EOF
 cat > "$mockbin/busctl" <<'EOF'
 #!/bin/sh
+if [ -n "${MOCK_PROVIDER_WAIT_MARKER:-}" ] && [ -f "$MOCK_PROVIDER_WAIT_MARKER" ]; then
+    : > "$MOCK_PROVIDER_SIGNAL"
+    while [ -f "$MOCK_PROVIDER_WAIT_MARKER" ]; do
+        /bin/sleep 0.01
+    done
+fi
 printf '%s\n' "$*" >> "$MOCK_BUS_CALLS"
 case "$*" in
     *NameHasOwner*) printf '%s\n' 'b true' ;;
@@ -462,23 +530,51 @@ if [ "$1" = 2 ] && [ -n "${MOCK_SLEEP_WAIT_MARKER:-}" ] && [ -f "$MOCK_SLEEP_WAI
 fi
 exit 0
 EOF
+cat > "$mockbin/notify-send" <<'EOF'
+#!/bin/sh
+if [ "${MOCK_ACTION_KIND:-}" = notification ] && [ -f "$MOCK_ACTION_WAIT" ]; then
+    : > "$MOCK_ACTION_SIGNAL"
+    while [ -f "$MOCK_ACTION_WAIT" ]; do /bin/sleep 0.01; done
+fi
+printf '%s\n' "$*" >> "$MOCK_NOTIFICATION_CALLS"
+EOF
+# Pause after token validation, inside the status commit or target action.
+cat > "$mockbin/mktemp" <<'EOF'
+#!/bin/sh
+if [ "${MOCK_ACTION_KIND:-}" = status ] && [ -f "$MOCK_ACTION_WAIT" ]; then
+    : > "$MOCK_ACTION_SIGNAL"
+    while [ -f "$MOCK_ACTION_WAIT" ]; do /bin/sleep 0.01; done
+fi
+exec /usr/bin/mktemp "$@"
+EOF
+cat > "$mockbin/flock" <<'EOF'
+#!/bin/sh
+if [ -n "${MOCK_LOCK_BLOCKED:-}" ] && [ "$*" = '-x 9' ]; then
+    if /usr/bin/flock -n 9; then
+        exit 0
+    fi
+    : > "$MOCK_LOCK_BLOCKED"
+fi
+exec /usr/bin/flock "$@"
+EOF
 chmod 700 "$mockbin/"*
 export PATH="$mockbin:$PATH"
 export MOCK_BUS_CALLS="$tmp/bus-calls" MOCK_SYSTEMCTL_CALLS="$tmp/systemctl-calls"
-export MOCK_SETTINGS_CALLS="$tmp/settings-calls"
+export MOCK_SETTINGS_CALLS="$tmp/settings-calls" MOCK_NOTIFICATION_CALLS="$tmp/notification-calls"
+: > "$MOCK_NOTIFICATION_CALLS"
 : > "$MOCK_SETTINGS_CALLS"
 export MOCK_GRAPHICAL_ACTIVE=0 VELA_SECRET_BACKEND=kwallet VELA_SECRET_CONFIGURED=1
 export WAYLAND_DISPLAY=wayland-73 XDG_CURRENT_DESKTOP=Vela:KDE
 export XDG_RUNTIME_DIR="$tmp/hook-runtime"
 : > "$MOCK_BUS_CALLS"
 : > "$MOCK_SYSTEMCTL_CALLS"
-sh "$hook" start
+hook_start
 [ -f "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
 initial_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
 [ -n "$initial_token" ]
 [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
 [ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
-sh "$hook" start
+hook_start
 # A supervised compositor restart must retain the session identity.
 [ "$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")" = "$initial_token" ]
 [ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
@@ -487,7 +583,7 @@ sh "$hook" stop
 [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
 MOCK_GRAPHICAL_ACTIVE=1
 export MOCK_GRAPHICAL_ACTIVE
-sh "$hook" start
+hook_start
 [ ! -e "$XDG_RUNTIME_DIR/vela-session-wayland-73" ]
 [ "$(wc -l < "$MOCK_BUS_CALLS")" -eq 2 ]
 
@@ -496,14 +592,14 @@ sh "$hook" start
 MOCK_GRAPHICAL_ACTIVE=0
 VELA_SECRET_CONFIGURED=0
 export MOCK_GRAPHICAL_ACTIVE VELA_SECRET_CONFIGURED
-sh "$hook" start
+hook_start
 i=0
 while [ ! -s "$MOCK_SETTINGS_CALLS" ] && [ "$i" -lt 100 ]; do
     /bin/sleep 0.01
     i=$((i + 1))
 done
 [ "$(cat "$MOCK_SETTINGS_CALLS")" = "--page credential-setup" ]
-sh "$hook" start
+hook_start
 /bin/sleep 0.05
 [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 1 ]
 sh "$hook" stop
@@ -511,7 +607,7 @@ sh "$hook" stop
 # After a persisted choice, a fresh login no longer requests the dialog.
 VELA_SECRET_CONFIGURED=1
 export VELA_SECRET_CONFIGURED
-sh "$hook" start
+hook_start
 /bin/sleep 0.05
 [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 1 ]
 sh "$hook" stop
@@ -519,7 +615,7 @@ sh "$hook" stop
 # Deferring the choice must prompt again on the NEXT actual login.
 VELA_SECRET_CONFIGURED=0
 export VELA_SECRET_CONFIGURED
-sh "$hook" start
+hook_start
 i=0
 while [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -lt 2 ] && [ "$i" -lt 100 ]; do
     /bin/sleep 0.01
@@ -531,7 +627,7 @@ sh "$hook" stop
 # A transient Settings launch failure must be retried, not silently lost.
 export MOCK_SETTINGS_FAIL_ONCE="$tmp/fail-once"
 : > "$MOCK_SETTINGS_FAIL_ONCE"
-sh "$hook" start
+hook_start
 i=0
 while [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -lt 3 ] && [ "$i" -lt 100 ]; do
     /bin/sleep 0.01
@@ -546,14 +642,16 @@ unset MOCK_SETTINGS_FAIL_ONCE
 # session, even if the same WAYLAND_DISPLAY is reused.
 export MOCK_SLEEP_WAIT_MARKER="$tmp/hold-prompt" MOCK_SLEEP_SIGNAL="$tmp/prompt-ready"
 : > "$MOCK_SLEEP_WAIT_MARKER"
-sh "$hook" start
-pending_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
+old_done="$tmp/old-prompt-done"
+start_hook_worker "$old_done"
+old_worker=$worker_pid
 i=0
 while [ ! -e "$MOCK_SLEEP_SIGNAL" ] && [ "$i" -lt 100 ]; do
     /bin/sleep 0.01
     i=$((i + 1))
 done
 [ -e "$MOCK_SLEEP_SIGNAL" ]
+pending_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
 sh "$hook" stop
 VELA_SECRET_CONFIGURED=1
 export VELA_SECRET_CONFIGURED
@@ -564,7 +662,7 @@ new_token=$(cat "$XDG_RUNTIME_DIR/vela-session-wayland-73")
 [ "$new_token" != "$pending_token" ]
 rm -f "$MOCK_SLEEP_WAIT_MARKER"
 # The old helper must observe the changed session token and exit quietly.
-/bin/sleep 0.10
+wait_hook_worker "$old_worker" "$old_done"
 [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 3 ]
 sh "$hook" stop
 unset MOCK_SLEEP_WAIT_MARKER MOCK_SLEEP_SIGNAL
@@ -581,7 +679,9 @@ export MOCK_CAT_WAIT_MARKER="$tmp/hold-token-read" MOCK_CAT_SIGNAL="$tmp/token-r
 export MOCK_SLEEP_WAIT_MARKER="$tmp/hold-first-sleep" MOCK_SLEEP_SIGNAL="$tmp/first-sleep-ready"
 : > "$MOCK_CAT_WAIT_MARKER"
 : > "$MOCK_SLEEP_WAIT_MARKER"
-sh "$hook" start
+old_done="$tmp/old-token-worker-done"
+start_hook_worker "$old_done"
+old_worker=$worker_pid
 i=0
 while [ ! -e "$MOCK_CAT_SIGNAL" ] && [ ! -e "$MOCK_SLEEP_SIGNAL" ] && [ "$i" -lt 100 ]; do
     /bin/sleep 0.01
@@ -593,9 +693,123 @@ VELA_SECRET_CONFIGURED=1
 export VELA_SECRET_CONFIGURED
 sh "$hook" start
 rm -f "$MOCK_CAT_WAIT_MARKER" "$MOCK_SLEEP_WAIT_MARKER"
-/bin/sleep 0.10
+wait_hook_worker "$old_worker" "$old_done"
 [ "$(wc -l < "$MOCK_SETTINGS_CALLS")" -eq 3 ]
 sh "$hook" stop
 unset MOCK_CAT_WAIT_MARKER MOCK_CAT_SIGNAL MOCK_SLEEP_WAIT_MARKER MOCK_SLEEP_SIGNAL
+
+# A provider owner lookup may need a GUI round trip. Keep it blocked until
+# the hook has returned, exactly the ordering the compositor needs to dispatch.
+VELA_SECRET_CONFIGURED=1
+export VELA_SECRET_CONFIGURED
+export MOCK_PROVIDER_WAIT_MARKER="$tmp/hold-provider" MOCK_PROVIDER_SIGNAL="$tmp/provider-ready"
+: > "$MOCK_PROVIDER_WAIT_MARKER"
+parent_done="$tmp/start-hook-returned"
+targets_before=$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)
+( sh "$hook" start; : > "$parent_done" ) &
+parent_pid=$!
+i=0
+while [ ! -e "$parent_done" ] && [ "$i" -lt 200 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+returned_while_provider_blocked=0
+[ ! -e "$parent_done" ] || returned_while_provider_blocked=1
+i=0
+while [ ! -e "$MOCK_PROVIDER_SIGNAL" ] && [ "$i" -lt 200 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+provider_reached_barrier=0
+[ ! -e "$MOCK_PROVIDER_SIGNAL" ] || provider_reached_barrier=1
+[ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$targets_before" ]
+rm -f "$MOCK_PROVIDER_WAIT_MARKER"
+wait "$parent_pid"
+[ "$returned_while_provider_blocked" -eq 1 ] && [ "$provider_reached_barrier" -eq 1 ] || {
+    echo "start hook waited for provider verification" >&2; exit 1;
+}
+i=0
+while [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ] && [ "$i" -lt 200 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
+i=0
+while [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -le "$targets_before" ] && [ "$i" -lt 200 ]; do
+    /bin/sleep 0.01
+    i=$((i + 1))
+done
+[ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$((targets_before + 1))" ]
+sh "$hook" stop
+unset MOCK_PROVIDER_WAIT_MARKER MOCK_PROVIDER_SIGNAL
+
+# Logout/new login must serialize with an action already past token validation.
+# A held provider query itself must never hold that lock (covered above).
+for action_kind in target status notification; do
+    export MOCK_ACTION_KIND=$action_kind
+    export MOCK_ACTION_WAIT="$tmp/hold-$action_kind" MOCK_ACTION_SIGNAL="$tmp/$action_kind-ready"
+    : > "$MOCK_ACTION_WAIT"
+    old_done="$tmp/$action_kind-worker-done"
+    if [ "$action_kind" = notification ]; then
+        # The mock owner is KWallet: choosing GNOME produces the warning.
+        VELA_SECRET_BACKEND=gnome
+        export VELA_SECRET_BACKEND
+    fi
+    start_hook_worker "$old_done"
+    old_worker=$worker_pid
+    i=0
+    while [ ! -e "$MOCK_ACTION_SIGNAL" ] && [ "$i" -lt 200 ]; do
+        /bin/sleep 0.01
+        i=$((i + 1))
+    done
+    [ -e "$MOCK_ACTION_SIGNAL" ]
+    # The side effect owns the same real lock as login/logout.
+    if /usr/bin/flock -n "$XDG_RUNTIME_DIR/vela-credential-compat.lock" true; then
+        echo "$action_kind action was not serialized" >&2; exit 1
+    fi
+    stop_blocked="$tmp/$action_kind-stop-blocked"
+    stop_done="$tmp/$action_kind-stop-done"
+    ( MOCK_LOCK_BLOCKED="$stop_blocked" sh "$hook" stop; : > "$stop_done" ) &
+    stop_pid=$!
+    i=0
+    while [ ! -e "$stop_blocked" ] && [ "$i" -lt 200 ]; do
+        /bin/sleep 0.01
+        i=$((i + 1))
+    done
+    [ -e "$stop_blocked" ] && [ ! -e "$stop_done" ]
+    rm -f "$MOCK_ACTION_WAIT"
+    wait "$stop_pid"
+    wait_hook_worker "$old_worker" "$old_done"
+    [ -e "$stop_done" ] && [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
+    unset MOCK_ACTION_KIND MOCK_ACTION_WAIT MOCK_ACTION_SIGNAL
+    VELA_SECRET_BACKEND=kwallet
+    export VELA_SECRET_BACKEND
+
+    # A new login may begin only after old side effects have been cleaned up.
+    # Hold its provider lookup and ensure no stale status/target appears.
+    export MOCK_PROVIDER_WAIT_MARKER="$tmp/new-$action_kind-provider"
+    export MOCK_PROVIDER_SIGNAL="$tmp/new-$action_kind-ready"
+    : > "$MOCK_PROVIDER_WAIT_MARKER"
+    targets_before=$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)
+    notifications_before=$(wc -l < "$MOCK_NOTIFICATION_CALLS")
+    new_done="$tmp/new-$action_kind-done"
+    start_hook_worker "$new_done"
+    new_worker=$worker_pid
+    i=0
+    while [ ! -e "$MOCK_PROVIDER_SIGNAL" ] && [ "$i" -lt 200 ]; do
+        /bin/sleep 0.01
+        i=$((i + 1))
+    done
+    [ -e "$MOCK_PROVIDER_SIGNAL" ]
+    [ ! -e "$XDG_RUNTIME_DIR/vela-credential-compat.status" ]
+    [ "$(wc -l < "$MOCK_NOTIFICATION_CALLS")" -eq "$notifications_before" ]
+    [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$targets_before" ]
+    rm -f "$MOCK_PROVIDER_WAIT_MARKER"
+    wait_hook_worker "$new_worker" "$new_done"
+    [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status")" = ok ]
+    [ "$(grep -c 'start vela-session.target' "$MOCK_SYSTEMCTL_CALLS" || :)" -eq "$((targets_before + 1))" ]
+    sh "$hook" stop
+    unset MOCK_PROVIDER_WAIT_MARKER MOCK_PROVIDER_SIGNAL
+done
 
 echo "credential selection, prompt/retry/logout safety, owner validation and restart lifecycle OK"

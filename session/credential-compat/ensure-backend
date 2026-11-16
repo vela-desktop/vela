@@ -5,6 +5,67 @@
 # TEMPORARY until Vela Secrets. Source from vela-session-env on FIRST_START only.
 # Never read credentials or terminate a daemon owned by PAM or another desktop.
 
+vela_credential_session_current()
+{
+    # Standalone checks have no login identity. The asynchronous start-hook
+    # worker must never act on a later login reusing the same display.
+    [ -n "${VELA_CREDENTIAL_SESSION_TOKEN:-}" ] || return 0
+    [ -n "${VELA_CREDENTIAL_SESSION_STATE:-}" ] &&
+        [ -r "$VELA_CREDENTIAL_SESSION_STATE" ] &&
+        [ "$(cat "$VELA_CREDENTIAL_SESSION_STATE")" = "$VELA_CREDENTIAL_SESSION_TOKEN" ]
+}
+
+# Serialize login changes and side effects on the shared user manager/status.
+# Never unlink this lock: all sessions must keep using the same inode.
+vela_credential_lock()
+{
+    [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] || return 1
+    umask 077
+    exec 9>"$XDG_RUNTIME_DIR/vela-credential-compat.lock" || return 1
+    flock -x 9
+}
+
+vela_credential_unlock()
+{
+    flock -u 9
+    exec 9>&-
+}
+
+vela_credential_action()
+{
+    if [ -z "${VELA_CREDENTIAL_SESSION_TOKEN:-}" ]; then
+        "$@"
+        return $?
+    fi
+    (
+        vela_credential_lock || exit 1
+        vela_credential_session_current || exit 0
+        "$@"
+    )
+}
+
+vela_credential_activate_session()
+{
+    if systemctl --user cat vela-session.target > /dev/null 2>&1; then
+        systemctl --user --no-block start vela-session.target
+    fi
+}
+
+vela_credential_notify_issue()
+{
+    command -v notify-send >/dev/null 2>&1 || return 0
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+        [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status" 2>/dev/null)" = limited ]; then
+        notify-send -a "Vela Desktop" -u normal -t 20000 \
+            "KWallet: limited compatibility" \
+            "KWallet's native API works, but Secret Service is unavailable. Check Settings > System."
+    else
+        notify-send -a "Vela Desktop" -u critical -t 20000 \
+            "Password manager unavailable" \
+            "Vela could not use the selected password manager. Open Settings > System and check the session log."
+    fi
+}
+
 vela_credential_owner()
 {
     # Do not autoactivate either service while identifying the current owner.
@@ -132,6 +193,11 @@ vela_credential_kwallet_pending()
 
 vela_credential_mark()
 {
+    vela_credential_action vela_credential_write_status "$@"
+}
+
+vela_credential_write_status()
+{
     # XDG_RUNTIME_DIR is private (0700). Do not write to a predictable /tmp path.
     if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
         # Atomically replace the marker instead of following a pre-existing
@@ -156,6 +222,7 @@ vela_credential_ensure()
     backend=$1
     binary=$2
     unit=$3
+    vela_credential_session_current || exit 0
     current=$(vela_credential_owner)
     native_available=0
     case "$current" in
@@ -200,6 +267,7 @@ vela_credential_ensure()
         # name yet (notably KWallet 6.14). Never race it with a fresh provider.
         attempt=0
         while :; do
+            vela_credential_session_current || exit 0
             current=$(vela_credential_owner)
             case "$current" in
                 "$backend") vela_credential_mark ok ''; exit 0 ;;
@@ -236,7 +304,8 @@ vela_credential_ensure()
         fi
         exit 1
     fi
-    if ! systemctl --user start "$unit"; then
+    vela_credential_session_current || exit 0
+    if ! vela_credential_action systemctl --user --no-block start "$unit"; then
         vela_credential_mark failed "cannot start $unit"
         exit 1
     fi
@@ -246,13 +315,14 @@ vela_credential_ensure()
     # An already-existing PAM-owned provider never reaches this branch.
     vela_credential_stop_started_unit()
     {
-        systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
+        vela_credential_action systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
     }
 
     # systemctl start can succeed even if a unit is skipped by a Condition,
     # and --start may return after attaching to a PAM-owned keyring.
     # Verify the actual D-Bus owner, not the unit's ActiveState.
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        vela_credential_session_current || exit 0
         current=$(vela_credential_owner)
         case "$current" in
             "$backend") vela_credential_mark ok ''; exit 0 ;;
@@ -267,6 +337,7 @@ vela_credential_ensure()
                 exit 1 ;;
         esac
     done
+    vela_credential_session_current || exit 0
     # Gather fallback information first: its bus lookup may itself allow the
     # Secret Service provider to become ready. The final authoritative lookup
     # must follow *all* waits/queries before native-only cleanup.
