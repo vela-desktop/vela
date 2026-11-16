@@ -36,7 +36,7 @@ xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ctest --test-dir build -L '^rhi$' --outp
 | **Settings** (`settings-displays`) | Native Wayland inventory and hotplug, modes, scale, rotation, confirmation-only persistence, explicit revert, compositor deadlines with the GUI thread blocked, client disconnection and SIGKILL, competing clients, failed commits and hotplug during preview. Uses real wlroots headless outputs and Vela’s output manager/preview; rendering and window rearrangement are stubbed. | No |
 | **Vela Report** (`reporting`, `reporting-gui`) | Guided CLI without a display, shared Qt worker and ZIP export, explicit collection boundaries, redaction, review exclusion, process identity, resource recording, bounded commands and archive failures. | No |
 | **Package updater** (`packaging-update`) | Public HTTPS defaults in both the updater and PKGBUILD, first run and cached fetches, migration of saved SSH URLs and old mirrors, local sources, branch/commit selection, exact CI artifacts, download fallback and failed fetch/build/install handling. Uses real Git repositories with simulated package tools. | No |
-| **Test infrastructure** (`functional-harness`) | Unexpected compositor exits, explicit intentional failure status, failed startup cleanup, reaping clients, all five PNG filters with known pixels, and exact bounds of changed pixels. | No |
+| **Test infrastructure** (`functional-harness`) | Unexpected compositor exits, explicit intentional failure status, failed startup cleanup, reaping clients, a private bus activating nothing by default and stopping what it was given to activate (also a service ignoring SIGTERM) without passing it the host's display, all five PNG filters with known pixels, and exact bounds of changed pixels. | No |
 | **Scripts and documentation** (`script-tests`, `documentation`, `shared-values`, `qml-motion`) | Distribution metrics, API failures without partial writes, offline Markdown links/anchors and build dependency lists; the motion durations and curve written in both `motion.h` and `Theme.qml` agreeing ([visual coherence](visual-coherence.md#64-one-duration-scale-written-twice-and-checked-d10)); QML durations that aren't `Theme` tokens and state colors or backgrounds' opacities that don't fade, failing ([§6.11](visual-coherence.md#611-keeping-it-so)). | No |
 | **Functional** (`functional`) | Opening and manipulating windows (Wayland and X11), menus (popups and X11 override-redirect menus) kept where they belong, resizing from the invisible borders (not where a game or a menu covers them), the pointer at rest following windows that open under it (X11 ones rising as they open), close above it or go fullscreen over a border (a pointer an app locked stays with it), keyboard Move/Resize, the window menu, drag-to-edge snap with Snap Assist, snap layouts and snap groups, snap, maximize/restore, minimize/Alt+Tab, virtual desktops, Vela's title bar (text, buttons, double click, the shell's Mica colors and accent, the buttons' fading hover, no seam with Settings' content), every window animation from every trigger (with the app's images in its snapshots), the shell's panels entering animated (Start, Quick Settings, Notification Center, Task View, captured at 300% duration), dialogs and panels leaving animated and menus and Task View at once, the exit, shadow room and blur during the slide of Start, Quick Settings, Notification Center and clipboard, Quick Settings' page heights, animation durations following `animation-duration`, shell layers (reserved space, live blur, Vela's acrylic only on `vela-` surfaces and a plain blur for other clients), partial redraws identical to full redraws, output hotplug, per-output scale and position set like Settings does, accessibility quick settings (night light and its schedule, color filters, magnifier, sticky keys), Super alone opening Start, the media and volume keys (held volume keys repeat), the mouse's side buttons as Back and Forward in Vela's apps (File Explorer, also with the focus elsewhere or on an inactive window), lock/unlock, screen power, compositor crash recovery, a shell that crashes (restarted, then given up) or exits cleanly (left alone), and an app whose GPU finishes 150 ms late (explicit and implicit sync) without a missed vblank, and the polkit agent (below). | Yes |
 | **Audio** (`audio-*`) | The private PipeWire and WirePlumber the audio tests run on ([audio](audio.md#11-tests)): fake devices, defaults, streams following the default output, recording, levels, restarts and isolation from the user's audio. On it, the `vela-audio` library: the model, changes from outside, the volume's grid and 100% cap, balance, values shown at once and the server winning, microphone actions shown only once confirmed, apps grouped by program with their volume, mute, output and input, devices appearing, PipeWire and WirePlumber restarts; a Bluetooth headset's battery from a fake `vela-bluetooth`, matched by address. The shell's sound keys on it: volume keys, the microphone key whose indicator waits for the server, the wheel on a taskbar button. | No |
@@ -486,6 +486,17 @@ startup and final errors in oversized logs, refreshing evidence after live
 recording, rotation, historical descriptor records and matching retained logs
 to their incident boot. An unknown boot must never become current-boot evidence.
 
+Private D-Bus buses (the shell's session bus, the polkit tests' system bus)
+come from `PrivateBus` in `tests/functional/harness.py`. They have no service
+directories, so a call to a name nobody owns fails at once instead of
+starting the host's service: the session bus's defaults would start the
+desktop portal and the secret service, with the bus's environment, and so
+connected to the session the tests run in. The bus runs without the host's
+`WAYLAND_DISPLAY`, `DISPLAY` and `WAYLAND_SOCKET`, with its own
+`XDG_RUNTIME_DIR`, in its own process group, which its cleanup stops whole
+(SIGTERM, then SIGKILL), also after a failed test or setup. A program that
+leaves the group itself (`setsid`) is not followed.
+
 `tests/functional/test_shell.py` runs the actual Qt shell with a private D-Bus
 session and isolated configuration, using threaded OpenGL rendering, CPU
 compositor synchronization and a 100 Hz output. It checks repeated Super
@@ -542,6 +553,28 @@ descriptor exhaustion, including removing derived summaries during review.
 `VELA_SYNC_FILE=0`, so CPU compatibility must preserve exactly the same pixels.
 Both sharpness suites honor `VELA_BUILD`, including build paths with spaces,
 and fail immediately if an executable is missing.
+
+## Frame-path allocations
+
+The frame path draws without allocating once warmed
+([allocation policy](memory-allocation-policy.md#7-the-frame-path)). Two tests
+count the calls to Vela's allocation helpers through
+`compositor/tests/alloc_count.c`, linked with `-Wl,--wrap`:
+
+- `compositor.frame-path` (CPU, also in hosted CI) runs the production
+  `pass.c`, `renderer.c` and `texture.c` with Vulkan stubbed. libvulkan is
+  not linked: an entry point without its stub fails at link time.
+- `functional-frame-path` (GPU) runs `vela-compositor-alloc-count`, the
+  compositor built from the same objects with the counter, which appends
+  every allocation's file and line to the descriptor named by
+  `VELA_TEST_ALLOC_LOG_FD`, opened by the test and inherited by the
+  compositor (the counter opens no file itself). The test reads the log over
+  a window of frames and fails on any site it does not name.
+
+The counted compositor also answers "what allocates here?" in other
+scenarios: open a log file for appending, start
+`Session(binary="vela-compositor-alloc-count",
+env={"VELA_TEST_ALLOC_LOG_FD": str(fd)}, pass_fds=(fd,))`, then read the log.
 
 ## Vulkan validation and renderer diagnosis
 

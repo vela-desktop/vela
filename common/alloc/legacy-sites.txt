@@ -1,4 +1,3 @@
 # Direct allocations still to migrate to common/alloc/alloc.h
 # (docs/memory-allocation-policy.md, "Enforcement"): <path> <call> <count>.
 # Checked by scripts/check-allocations.py. It only shrinks, down to empty.
-updates/src/check.c realloc 1

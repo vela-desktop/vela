@@ -150,7 +150,9 @@ if(MATH_LIBRARY)
     target_link_libraries(vela-pure PUBLIC ${MATH_LIBRARY})
 endif()
 
-add_executable(vela-compositor
+# The compositor's objects, compiled once: the installed executable links
+# them, and so does the test build that counts allocations (below).
+add_library(vela-compositor-objects OBJECT
     src/a11y.c
     src/error_screen.c
     src/bindings.c
@@ -207,23 +209,23 @@ add_executable(vela-compositor
     ${VELA_CLIENT_PROTOCOL_SOURCES}
     ${VELA_OWN_PROTOCOL_SOURCES})
 
-target_include_directories(vela-compositor PRIVATE
+target_include_directories(vela-compositor-objects PRIVATE
     ${VELA_GENERATED_DIR} ${VELA_SHADER_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_compile_definitions(vela-compositor PRIVATE WLR_USE_UNSTABLE
+target_compile_definitions(vela-compositor-objects PRIVATE WLR_USE_UNSTABLE
     VELA_LIBEXECDIR="${CMAKE_INSTALL_FULL_LIBEXECDIR}")
 # With Vulkan, structs are initialized naming only the fields needed (the
 # others are zero): the warning about omitted fields would be noise.
-target_compile_options(vela-compositor PRIVATE -Wall -Wextra -Wno-unused-parameter
+target_compile_options(vela-compositor-objects PRIVATE -Wall -Wextra -Wno-unused-parameter
     -Wno-missing-field-initializers)
-set_target_properties(vela-compositor PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+set_target_properties(vela-compositor-objects PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 # logind lock hints are best-effort when libsystemd is available.
 pkg_check_modules(VELA_LOCK_SYSTEMD IMPORTED_TARGET libsystemd)
 if(VELA_LOCK_SYSTEMD_FOUND)
-    target_compile_definitions(vela-compositor PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
-    target_link_libraries(vela-compositor PRIVATE PkgConfig::VELA_LOCK_SYSTEMD)
+    target_compile_definitions(vela-compositor-objects PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
+    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::VELA_LOCK_SYSTEMD)
 endif()
 
-target_link_libraries(vela-compositor PRIVATE
+target_link_libraries(vela-compositor-objects PUBLIC
     vela-pure
     PkgConfig::WLROOTS
     PkgConfig::WAYLAND_SERVER
@@ -236,14 +238,17 @@ target_link_libraries(vela-compositor PRIVATE
     PkgConfig::LIBDRM
     PkgConfig::FONTS)
 if(XCB_FOUND)
-    target_link_libraries(vela-compositor PRIVATE PkgConfig::XCB)
+    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::XCB)
 endif()
 if(RSVG_FOUND)
-    target_link_libraries(vela-compositor PRIVATE PkgConfig::RSVG)
-    target_compile_definitions(vela-compositor PRIVATE VELA_HAVE_RSVG=1)
+    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::RSVG)
+    target_compile_definitions(vela-compositor-objects PRIVATE VELA_HAVE_RSVG=1)
 else()
     message(STATUS "librsvg not found: the title bar will have no icons")
 endif()
+
+add_executable(vela-compositor)
+target_link_libraries(vela-compositor PRIVATE vela-compositor-objects)
 
 install(TARGETS vela-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
@@ -272,6 +277,20 @@ if(VELA_BUILD_TOOLS)
     endif()
     set(VELA_TEST_PRELOAD_PREFIX "${VELA_TEST_PRELOAD_PREFIX}" CACHE INTERNAL "ASan runtime before test shims")
 
+    # The helpers' entry points, wrapped by tests/alloc_count.c to count the
+    # calls of Vela's own code (docs/memory-allocation-policy.md, "Frame path").
+    set(VELA_ALLOC_COUNT_WRAP -Wl,--wrap=vela_alloc_at -Wl,--wrap=vela_grow_size_at
+        -Wl,--wrap=vela_grow_int_at -Wl,--wrap=vela_strdup_at -Wl,--wrap=vela_strndup_at
+        -Wl,--wrap=vela_asprintf_at)
+    # The same compositor, objects and all, with the counter: the functional
+    # frame-path test (tests/functional/test_frame_path.py) runs it. Never
+    # installed.
+    add_executable(vela-compositor-alloc-count tests/alloc_count.c)
+    target_link_libraries(vela-compositor-alloc-count PRIVATE vela-compositor-objects)
+    target_link_options(vela-compositor-alloc-count PRIVATE ${VELA_ALLOC_COUNT_WRAP})
+    target_compile_options(vela-compositor-alloc-count PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-compositor-alloc-count PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+
     # LD_PRELOAD shim that makes one pixman region operation really fail
     # (tests/functional/test_session.py, damage fallback).
     add_library(vela-pixman-fail-preload MODULE tests/pixman_fail_preload.c)
@@ -285,6 +304,12 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-getline-fail-preload PRIVATE ${CMAKE_DL_LIBS})
     target_compile_options(vela-getline-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-getline-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    # sd-event sources that fail as with descriptors exhausted, for the
+    # daemons' tests (tests/updates, tests/bluetooth).
+    add_library(vela-sd-event-fail-preload MODULE tests/sd_event_fail_preload.c)
+    target_link_libraries(vela-sd-event-fail-preload PRIVATE ${CMAKE_DL_LIBS})
+    target_compile_options(vela-sd-event-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
+    set_target_properties(vela-sd-event-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     # setenv and fstatat failures on the supervisor's restart path.
     add_library(vela-libc-fail-preload MODULE tests/libc_fail_preload.c)
     target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS})
@@ -445,6 +470,24 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-readback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.readback COMMAND vela-readback-test)
 
+    # The frame path's drawing without a GPU: the production pass, renderer and
+    # texture code with Vulkan stubbed, counting the helpers' calls
+    # (docs/memory-allocation-policy.md, "Frame path"). libvulkan is not
+    # linked, so an entry point without its stub fails at link time instead
+    # of reaching the real loader with fake handles.
+    add_executable(vela-frame-path-test tests/frame_path_test.c tests/alloc_count.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-frame-path-test PRIVATE src tests ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR}
+        ${VULKAN_INCLUDE_DIRS})
+    target_compile_definitions(vela-frame-path-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-frame-path-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-frame-path-test PRIVATE -Wl,--gc-sections ${VELA_ALLOC_COUNT_WRAP})
+    target_link_libraries(vela-frame-path-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-frame-path-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.frame-path COMMAND vela-frame-path-test)
+
     # Real output-source damage/idle policy with GPU work replaced by terminal
     # frame notifications; no private wlroots session state is accessed.
     add_executable(vela-capture-damage-test tests/capture_damage_test.c ${VELA_OWN_PROTOCOL_SOURCES})
@@ -486,6 +529,23 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_CLIENT PkgConfig::PIXMAN)
     set_target_properties(vela-x11-root-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.x11-root COMMAND vela-x11-root-test)
+
+    # The compositor's children on a real event loop, no GPU: an exit reaches
+    # its callback, and a child that can't be watched is reaped.
+    add_executable(vela-process-test tests/process_test.c src/process.c ${VELA_PROTOCOL_HEADERS})
+    target_include_directories(vela-process-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-process-test PRIVATE WLR_USE_UNSTABLE VELA_LIBEXECDIR="${CMAKE_INSTALL_FULL_LIBEXECDIR}")
+    target_compile_options(vela-process-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Werror)
+    target_link_libraries(vela-process-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    set_target_properties(vela-process-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    target_link_options(vela-process-test PRIVATE -Wl,--gc-sections
+        -Wl,--wrap=wl_event_loop_add_fd -Wl,--wrap=wl_event_loop_add_timer -Wl,--wrap=fork)
+    add_test(NAME compositor.process COMMAND vela-process-test)
+
+
+    set_tests_properties(compositor.process PROPERTIES TIMEOUT 30)
 
     # Which vela-update-daemon the compositor starts, if any.
     add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)

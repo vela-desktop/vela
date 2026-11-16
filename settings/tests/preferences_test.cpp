@@ -73,6 +73,25 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
+    void duplicateCredentialBackendUsesTheLastEntry()
+    {
+        QVERIFY(writeFile(QStringLiteral("config/vela/vela.conf"),
+            "# before\nsecret-backend=kwallet\nlanguage=it\nsecret-backend=gnome\n# after\n"));
+        Preferences prefs;
+        QCOMPARE(prefs.secretBackend(), QStringLiteral("gnome"));
+        QVERIFY(prefs.secretBackendConfigured());
+        prefs.setSecretBackend(QStringLiteral("kwallet"));
+        QCOMPARE(prefs.saveError(), QString());
+        QFile file(home().filePath(QStringLiteral("config/vela/vela.conf")));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray text = file.readAll();
+        QCOMPARE(text.count("secret-backend="), 1);
+        QVERIFY(text.contains("secret-backend=kwallet\n"));
+        QVERIFY(text.contains("language=it\n") && text.contains("# after"));
+        Preferences reloaded;
+        QCOMPARE(reloaded.secretBackend(), QStringLiteral("kwallet"));
+    }
+
     /** Missing desktop helpers must produce a diagnostic without opening another app. */
 
     /** An executable whose interpreter is unavailable must report its launch failure. */

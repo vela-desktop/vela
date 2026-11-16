@@ -230,23 +230,23 @@ static bool init(struct vela_server *server)
     // Basic protocols almost every modern application expects. With the
     // renderer, wlroots uploads app buffers to our textures on every commit
     // (only the changed part).
-    server->compositor = wlr_compositor_create(display, 6, server->wlr_renderer);
+    server->compositor = VELA_MUST(wlr_compositor_create(display, 6, server->wlr_renderer));
     vela_ready_init(&server->ready, server->compositor);
-    wlr_subcompositor_create(display);
-    wlr_data_device_manager_create(display);
-    wlr_primary_selection_v1_device_manager_create(display);
-    wlr_data_control_manager_v1_create(display);
+    VELA_MUST(wlr_subcompositor_create(display));
+    VELA_MUST(wlr_data_device_manager_create(display));
+    VELA_MUST(wlr_primary_selection_v1_device_manager_create(display));
+    VELA_MUST(wlr_data_control_manager_v1_create(display));
     // The clipboard for those without a window: the shell's clipboard history
     // (Win+V) and the Snipping Tool.
-    wlr_ext_data_control_manager_v1_create(display, 1);
-    wlr_viewporter_create(display);
-    wlr_single_pixel_buffer_manager_v1_create(display);
-    wlr_fractional_scale_manager_v1_create(display, 1);
-    wlr_screencopy_manager_v1_create(display);
-    wlr_presentation_create(display, server->backend, 2);
+    VELA_MUST(wlr_ext_data_control_manager_v1_create(display, 1));
+    VELA_MUST(wlr_viewporter_create(display));
+    VELA_MUST(wlr_single_pixel_buffer_manager_v1_create(display));
+    VELA_MUST(wlr_fractional_scale_manager_v1_create(display, 1));
+    VELA_MUST(wlr_screencopy_manager_v1_create(display));
+    VELA_MUST(wlr_presentation_create(display, server->backend, 2));
 
-    server->output_layout = wlr_output_layout_create(display);
-    server->xdg_outputs = wlr_xdg_output_manager_v1_create(display, server->output_layout);
+    server->output_layout = VELA_MUST(wlr_output_layout_create(display));
+    server->xdg_outputs = VELA_MUST(wlr_xdg_output_manager_v1_create(display, server->output_layout));
     vela_output_manager_init(server);
     vela_listen(&server->output_layout->events.change, &server->layout_change, handle_layout_change);
 
@@ -295,7 +295,7 @@ static bool init(struct vela_server *server)
     vela_xwayland_init(server); // X11 apps (xwayland.c)
     server->lock = vela_lock_create(server); // lock and inactivity (lock.c)
     // Accessibility and screen color (a11y.c); VRR and tearing.
-    server->scene->tearing_control = wlr_tearing_control_manager_v1_create(display, 1);
+    server->scene->tearing_control = VELA_MUST(wlr_tearing_control_manager_v1_create(display, 1));
     server->a11y = vela_a11y_create(server);
     vela_output_load_settings(server);
     vela_a11y_load(server->a11y);
@@ -439,6 +439,12 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     }
     if (startup_command && *startup_command) {
         vela_shell_start(server, startup_command);
+        // A fork failure keeps a reserved retry timer. If even that watch
+        // could not be reserved, fail startup rather than run without a shell.
+        if (!server->shell.fallback) {
+            wlr_log(WLR_ERROR, "Can't supervise the shell: refusing incomplete startup");
+            return false;
+        }
     }
     vela_polkit_agent_start(server);
     // Initial state first: a restarted compositor must not allow pairing

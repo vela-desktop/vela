@@ -197,6 +197,11 @@ void Preferences::reloadCompositor()
     emit idleChanged();
     m_language = value(QStringLiteral("language"), {});
     emit languageChanged();
+    // Temporary user-selected credential backend (applies at next login).
+    const QString backend = compositorValue(QStringLiteral("secret-backend"));
+    m_secretBackendConfigured = backend == QLatin1String("gnome") || backend == QLatin1String("kwallet");
+    m_secretBackend = backend == QLatin1String("gnome") ? QStringLiteral("gnome") : QStringLiteral("kwallet");
+    emit secretBackendChanged();
 
     m_layouts.clear();
     const QStringList layouts = value(QStringLiteral("keyboard-layout"), {}).split(u',', Qt::SkipEmptyParts);
@@ -253,9 +258,9 @@ void Preferences::reloadCompositor()
 
 QString Preferences::compositorValue(const QString& key) const
 {
-    for (const auto& [k, v] : std::as_const(m_compositor)) {
-        if (k == key) {
-            return v;
+    for (auto entry = m_compositor.crbegin(); entry != m_compositor.crend(); ++entry) {
+        if (entry->first == key) {
+            return entry->second;
         }
     }
     return {};
@@ -531,6 +536,8 @@ bool Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, m_lockOnIdle ? QStringLiteral("yes") : QStringLiteral("no") });
         } else if (key == QLatin1String("language")) {
             changes.append({ key, m_language });
+        } else if (key == QLatin1String("secret-backend")) {
+            changes.append({ key, m_secretBackend });
         } else if (key == QLatin1String("keyboard-layout") || key == QLatin1String("keyboard-variant")) {
             QStringList values;
             for (const QVariant& value : std::as_const(m_layouts)) {
@@ -569,11 +576,14 @@ bool Preferences::saveCompositor(const QList<QPair<QString, QString>>& changes)
     }
     for (const auto& [key, value] : changes) {
         bool found = false;
-        for (QString& line : lines) {
-            if (line.startsWith(key + u'=')) {
-                line = key + u'=' + value;
-                found = true;
-                break;
+        for (qsizetype i = lines.size(); i-- > 0;) {
+            if (lines.at(i).startsWith(key + u'=')) {
+                if (!found) {
+                    lines[i] = key + u'=' + value;
+                    found = true;
+                } else {
+                    lines.removeAt(i);
+                }
             }
         }
         if (!found) {
@@ -631,6 +641,64 @@ void Preferences::setLanguage(const QString& language)
         m_language = language;
         keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("language") }), m_language, previous);
         emit languageChanged();
+    }
+}
+
+bool Preferences::isSecretBackendInstalled(const QString& backend) const
+{
+    if (backend != QLatin1String("gnome") && backend != QLatin1String("kwallet")) {
+        return false;
+    }
+    const QString binary = backend == QLatin1String("gnome")
+        ? QStringLiteral("/usr/bin/gnome-keyring-daemon") : QStringLiteral("/usr/bin/kwalletd6");
+    return QFileInfo(binary).isExecutable();
+}
+
+bool Preferences::secretBackendInstalled() const
+{
+    return isSecretBackendInstalled(m_secretBackend);
+}
+
+QString Preferences::activeSecretBackend() const
+{
+    return qEnvironmentVariable("VELA_SECRET_BACKEND", QStringLiteral("kwallet"));
+}
+
+QString Preferences::credentialStatus() const
+{
+    const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    if (runtime.isEmpty()) {
+        return {};
+    }
+    QFile status(runtime + QStringLiteral("/vela-credential-compat.status"));
+    if (!status.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return {};
+    }
+    return QString::fromUtf8(status.readLine()).trimmed();
+}
+
+void Preferences::setSecretBackend(const QString& backend)
+{
+    if (backend != QLatin1String("gnome") && backend != QLatin1String("kwallet")) {
+        return;
+    }
+    // An unconfigured first login still needs to persist an explicit KWallet
+    // choice, even though KWallet is the backwards-compatible fallback.
+    if (backend != m_secretBackend || !m_secretBackendConfigured) {
+        const auto previous = m_secretBackend;
+        const bool previouslyConfigured = m_secretBackendConfigured;
+        m_secretBackend = backend;
+        const bool saved = saveCompositorKeys(QStringList { QStringLiteral("secret-backend") });
+        if (saved) {
+            m_secretBackendConfigured = true;
+        } else if (!m_restoredFromFile) {
+            m_secretBackend = previous;
+            m_secretBackendConfigured = previouslyConfigured;
+        }
+        // noteSaveFailure() may have reloaded vela.conf; consume that flag
+        // for this save attempt so it cannot suppress a later rollback.
+        m_restoredFromFile = false;
+        emit secretBackendChanged();
     }
 }
 

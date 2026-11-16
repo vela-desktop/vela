@@ -40,6 +40,7 @@ void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation)
 struct vela_pass *vela_renderer_begin_pass(struct vela_renderer *renderer, struct wlr_buffer *buffer) { abort(); }
 struct wlr_render_pass *vela_pass_wlr(struct vela_pass *pass) { abort(); }
 void vela_pass_signal_on_done(struct vela_pass *pass, struct wlr_drm_syncobj_timeline *timeline, uint64_t point) { abort(); }
+void vela_renderer_destroy_passes(struct vela_renderer *renderer) { abort(); }
 bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory) { abort(); }
 

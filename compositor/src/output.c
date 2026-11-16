@@ -179,7 +179,7 @@ static void handle_present(struct wl_listener *listener, void *data);
 static void handle_request_state(struct wl_listener *listener, void *data);
 static void handle_output_commit(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
-static void start_virtual_vblank(struct vela_output *output);
+static bool start_virtual_vblank(struct vela_output *output);
 
 // wlroots uses the output allocator for both cursor and primary buffers, and
 // doesn't tell the allocator which it is requesting. Supply a *dedicated*
@@ -274,14 +274,20 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     if (output->latch_fd >= 0) {
         output->latch_source = wl_event_loop_add_fd(server->loop, output->latch_fd, WL_EVENT_READABLE,
             handle_latch_timer, output);
-    } else {
+    }
+    if (!output->latch_source) {
+        // Drawing then starts at the backend's frame event.
+        if (output->latch_fd >= 0) {
+            close(output->latch_fd);
+            output->latch_fd = -1;
+        }
         output->latching = false;
     }
     wl_list_init(&output->present.link);
     wl_list_init(&output->frame_event.link);
-    if (wlr_output_is_headless(wlr)) {
-        start_virtual_vblank(output);
-    } else {
+    // Without the virtual vblank, a headless output also follows the
+    // backend's frame events.
+    if (!wlr_output_is_headless(wlr) || !start_virtual_vblank(output)) {
         vela_listen(&wlr->events.present, &output->present, handle_present);
         vela_listen(&wlr->events.frame, &output->frame_event, handle_frame_event);
     }
@@ -499,9 +505,21 @@ static void request_frame(struct vela_output *output)
     // wlr_output_schedule_frame isn't used: it would mark the output as
     // needing a commit even when nothing on it changes (an empty commit, which
     // with DRM blocks until the vblank).
+    bool can_latch = output->latching && output->latch_fd >= 0 && output->latch_source;
+    bool animations_only = !output->frame_requested && !output->wlr->needs_frame;
+    if (!can_latch && animations_only && output->empty_until > vela_now_ns()) {
+        // An unchanged animation retry still needs a future beat. Without a
+        // latch, use the virtual vblank or the backend's own frame pacing.
+        if (output->vblank_fd >= 0) {
+            arm_virtual_vblank(output);
+        } else {
+            wlr_output_schedule_frame(output->wlr);
+        }
+        return;
+    }
     bool waiting = output->vblank_fd >= 0 ? output->awaiting_present : output->wlr->frame_pending;
     if (!waiting && !output->drawing && !output->latch_armed && !output->idle_frame) {
-        output->idle_frame = wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output);
+        output->idle_frame = VELA_MUST(wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output));
     }
 }
 
@@ -521,11 +539,19 @@ static void handle_present(struct wl_listener *listener, void *data)
     collect_costs(output);
 }
 
-static void arm_latch(struct vela_output *output, int64_t when)
+static bool arm_latch(struct vela_output *output, int64_t when)
 {
+    if (!output->latching || output->latch_fd < 0 || !output->latch_source) {
+        return false;
+    }
     const struct itimerspec spec = { .it_value = vela_ns_timespec(when) };
-    timerfd_settime(output->latch_fd, TFD_TIMER_ABSTIME, &spec, NULL);
+    if (timerfd_settime(output->latch_fd, TFD_TIMER_ABSTIME, &spec, NULL) < 0) {
+        wlr_log_errno(WLR_ERROR, "Output latch unavailable; following backend frames");
+        output->latching = false;
+        return false;
+    }
     output->latch_armed = true;
+    return true;
 }
 
 static int handle_latch_timer(int fd, uint32_t mask, void *data)
@@ -562,12 +588,15 @@ static void on_frame_event(struct vela_output *output)
     // elsewhere would draw the same moment again and again until that vblank.
     // A change is planned from now: it may still make that vblank.
     bool animations_only = !output->frame_requested && !output->wlr->needs_frame;
-    int64_t from = animations_only && output->empty_until > now ? output->empty_until : now;
-    output->plan = vela_frame_clock_plan(&output->clock, from, output->latching);
+    bool can_latch = output->latching && output->latch_fd >= 0 && output->latch_source;
+    int64_t from = can_latch && animations_only && output->empty_until > now ? output->empty_until : now;
+    output->plan = vela_frame_clock_plan(&output->clock, from, can_latch);
     output->planned = true;
-    if (output->plan.start - now > 50000) {
-        arm_latch(output, output->plan.start);
-        return;
+    if (can_latch && output->plan.start - now > 50000) {
+        if (arm_latch(output, output->plan.start)) {
+            return;
+        }
+        output->plan = vela_frame_clock_plan(&output->clock, now, false);
     }
     on_frame(output);
 }
@@ -762,18 +791,25 @@ static void collect_costs(struct vela_output *output)
 
 static int handle_virtual_vblank(int fd, uint32_t mask, void *data);
 
-static void start_virtual_vblank(struct vela_output *output)
+static bool start_virtual_vblank(struct vela_output *output)
 {
     output->vblank_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
-    if (output->vblank_fd < 0) {
-        wlr_log_errno(WLR_ERROR, "%s: timerfd for the virtual vblank", output->wlr->name);
-        return;
+    if (output->vblank_fd >= 0) {
+        output->vblank_source = wl_event_loop_add_fd(output->server->loop, output->vblank_fd, WL_EVENT_READABLE,
+            handle_virtual_vblank, output);
     }
-    output->vblank_source = wl_event_loop_add_fd(output->server->loop, output->vblank_fd, WL_EVENT_READABLE,
-        handle_virtual_vblank, output);
+    if (!output->vblank_source) {
+        wlr_log_errno(WLR_ERROR, "%s: no virtual vblank, frames follow the backend", output->wlr->name);
+        if (output->vblank_fd >= 0) {
+            close(output->vblank_fd);
+            output->vblank_fd = -1;
+        }
+        return false;
+    }
     output->last_vblank = vela_now_ns();
     wlr_log(WLR_INFO, "%s: virtual vblank every %.3f ms", output->wlr->name,
         vela_frame_clock_period(&output->clock) / 1e6);
+    return true;
 }
 
 // The next vblank on the exact grid (last vblank + multiples of the period),

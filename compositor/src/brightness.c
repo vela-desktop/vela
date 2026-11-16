@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <sys/stat.h>
 #include <sys/sysmacros.h>
 #include <sys/wait.h>
@@ -147,6 +148,7 @@ static void close_socket(struct helper *helper)
 static void helper_free(struct helper *helper)
 {
     close_socket(helper);
+    vela_child_stop(&helper->child);
     if (helper->timer) {
         wl_event_source_remove(helper->timer);
     }
@@ -356,10 +358,25 @@ static void start_helper(struct vela_brightness_output *output)
     helper->child.exited = helper_exited;
 
     char command[sizeof(brightness->command) + 192];
-    bool ok = vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
-                  brightness->command, output->mechanism, output->target)
+    // Without its timer the helper has no watchdog: don't start it.
+    bool ok = helper->timer
+        && vela_format(command, sizeof(command), "VELA_BRIGHTNESS_FD=%d exec %s %s '%s'", fds[1],
+            brightness->command, output->mechanism, output->target)
         && vela_child_start(&helper->child, server->loop, command);
     close(fds[1]);
+    if (ok) {
+        helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
+        if (!helper->source) {
+            // Keep the exit watch and helper alive: a hardware probe may be
+            // in D state, so even SIGKILL must never make us wait here.
+            wlr_log_errno(WLR_ERROR, "Brightness %s: can't watch the helper", output->connector);
+            close_socket(helper);
+            kill_helper(helper, SIGKILL);
+            output->held = true;
+            fail(output);
+            return;
+        }
+    }
     if (!ok) {
         // Not started, or started and not watched: without our end it exits.
         helper_free(helper);
@@ -369,7 +386,6 @@ static void start_helper(struct vela_brightness_output *output)
     }
     helper->owner = output;
     output->helper = helper;
-    helper->source = wl_event_loop_add_fd(server->loop, helper->fd, WL_EVENT_READABLE, handle_readable, helper);
     vela_brightness_model_restart(&output->model);
     publish(brightness);
 }
@@ -434,7 +450,7 @@ static void sync_all(void *data)
 static void schedule_sync(struct vela_brightness *brightness)
 {
     if (!brightness->sync) {
-        brightness->sync = wl_event_loop_add_idle(brightness->server->loop, sync_all, brightness);
+        brightness->sync = VELA_MUST(wl_event_loop_add_idle(brightness->server->loop, sync_all, brightness));
     }
 }
 

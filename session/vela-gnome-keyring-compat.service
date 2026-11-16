@@ -1,0 +1,14 @@
+# SPDX-FileCopyrightText: 2026 Vela contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# TEMPORARY until Vela Secrets is available.
+
+[Unit]
+Description=Vela temporary GNOME Keyring compatibility
+PartOf=vela-session.target
+ConditionFileIsExecutable=/usr/bin/gnome-keyring-daemon
+
+[Service]
+Type=simple
+# --start reuses and initializes the daemon PAM may already have unlocked.
+ExecStart=/usr/bin/gnome-keyring-daemon --start --foreground --components=secrets
+Slice=session.slice

@@ -15,4 +15,7 @@ mkdir -p "$STATE_DIR"
 exec 2> "$STATE_DIR/vela.log"
 printf 'vela-session: started_at=%s boot_id=%s\n' \
     "$(date '+%Y-%m-%dT%H:%M:%S%z')" "$(cat /proc/sys/kernel/random/boot_id)" >&2
+# TEMPORARY until Vela Secrets: fix the credential backend for the entire
+# session before the compositor (or any graphical autostart) is launched.
+. "@CMAKE_INSTALL_FULL_LIBEXECDIR@/credential-compat/select-backend"
 exec "@CMAKE_INSTALL_FULL_BINDIR@/vela-compositor" --supervise -s "@CMAKE_INSTALL_FULL_BINDIR@/vela-shell" "$@"

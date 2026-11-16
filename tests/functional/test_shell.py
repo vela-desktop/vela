@@ -18,7 +18,7 @@ import subprocess
 import time
 import unittest
 
-from harness import BUILD, TIME_SCALE, Image, Session, input_sleep_ms, tool
+from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, input_sleep_ms, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
@@ -40,11 +40,10 @@ class RealShell(unittest.TestCase):
     compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
 
     def setUp(self):
-        self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--nopidfile", "--print-address=1"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
-        self.addCleanup(self.stop_bus)
-        address = self.bus.stdout.readline().strip()
-        self.assertTrue(address, "private D-Bus session failed to start")
+        # Nothing it would activate may reach the session these tests run in.
+        self.bus = PrivateBus()
+        address = self.bus.start()
+        self.addCleanup(self.bus.stop)
         self.vela = Session(size="1920x1080@100", env={
             "VELA_SYNC_FILE": os.environ.get("VELA_QT_SYNC_FILE", "0"), "DBUS_SESSION_BUS_ADDRESS": address,
             "VELA_DEBUG_ANIMATION": "1", **self.compositor_env})
@@ -72,15 +71,6 @@ class RealShell(unittest.TestCase):
         self.vela.clients.append(self.shell)
         self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar") and self.mapped(s, "vela-wallpaper"),
                            timeout=20, what="the real Qt desktop")
-
-    def stop_bus(self):
-        self.bus.terminate()
-        try:
-            self.bus.wait(timeout=3)
-        except subprocess.TimeoutExpired:
-            self.bus.kill()
-            self.bus.wait(timeout=3)
-        self.bus.stdout.close()
 
     @staticmethod
     def mapped(state, namespace):

@@ -1,0 +1,13 @@
+# SPDX-FileCopyrightText: 2026 Vela contributors
+# SPDX-License-Identifier: GPL-3.0-or-later
+# TEMPORARY until Vela Secrets is available.
+
+[Unit]
+Description=Vela temporary KWallet compatibility
+PartOf=vela-session.target
+ConditionFileIsExecutable=/usr/bin/kwalletd6
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/kwalletd6
+Slice=session.slice

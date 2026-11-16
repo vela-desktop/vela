@@ -3,8 +3,14 @@
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
 > against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
 > fail-closed recovery, `common/alloc` with its CI check, and the unchecked
-> `realloc` and `getline` sites. Step 4 is done but for one site left to
-> step 8 (see "Migration order"). Every factual claim names the
+> `realloc` and `getline` sites. Step 4 is done (#243). Step 5 is done
+> (#246): `VELA_MUST` and the classification of library results, the local
+> paths for descriptor exhaustion, the fallbacks removed with the baseline
+> at zero, and the C++ new handler. Step 6 is done: the frame path draws
+> without allocating in the CPU fixture. Upstream GPU measurements are
+> historical; exact-revision GPU validation of this backport is pending.
+> Step 7 follows (see
+> "Migration order"). Every factual claim names the
 > code it was checked against; claims not yet measured are marked
 > *to verify*.
 
@@ -618,7 +624,10 @@ They also duplicate a descriptor or create one (`timerfd_create`,
 failure here (the supervisor already samples the compositor's descriptor
 count), so each call site handles their failure locally: for example, a new
 IPC connection is closed and dropped, and a timer that cannot be created
-takes the same path as one that cannot be armed.
+takes the same path as one that cannot be armed. In libwayland 1.26 a loop's
+timers share one `timerfd`, made by its first `wl_event_loop_add_timer`;
+later timers only allocate. Vela's own `timerfd`s (an output's latch and
+virtual vblank) are separate descriptors.
 
 OOM-only calls take the same path as the helpers:
 
@@ -753,39 +762,105 @@ its test, and a CI allowlist entry.
 
 ### 7. The frame path
 
-Per frame and per output, Vela currently allocates and frees:
+**Before step 6** (checked at `7841a9b`, by reading and with the counter of
+"Tests"), every pass, per frame and per output and for every capture,
+allocated and freed:
 - in `vela_renderer_begin_pass`: the `struct vela_pass`, plus
   `pass->draws`, `pass->blur_ops` and `pass->waits` grown with `vela_grow`.
-  `pass_free` frees all four at the end of every submission, so none of
-  them is reused across frames;
+  `pass_free` freed all four at the end of every submission, so none of
+  them was reused across frames;
 - in `foreign_textures`, `record` (`acquire`, `release`) and
-  `vela_pass_submit` (`waits`): four temporary arrays.
+  `vela_pass_submit` (the sync_files to wait for): four temporary arrays.
 
-That makes eight allocation/free pairs per pass. The arrays in
-`vela_output_frame` (`scene/frame.c`) and in the renderer (`staging`,
-semaphores, `retired`) persist and are only freed at destroy.
+That is eight arrays and objects per pass, as this point said; the number of
+allocations is higher, because `draws` starts at 8 elements and doubles: in
+the functional test's scene (a decorated window and a dmabuf client), each
+pass made nine, `draws` growing three times. The arrays in
+`vela_output_frame` (`scene/frame.c`) and in the renderer (`commands`,
+staging, semaphores, `retired`, the wait arrays, pipelines) persist and are
+only freed at destroy; the counter saw none of them grow in steady state.
 
-**Proposal:** a free list of `vela_pass` objects owned by the renderer.
-- `begin_pass` takes a pass from the list (or creates one) and resets its
-  counts while keeping its arrays.
-- `pass_free` drops the references (the `wlr_buffer`, and the
-  `wlr_drm_syncobj_timeline` references held in `waits` and
-  `signal_timeline`) and puts the object back on the list instead of
-  freeing it.
-- The four temporaries become arrays owned by the pass.
-- Several passes can be open at once (for example an output frame and a
-  screen capture), and the free list handles that. Timeline references are
-  released before reuse exactly as they are today, so no reference
-  survives into the next pass.
+**As implemented.** The renderer owns its passes (`render/pass.c`):
+- An open pass is on `renderer->passes_open`, from `vela_renderer_begin_pass`
+  to `vela_pass_submit`; a finished one on `renderer->passes_free`.
+  `begin_pass` takes the first pass of the free list, or creates one.
+- `pass_release` is the end of every pass, submitted or not: a lost device,
+  a command buffer that could not be had, a failed recording or submission
+  all go through it. It drops the buffer lock and the timeline references
+  held in `waits` and `signal_timeline`, zeroes the counts and the
+  per-drawing state (target, color filter, timing slot), keeps the arrays,
+  and puts the pass on the free list. No reference survives into the next
+  pass. There is no other way to abandon a pass: neither Vela's API nor
+  wlroots' `wlr_render_pass` has one.
+- The four temporaries are arrays of the pass, grown with `vela_grow` and
+  kept with it.
+- **Several passes open at once.** Today only one is ever open: every
+  caller (`scene/frame.c`, the window capture in `scene/capture.c`, and the
+  passes wlroots begins through `begin_buffer_pass` for cursors and
+  GPU-to-GPU capture copies) begins and submits its pass in one function,
+  and nothing it calls in between begins another. The free list does not
+  rely on it: each open pass is its own object, and the CPU test keeps an
+  output frame and a capture open together.
+- **Cap.** The free list keeps at most `VELA_PASS_FREE_MAX` (4) passes; a
+  pass ending when it is full is freed. Since one pass is open at a time,
+  the list holds one pass in practice; four leave room for an output frame
+  and a capture or two open together without keeping a pass for every past
+  peak. Nothing in the frame path opens more, so the cap is a bound, not a
+  tuning knob.
+- **Capacity.** Kept arrays keep their high-water capacity, which is the
+  point. One unusual drawing can make that large: `draws` takes one
+  element (200 bytes) per clip piece of every quad, and a fragmented damage
+  region multiplies the pieces. So an array whose capacity is above
+  `VELA_PASS_KEEP_BYTES` (1 MiB, about 5000 pieces for `draws`) when its
+  pass ends is freed and grows again from 8 at the next drawing. An
+  ordinary frame is far below that, so the trim never runs in steady state;
+  a scene that really needs more than 1 MiB every frame allocates every
+  frame, which is the price of not pinning that memory after a peak. Below
+  the threshold nothing is trimmed: at most 4 passes × 1 MiB per array stays
+  allocated.
+- **Destroy and device loss.** `vela_renderer_destroy_passes`, first in the
+  renderer's teardown, frees every pass once: those on the free list, and
+  any still open, whose lock and references are dropped first (with an
+  error in the log, since no caller leaves one open). A pass is host memory
+  only, so device loss changes nothing for it: `vela_pass_submit` on a lost
+  device releases the pass without recording it, the compositor then exits
+  (`vulkan-device-loss.md`: the device is not rebuilt in place), and the
+  teardown frees the list.
 
 Allocations made by libraries in the same path are outside this goal and
 are listed so the goal is stated honestly: the pixman region operations in
-`scene/frame.c` (24 that can allocate, none checked), and wlroots' internal
-allocations during commit. Their failure is handled by the damage fallback
-("The premise", item 4), not by this goal.
+`scene/frame.c` (now checked through `vela_region_ok`; their failure is
+handled by the damage fallback, "The premise", item 4), and wlroots'
+internal allocations during commit.
 
-The measurable goal is zero calls to Vela's allocation helpers per frame in
-steady state. It is measured, not assumed (see Tests).
+**Allocations that belong to a client's request.** The counter also found,
+in the frame path of a real session, allocations that are made once per
+client request, not once per frame, and freed with the request. They are
+not part of this goal, like wlroots' own objects for the same requests
+(each captured frame is an `ext_image_copy_capture_frame_v1` that wlroots
+allocates), and the functional test names each one:
+
+| Site | Once per |
+|---|---|
+| `render/texture.c` `new_texture`, from `import_dmabuf` | dmabuf buffer committed by a client: an imported dmabuf is not kept once wlroots lets go of it (see `texture_destroy`, a RADV stall) |
+| `scene/ready.c` `handle_client_commit` (`struct held`) | client commit with a buffer; freed at once when there is no fence to wait for |
+| `scene/output_capture.c` `output_source_copy_frame` | captured output frame |
+| `scene/capture.c` `vela_capture_copy_frame` | capture into shared memory |
+| `render/texture.c` `vela_renderer_readback`, and the import of the output buffer it reads (`new_texture` again) | readback, at most `VELA_READBACK_MAX_JOBS` (4) at a time |
+| `capture_watch.c` `publish` and `buffer.c` | change in who captures the screen, reported as JSON |
+
+A capture of a 60 Hz output therefore still makes four allocations per
+captured frame, and a client that commits a dmabuf every frame two. Pooling
+them would change the capture and commit code, not the frame path; it is
+left for when a measurement shows a cost. The readback's import of the
+output buffer also repeats a Vulkan import per captured frame, which is
+likely to cost more than the allocations.
+
+The measurable goal is zero allocations through Vela's helpers per frame in
+steady state: no `vela_alloc`, string copy or `vela_asprintf`, and no
+`vela_grow` that grows. A `vela_grow` that finds room is a comparison, not
+an allocation; the counter counts those calls apart. It is measured, not
+assumed (see Tests).
 
 ### 8. Enforcement
 
@@ -840,7 +915,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
   compositor's child supervision (`server.c`, `vela_child_init` for
   "Shell"). The only addition proposed is a `std::set_new_handler` in a
   shared C++ header that writes the same `vela: out of memory …` line before
-  aborting, so `vela.log` reads the same whichever process failed (step 9
+  aborting, so `vela.log` reads the same whichever process failed (step 5
   of the migration order).
 - **Signal handlers:** checked. The supervisor's handlers only call `kill`
   and set a `sig_atomic_t` (`supervisor.c` `on_terminate`). The compositor
@@ -933,18 +1008,48 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
     completes within a bounded number of frames.
 - **`VELA_MUST`:** prints the expression and call site, through
   `vela_must_failed`.
-- **Event sources:** with a low `RLIMIT_NOFILE`, a new IPC connection and a
-  timer that cannot be created take their local failure paths, and the
-  compositor keeps running.
+- **Event sources:** with the running compositor's `RLIMIT_NOFILE` lowered
+  to its next free descriptor, a new IPC connection is dropped; lowered to
+  leave room for a connection and its watch alone, the connection kept
+  open while its command runs,
+  a hot-plugged output gets neither its latch nor its virtual vblank
+  `timerfd` (nor its buffers, so it starts off) and, switched on once the
+  limit is restored, presents frames following the backend's; the
+  compositor keeps running
+  (`functional-resources`, `DescriptorExhaustion`). libwayland's own timers
+  cannot fail this way after startup (point 2b).
 - **Enforcement:** the CI check's own fixtures (point 8).
 - **Image extent cap:** a client attaches a shm buffer wider than
   `maxImageDimension2D` (and a dmabuf above the format's `maxExtent`). The
   buffer is rejected before `vkCreateImage`, and Vulkan validation layers
   report no error.
-- **Frame path:** a counting wrapper linked only into the test binary
-  (`-Wl,--wrap` on the `_at` functions) checks that a steady scene makes
-  zero helper calls across N frames, with several passes open at once
-  (output frame plus capture).
+- **Frame path:** a counting wrapper linked only into test binaries
+  (`compositor/tests/alloc_count.c`, `-Wl,--wrap` on the `_at` functions)
+  counts the helpers' allocations, in two places:
+  - `compositor.frame-path`, on the CPU (hosted CI included): the production
+    `pass.c`, `renderer.c` and `texture.c` with the Vulkan entry points
+    stubbed. 240 warmed frames, each an output frame and a capture with both
+    passes open at once (rectangles in several clip pieces, a shadow, a
+    blur, a shared-memory texture, an imported one read with explicit
+    sync), make no allocation, and every buffer lock and timeline reference
+    is back after each frame. It also covers a pass ended by a lost device,
+    the cap of the free list, the trim after one huge drawing, and the
+    renderer's teardown with passes kept and one open, each freed once.
+  - `functional-frame-path`, on a GPU (label `gpu`, skipped without one):
+    `vela-compositor-alloc-count`, the compositor's own objects linked with
+    the counter, in a headless session that redraws every frame (a
+    decorated window and a dmabuf client committing every frame with
+    explicit sync), then with a capture copying every frame. No allocation
+    is allowed outside the per-request sites of point 7, which it names and
+    prints.
+
+  The drawing itself is checked on the CPU because its stubbed device is
+  deterministic; the session test is there for what a real frame calls
+  besides the pass. The headless fixture needs a real GPU (it never falls
+  back to software rendering). Upstream PR #250 reports initial AMD
+  measurements of the renderer's persistent arrays (command buffers,
+  semaphores and retired images). Those historical measurements are not
+  evidence for this backport. Exact-revision GPU validation remains pending.
 - **Transport bounds:**
   - a Wayland client sends a `preserve_position` larger than the documented
     bound, and the connection is refused by libwayland, not allocated;
@@ -964,7 +1069,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      with the lock, `fatal_waiting` is reserved for every output when the
      lock engages and on every layout change while locked, and the path no
      longer rebuilds the backdrop (it is already current while locked). It
-     still renders through the frame path (step 5) and sends libwayland
+     still renders through the frame path (step 6) and sends libwayland
      leave events; a crash there restarts locked through the page
      (`test_crash_during_lock_blackout_restarts_locked`);
    - **done:** the damage fallback (see "Design for (4)", as implemented);
@@ -1006,14 +1111,14 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
    A `NULL` check right after a converted allocation is removed with it,
    together with the cleanup it guarded: the helper never returns `NULL`,
    so the branch is unreachable and cannot leave partial state. Checks of a
-   function's result in its callers stay until step 8, because those
+   function's result in its callers stay until step 5, because those
    functions still fail for other reasons. A `count ? count : 1` guard
    against a zero-size `calloc` goes too, since `vela_alloc` allocates a
    minimum block for zero. **Done:** 186 of the 187 sites, so the baseline
    is down to one, `check.c` `on_check_output`'s `realloc` (see the update
    daemon below).
    - **render** (`compositor/src/render/`, 21 sites): the Vulkan and DRM
-     enumeration arrays, the pass temporaries (which step 5 turns into
+     enumeration arrays, the pass temporaries (which step 6 turns into
      arrays owned by the pass), and the renderer, target, texture, readback,
      GBM allocator and buffer objects. The pixel buffer's `width × height`
      goes through `vela_size_mul`. Six dead checks went
@@ -1053,7 +1158,7 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      the restart argv in `supervisor_child.c`, and the preview owner. The
      supervisor's message for a `NULL` argv now names the remaining causes
      instead of "out of memory". The two `wl_client_post_no_memory` branches
-     in `output_preview.c` stay for step 8, though they cannot be reached
+     in `output_preview.c` stay for step 5, though they cannot be reached
      any more.
    - **config/icons** (`config.c`, `icons.c`, `output_config.c`,
      `path_security.c`; 20 sites): configuration keys, lines and entries,
@@ -1091,27 +1196,82 @@ change, so it only shrinks, down to empty. `--write-baseline` rewrites it.
      and a run, the two inside `pairs_at`, the terminal argv's copy loop,
      and `make_dirs`. Parse errors (schema, JSON) still fail as before. The
      one left is `check.c` `on_check_output`'s `realloc`: its failure drops
-     the data and continues, which step 8 names, so it stays whole until
+     the data and continues, which step 5 names, so it stays whole until
      then.
-5. The frame path (point 7), measured against the existing benchmarks.
-6. Classification of library results (point 2b) and `VELA_MUST`, with
-   local failure paths for the event sources that create descriptors.
+5. Closing the failure contract, in one PR:
+   - classification of library results (point 2b) and `VELA_MUST`, with
+     local failure paths for the event sources that create descriptors;
+   - removal of the old fallback branches (`wl_client_post_no_memory` in
+     `output_preview.c`, the silent returns, the update daemon's dropped
+     data) and of the callers' checks left by step 4, with a review of
+     each for partial state. The baseline reaches zero;
+   - the C++/Qt processes (point 9, "Scope"): a `std::set_new_handler` in
+     a shared C++ header, installed at the start of `main` in
+     `vela-shell`, Settings, `vela-lock`, the polkit agent and prompt,
+     `vela-files` and `vela-report-gui`. The handler has no size, file or
+     line to report, so it writes
+     `vela: out of memory (operator new) in <process>` followed by the
+     same `rss` and `available` figures, through the allocation-free writer
+     that `vela_oom` uses, then calls `abort()`. Tested like `vela_oom`: a
+     child forces a failed `new` and checks the abort and the line.
+   - **Done.** `VELA_MUST` and `vela_must_failed` are in `common/alloc`,
+     with the classification in `common/alloc/library-results.md`
+     (checked against the wlroots 0.20.2 and libwayland 1.26.0 sources).
+     `wl_event_loop_add_idle`, `wl_resource_create`, `wl_global_create`
+     and the wlroots constructors that only allocate and create a global
+     go through it, so the nine `wl_client_post_no_memory` branches
+     (`output_preview.c`, `x11_root.c`, `scene/effects.c`,
+     `scene/output_capture.c`) are gone, and so are the callers' checks
+     of `vela_output_manager_snapshot`, `vela_output_capture_manager_create`
+     (now `void`), `vela_x11_root_create`, the update daemon's state paths
+     and the Bluetooth model's new adapters and devices.
+     `wlr_ext_foreign_toplevel_handle_v1_create` is not OOM-only (its
+     identifier comes from `/dev/urandom`), and its unchecked result in
+     `view.c` is now handled: the window has no handle, which every user
+     of `ext_handle` already allows. Descriptor exhaustion takes local
+     paths at the twelve compositor sources that had none (the IPC
+     listener and its connections, the brightness helper's timer and
+     socket, and a spawned child's pidfd. Child supervision reserves a timer
+     before fork, so failed pidfd watches use nonblocking waitpid polling and
+     failed relaunches remain pending; brightness also retains its exit watch
+     instead of waiting for a killed hardware probe. The remaining local paths
+     cover paste, key repeat, snap layouts, accessibility, the idle timer, and an
+     output's latch and virtual vblank) and at the seven unchecked
+     `sd_event_add_*` calls of the daemons. `check.c` `on_check_output`
+     grows its buffer through `vela_grow` (bounded by `MAX_OUTPUT`), so
+     the baseline is empty. The new handler is in
+     `common/alloc/new_handler.h`, installed first in the seven C++
+     programs; `vela-files` and `vela-settings` were seen writing the line
+     under a low `prlimit --as`, the other five installing it under gdb.
+     `common/alloc` is now part of every build.
+6. The frame path (point 7), measured against the existing benchmarks.
+   **Done.** The renderer keeps finished passes on a free list (at most 4)
+   with their arrays, and the four temporaries of a submission are arrays of
+   the pass; arrays above 1 MiB are freed when their pass ends. The code
+   matched point 7's description; what it did not list are the allocations
+   made once per client request (a dmabuf import per committed buffer, a
+   held commit, a captured frame with its copy and readback), now listed
+   there and left as they are. Measured with a counting wrapper of the
+   helpers: `compositor.frame-path`, on the CPU, 0 allocations in 240
+   frames of an output and a capture open at once (a pass created every
+   frame instead: 3840). Historical GPU counts are in the upstream report
+   [#250](https://github.com/vela-desktop/vela/pull/250); that report did not
+   identify the exact measurement revisions, so those counts are not claimed
+   for this maintenance branch. Exact-revision GPU validation is still pending.
+   The benchmarks show no measurable change, before (`7841a9b`) and
+   after, alternating builds on one machine (Ryzen 9 9950X, RX 9070 XT,
+   Mesa 26.2.6 RADV): the `VELA_STATS=1` frame CPU time of the same scene at
+   1920x1080@240, 50 two-second periods each, median 0.281 ms both
+   (interquartile range 0.280–0.281); the capture-stream benchmark of
+   `test_capture.py`, three runs each, the same frame rates and p95 latency
+   within run-to-run spread (2560x1440, one client: 179.6–180.0 fps, p95
+   5.8 ms on both). Nine small allocations per pass are too little to show
+   in a frame's CPU time. The scene-diff benchmark does
+   not cover this code (it excludes Vulkan submission), and `frame.c` did
+   not change.
 7. The Vulkan caps and budgets: the image-extent cap, upload staging in
    pieces under a byte budget with atomic presentation and oldest-first
    progress, and the icon-cache budget.
-8. Removal of the old fallback branches (`wl_client_post_no_memory` in
-   `output_preview.c`, the silent returns, the update daemon's dropped
-   data), with a review of each for partial state. The baseline reaches
-   zero.
-9. The C++/Qt processes (point 9, "Scope"): a `std::set_new_handler` in a
-   shared C++ header, installed at the start of `main` in `vela-shell`,
-   Settings, `vela-lock`, the polkit agent and prompt, `vela-files` and
-   `vela-report-gui`. The handler has no size, file or line to report, so
-   it writes `vela: out of memory (operator new) in <process>` followed by
-   the same `rss` and `available` figures, through the allocation-free
-   writer that `vela_oom` uses, then calls `abort()`. `vela.log` then
-   reads the same whichever process failed. Tested like `vela_oom`: a child
-   forces a failed `new` and checks the abort and the line.
 
 ## Options considered
 
@@ -1155,5 +1315,3 @@ and document.
 - Whether `vela_oom` should leave a marker so the supervisor can report
   "out of memory" instead of a generic crash. The `rss`/`available` fields
   may make that unnecessary.
-- Whether the frame-path counter test can run in the existing headless
-  fixture without GPU-specific flakiness.

@@ -214,6 +214,8 @@ struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk)
     struct vela_renderer *r = VELA_NEW(struct vela_renderer);
     wlr_renderer_init(&r->base, &renderer_impl, WLR_BUFFER_CAP_DMABUF);
     r->vk = vk;
+    wl_list_init(&r->passes_open);
+    wl_list_init(&r->passes_free);
     wl_list_init(&r->targets);
     wl_list_init(&r->textures);
     for (int i = 0; i < vk->shm_format_count; ++i) {
@@ -244,6 +246,9 @@ static void destroy_target(struct vela_target *target);
 
 static void destroy(struct vela_renderer *r)
 {
+    // Host memory and buffer locks only: first, while every buffer they
+    // lock still exists.
+    vela_renderer_destroy_passes(r);
     vela_renderer_cancel_readbacks(r);
     VkDevice device = r->vk->device;
     // Device loss makes timeline progress unknowable. Destroy/free calls remain

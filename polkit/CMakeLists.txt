@@ -21,7 +21,7 @@ add_executable(vela-polkit-agent
     agent/system.hpp)
 target_compile_options(vela-polkit-agent PRIVATE -Wall -Wextra -Wno-missing-field-initializers)
 target_compile_definitions(vela-polkit-agent PRIVATE VELA_LIBEXECDIR="${CMAKE_INSTALL_FULL_LIBEXECDIR}")
-target_link_libraries(vela-polkit-agent PRIVATE vela-polkit-core PkgConfig::POLKIT_AGENT_DEPS)
+target_link_libraries(vela-polkit-agent PRIVATE vela-alloc vela-polkit-core PkgConfig::POLKIT_AGENT_DEPS)
 install(TARGETS vela-polkit-agent RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
 if(VELA_BUILD_SHELL)

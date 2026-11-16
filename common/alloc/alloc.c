@@ -173,6 +173,34 @@ void vela_alloc_misuse(const char *what, const char *file, int line)
     finish(&out);
 }
 
+void vela_must_failed(const char *expression, const char *file, int line)
+{
+    struct line out = { .length = 0 };
+    put(&out, "vela: out of memory (");
+    put(&out, expression);
+    put(&out, ")");
+    put_site(&out, file, line);
+    put_memory(&out);
+    finish(&out);
+}
+
+void vela_new_failed(const char *process)
+{
+    struct line out = { .length = 0 };
+    put(&out, "vela: out of memory (operator new) in ");
+    put(&out, process ? process : "?");
+    put_memory(&out);
+    finish(&out);
+}
+
+const void *vela_must_at(const void *value, const char *expression, const char *file, int line)
+{
+    if (!value) {
+        vela_must_failed(expression, file, line);
+    }
+    return value;
+}
+
 // ---- The helpers ----------------------------------------------------------
 
 void *vela_alloc_at(size_t count, size_t size, const char *file, int line)
