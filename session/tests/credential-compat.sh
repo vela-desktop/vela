@@ -43,6 +43,14 @@ check kwallet Vela:KDE 6 0
 printf '%s\n' '# secret-backend=gnome' > "$tmp/vela/vela.conf"
 check kwallet Vela:KDE 6 0
 
+# Keep the launcher, installed unit, and Settings in agreement about the
+# KDE Secret Service daemon. kwalletd6 is a separate native API wrapper.
+if [ "$#" -ge 4 ]; then
+    grep -q 'vela_credential_ensure kwallet /usr/bin/ksecretd' "$hook"
+    grep -q '^ConditionFileIsExecutable=/usr/bin/ksecretd$' "$4"
+    grep -q '^ExecStart=/usr/bin/ksecretd$' "$4"
+fi
+
 # A controlled, real POSIX-shell check of the D-Bus ownership policy. No
 # user keyring or systemd service is ever started by this test.
 . "$ensure"
@@ -131,12 +139,18 @@ vela_credential_ensure kwallet "$tmp/does-not-exist" kwallet.service
 
 MOCK_OWNER=none
 MOCK_NATIVE_OWNER=kwallet
-if vela_credential_ensure kwallet "$binary" kwallet.service; then
-    echo 'native-only KWallet reported fully functional' >&2; exit 1
+MOCK_NEXT_OWNER=ksecretd
+MOCK_NEXT_NATIVE_OWNER=kwallet
+: > "$calls"
+# An existing native wrapper must not prevent starting ksecretd.
+vela_credential_ensure kwallet "$binary" kwallet.service
+[ "$(cat "$status")" = ok ]
+[ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
+if grep -q 'stop kwallet.service' "$calls"; then
+    echo 'working provider was stopped' >&2; exit 1
 fi
-[ "$(cat "$status")" = limited ]
-[ ! -s "$calls" ]
 
+MOCK_OWNER=none
 MOCK_NATIVE_OWNER=other
 if vela_credential_ensure kwallet "$binary" kwallet.service; then
     echo 'foreign native API owner accepted' >&2; exit 1
@@ -176,9 +190,17 @@ if vela_credential_ensure kwallet "$binary" kwallet.service; then
 fi
 [ "$(cat "$status")" = limited ]
 [ "$(grep -c 'start kwallet.service' "$calls")" -eq 1 ]
-if grep -q 'stop kwallet.service' "$calls"; then
-    echo 'native KWallet daemon was incorrectly stopped' >&2; exit 1
+grep -q -- '--no-block stop kwallet.service' "$calls"
+
+# A native-only wallet with no ksecretd executable remains limited.
+MOCK_OWNER=none
+MOCK_NATIVE_OWNER=kwallet
+: > "$calls"
+if vela_credential_ensure kwallet "$tmp/missing" kwallet.service; then
+    echo 'missing ksecretd accepted' >&2; exit 1
 fi
+[ "$(cat "$status")" = limited ]
+[ ! -s "$calls" ]
 
 MOCK_OWNER=none
 MOCK_NEXT_OWNER=none
