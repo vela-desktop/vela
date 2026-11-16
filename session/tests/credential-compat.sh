@@ -150,6 +150,9 @@ if grep -q 'stop kwallet.service' "$calls"; then
     echo 'working provider was stopped' >&2; exit 1
 fi
 
+# Each scenario needs a fresh call log: the previous successful start is
+# intentional, but must not be mistaken for a start during a conflict.
+: > "$calls"
 MOCK_OWNER=none
 MOCK_NATIVE_OWNER=other
 if vela_credential_ensure kwallet "$binary" kwallet.service; then
