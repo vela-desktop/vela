@@ -1312,7 +1312,26 @@
     </message>
 </context>
 <context>
+    <name>TaskbarApps</name>
+    <message>
+        <source>Previous apps</source>
+        <translation>App precedenti</translation>
+    </message>
+    <message>
+        <source>Next apps</source>
+        <translation>App successive</translation>
+    </message>
+</context>
+<context>
     <name>Taskbar</name>
+    <message>
+        <source>Previous tray icons</source>
+        <translation>Icone precedenti dell’area di notifica</translation>
+    </message>
+    <message>
+        <source>Next tray icons</source>
+        <translation>Icone successive dell’area di notifica</translation>
+    </message>
     <message>
         <source>1 minute remaining</source>
         <translation>1 minuto rimanente</translation>

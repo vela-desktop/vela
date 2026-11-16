@@ -63,7 +63,7 @@ Column {
             return
         }
         Prefs.setSurfaceStyle(surface, style)
-        if (Prefs.saveError !== "") {
+        if ((Prefs.surfaceStyles[surface] || "") !== style) {
             return
         }
         const surface_ = surface

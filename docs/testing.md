@@ -57,6 +57,16 @@ CPU tests of the harness and scripts are included in CTest even on GPU-less CI.
 PNG decoding is checked with fixed encoded rows and independently specified
 pixels, including Paeth tie breaking and byte wraparound.
 
+`shell-clock-formats` loads the production taskbar and notification center with
+the real shell `Config` and fixed times. It atomically replaces a private
+`vela-shell.conf` and checks the displayed 12/24-hour text, seconds and restored
+clock width, with and without the date. Notification timestamps cover midnight,
+noon, afternoon and late evening, retain their delegate across format changes,
+and remain without seconds when taskbar seconds are enabled. These format checks
+run offscreen rather than requiring pixel equality across the tray or acrylic
+background. The GPU personalization suite retains the live ticking-clock,
+date-visibility and popup-to-notification-center interaction checks.
+
 ## Run a subset
 
 Compositor unit tests:
@@ -89,6 +99,13 @@ networks survive errors, timeouts and slow Wi-Fi scans, saved networks reuse
 their profile with friendly errors, a missing program completes and recovers,
 and destroying a model terminates its clients without waiting. No real network
 service is used; sound has its own tests, below.
+
+The `shell-taskbar` and `shell-taskbar-no-effects` suites exercise the production
+taskbar QML offscreen with private service models. They cover nearly full bars
+with 12-hour time and seconds, changing tray icons and status indicators, all
+bar layouts, an oversized tray, navigation by pointer and keyboard, app activation
+and jump lists, model shrinkage and minimize targets inside the app area. They require no GPU; a live desktop
+smoke test is still needed to validate the final appearance.
 
 Audio tests:
 
@@ -181,6 +198,40 @@ python3 tests/functional/run.py --sharpness
 
 The sharpness check additionally needs NumPy and Pillow available to `python3`.
 
+### Process launching
+
+The `process-launch-environment` test exercises actual synchronous and detached
+child processes, preserving user overrides and unrelated environment variables.
+It links Qt Core only and also covers empty overrides and environment changes
+after initialization.
+The same process object is also reused across all supported start forms to check
+that new activation tokens reach every child. The CPU-only `shell-service-menus`
+suite rejects empty service-menu commands and checks real launches preserve the
+selected paths and working directory.
+Packaging tests reject UI launch sites that bypass the environment policy.
+
+### Settings preferences
+
+`settings-preferences` covers missing and broken folder openers with private
+helpers instead of opening a real file manager. It also covers failed and
+successful shell preference writes, both existing and absent keys, multi-key
+wallpaper and Start icon choices, and pending `QSettings` changes surviving a
+failure. Serialization is staged outside the live settings cache, and a separate
+writer checks that recovery never replays a failed update or rollback over a
+newer external choice. A separate reader process checks the persisted file after
+recovery, independent of the shared settings cache.
+
+Real Vela switches and Settings drop-downs are exercised offscreen with refused
+writes and then successful retries; appearance helpers are private probes. The
+suite also checks busy writers, independent shell/compositor errors and existing
+compositor rollback. Theme, style and Reset tests keep Undo available after a
+successful compositor save. This also applies while a shell save error is still
+displayed.
+
+The additional read-only-file case skips when running as root, which bypasses
+Unix permissions. Directory-path blockers cover failed writes on root CI runners
+too.
+
 ### Qt Quick text rendering
 
 ```sh
@@ -189,23 +240,14 @@ build/common/vela-text-rendering-test --capture-dir /tmp/vela-text-frames
 ```
 
 The RHI readback test requires Qt >= 6.6; Vela production still supports Qt
-6.5. CMake omits only this test on older Qt versions. The independent
-`process-launch-environment` test exercises actual synchronous and detached
-child processes, preserving user overrides and unrelated environment variables.
-It links Qt Core only and also covers empty overrides and environment changes
-after initialization.
-The same process object is also reused across all supported start forms to check
-that new activation tokens reach every child. The CPU-only `shell-service-menus`
-suite rejects empty service-menu commands and checks real launches preserve the
-selected paths and working directory. `settings-preferences` covers missing and
-broken folder openers with private helpers instead of opening a real file manager.
-Packaging tests reject UI launch sites that bypass the environment policy.
+6.5. CMake omits only this test on older Qt versions.
 
-This test runs the explicitly initialized production text policy through the OpenGL RHI glyph shaders
-using `QQuickRenderControl`, an explicit render target and synchronous readback.
-It does not use Qt Quick's software painter, which cannot reproduce the native
-glyph shader's snapping. Mesa software OpenGL is supported; if an OpenGL RHI
-context cannot be initialized, the test returns 77 (skipped).
+`text-rendering-rhi` runs the explicitly initialized production text policy
+through the OpenGL RHI glyph shaders using `QQuickRenderControl`, an explicit
+render target and synchronous readback. It does not use Qt Quick's software
+painter, which cannot reproduce the native glyph shader's snapping. Mesa software
+OpenGL is supported; if an OpenGL RHI context cannot be initialized, the test
+returns 77 (skipped).
 
 At 100%, 125%, 150%, 175% and 200%, for 12, 14 and 18 px text, it
 checks neutral white coverage with transparent alpha/premultiplication,

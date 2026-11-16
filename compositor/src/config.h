@@ -95,8 +95,10 @@ void vela_config_migrate(void);
 // cannot be opened or read to the end must never be rewritten from what was
 // read, or the user's settings are lost.
 //
-// Opens `path` for reading. NULL with *missing true: the file does not exist
-// (ENOENT). NULL with *missing false: it exists but cannot be opened.
+// Opens a regular file through checked path components (path_security.h).
+// Symlink aliases are supported; parent traversal, control characters and
+// special files are rejected. NULL with *missing true means ENOENT; all
+// other failures leave *missing false. The descriptor is close-on-exec.
 FILE *vela_config_open(const char *path, bool *missing);
 // One line, as getline: 1 with *length set, 0 at a clean end of the file,
 // -1 on a read error (I/O). No memory for the line aborts (vela_oom).

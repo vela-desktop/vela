@@ -13,6 +13,8 @@
 #include <QStringList>
 #include <QVariantList>
 
+class QSettings;
+
 // The user's choices, in the two files holding them:
 // ~/.config/Vela/vela-shell.conf for the shell (wallpaper, accent, mode,
 // taskbar, notifications), which the shell rereads as soon as it changes;
@@ -342,7 +344,7 @@ public:
     // "Clear clipboard data": the history (except pinned items), in the shell.
     Q_INVOKABLE void clearClipboard();
 
-    // Set when a vela.conf write fails. The shown value stays what was saved.
+    // Set when a shell or compositor write fails. Shown values stay saved values.
     Q_PROPERTY(QString saveError READ saveError NOTIFY saveErrorChanged)
     QString saveError() const { return m_saveError; }
 
@@ -373,7 +375,9 @@ signals:
     void saveErrorChanged();
 
 private:
-    void setShell(const QString& key, const QVariant& value);
+    bool setShell(const QString& key, const QVariant& value);
+    bool saveShell(const QList<QPair<QString, QVariant>>& changes);
+    void loadShell(const QSettings& settings);
     // vela.conf: reread, only these keys changed, then "reload-config".
     // False when the file could not be opened, written or committed.
     bool saveCompositor(const QList<QPair<QString, QString>>& changes);
@@ -396,6 +400,8 @@ private:
     void watchThemes();
     bool saveLayouts();
     QString m_saveError;
+    bool m_shellSaveFailed = false;
+    bool m_compositorSaveFailed = false;
     bool m_restoredFromFile = false;
     bool m_reportingSaveFailure = false;
 

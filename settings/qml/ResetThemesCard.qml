@@ -23,7 +23,7 @@ Card {
             const theme = Prefs.visualTheme
             const styles = Object.assign({}, Prefs.surfaceStyles)
             Prefs.resetThemes()
-            if (Prefs.saveError !== "") {
+            if (Prefs.visualTheme !== "vela" || Object.values(Prefs.surfaceStyles).some(s => s !== "")) {
                 return
             }
             root.offerUndo(qsTr("%1 is in use, with no styles").arg(card.velaName),

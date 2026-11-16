@@ -146,6 +146,18 @@ Item {
             verify(!chooser.expanded)
         }
 
+        function test_a_shell_error_does_not_hide_undo_for_a_saved_style() {
+            Prefs.saveError = "The shell configuration is not writable"
+            chooser.expanded = true
+            tryVerify(() => tiles().length === 3)
+            waitForRendering(chooser)
+            mouseClick(tile("Pill"))
+            compare(Prefs.surfaceStyles.taskbar, "pill")
+            compare(root.offers.length, 1)
+            root.offers[0].undo()
+            compare(Prefs.surfaceStyles.taskbar, "")
+        }
+
         function test_a_style_applies_at_once_and_undo_goes_back() {
             Prefs.setSurfaceStyle("taskbar", "pill")
             Prefs.calls = []
