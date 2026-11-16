@@ -81,10 +81,10 @@ Wayland `text-input-v3`/`input-method-v2` and on-screen keyboard work target
 0.2 instead. Bug fixes, reliability work and necessary packaging are not
 reclassified as new features.
 
-**Stabilization proposal still open:**
-[OOM contract #148](https://github.com/vela-desktop/vela/pull/148). Whether
-it blocks a release depends on review and reproducible severity, not on the
-existence of a design draft.
+**0.1.2 preparation:** the reliability, security and performance backports
+are recorded in the [backport inventory](beta-0.1.2-backports.md). The complete
+host allocation migration is included. Release validation and the version
+bump remain separate from this backport branch.
 
 ## 0.2 — Touch, pen, input methods and completion of existing feature PRs
 
@@ -214,7 +214,7 @@ own design, cost/maintenance analysis and definition of done.
 
 | Work | Design | Pull request | Status | Release target |
 |---|---|---|---|---|
-| **Host OOM allocation contract** | in the PR | [#148](https://github.com/vela-desktop/vela/pull/148) | draft; release classification after review | to be decided |
+| **Host OOM allocation contract** | [policy](memory-allocation-policy.md) | [#148](https://github.com/vela-desktop/vela/pull/148) | steps 1–7 backported; release validation pending | 0.1.2 |
 | **Text input and input methods**: `text-input-v3`, `input-method-v2`, IME integration | reconcile with OSK design | — | not implemented | 0.2 |
 | **Touch, pressure-sensitive pen and tablet mode**: full agreed #94 stages T0–T5, P1–P2 and M1 | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design under discussion; implementation pending | 0.2 |
 | **On-screen keyboard**: full #95 K0–K5, including touch-only unlocking | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design under discussion; implementation pending | 0.2 |
