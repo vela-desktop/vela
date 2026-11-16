@@ -5,6 +5,8 @@ import base64
 import hashlib
 import importlib.util
 import json
+import os
+import stat
 from pathlib import Path
 import subprocess
 import tempfile
@@ -35,6 +37,9 @@ class VerificationTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
+        previous_cwd = Path.cwd()
+        os.chdir(self.directory.name)
+        self.addCleanup(os.chdir, previous_cwd)
         self.package = Path(self.directory.name) / "vela-git.rpm"
         self.package.write_bytes(b"test binary content")
         self.digest = hashlib.sha256(self.package.read_bytes()).hexdigest()
@@ -71,6 +76,103 @@ class VerificationTests(unittest.TestCase):
         self.assertIn("https://github.com/vela-desktop/vela/.github/workflows/build.yml@refs/heads/main", args)
         self.assertEqual(args[args.index("--certificate-github-workflow-sha") + 1], self.commit)
         self.assertIn("--certificate-github-workflow-trigger", args)
+
+    def test_package_outside_working_directory_is_rejected_before_network(self):
+        inside = Path(self.directory.name) / "allowed"
+        inside.mkdir()
+        os.chdir(inside)
+        link = inside / "escape.rpm"
+        link.symlink_to(self.package)
+        for package in (self.package, Path("../vela-git.rpm"), link):
+            with self.subTest(package=package), \
+                 patch.object(verification, "bundle_candidates") as network, \
+                 self.assertRaisesRegex(ValueError, "inside the current working directory"):
+                verification.verify(package, "vela-desktop/vela", self.commit, "release")
+            network.assert_not_called()
+
+    def test_fifo_is_rejected_without_blocking_or_starting_cosign(self):
+        fifo = Path(self.directory.name) / "fifo.rpm"
+        os.mkfifo(fifo)
+        with patch.object(verification, "bundle_candidates") as network, \
+             self.assertRaisesRegex(ValueError, "regular file"):
+            verification.verify(fifo, "vela-desktop/vela", self.commit, "release")
+        network.assert_not_called()
+
+    def test_cosign_uses_fixed_snapshot_and_rejects_changes_to_the_original(self):
+        original = self.package.read_bytes()
+        dangerous = self.package.with_name("--output=unexpected.rpm")
+        self.package.rename(dangerous)
+
+        def check_snapshot(command, **kwargs):
+            self.assertEqual(command[-2], "--")
+            snapshot = Path(command[-1])
+            self.assertEqual(snapshot.name, "package.bin")
+            self.assertNotEqual(snapshot, dangerous)
+            dangerous.write_bytes(b"changed after hashing")
+            self.assertEqual(snapshot.read_bytes(), original)
+            self.assertEqual(stat.S_IMODE(snapshot.parent.stat().st_mode), 0o700)
+
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run", side_effect=check_snapshot):
+            with self.assertRaisesRegex(ValueError, "package changed"):
+                verification.verify(dangerous, "vela-desktop/vela", self.commit, "release")
+
+    def test_option_like_filename_is_verified_without_becoming_an_option(self):
+        dangerous = self.package.with_name("--output=unexpected.rpm")
+        self.package.rename(dangerous)
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run") as run:
+            verification.verify(dangerous, "vela-desktop/vela", self.commit, "release")
+        self.assertEqual(run.call_args.args[0][-2], "--")
+        self.assertEqual(Path(run.call_args.args[0][-1]).name, "package.bin")
+
+    def test_replacing_download_path_during_verification_is_rejected(self):
+        def replace_package(command, **kwargs):
+            replacement = self.package.with_name("replacement.rpm")
+            replacement.write_bytes(self.package.read_bytes())
+            replacement.replace(self.package)
+
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run", side_effect=replace_package):
+            with self.assertRaisesRegex(ValueError, "package changed"):
+                verification.verify(self.package, "vela-desktop/vela", self.commit, "release")
+
+    def test_unchanged_in_directory_symlink_can_be_verified(self):
+        selected = self.package.with_name("selected.rpm")
+        selected.symlink_to(self.package.name)
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run"):
+            verification.verify(selected, "vela-desktop/vela", self.commit, "release")
+
+    def test_retargeting_original_symlink_during_verification_is_rejected(self):
+        selected = self.package.with_name("selected.rpm")
+        selected.symlink_to(self.package.name)
+        other = self.package.with_name("other.rpm")
+        other.write_bytes(b"different package")
+
+        def retarget_selected(command, **kwargs):
+            selected.unlink()
+            selected.symlink_to(other.name)
+
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run", side_effect=retarget_selected):
+            with self.assertRaisesRegex(ValueError, "package changed"):
+                verification.verify(selected, "vela-desktop/vela", self.commit, "release")
+        self.assertEqual(hashlib.sha256(self.package.read_bytes()).hexdigest(), self.digest)
+
+    def test_replacing_original_symlink_with_same_target_is_also_rejected(self):
+        selected = self.package.with_name("selected.rpm")
+        selected.symlink_to(self.package.name)
+
+        def replace_selected(command, **kwargs):
+            replacement = self.package.with_name("replacement-link.rpm")
+            replacement.symlink_to(self.package.name)
+            replacement.replace(selected)
+
+        with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \
+             patch.object(verification.subprocess, "run", side_effect=replace_selected):
+            with self.assertRaisesRegex(ValueError, "package pathname changed"):
+                verification.verify(selected, "vela-desktop/vela", self.commit, "release")
 
     def test_beta_release_identity_pins_exact_tag_and_commit(self):
         with patch.object(verification, "bundle_candidates", return_value=[bundle(self.digest)]), \

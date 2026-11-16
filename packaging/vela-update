@@ -837,8 +837,9 @@ verifyProvenance() {
         echo "vela-update: missing installed Sigstore verifier; refusing downloaded binary." >&2
         return 1
     fi
-    if ! python3 -I "$helper" --repository "$repo" --commit "$latestFull" \
-        --kind "$source_kind" "$artifact_path"; then
+    helper="$(CDPATH= cd -P -- "$(dirname "$helper")" && pwd)/$(basename "$helper")"
+    if ! (cd "$(dirname "$artifact_path")" && python3 -I "$helper" --repository "$repo" --commit "$latestFull" \
+        --kind "$source_kind" "./$(basename "$artifact_path")"); then
         echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
         return 1
     fi

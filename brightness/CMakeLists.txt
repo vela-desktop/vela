@@ -62,6 +62,9 @@ if(VELA_BUILD_TOOLS)
             tests/lines_test.cpp
             tests/scheduler_test.cpp)
         target_compile_options(vela-brightness-tests PRIVATE -Wall -Wextra)
+        target_include_directories(vela-brightness-tests PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
+        target_compile_definitions(vela-brightness-tests PRIVATE
+            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
         target_link_libraries(vela-brightness-tests PRIVATE vela-brightness-core GTest::gtest_main)
         include(GoogleTest)
         gtest_discover_tests(vela-brightness-tests TEST_PREFIX "brightness.")

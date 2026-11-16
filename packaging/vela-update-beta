@@ -430,8 +430,9 @@ for candidate in "$(dirname "$0")/verify-attestation.py" \
     if [ -f "$candidate" ]; then verifier="$candidate"; break; fi
 done
 [ -n "$verifier" ] || fail missing-tool "missing Sigstore verifier"
-if ! python3 -I "$verifier" --repository "$REPO" --commit "$latestFull" \
-    --kind release --release-tag "$tag" "$work/$package"; then
+verifier="$(CDPATH= cd -P -- "$(dirname "$verifier")" && pwd)/$(basename "$verifier")"
+if ! (cd "$work" && python3 -I "$verifier" --repository "$REPO" --commit "$latestFull" \
+    --kind release --release-tag "$tag" "./$package"); then
     fail verification-failed "the package's signed provenance was rejected"
 fi
 echo ":: Verified official Beta package $package"

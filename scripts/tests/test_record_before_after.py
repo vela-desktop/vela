@@ -141,11 +141,13 @@ class WorktreeTests(unittest.TestCase):
         return subprocess.run(["git", *args], cwd=self.repo, check=True,
                               capture_output=True, text=True).stdout.strip()
 
-    def build(self):
+    def build(self, jobs=1):
         real_run = subprocess.run
+        self.cmake_commands = []
 
         def run(args, *positional, **keywords):
             if args[0] == "cmake":
+                self.cmake_commands.append(args)
                 if "-B" in args:
                     folder = Path(args[args.index("-B") + 1])
                     folder.mkdir(parents=True, exist_ok=True)
@@ -154,7 +156,7 @@ class WorktreeTests(unittest.TestCase):
             return real_run(args, *positional, **keywords)
 
         with mock.patch.object(script.subprocess, "run", side_effect=run):
-            return script.build(self.base, jobs=1, picks=[self.pick])
+            return script.build(self.base, jobs=jobs, picks=[self.pick])
 
     def test_cached_pick_is_reused_only_with_exact_git_diff(self):
         out = self.build()
@@ -173,6 +175,22 @@ class WorktreeTests(unittest.TestCase):
         self.assertFalse(script.cached_worktree_valid(tree, self.base, [self.pick]))
         self.build()
         self.assertTrue(script.cached_worktree_valid(tree, self.base, [self.pick]))
+
+    def test_invalid_job_counts_never_reach_git_or_cmake(self):
+        for jobs in ("--preset=unexpected", "1 --target install", -1, 0, 1025, True, 1.5):
+            with self.subTest(jobs=jobs), mock.patch.object(script.subprocess, "run") as run:
+                with self.assertRaisesRegex(ValueError, "Build jobs"):
+                    script.build(self.base, jobs)
+                run.assert_not_called()
+
+    def test_valid_job_counts_reach_cmake_as_separate_numeric_arguments(self):
+        for jobs in (None, 1, 1024):
+            with self.subTest(jobs=jobs):
+                out = self.build(jobs=jobs)
+                expected = ["cmake", "--build", str(out)]
+                if jobs is not None:
+                    expected += ["--parallel", str(jobs)]
+                self.assertEqual(self.cmake_commands[-1], expected)
 
 
 class RecorderLifecycleTests(unittest.TestCase):
