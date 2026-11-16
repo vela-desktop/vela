@@ -34,7 +34,7 @@ table{border-collapse:collapse;width:100%}td,th{padding:.5rem;text-align:left;bo
         document += f"<h2>{escaped(title)}</h2><pre>{escaped(json.dumps(value, indent=2, sort_keys=True))}</pre>"
     document += "</html>\n"
     # Reports are derived output; they never modify the canonical evidence.
-    (directory / "report.html").write_text(document, encoding="utf-8")  # NOSONAR(S8707): fixed derived filename in the operator-selected local archive, no agent/server.
+    (directory / "report.html").write_text(document, encoding="utf-8")  # NOSONAR S8707: fixed derived filename in the operator-selected local archive, no agent/server.
     return summary
 
 
