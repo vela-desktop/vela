@@ -82,6 +82,7 @@ vela_credential_ensure()
     binary=$2
     unit=$3
     current=$(vela_credential_owner)
+    native_available=0
     case "$current" in
         "$backend")
             # PAM or another session already owns the CORRECT backend.
@@ -97,8 +98,11 @@ vela_credential_ensure()
                 native=$(vela_credential_owner org.kde.kwalletd6)
                 case "$native" in
                     kwallet)
-                        vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; enable the KWallet Secret Service backend'
-                        exit 1 ;;
+                        # The native compatibility wrapper may start before its
+                        # Secret Service provider (ksecretd). Do not mistake
+                        # this for a terminal failure: launch the separate
+                        # provider, leaving the native daemon untouched.
+                        native_available=1 ;;
                     none) ;;
                     unknown)
                         vela_credential_mark unverified 'cannot check the existing KWallet service'
@@ -117,7 +121,11 @@ vela_credential_ensure()
     esac
 
     if [ ! -x "$binary" ]; then
-        vela_credential_mark missing "$binary is not installed or executable"
+        if [ "$native_available" -eq 1 ]; then
+            vela_credential_mark limited "KWallet native API works, but $binary is not installed or executable"
+        else
+            vela_credential_mark missing "$binary is not installed or executable"
+        fi
         exit 1
     fi
     if ! systemctl --user start "$unit"; then
@@ -155,10 +163,11 @@ vela_credential_ensure()
         native=$(vela_credential_owner org.kde.kwalletd6)
         case "$native" in
             kwallet)
-                # The unit started successfully and its native API works.
-                # Keep OUR unit running for native KWallet applications, but
-                # expose the missing Secret Service API as a limited state.
-                vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; enable the KWallet Secret Service backend'
+                # Our unit launches ksecretd, not kwalletd6. If it never
+                # acquires Secret Service, stop only our unit; never stop the
+                # independently owned native KWallet compatibility daemon.
+                vela_credential_stop_started_unit
+                vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; check ksecretd and its configuration'
                 exit 1 ;;
             unknown)
                 vela_credential_stop_started_unit
