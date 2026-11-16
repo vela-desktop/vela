@@ -12,10 +12,9 @@ compatibility fix are explicitly included.
 - Source snapshot: `fdd45eab843597ab322d1dbd2caa9bb32d12f4e3` (`main`, 15 November 2026).
 - 55 source PRs since the branches diverged: 25 maintenance backports,
   7 selective adaptations, 14 excluded changes and 9 already present.
-- This is preparation, not a published release. `project(VERSION ...)` stays
-  at 0.1.1 and the manual Arch Beta fallback stays at v0.1.1. Bump both to
-  0.1.2 in the release-preparation commit after the final backports and review,
-  before exact-revision release validation.
+- Release preparation sets both `project(VERSION ...)` and the manual Arch
+  Beta fallback to 0.1.2. This is not a published release: complete validation
+  on the exact release-preparation revision before tagging and publishing.
 
 ## PR decisions
 
@@ -25,7 +24,7 @@ provenance is retained in the backport commit messages.
 
 | PR | Change | Decision | Included scope / reason |
 | --- | --- | --- | --- |
-| [#179](https://github.com/vela-desktop/vela/pull/179) | Release branches: CI on release/**, main is 0.2.0 | Adapted | Release-branch documentation only. CI and the package-version regression fix already exist; retain project version 0.1.1. |
+| [#179](https://github.com/vela-desktop/vela/pull/179) | Release branches: CI on release/**, main is 0.2.0 | Adapted | Release-branch documentation only. CI and the package-version regression fix already exist; keep the 0.1 maintenance line, with release preparation setting 0.1.2. |
 | [#178](https://github.com/vela-desktop/vela/pull/178) | docs: record the v0.1.0 release and the release rehearsal | Backported | Retain the full maintenance change and its applicable regression tests. |
 | [#175](https://github.com/vela-desktop/vela/pull/175) | fix(audio): prevent volume wheel and knob from stalling on hardware readback | Already in release/0.1 | Do not apply again; already backported before this preparation. |
 | [#184](https://github.com/vela-desktop/vela/pull/184) | fix(audio): add the device's half step to the readback tolerance | Already in release/0.1 | Do not apply again; already backported before this preparation. |
@@ -109,12 +108,14 @@ semantics are retained. The getline error-injection fixture also tracks
 reader fails the added traversal regression.
 
 This corrective follow-up is additional to the 55-PR source inventory above.
-GPU runs remain paused while CodeQL and then CodeRabbit review are completed.
+The shared fix is proposed for `main` in [#270](https://github.com/vela-desktop/vela/pull/270)
+and is already included in this maintenance branch through #272.
 
 ## Review slices and follow-up
 
-The oversized preparation diff was split into six draft PRs, each within
-CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
+The oversized preparation diff was reviewed in six PRs, each within CodeRabbit's
+100-file limit. All six were squash-merged into `release/0.1` in the order below.
+Their aligned diffs and merged file trees exactly match the reviewed snapshots.
 
 | Slice | PR | Scope | Changed files |
 | --- | --- | --- | ---: |
@@ -126,7 +127,8 @@ CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
 | 6 | [#269](https://github.com/vela-desktop/vela/pull/269) | Inventory and release guidance | 4 |
 
 Before review fixes, the reconstructed tree exactly matched `dae1642b`.
-The subsequent differences address the CodeRabbit reviews:
+The final backport head is `60eaac3`; the subsequent version bump prepares 0.1.2
+for validation. The backport review corrections include:
 
 - Correct release prerequisites, crash-recovery wording and fork-rehearsal setup.
 - Publish readiness JSON atomically, clean up launcher process groups, thaw
@@ -197,8 +199,9 @@ The subsequent differences address the CodeRabbit reviews:
   upstream measurements without treating them as validation of this backport.
 
 These review fixes are additional maintenance corrections, with no expansion
-of the agreed feature scope. GPU workflows remain deferred until the complete
-series has finished review; each current head must pass CodeQL first. CodeQL now runs automatically on
+of the agreed feature scope. GPU workflows remain deferred until the
+release-preparation revision has passed CodeQL and CodeRabbit review.
+CodeQL runs automatically on
 trusted `backport/**` pushes and PR bases, as well as `main` and `release/**`.
 
 ## Validation and release follow-up
@@ -235,8 +238,8 @@ Before publishing:
   [#197](https://github.com/vela-desktop/vela/issues/197).
 - Verify existing GNOME/KWallet credentials and session/PAM behavior on
   Fedora/GDM and Arch/SDDM, plus Settings, updater, lock/recovery and affected UI.
-- Prepare the final version-bump commit with both the project version and
-  manual Arch Beta fallback set to 0.1.2. Run the complete mandatory AMD and
+- Use the reviewed release-preparation commit with both the project version and
+  manual Arch Beta fallback set to 0.1.2 for the complete mandatory AMD and
   NVIDIA GPU suites on that exact revision; Intel remains optional.
 - Rehearse the signed tag pipeline on a public fork with that exact commit,
   including 0.1.1 → 0.1.2 updates, channel transitions and verification failures.
