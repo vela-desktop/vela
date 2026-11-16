@@ -122,7 +122,7 @@ CodeRabbit's 100-file limit. Merge in order while preserving ancestry:
 | 2 | [#272](https://github.com/vela-desktop/vela/pull/272) | OOM recovery and checked metadata | 64 |
 | 3 | [#273](https://github.com/vela-desktop/vela/pull/273) | Allocation migration | 70 |
 | 4 | [#274](https://github.com/vela-desktop/vela/pull/274) | Runtime, render reuse and credentials | 100 |
-| 5 | [#275](https://github.com/vela-desktop/vela/pull/275) | Security, bounded resources and UI fixes | 98 |
+| 5 | [#275](https://github.com/vela-desktop/vela/pull/275) | Security, bounded resources and UI fixes | 100 |
 | 6 | [#269](https://github.com/vela-desktop/vela/pull/269) | Inventory and release guidance | 4 |
 
 Before review fixes, the reconstructed tree exactly matched `dae1642b`.
@@ -171,7 +171,14 @@ The subsequent differences address the CodeRabbit reviews:
   support to optional icon tests, choose upload sizes from both device extents
   and the actual staging budget, and measure upload latency at renderer events
   while retaining the eight-frame functional bound and strict CPU bounds.
-  Mandatory hardware no-skip gates remain in place.
+  A test-only upload barrier establishes real overlapping pending work; the
+  completion observation belongs to the target texture, so another client's
+  later completion cannot alter its measured duration. Mandatory hardware
+  no-skip gates remain in place.
+- Parse complete production state responses with and without a focused window,
+  in both SVG-enabled and SVG-disabled builds. A malformed older response fails
+  this CPU regression. Wait for actual timer readiness in the readback fixture;
+  100 consecutive CPU runs pass without a zero-time readiness race.
 - Require taskbar geometry before checking its bounds, acknowledge Bluetooth Busy
   retries before releasing a held transition, and enable test commands in the
   documented manual launch. Metadata fixtures use private build directories,
@@ -182,14 +189,15 @@ The subsequent differences address the CodeRabbit reviews:
 
 These review fixes are additional maintenance corrections, with no expansion
 of the agreed feature scope. GPU workflows remain deferred until the complete
-series has finished review; each current head must pass CodeQL first.
+series has finished review; each current head must pass CodeQL first. CodeQL now runs automatically on
+trusted `backport/**` pushes and PR bases, as well as `main` and `release/**`.
 
 ## Validation and release follow-up
 
 Local validation (hardware runs remain deferred):
 
 - Full native Debug build with GCC 16.2, Qt 6.12.0 and wlroots 0.20.2.
-- 365 selected CPU/QML CTest entries pass on security-slice commit `7222da8`
+- 367 selected CPU/QML CTest entries pass on security-slice commit `1216726`
   after the runtime and credential-transition review fixes; the runtime slice independently passes 350.
   This includes documentation, reporter and preference fixtures adapted to 0.1.
 - Debug-only `-fsanitize=address` configuration: the configuration-read test

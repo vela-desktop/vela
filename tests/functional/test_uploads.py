@@ -193,23 +193,28 @@ class Uploads(unittest.TestCase):
             greedy, greedy_log = self.open(vela, "--burst", "--app-id", "greedy", width, height, *WINDOW)
             vela.wait_for(lambda s: s["upload"]["replaced"] > 0, timeout=20,
                           what="the greedy client's pending upload replaced")
-            width, height = self.size_for(vela, 17 / 16, require_deferred=True)
-            other_log = os.path.join(vela.directory, "other.log")
-            with open(other_log, "w") as output:
-                other = subprocess.Popen([tool("vela-bigbuffer"), "--app-id", "other", str(width), str(height),
-                                          *map(str, WINDOW)], env=vela.client_env, stdout=output,
-                                         stderr=subprocess.STDOUT)
-            vela.clients.append(other)
-            self.wait_client(other_log, "committed 0")
+            self.assertTrue(vela.query("test-upload-hold on")["ok"])
+            try:
+                vela.wait_for(lambda s: s.window(greedy)["upload"]["pending"], timeout=20,
+                              what="the greedy upload held pending")
+                width, height = self.size_for(vela, 17 / 16, require_deferred=True)
+                other, other_log = self.open(vela, "--app-id", "other", width, height, *WINDOW)
+                vela.wait_for(lambda s: s.window(other)["upload"]["pending"]
+                              and s.window(other)["upload"]["overlapped"],
+                              what="the other upload queued behind real pending work")
+            finally:
+                self.assertTrue(vela.query("test-upload-hold off")["ok"])
             self.wait_client(other_log, "released 0")
-            upload = vela.state()["upload"]
-            # Captured at enqueue/completion inside the renderer: caller
-            # scheduling and IPC reads cannot move either measurement point.
-            frames = upload["frames_max"]
+            state = vela.state()
+            target = state.window(other)["upload"]
+            frames = target["frames"]
+            self.assertTrue(target["deferred"] and target["overlapped"])
+            self.assertFalse(target["pending"])
             self.assertGreater(frames, 0)
+            upload = state["upload"]
             self.assertEqual(upload["abandoned"], 0)
-            print(f"the other upload completed within {frames} frames under a client committing above the "
-                  f"budget in two-buffer bursts: {upload}", flush=True)
+            print(f"the other upload completed within {frames} service frames under real overlapping work: "
+                  f"{upload}", flush=True)
             self.assertGreater(upload["replaced"], 0, "the greedy client must have replaced its uploads")
             self.assertLessEqual(frames, 8)
             self.assertLessEqual(upload["chunks_peak"], upload["chunks_max"])

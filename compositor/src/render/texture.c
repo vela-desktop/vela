@@ -294,6 +294,7 @@ static bool upload(struct vela_texture *texture, const uint8_t *data, size_t str
         texture->content = ++renderer->upload_content;
     }
     texture->needs_full_upload = !ok;
+    texture->upload_observation = (struct vela_upload_observation) { 0 };
     ++renderer->upload_stats.in_place;
     return ok;
 }
@@ -468,6 +469,10 @@ static bool defer_upload(struct vela_texture *texture, struct wlr_buffer *buffer
         upload->source = wlr_buffer_lock(buffer);
         ++renderer->upload_stats.deferred;
     }
+    texture->upload_observation = (struct vela_upload_observation) {
+        .deferred = true,
+        .overlapped = !wl_list_empty(&renderer->uploads),
+    };
     upload->queued_frame = renderer->upload_frame;
     upload->rect = 0;
     upload->row = upload->rect_count > 0 ? upload->rects[0].y1 : 0;
@@ -538,6 +543,7 @@ static void switch_image(struct vela_texture *texture, VkCommandBuffer cmd)
     texture->content = ++renderer->upload_content;
     ++renderer->upload_stats.completed;
     uint64_t elapsed = renderer->upload_frame - upload->queued_frame;
+    texture->upload_observation.frames = elapsed;
     if (elapsed > renderer->upload_stats.frames_max) renderer->upload_stats.frames_max = elapsed;
     wlr_log(WLR_DEBUG, "Texture: %ux%u upload done over %u frame(s)", texture->base.width, texture->base.height,
         upload->frames);
@@ -546,8 +552,16 @@ static void switch_image(struct vela_texture *texture, VkCommandBuffer cmd)
 
 struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer *renderer)
 {
-    ++renderer->upload_frame;
     struct vela_upload_progress progress = { 0 };
+    if (renderer->test_hold_uploads) {
+        // Still flush earlier in-place work; only deferred service is held.
+        if (!vela_renderer_flush_uploads(renderer)) {
+            wlr_log(WLR_ERROR, "Texture: can't submit uploads while test barrier is held");
+        }
+        progress.pending = wl_list_length(&renderer->uploads);
+        return progress;
+    }
+    ++renderer->upload_frame;
     VkCommandBuffer cmd = VK_NULL_HANDLE;
     struct vela_texture *texture, *tmp;
     wl_list_for_each_safe (texture, tmp, &renderer->uploads, upload.link) {
@@ -712,6 +726,20 @@ static bool update_from_buffer(struct wlr_texture *wlr, struct wlr_buffer *buffe
     }
     wlr_buffer_end_data_ptr_access(buffer);
     return ok;
+}
+
+void vela_renderer_test_hold_uploads(struct vela_renderer *renderer, bool hold)
+{
+    renderer->test_hold_uploads = hold;
+}
+
+struct vela_upload_observation vela_texture_upload_observation(struct wlr_texture *wlr)
+{
+    struct vela_texture *texture = wlr ? vela_texture_from_wlr_texture(wlr) : NULL;
+    if (!texture) return (struct vela_upload_observation) { 0 };
+    struct vela_upload_observation result = texture->upload_observation;
+    result.pending = texture->upload.source != NULL;
+    return result;
 }
 
 bool vela_texture_shown(struct wlr_texture *wlr)

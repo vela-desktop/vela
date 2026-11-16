@@ -131,21 +131,23 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     const char *t = "true";
     const char *f = "false";
     struct vela_view *focused = vela_views_focused(server);
+    const char *focused_id = focused && focused->ext_handle ? focused->ext_handle->identifier : NULL;
+#if VELA_HAVE_RSVG
+    const bool svg_icons = true;
+#else
+    const bool svg_icons = false;
+#endif
     vela_buffer_appendf(json, "{\"locked\":%s,\"workspace\":%d,\"workspaces\":%d,\"focused\":",
         server->locked ? t : f, server->workspaces->current, server->workspaces->count);
-#if VELA_HAVE_RSVG
-    vela_buffer_append(json, ",\"capabilities\":{\"svg_icons\":true}");
-#else
-    vela_buffer_append(json, ",\"capabilities\":{\"svg_icons\":false}");
-#endif
-    struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
-    // The private state socket exposes retention and terminal counts so GPU
-    // lifecycle tests can prove they cancelled real in-flight work.
-    if (focused && focused->ext_handle && focused->ext_handle->identifier) {
-        vela_buffer_append_json(json, focused->ext_handle->identifier);
+    if (focused_id) {
+        vela_buffer_append_json(json, focused_id);
     } else {
         vela_buffer_append(json, "null");
     }
+    vela_buffer_appendf(json, ",\"capabilities\":{\"svg_icons\":%s}", svg_icons ? t : f);
+    struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
+    // The private state socket exposes retention and terminal counts so GPU
+    // lifecycle tests can prove they cancelled real in-flight work.
     vela_buffer_appendf(json, ",\"readback\":{\"pending\":%zu,\"bytes\":%zu,\"completed\":%llu,\"cancelled\":%llu,\"failed\":%llu,\"rejected\":%llu,\"submitted\":%llu}",
         readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
         (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed,
@@ -192,6 +194,12 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         vela_buffer_append_json(json, view->ext_handle->identifier);
         vela_buffer_append(json, ",\"app\":");
         vela_buffer_append_json(json, vela_view_app_id(view));
+        struct wlr_surface *surface = vela_view_surface(view);
+        struct vela_upload_observation upload = vela_texture_upload_observation(
+            surface ? wlr_surface_get_texture(surface) : NULL);
+        vela_buffer_appendf(json, ",\"upload\":{\"deferred\":%s,\"pending\":%s,\"overlapped\":%s,\"frames\":%llu}",
+            upload.deferred ? t : f, upload.pending ? t : f, upload.overlapped ? t : f,
+            (unsigned long long)upload.frames);
         vela_buffer_append(json, ",\"title\":");
         vela_buffer_append_json(json, vela_view_title(view));
         vela_buffer_appendf(json, ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"output\":", frame.x, frame.y,
@@ -289,6 +297,11 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "test-upload-hold on") == 0 || strcmp(line, "test-upload-hold off") == 0) {
+        // Answers run before run_command's test-only gate, so authorize here.
+        const bool allowed = server->commands && server->commands->test_commands;
+        if (allowed) vela_renderer_test_hold_uploads(server->renderer, strcmp(line, "test-upload-hold on") == 0);
+        vela_buffer_appendf(&reply, "{\"ok\":%s}", allowed ? "true" : "false");
     } else if (strcmp(line, "scanout-policy") == 0) {
         // Settings must report the compositor's environment, not its own.
         vela_buffer_appendf(&reply, "{\"envDisabled\":%s,\"enabled\":%s}",
@@ -534,6 +547,7 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
         || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
         || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")
+        || starts_with(line, "test-upload-hold ")
         || strcmp(line, "brightness") == 0 || starts_with(line, "watch ") || starts_with(line, "brightness-live ")) {
         // already answered to whoever asked, or about the connection itself
     } else if (starts_with(line, "brightness-probe ")) {

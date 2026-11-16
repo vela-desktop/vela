@@ -252,6 +252,7 @@ struct vela_texture {
 
     bool uploaded; // our own image: a complete content is there, it can be drawn
     bool needs_full_upload; // abandoned damage is absent from the shown image
+    struct vela_upload_observation upload_observation;
     int refs; // wlroots' references (texture_from_buffer / destroy)
 
     // A copy that didn't fit in the upload budget when it came: its pieces go
@@ -386,7 +387,8 @@ struct vela_renderer {
 
     struct wl_list uploads; // vela_texture.upload.link: deferred uploads, oldest first
     VkBuffer upload_chunk; // the upload chunk the next piece goes into, if it fits
-    uint64_t upload_frame; // continuation calls, once per rendered output frame
+    bool test_hold_uploads; // only enabled by an authorized test command
+    uint64_t upload_frame; // unheld output-frame service calls
     uint64_t upload_content; // the last vela_texture.content given
     struct vela_upload_stats upload_stats;
     struct vela_extent_rejection extent_rejected;

@@ -1148,6 +1148,36 @@ static void competing_uploads_do_not_starve(void)
     fixture_finish(&f);
 }
 
+// The test barrier holds real pending work while another client enqueues.
+// Per-texture observations survive unrelated later completions.
+static void target_upload_observation_and_overlap(void)
+{
+    struct fixture f;
+    fixture_init(&f);
+    const int height = 2 * BUDGET / (256 * BPP) + 30;
+    struct shm_buffer *a = new_shm(256, height, 1);
+    struct surface *first = attach(&f, a);
+    vela_renderer_test_hold_uploads(f.renderer, true);
+    uint64_t before = f.renderer->upload_frame;
+    for (int i = 0; i < 3; ++i) assert(frame(&f).pending);
+    assert(f.renderer->upload_frame == before && !released(a));
+    struct shm_buffer *b = new_shm(128, BUDGET / (128 * BPP) + 20, 2);
+    struct surface *other = attach(&f, b);
+    struct vela_upload_observation observation = vela_texture_upload_observation(other->texture);
+    assert(observation.deferred && observation.pending && observation.overlapped && observation.frames == 0);
+    vela_renderer_test_hold_uploads(f.renderer, false);
+    int frames = 0;
+    while (!own(other)->uploaded) { frame(&f); assert(++frames <= 6); }
+    observation = vela_texture_upload_observation(other->texture);
+    assert(!observation.pending && observation.frames == (uint64_t)frames && observation.overlapped);
+    f.renderer->upload_stats.frames_max = 1000; // an unrelated client cannot change this observation
+    assert(vela_texture_upload_observation(other->texture).frames == observation.frames);
+    assert(!vela_texture_upload_observation(first->texture).pending);
+    drop_shm(a);
+    drop_shm(b);
+    fixture_finish(&f);
+}
+
 // A frame with no rendering (e.g. direct scanout) must still submit uploads
 // recorded by previous buffer commits, even if a deferred upload cannot
 // reserve a staging chunk and records no commands of its own.
@@ -1311,6 +1341,7 @@ int main(void)
     new_commit_replaces_pending_upload();
     abandoned_damage_is_recovered_by_the_next_commit();
     competing_uploads_do_not_starve();
+    target_upload_observation_and_overlap();
     blocked_deferred_upload_flushes_prior_commands();
     in_flight_staging_counts();
     device_loss_releases_pending_uploads();
