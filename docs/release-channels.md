@@ -11,6 +11,11 @@ system or packages unrelated to Vela.
 There are no release candidates. The `0.x.y` series is Beta; `1.0.0` is
 the future stable milestone.
 
+Numbered Beta versions are normal GitHub Releases, with "Beta" in the title.
+The updater identifies them by their `v0.x.y` tags, regardless of GitHub's
+prerelease flag; it also accepts older releases still marked as prereleases.
+Drafts and tags outside that format are ignored.
+
 ## Maintainer release process
 
 1. Prepare the exact release commit, update `project(VERSION ...)` in
@@ -24,7 +29,7 @@ the future stable milestone.
 3. Create a signed, protected Git tag `v0.x.y` pointing to that commit.
 4. GitHub Actions builds Arch/CachyOS, Fedora 44/45 and Ubuntu 26.10 packages
    for the **tagged** commit, verifies package installs and their runtime
-   requirements, then publishes an official GitHub prerelease.
+   requirements, then publishes a normal GitHub Release titled `Vela 0.x.y Beta`.
 5. The published release includes the package files and one SHA-256 manifest
    per distribution. Each binary must be accompanied by GitHub-hosted
    cryptographic provenance that binds the build to the tag and commit.
@@ -42,6 +47,21 @@ The historical per-commit `alpha-<sha>` releases have been retired.
 A Beta tag must match the project version exactly and follow the
 `v0.<minor>.<patch>` format. Do not retag an already published version:
 create a new patch release to correct a bad Beta.
+
+### Updating older Beta installations
+
+The updater shipped through 0.1.2 only discovers GitHub prereleases. After
+those releases are reclassified as normal releases, that installed updater
+cannot discover them. For the first update, run the corrected helper from an
+up-to-date source checkout:
+
+```sh
+sh packaging/vela-update --channel beta
+```
+
+This still installs an official package with checksum and provenance
+verification. Once a package containing the corrected updater is installed,
+Settings and `vela-update` discover normal numbered releases directly.
 
 ## Release branches
 

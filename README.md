@@ -10,7 +10,7 @@ Vela is a complete desktop environment for Wayland: its own compositor and Vulka
 renderer, a Qt Quick shell, a file manager and a settings app, designed together.
 
 [![Build](https://github.com/vela-desktop/vela/actions/workflows/build.yml/badge.svg)](https://github.com/vela-desktop/vela/actions/workflows/build.yml)
-[![Release](https://img.shields.io/github/v/release/vela-desktop/vela?include_prereleases&label=release&color=yellow)](https://github.com/vela-desktop/vela/releases)
+[![Release](https://img.shields.io/github/v/release/vela-desktop/vela?label=release&color=yellow)](https://github.com/vela-desktop/vela/releases)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 [Website](https://velade.org) · [Get Vela](#get-vela) · [Features](docs/features.md) ·
