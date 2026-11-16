@@ -411,8 +411,14 @@ class DamageFailure(unittest.TestCase):
                     self.arm(vela, operation, 0, 1, force=True)
                     vela.command("lock")
                     vela.wait_for_log("vela-testlock: locked")
+                    injected_line = f"pixman-fail: injected {operation} failure"
+                    vela.wait_for_log(injected_line)
                     time.sleep(0.2 * TIME_SCALE)
                     self.assertTrue(self.disarm(vela), f"no {operation} failure was injected while locking")
+                    log = vela.log_text()
+                    self.assertIn("Screen lock engaged", log)
+                    self.assertGreater(log.index(injected_line), log.index("Screen lock engaged"),
+                                       f"{operation} failure occurred before the lock engaged")
                     image = vela.pixels()
                     lock_color = (16, 32, 64)  # what vela-testlock paints
                     for y in range(0, image.height, 16):
