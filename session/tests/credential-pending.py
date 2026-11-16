@@ -45,7 +45,9 @@ class PendingMetadata(unittest.TestCase):
         binary = self.root / "ksecretd"
         shutil.copyfile("/bin/sleep", binary)
         binary.chmod(0o700)
-        child = subprocess.Popen([str(binary), "30"])
+        # Ubuntu may provide a multicall coreutils binary: select its sleep
+        # applet through argv[0], while /proc still identifies the copied exe.
+        child = subprocess.Popen(["sleep", "30"], executable=str(binary))
         def stop():
             if child.poll() is None:
                 child.kill()
