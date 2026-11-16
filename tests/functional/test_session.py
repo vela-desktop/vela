@@ -321,9 +321,9 @@ class DamageFailure(unittest.TestCase):
         return Session(env={"LD_PRELOAD": self.SHIM, "VELA_TEST_PIXMAN_FAIL_DIR": str(fd)}, pass_fds=(fd,),
                        **options)
 
-    def arm(self, vela, operation, skip, case):
+    def arm(self, vela, operation, skip, case, force=False):
         with open(self.trigger + ".tmp", "w") as trigger:
-            trigger.write(f"{vela.process.pid} {operation} {skip} {case}")
+            trigger.write(f"{vela.process.pid} {operation} {skip} {case}" + (" force" if force else ""))
         os.replace(self.trigger + ".tmp", self.trigger)
 
     def disarm(self, vela):
@@ -405,11 +405,20 @@ class DamageFailure(unittest.TestCase):
             with self.subTest(operation=operation):
                 with self.start(lock_hold_ms=10000) as vela:
                     vela.open_window(800, 600)
-                    self.arm(vela, operation, 0, 1)
+                    # A lock hides the complex desktop geometry. Exercise the
+                    # failure contract even when pixman uses rectangle fast paths;
+                    # the unlocked test above retains natural-allocation coverage.
+                    self.arm(vela, operation, 0, 1, force=True)
                     vela.command("lock")
                     vela.wait_for_log("vela-testlock: locked")
+                    injected_line = f"pixman-fail: injected {operation} failure"
+                    vela.wait_for_log(injected_line)
                     time.sleep(0.2 * TIME_SCALE)
                     self.assertTrue(self.disarm(vela), f"no {operation} failure was injected while locking")
+                    log = vela.log_text()
+                    self.assertIn("Screen lock engaged", log)
+                    self.assertGreater(log.index(injected_line), log.index("Screen lock engaged"),
+                                       f"{operation} failure occurred before the lock engaged")
                     image = vela.pixels()
                     lock_color = (16, 32, 64)  # what vela-testlock paints
                     for y in range(0, image.height, 16):

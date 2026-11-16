@@ -302,6 +302,21 @@ if(VELA_BUILD_TOOLS)
     target_compile_options(vela-pixman-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-pixman-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
 
+    # The pixman shim replaces malloc: keep its own regression native, like
+    # the allocator-interposing damage fixture below.
+    if(NOT VELA_TEST_ASAN)
+        add_executable(vela-pixman-fail-test tests/pixman_fail_test.c)
+        target_link_libraries(vela-pixman-fail-test PRIVATE PkgConfig::PIXMAN)
+        target_compile_options(vela-pixman-fail-test PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
+        target_link_options(vela-pixman-fail-test PRIVATE -fno-sanitize=all)
+        set_target_properties(vela-pixman-fail-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+        add_dependencies(vela-pixman-fail-test vela-pixman-fail-preload)
+        add_test(NAME compositor.pixman-fail-shim COMMAND ${CMAKE_COMMAND} -E env
+            "LD_PRELOAD=$<TARGET_FILE:vela-pixman-fail-preload>" $<TARGET_FILE:vela-pixman-fail-test>)
+        set_tests_properties(compositor.pixman-fail-shim PROPERTIES TIMEOUT 10
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
+    endif()
+
     # LD_PRELOAD shim that makes getline fail partway through a chosen file,
     # and the configuration-read test that runs under it.
     add_library(vela-getline-fail-preload MODULE tests/getline_fail_preload.c)
@@ -642,6 +657,20 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::PIXMAN)
     set_target_properties(vela-updates-start-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.updates-start COMMAND vela-updates-start-test)
+
+    add_executable(vela-lock-exit-test tests/lock_exit_test.c ${VELA_PROTOCOL_HEADERS})
+    target_include_directories(vela-lock-exit-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-lock-exit-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-lock-exit-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Werror)
+    target_link_options(vela-lock-exit-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-lock-exit-test PRIVATE vela-pure PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    set_target_properties(vela-lock-exit-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_dependencies(vela-lock-exit-test vela-libc-fail-preload)
+    add_test(NAME compositor.lock-unsafe-exit COMMAND ${CMAKE_COMMAND} -E env
+        "LD_PRELOAD=${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-libc-fail-preload>" $<TARGET_FILE:vela-lock-exit-test>)
+    set_tests_properties(compositor.lock-unsafe-exit PROPERTIES TIMEOUT 10
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
     find_package(GTest)
     if(GTest_FOUND)

@@ -348,6 +348,7 @@ int vela_supervise(int argc, char **argv)
             // An unsafe-lock exit may have signalled an older supervisor to
             // prevent restart; preserve the dedicated status on new versions.
             if (WIFEXITED(status) && WEXITSTATUS(status) == VELA_EXIT_LOCK_UNSAFE) {
+                say("secure lock state could not be persisted; ending session, never restarting unlocked");
                 exit_code = VELA_EXIT_LOCK_UNSAFE;
             }
             break; // the session is closing (logout, shutdown)

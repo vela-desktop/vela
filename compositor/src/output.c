@@ -498,23 +498,29 @@ void vela_output_schedule_frame(struct vela_output *output)
     request_frame(output);
 }
 
-static void request_frame(struct vela_output *output)
+// An idle callback can already be queued when another frame discovers that
+// this output has nothing to draw. Check pacing again when that callback runs,
+// not just when it is requested: another output's animation must not turn an
+// empty output into a sub-vblank animation loop.
+static bool defer_animation_frame(struct vela_output *output, int64_t now)
 {
-    // Like wlroots with DRM: if no delivered frame is still waiting for the
-    // vblank, "frame" comes at once; otherwise with the page flip.
-    // wlr_output_schedule_frame isn't used: it would mark the output as
-    // needing a commit even when nothing on it changes (an empty commit, which
-    // with DRM blocks until the vblank).
     bool can_latch = output->latching && output->latch_fd >= 0 && output->latch_source;
     bool animations_only = !output->frame_requested && !output->wlr->needs_frame;
-    if (!can_latch && animations_only && output->empty_until > vela_now_ns()) {
-        // An unchanged animation retry still needs a future beat. Without a
-        // latch, use the virtual vblank or the backend's own frame pacing.
-        if (output->vblank_fd >= 0) {
-            arm_virtual_vblank(output);
-        } else {
-            wlr_output_schedule_frame(output->wlr);
-        }
+    if (can_latch || !animations_only || output->empty_until <= now) {
+        return false;
+    }
+    if (output->vblank_fd >= 0) {
+        arm_virtual_vblank(output);
+    } else {
+        wlr_output_schedule_frame(output->wlr);
+    }
+    return true;
+}
+
+static void request_frame(struct vela_output *output)
+{
+    // An unchanged animation retry needs a future beat even without a latch.
+    if (defer_animation_frame(output, vela_now_ns())) {
         return;
     }
     bool waiting = output->vblank_fd >= 0 ? output->awaiting_present : output->wlr->frame_pending;
@@ -571,6 +577,9 @@ static void on_frame_event(struct vela_output *output)
     if (output->latch_armed
         || (!output->frame_requested && !output->animation_requested && !output->wlr->needs_frame)) {
         return; // already planned, or nothing to do
+    }
+    if (defer_animation_frame(output, vela_now_ns())) {
+        return;
     }
     collect_costs(output);
     // Tearing (a fullscreen game asking for it), or VRR with a game in direct

@@ -88,7 +88,8 @@ static __attribute__((noreturn)) void lock_unsafe_exit(struct vela_lock *lock)
     // Older supervisors do not understand exit 77 and would restart unlocked.
     // Their existing SIGTERM handler ends the session instead. Only signal
     // the supervisor after blackout, immediately before our terminal exit.
-    if (lock->server->runtime_dir_fd >= 0 && getenv("VELA_WAYLAND_SOCKET_FD") && getppid() > 1) {
+    // Startup consumes the inherited environment; retain its validated state.
+    if (lock->server->runtime_dir_fd >= 0 && lock->server->supervised && getppid() > 1) {
         kill(getppid(), SIGTERM);
     }
     _exit(VELA_EXIT_LOCK_UNSAFE);
@@ -808,6 +809,9 @@ void vela_lock_engage(struct vela_lock *lock)
     // First, before anything else can fail or crash: from here on a restart
     // starts locked even if the marker below cannot be created.
     vela_lock_state_store(server->lock_state, true);
+    // Mark the start of the lock phase for failure-injection tests. Persist
+    // secure lock state first: logging must never precede crash-safe storage.
+    wlr_log(WLR_INFO, "Screen lock engaged");
     // The fatal path is reachable from now on: reserve what it needs.
     lock_reserve_fatal_waiting(lock);
     vela_bluetooth_report_lock(server, true);
