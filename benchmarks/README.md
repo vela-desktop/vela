@@ -1129,12 +1129,12 @@ tests verify protocol handling only.
 Static-analysis checks retain the full benchmark sources. Narrow `NOSONAR`
 annotations identify false positives from the agentic-workflow rules S8705 and
 S8707: this is an operator-invoked local CLI, with deliberately chosen input and
-output paths, not an LLM tool or server endpoint. The S6549 annotation covers
-only the namespace-isolation check for the synthetic benchmark fixture: its
-path is reconstructed from the bounded run ID and must match the saved state
-before any namespace query. It does not test personal files or expose a file
-existence API. These six reviewed sinks use rule-specific annotations, leaving
-other rules active on the same lines. Other annotations identify
+output paths, not an LLM tool or server endpoint. The five reviewed S8707 sinks
+use line-local annotations; the security analyzer does not honor the Python
+rule-specific form for these findings. The namespace-isolation check reconstructs
+the synthetic fixture from the bounded run ID and requires it to match saved
+state before any namespace query. It neither tests personal files nor exposes
+a file-existence API, and needs no S6549 suppression. Other annotations identify
 the password-lock status label and temporary-directory constants used only for
 namespace containment comparisons. The S6350 annotation on the fixed-operation
 executor documents its root-owned state and freshly verified NSS identity

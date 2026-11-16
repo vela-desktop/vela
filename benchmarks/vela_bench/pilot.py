@@ -501,7 +501,7 @@ def verify_session(host, record, state, layout=Layout()):
     # exclusion in BOTH process trees, without inspecting personal documents.
     for pid in (leader, manager):
         view = Path(f"/proc/{pid}/root")
-        if (view / fixture.relative_to("/")).exists():  # NOSONAR(S6549): checks only the reconstructed synthetic fixture, never personal files or a caller-selected path.
+        if (view / fixture.relative_to("/")).exists():
             raise BenchError("Synthetic personal-home fixture visible in target/user-manager namespace")
         if not (view / str(layout.home).lstrip("/") / ".pilot-profile").is_file():
             raise BenchError("Managed NSS home unavailable in target/user-manager namespace")
