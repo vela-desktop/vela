@@ -38,13 +38,16 @@ owner using `busctl --user` and `GetConnectionUnixProcessID`:
 2. If **another** daemon owns the bus name, report a conflict. Do not replace,
    terminate, or reconfigure someone else's password store.
 3. For KWallet, **also inspect `org.kde.kwalletd6`**, the native KDE API:
-   `kwalletd6` and `ksecretd` can be separate processes. If KWallet's
-   native API is available but `org.freedesktop.secrets` is not, report
-   `limited`, not a full success or a broken wallet. Some Chromium/KDE
-   clients may still work, but generic libsecret consumers (including `gh`)
-   need Secret Service. Do not start a competing native daemon.
-4. If no compatible owner exists, check the selected daemon executable explicitly.
-   Start the matching Vela-owned systemd unit, then verify the bus owner.
+   `kwalletd6` is the compatibility wrapper, while `ksecretd` owns
+   `org.freedesktop.secrets`. Starting `kwalletd6` does not start the
+   Secret Service provider reliably. If only the native API is running,
+   attempt to start **ksecretd**; leave the native daemon untouched.
+   Report `limited` only if Secret Service is still unavailable, because
+   libsecret clients (including `gh`) need it.
+4. If no compatible Secret Service owner exists, check the selected daemon
+   executable explicitly (for KWallet, `/usr/bin/ksecretd`, not
+   `/usr/bin/kwalletd6`). Start the matching Vela-owned systemd unit,
+   then verify the bus owner.
    `ConditionFileIsExecutable` and a successful `systemctl start` on their
    own **do not** prove that the provider is usable.
 5. If the bus response is unreadable, no owner appears, or the selected
@@ -61,6 +64,9 @@ Only the two Vela-owned compatibility units are stopped at logout; pre-existing
 PAM/user daemon processes are not stopped. A supervised compositor restart
 keeps the initial selection and does not re-run the provider startup. The
 GNOME `--start` command can reuse a daemon initialized or unlocked by PAM.
+KWallet's `ksecretd` can be started by PAM before Vela; if it already owns
+Secret Service, Vela does not launch or stop another instance. The native
+`kwalletd6` wrapper is left to KDE's normal D-Bus activation.
 Automatic unlocking itself depends on the host distribution's PAM configuration
 and is not promised by this workaround. `busctl` is provided by systemd on
 supported distributions.
@@ -94,8 +100,9 @@ of an unconfigured session.
 - Arch SDDM + an existing KWallet: select KWallet, login again, check the
   same clients and confirm both `org.kde.kwalletd6` and, when enabled,
   `org.freedesktop.secrets` (often owned by `ksecretd`). Verify that a
-  native-only KWallet is reported as `limited` rather than as missing.
-  Verify that a missing `kwalletd6` is clearly reported.
+  native-only KWallet causes Vela to attempt starting `ksecretd`,
+  and that a failure is reported as `limited` rather than claiming success.
+  Verify that a missing `ksecretd` is clearly reported.
 - Verify the first-login modal appears regardless of the implicit KWallet
   fallback and repeats on a new login when dismissed; choosing either provider
   persists `secret-backend` in `vela.conf`. After saving, verify that it
