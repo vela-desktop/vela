@@ -649,7 +649,7 @@ jobs:
           # Reruns must never overwrite already-published release bytes.
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --json isPrerelease --jq '.isPrerelease' | grep -Fxq true
+              --json isDraft --jq '.isDraft' | grep -Fxq false
             for asset in "${packages[0]}" "${fedora44_packages[0]}" "${fedora45_packages[0]}" "${ubuntu_packages[0]}" \
                          SHA256SUMS SHA256SUMS-fedora SHA256SUMS-fedora-45 SHA256SUMS-ubuntu; do
               gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
@@ -667,6 +667,6 @@ jobs:
               "${fedora44_packages[0]}" SHA256SUMS-fedora \
               "${fedora45_packages[0]}" SHA256SUMS-fedora-45 \
               "${ubuntu_packages[0]}" SHA256SUMS-ubuntu \
-              --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease \
+              --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease=false \
               --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes
           fi
