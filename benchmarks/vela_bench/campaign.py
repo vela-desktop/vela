@@ -738,7 +738,7 @@ def export_campaign(parent, data, layout=Layout()):
     parent = Path(parent)
     parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local export parent, no agent/server.
     directory = parent / ("campaign-" + identity(data["run_id"]))
-    directory.mkdir(mode=0o755)
+    directory.mkdir(mode=0o755)  # NOSONAR(S8707): exclusive validated run name beneath the operator-selected export parent.
     hashes = {}
 
     def copy_evidence(path, output):

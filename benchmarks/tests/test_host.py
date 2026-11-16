@@ -194,6 +194,19 @@ class HostOperations(unittest.TestCase):
                     create_fixture(changed)
                 mkdir.assert_not_called()
 
+    def test_session_verification_rejects_foreign_fixture_before_namespace_queries(self):
+        from vela_bench.pilot import verify_session
+        state = {"run_id": "a" * 32, "fixture": "/home/.vela-benchmark-" + "a" * 32}
+        for changed in ({**state, "run_id": "../escape"}, {**state, "run_id": None},
+                        {**state, "fixture": state["fixture"] + "/../other"},
+                        {**state, "fixture": "/home/personal-document"}):
+            with self.subTest(state=changed), patch("vela_bench.pilot.logind_sessions") as sessions, \
+                    patch.object(Path, "exists") as exists:
+                with self.assertRaisesRegex(BenchError, "Invalid fixture"):
+                    verify_session(self.host, {}, changed, self.layout)
+                sessions.assert_not_called()
+                exists.assert_not_called()
+
     def test_recovery_refuses_a_fixture_symlink_without_unlinking_its_target(self):
         self.setup_account()
         directory = self.pilot_state()
