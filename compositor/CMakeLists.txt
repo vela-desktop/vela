@@ -313,7 +313,8 @@ if(VELA_BUILD_TOOLS)
         add_dependencies(vela-pixman-fail-test vela-pixman-fail-preload)
         add_test(NAME compositor.pixman-fail-shim COMMAND ${CMAKE_COMMAND} -E env
             "LD_PRELOAD=$<TARGET_FILE:vela-pixman-fail-preload>" $<TARGET_FILE:vela-pixman-fail-test>)
-        set_tests_properties(compositor.pixman-fail-shim PROPERTIES TIMEOUT 10)
+        set_tests_properties(compositor.pixman-fail-shim PROPERTIES TIMEOUT 10
+            WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
     endif()
 
     # LD_PRELOAD shim that makes getline fail partway through a chosen file,
@@ -668,7 +669,8 @@ if(VELA_BUILD_TOOLS)
     add_dependencies(vela-lock-exit-test vela-libc-fail-preload)
     add_test(NAME compositor.lock-unsafe-exit COMMAND ${CMAKE_COMMAND} -E env
         "LD_PRELOAD=${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-libc-fail-preload>" $<TARGET_FILE:vela-lock-exit-test>)
-    set_tests_properties(compositor.lock-unsafe-exit PROPERTIES TIMEOUT 10)
+    set_tests_properties(compositor.lock-unsafe-exit PROPERTIES TIMEOUT 10
+        WORKING_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}")
 
     find_package(GTest)
     if(GTest_FOUND)
