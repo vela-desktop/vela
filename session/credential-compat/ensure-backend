@@ -5,6 +5,67 @@
 # TEMPORARY until Vela Secrets. Source from vela-session-env on FIRST_START only.
 # Never read credentials or terminate a daemon owned by PAM or another desktop.
 
+vela_credential_session_current()
+{
+    # Standalone checks have no login identity. The asynchronous start-hook
+    # worker must never act on a later login reusing the same display.
+    [ -n "${VELA_CREDENTIAL_SESSION_TOKEN:-}" ] || return 0
+    [ -n "${VELA_CREDENTIAL_SESSION_STATE:-}" ] &&
+        [ -r "$VELA_CREDENTIAL_SESSION_STATE" ] &&
+        [ "$(cat "$VELA_CREDENTIAL_SESSION_STATE")" = "$VELA_CREDENTIAL_SESSION_TOKEN" ]
+}
+
+# Serialize login changes and side effects on the shared user manager/status.
+# Never unlink this lock: all sessions must keep using the same inode.
+vela_credential_lock()
+{
+    [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] || return 1
+    umask 077
+    exec 9>"$XDG_RUNTIME_DIR/vela-credential-compat.lock" || return 1
+    flock -x 9
+}
+
+vela_credential_unlock()
+{
+    flock -u 9
+    exec 9>&-
+}
+
+vela_credential_action()
+{
+    if [ -z "${VELA_CREDENTIAL_SESSION_TOKEN:-}" ]; then
+        "$@"
+        return $?
+    fi
+    (
+        vela_credential_lock || exit 1
+        vela_credential_session_current || exit 0
+        "$@"
+    )
+}
+
+vela_credential_activate_session()
+{
+    if systemctl --user cat vela-session.target > /dev/null 2>&1; then
+        systemctl --user --no-block start vela-session.target
+    fi
+}
+
+vela_credential_notify_issue()
+{
+    command -v notify-send >/dev/null 2>&1 || return 0
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] &&
+        [ "$(cat "$XDG_RUNTIME_DIR/vela-credential-compat.status" 2>/dev/null)" = limited ]; then
+        notify-send -a "Vela Desktop" -u normal -t 20000 \
+            "KWallet: limited compatibility" \
+            "KWallet's native API works, but Secret Service is unavailable. Check Settings > System."
+    else
+        notify-send -a "Vela Desktop" -u critical -t 20000 \
+            "Password manager unavailable" \
+            "Vela could not use the selected password manager. Open Settings > System and check the session log."
+    fi
+}
+
 vela_credential_owner()
 {
     # Do not autoactivate either service while identifying the current owner.
@@ -55,7 +116,87 @@ vela_credential_owner()
     esac
 }
 
+vela_credential_kwallet_pending()
+(
+    # Read process/socket metadata only, never cmdline, environ, descriptors,
+    # the PAM socket, or wallet contents. The optional proc root is for tests;
+    # the session always uses the kernel's /proc.
+    proc_root=${1:-/proc}
+    user_id=$(id -u) || { printf '%s\n' unknown; exit; }
+    [ -r "$proc_root/self/status" ] || { printf '%s\n' unknown; exit; }
+    IFS=$(printf ' \t')
+
+    # kwallet-pam binds this listener before its daemonizing parent returns.
+    # It also covers the short interval before the child execs ksecretd. An
+    # inherited variable or a stale socket pathname alone proves nothing.
+    if [ -n "${PAM_KWALLET5_LOGIN:-}" ]; then
+        metadata_seen=0
+        if ! {
+            while read -r _address _refs _protocol flags type _state _inode path; do
+                metadata_seen=1
+                if [ "$path" = "$PAM_KWALLET5_LOGIN" ] &&
+                    [ "$flags" = 00010000 ] && [ "$type" = 0001 ]; then
+                    printf '%s\n' pending
+                    exit
+                fi
+            done < "$proc_root/net/unix"
+        } 2>/dev/null; then
+            printf '%s\n' unknown
+            exit
+        fi
+        [ "$metadata_seen" -eq 1 ] || { printf '%s\n' unknown; exit; }
+    fi
+
+    for process in "$proc_root"/[0-9]*; do
+        [ -d "$process" ] || continue
+        # comm remains readable for our own processes, including while PAM
+        # waits before D-Bus registration. Exe and effective UID confirm it.
+        if ! { IFS= read -r name < "$process/comm"; } 2>/dev/null; then
+            continue
+        fi
+        [ "$name" = ksecretd ] || continue
+        effective_uid=
+        state=
+        if ! {
+            while read -r key first second _rest; do
+                case "$key" in
+                    State:) state=$first ;;
+                    Uid:) effective_uid=$second; break ;;
+                esac
+            done < "$process/status"
+        } 2>/dev/null; then
+            [ -d "$process" ] || continue
+            printf '%s\n' unknown
+            exit
+        fi
+        case "$state" in Z|X|x) continue ;; esac
+        case "$effective_uid" in
+            ''|*[!0-9]*)
+                [ -d "$process" ] || continue
+                printf '%s\n' unknown
+                exit ;;
+        esac
+        [ "$effective_uid" = "$user_id" ] || continue
+        executable=$(readlink "$process/exe" 2>/dev/null) || {
+            [ -d "$process" ] || continue
+            printf '%s\n' unknown
+            exit
+        }
+        case "$executable" in
+            */ksecretd|*/ksecretd\ \(deleted\))
+                printf '%s\n' pending
+                exit ;;
+        esac
+    done
+    printf '%s\n' none
+)
+
 vela_credential_mark()
+{
+    vela_credential_action vela_credential_write_status "$@"
+}
+
+vela_credential_write_status()
 {
     # XDG_RUNTIME_DIR is private (0700). Do not write to a predictable /tmp path.
     if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ]; then
@@ -81,7 +222,9 @@ vela_credential_ensure()
     backend=$1
     binary=$2
     unit=$3
+    vela_credential_session_current || exit 0
     current=$(vela_credential_owner)
+    native_available=0
     case "$current" in
         "$backend")
             # PAM or another session already owns the CORRECT backend.
@@ -97,8 +240,11 @@ vela_credential_ensure()
                 native=$(vela_credential_owner org.kde.kwalletd6)
                 case "$native" in
                     kwallet)
-                        vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; enable the KWallet Secret Service backend'
-                        exit 1 ;;
+                        # The native compatibility wrapper may start before its
+                        # Secret Service provider (ksecretd). Do not mistake
+                        # this for a terminal failure. Check for a pending PAM
+                        # instance before launching the separate provider.
+                        native_available=1 ;;
                     none) ;;
                     unknown)
                         vela_credential_mark unverified 'cannot check the existing KWallet service'
@@ -116,11 +262,50 @@ vela_credential_ensure()
             exit 1 ;;
     esac
 
+    if [ "$backend" = kwallet ]; then
+        # PAM can be waiting for its hash/environment without owning any bus
+        # name yet (notably KWallet 6.14). Never race it with a fresh provider.
+        attempt=0
+        while :; do
+            vela_credential_session_current || exit 0
+            current=$(vela_credential_owner)
+            case "$current" in
+                "$backend") vela_credential_mark ok ''; exit 0 ;;
+                none) ;;
+                unknown)
+                    vela_credential_mark unverified 'cannot identify the existing Secret Service owner'
+                    exit 1 ;;
+                *)
+                    vela_credential_mark conflict "Secret Service already belongs to $current, not $backend"
+                    exit 1 ;;
+            esac
+            pending=$(vela_credential_kwallet_pending)
+            case "$pending" in
+                none) break ;;
+                pending)
+                    if [ "$attempt" -ge 10 ]; then
+                        vela_credential_mark unverified 'an existing KWallet provider is still starting; leaving it untouched'
+                        exit 1
+                    fi
+                    sleep 0.2
+                    attempt=$((attempt + 1)) ;;
+                *)
+                    vela_credential_mark unverified 'cannot check for a pending KWallet provider'
+                    exit 1 ;;
+            esac
+        done
+    fi
+
     if [ ! -x "$binary" ]; then
-        vela_credential_mark missing "$binary is not installed or executable"
+        if [ "$native_available" -eq 1 ]; then
+            vela_credential_mark limited "KWallet native API works, but $binary is not installed or executable"
+        else
+            vela_credential_mark missing "$binary is not installed or executable"
+        fi
         exit 1
     fi
-    if ! systemctl --user start "$unit"; then
+    vela_credential_session_current || exit 0
+    if ! vela_credential_action systemctl --user --no-block start "$unit"; then
         vela_credential_mark failed "cannot start $unit"
         exit 1
     fi
@@ -130,13 +315,14 @@ vela_credential_ensure()
     # An already-existing PAM-owned provider never reaches this branch.
     vela_credential_stop_started_unit()
     {
-        systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
+        vela_credential_action systemctl --user --no-block stop "$unit" >/dev/null 2>&1 || :
     }
 
     # systemctl start can succeed even if a unit is skipped by a Condition,
     # and --start may return after attaching to a PAM-owned keyring.
     # Verify the actual D-Bus owner, not the unit's ActiveState.
     for attempt in 1 2 3 4 5 6 7 8 9 10; do
+        vela_credential_session_current || exit 0
         current=$(vela_credential_owner)
         case "$current" in
             "$backend") vela_credential_mark ok ''; exit 0 ;;
@@ -151,14 +337,35 @@ vela_credential_ensure()
                 exit 1 ;;
         esac
     done
+    vela_credential_session_current || exit 0
+    # Gather fallback information first: its bus lookup may itself allow the
+    # Secret Service provider to become ready. The final authoritative lookup
+    # must follow *all* waits/queries before native-only cleanup.
+    native=none
     if [ "$backend" = kwallet ]; then
         native=$(vela_credential_owner org.kde.kwalletd6)
+    fi
+    current=$(vela_credential_owner)
+    case "$current" in
+        "$backend") vela_credential_mark ok ''; exit 0 ;;
+        none) ;;
+        unknown)
+            vela_credential_stop_started_unit
+            vela_credential_mark unverified 'cannot identify the Secret Service owner'
+            exit 1 ;;
+        *)
+            vela_credential_stop_started_unit
+            vela_credential_mark conflict "Secret Service belongs to $current, not $backend"
+            exit 1 ;;
+    esac
+    if [ "$backend" = kwallet ]; then
         case "$native" in
             kwallet)
-                # The unit started successfully and its native API works.
-                # Keep OUR unit running for native KWallet applications, but
-                # expose the missing Secret Service API as a limited state.
-                vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; enable the KWallet Secret Service backend'
+                # Our unit launches ksecretd, not kwalletd6. If it never
+                # acquires Secret Service, stop only our unit; never stop the
+                # independently owned native KWallet compatibility daemon.
+                vela_credential_stop_started_unit
+                vela_credential_mark limited 'KWallet native API works, but Secret Service is unavailable; check ksecretd and its configuration'
                 exit 1 ;;
             unknown)
                 vela_credential_stop_started_unit

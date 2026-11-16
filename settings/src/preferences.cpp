@@ -1032,7 +1032,7 @@ bool Preferences::isSecretBackendInstalled(const QString& backend) const
         return false;
     }
     const QString binary = backend == QLatin1String("gnome")
-        ? QStringLiteral("/usr/bin/gnome-keyring-daemon") : QStringLiteral("/usr/bin/kwalletd6");
+        ? QStringLiteral("/usr/bin/gnome-keyring-daemon") : QStringLiteral("/usr/bin/ksecretd");
     return QFileInfo(binary).isExecutable();
 }
 
