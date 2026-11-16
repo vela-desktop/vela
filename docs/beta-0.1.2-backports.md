@@ -291,3 +291,25 @@ metadata and LeakSanitizer access.
 These CPU checks do not establish a successful GPU rerun. Keep the follow-up
 in draft until review and hardware validation; rerun the complete required
 AMD/NVIDIA suites on the final revision, with Intel as additional coverage.
+
+### NVIDIA blackout-crash injection follow-up
+
+On `0f274b9`, [the NVIDIA rerun](https://github.com/vela-desktop/vela/actions/runs/43915607940/job/133471975176)
+passes 24 of 25 GPU suites. The remaining failures are the SIGSEGV and SIGABRT
+variants of `test_crash_during_lock_blackout_restarts_locked`: the barrier is
+reached, but the supervisor exits with status 0 instead of restarting locked.
+AMD and Intel runs on that revision pass.
+
+The test must not assume a process-directed crash signal terminates every
+thread before the resumed main thread can signal the supervisor. The barrier
+now accepts the intended crash signal; after SIGCONT, that same thread resets
+its disposition, unblocks it and raises it before the intercepted SIGTERM can
+be forwarded. The functional test sends only SIGCONT and retains its actual
+crash, locked-restart and eventual-unlock assertions.
+
+The CPU regression repeats both signals ten times with four worker threads,
+an initially blocked signal and an ignored disposition. It requires termination
+by the exact requested signal and no SIGTERM reaching the parent. It passes
+natively and with ASan/UBSan plus leak detection. Negative controls reject
+missing crash injection, missing disposition reset and missing unblocking.
+A complete NVIDIA GPU rerun on the final reviewed revision remains required.
