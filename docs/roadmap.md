@@ -11,9 +11,9 @@ Vela **0.1 is the first beta**, released as
 [`v0.1.0`](https://github.com/vela-desktop/vela/releases/tag/v0.1.0) on
 31 October 2026. "Done" means implemented on **main**, not
 necessarily available in the latest tagged Beta or validated on every GPU
-and driver: see [hardware coverage](hardware.md) for current limits. Larger changes get
-their own design documents; the roadmap records intent rather than replacing
-those specifications.
+and driver: see [hardware coverage](hardware.md) for current limits. Larger
+changes get their own design documents; the roadmap records intent rather
+than replacing those specifications.
 
 ## 0.1 — First beta: stability, integration, release readiness
 
@@ -77,7 +77,8 @@ the only feature exception.
   ([#177](https://github.com/vela-desktop/vela/pull/177)).
 
 **Feature freeze:** 0.1.x remains a maintenance series, without new
-user-facing features. The [0.1.2 tracker #225](https://github.com/vela-desktop/vela/issues/225)
+user-facing features. The
+[0.1.2 tracker #225](https://github.com/vela-desktop/vela/issues/225)
 is separate from the next minor release. The
 [OOM policy #148](https://github.com/vela-desktop/vela/pull/148) has
 already merged into main as post-0.1 work, not an outstanding beta blocker.
@@ -107,7 +108,10 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   screen-sharing indicator, capture attribution and automatic
   Do Not Disturb ([#220](https://github.com/vela-desktop/vela/pull/220));
   right-click notification dismissal
-  ([#188](https://github.com/vela-desktop/vela/pull/188)).
+  ([#188](https://github.com/vela-desktop/vela/pull/188));
+  a taskbar that pages its app buttons when space runs out
+  ([#219](https://github.com/vela-desktop/vela/issues/219),
+  [#266](https://github.com/vela-desktop/vela/pull/266)).
   Expressive already implements a grouped-notification variant.
 - **Integration and compatibility:** update-check scheduling
   ([#190](https://github.com/vela-desktop/vela/pull/190));
@@ -115,7 +119,10 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   ([#247](https://github.com/vela-desktop/vela/pull/247));
   Fedora 45 packaging ([#224](https://github.com/vela-desktop/vela/pull/224));
   a temporary choice of secret backend pending Vela Secrets
-  ([#255](https://github.com/vela-desktop/vela/pull/255));
+  ([#222](https://github.com/vela-desktop/vela/issues/222),
+  [#255](https://github.com/vela-desktop/vela/pull/255)) and KWallet's Secret Service
+  started through `ksecretd`
+  ([#277](https://github.com/vela-desktop/vela/pull/277));
   and experimental Vulkan Venus virtual-machine support
   ([#251](https://github.com/vela-desktop/vela/pull/251)).
   Experimental capabilities still need hardware validation.
@@ -128,6 +135,9 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [#252](https://github.com/vela-desktop/vela/pull/252));
   compositor security hardening
   ([#258](https://github.com/vela-desktop/vela/pull/258));
+  Settings that keep the saved preference when a write fails
+  ([#218](https://github.com/vela-desktop/vela/issues/218),
+  [#267](https://github.com/vela-desktop/vela/pull/267));
   x86-64-v3 builds ([#245](https://github.com/vela-desktop/vela/pull/245));
   and experimental Intel ANV GPU CI
   ([#226](https://github.com/vela-desktop/vela/pull/226)).
@@ -140,20 +150,17 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [always-on-top #108](https://github.com/vela-desktop/vela/pull/108).
   Both are older draft PRs requiring compatibility work, review and tests;
   do not merge them solely to satisfy the roadmap.
-- Fix [taskbar overflow #219](https://github.com/vela-desktop/vela/issues/219).
-  Evaluate taskbar app shortcuts (Super+1 through Super+9) and configurable
+- Evaluate taskbar app shortcuts (Super+1 through Super+9) and configurable
   initial NumLock state requested in
   [community feedback #214](https://github.com/vela-desktop/vela/issues/214).
 - Finish the desktop configuration fix
   [#235](https://github.com/vela-desktop/vela/pull/235) /
-  [#236](https://github.com/vela-desktop/vela/issues/236)
-  and consistent Settings write-failure handling
-  ([#218](https://github.com/vela-desktop/vela/issues/218));
-  test keyring compatibility on real GNOME/KDE sessions
-  ([#222](https://github.com/vela-desktop/vela/issues/222)).
-- Optionally evaluate taskbar auto-hide, Start file/settings search,
-  and [nested Distrobox #203](https://github.com/vela-desktop/vela/pull/203)
-  only if bounded and well tested.
+  [#236](https://github.com/vela-desktop/vela/issues/236).
+- Optionally evaluate
+  [nested Distrobox #203](https://github.com/vela-desktop/vela/pull/203)
+  and, from the [backlog](#next--not-yet-assigned-to-a-release), taskbar
+  auto-hide and Start file/settings search, only if bounded and well
+  tested.
 
 **Release gate:** decide the final shortlist, freeze user-facing work and
 validate the exact candidate commit with required AMD/NVIDIA GPU suites,
@@ -199,17 +206,18 @@ backlog** below, not silently committed to this release.
 Possible milestone for a distinctive, coherent default Vela visual language
 across compositor-owned chrome, shell, Settings, Files and first-party
 tools. The theme system and Vela Expressive already in main are
-not themselves the coordinated default redesign. Candidate supporting UX work: Start's Recommended content and
-pinned-app folders, taskbar layouts (including vertical and uncombined
-buttons), app badges, system sounds, font/regional settings and
-printing/scanning integration. Which of these belongs in 0.4 is
-provisional.
+not themselves the coordinated default redesign. Candidate supporting UX
+work: Start's Recommended content and pinned-app folders, taskbar layouts
+(including vertical and uncombined buttons), app badges, system sounds,
+font/regional settings and printing/scanning integration. Which of these
+belongs in 0.4 is provisional.
 
 **Design development is intentionally independent of release integration.**
 A dedicated long-lived branch may be used for gradual exploration and
-prototyping **even before 0.2 ships**. Early exploration does not by itself justify merging an unfinished
-cross-desktop redesign into 0.2 or 0.3. Validate reusable components, scaling,
-accessibility and migration before proposing an integration series.
+prototyping **even before 0.2 ships**. Early exploration does not by itself
+justify merging an unfinished cross-desktop redesign into 0.2 or 0.3.
+Validate reusable components, scaling, accessibility and migration before
+proposing an integration series.
 
 Type and icon work may live in **separate dedicated repositories**
 (for a Vela font and an icon system, respectively), allowing independent
@@ -262,6 +270,8 @@ own design, cost/maintenance analysis and definition of done.
 
 This unscheduled backlog includes the previous 0.3 everyday-completeness
 candidates. Do not treat them as promises for the new input-focused 0.3.
+A row may also be named as a candidate in a release section above; it stays
+here until it is merged.
 
 | Candidate | Status |
 |---|---|
@@ -269,7 +279,8 @@ candidates. Do not treat them as promises for the new input-focused 0.3.
 | Window rules, remembering position/size, cross-monitor/desktop shortcuts and picture-in-picture | Unscheduled |
 | Super+P projection menu, mirroring and improved VRR/animation policy | Unscheduled; physical display validation required |
 | External touchscreen-to-output mapping beyond initial #94 scope | Unscheduled |
-| Start file/settings search, emoji picker, taskbar auto-hide, keyboard backlight, brightness key OSD and shortcut editor | Unscheduled |
+| Start file/settings search and taskbar auto-hide | Unscheduled; optional 0.2 candidates |
+| Emoji picker, keyboard backlight, brightness key OSD and shortcut editor | Unscheduled |
 | Fullscreen-aware DND and broader grouped notifications beyond Expressive | Unscheduled; screen-sharing DND and Expressive grouping already implemented |
 | Screenshot annotations, Files batch rename, post-crash notification leading to vela-report | Unscheduled |
 | Further Ubuntu updater and package integration validation | Continuous |
@@ -359,11 +370,10 @@ This page changes in the same pull request as the work it describes:
   actually published Beta features.
 - Finalize the remaining 0.2 scope explicitly; review and either accept
   or defer old draft PRs, never merge them unconditionally.
-- Touch, pen, IME and OSK provisionally target 0.3, not 0.2.
 - Mark all unreleased targets as estimates and revise them after testing.
 - Work on a future redesign branch or independent font/icon repositories
   may begin early without merging unfinished designs into `main`.
-- When a capability actually ships, move it to **Done** and keep only
+- When a capability is merged into `main`, move it to **Done** and keep only
   its missing increment in **Next**. Never re-list implemented features
   such as clipboard history as future work.
 
