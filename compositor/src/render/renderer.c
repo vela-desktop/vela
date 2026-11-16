@@ -211,7 +211,7 @@ static void destroy(struct vela_renderer *r);
 
 struct vela_renderer *vela_renderer_create(struct vela_vulkan *vk)
 {
-    struct vela_renderer *r = calloc(1, sizeof(*r));
+    struct vela_renderer *r = VELA_NEW(struct vela_renderer);
     wlr_renderer_init(&r->base, &renderer_impl, WLR_BUFFER_CAP_DMABUF);
     r->vk = vk;
     wl_list_init(&r->targets);
@@ -516,10 +516,7 @@ struct vela_target *vela_renderer_target(struct vela_renderer *r, struct wlr_buf
         return NULL;
     }
 
-    struct vela_target *target = calloc(1, sizeof(*target));
-    if (!target) {
-        return NULL;
-    }
+    struct vela_target *target = VELA_NEW(struct vela_target);
     target->renderer = r;
     target->format = format->srgb;
     target->dmabuf_fd = dmabuf.fd[0];

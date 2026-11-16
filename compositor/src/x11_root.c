@@ -177,11 +177,7 @@ static void handle_get_xdg_output(struct wl_client *client, struct wl_resource *
     struct wl_resource *wl_output)
 {
     struct vela_x11_root *root = wl_resource_get_user_data(manager);
-    struct xdg_output *xdg = calloc(1, sizeof(*xdg));
-    if (!xdg) {
-        wl_client_post_no_memory(client);
-        return;
-    }
+    struct xdg_output *xdg = VELA_NEW(struct xdg_output);
     xdg->resource = wl_resource_create(client, &zxdg_output_v1_interface, wl_resource_get_version(manager), id);
     if (!xdg->resource) {
         free(xdg);
@@ -224,10 +220,7 @@ static void bind_manager(struct wl_client *client, void *data, uint32_t version,
 
 struct vela_x11_root *vela_x11_root_create(struct vela_server *server)
 {
-    struct vela_x11_root *root = calloc(1, sizeof(*root));
-    if (!root) {
-        return NULL;
-    }
+    struct vela_x11_root *root = VELA_NEW(struct vela_x11_root);
     root->server = server;
     wl_list_init(&root->resources);
     root->global = wl_global_create(server->display, &zxdg_output_manager_v1_interface, XDG_OUTPUT_VERSION, root,

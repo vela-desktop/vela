@@ -281,7 +281,7 @@ int vela_supervise(int argc, char **argv)
     char **arguments = vela_supervisor_arguments(argc, argv, self, lock_state_fd, lock_state_argument,
         sizeof(lock_state_argument));
     if (!arguments) {
-        say("out of memory");
+        say("can't build the compositor's arguments");
         return 1;
     }
 

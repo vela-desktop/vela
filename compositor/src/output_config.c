@@ -43,7 +43,7 @@ static struct section *add_section(struct file *file, const char *name, size_t l
     file->sections = vela_grow(file->sections, &file->capacity, file->count + 1, sizeof(*file->sections));
     struct section *section = &file->sections[file->count++];
     memset(section, 0, sizeof(*section));
-    section->name = strndup(name, length);
+    section->name = vela_strndup(name, length);
     return section;
 }
 

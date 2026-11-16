@@ -3,6 +3,7 @@
 
 #include "shell.h"
 
+#include "alloc/alloc.h"
 #include "process.h"
 #include "server.h"
 #include "util.h"
@@ -39,7 +40,7 @@ bool vela_shell_send(struct vela_server *server, const char *line)
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
         // Line and newline in a single send: the shell reads by lines.
         size_t length = strlen(line);
-        char *message = malloc(length + 1);
+        char *message = VELA_NEW_N(char, vela_size_add(length, 1));
         memcpy(message, line, length);
         message[length] = '\n';
         sent = send(fd, message, length + 1, MSG_NOSIGNAL) == (ssize_t)(length + 1);

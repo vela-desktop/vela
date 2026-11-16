@@ -12,6 +12,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 
 #include <errno.h>
@@ -259,8 +260,8 @@ void vela_bt_search_update(struct vela_bt_daemon *d)
         }
         if (!s->running) {
             free(s->adapter);
-            s->adapter = strdup(adapter->path);
-            r = s->adapter ? set_filter(d, filter) : -ENOMEM;
+            s->adapter = vela_strdup(adapter->path);
+            r = set_filter(d, filter);
         } else if (filter && !s->filtered) {
             // A discoverable lease joined a search that wasn't.
             r = set_filter(d, true);
@@ -383,15 +384,8 @@ int vela_bt_search_start(struct vela_bt_daemon *d, sd_bus_message *call, bool di
     if (!adapter->powered) {
         return sd_bus_error_set(error, VELA_BT_ERROR("Failed"), "Bluetooth is off.");
     }
-    struct vela_bt_lease **leases = realloc(s->leases, (s->count + 1) * sizeof(*s->leases));
-    if (!leases) {
-        return -ENOMEM;
-    }
-    s->leases = leases;
-    struct vela_bt_lease *lease = calloc(1, sizeof(*lease));
-    if (!lease) {
-        return -ENOMEM;
-    }
+    s->leases = vela_grow(s->leases, &s->capacity, s->count + 1, sizeof(*s->leases));
+    struct vela_bt_lease *lease = VELA_NEW(struct vela_bt_lease);
     lease->daemon = d;
     lease->id = ++s->last_id;
     lease->discoverable = discoverable;
@@ -507,6 +501,7 @@ void vela_bt_search_free(struct vela_bt_daemon *d)
     free(s->leases);
     s->leases = NULL;
     s->count = 0;
+    s->capacity = 0;
     sd_bus_slot_unref(s->call);
     sd_bus_slot_unref(s->visible_call);
     vela_bt_waiters_reply(&s->visible_waiters, &vela_bt_not_running, false);

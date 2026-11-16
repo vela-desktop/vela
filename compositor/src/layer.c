@@ -3,6 +3,7 @@
 
 #include "layer.h"
 
+#include "alloc/alloc.h"
 #include "focus.h"
 #include "listen.h"
 #include "output.h"
@@ -143,7 +144,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
         }
         wlr->output = output->wlr;
     }
-    struct vela_layer_surface *layer = calloc(1, sizeof(*layer));
+    struct vela_layer_surface *layer = VELA_NEW(struct vela_layer_surface);
     layer->owner.kind = VELA_OWNER_LAYER;
     layer->server = server;
     layer->wlr = wlr;

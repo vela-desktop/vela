@@ -32,7 +32,7 @@ add_library(vela-capture STATIC src/capture.c ${CAPTURE_GENERATED_FILES})
 target_include_directories(vela-capture PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
     "${CAPTURE_GENERATED_DIR}")
-target_link_libraries(vela-capture PUBLIC PkgConfig::CAPTURE_WAYLAND)
+target_link_libraries(vela-capture PUBLIC vela-alloc PkgConfig::CAPTURE_WAYLAND)
 target_compile_definitions(vela-capture PRIVATE _GNU_SOURCE)
 set_target_properties(vela-capture PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 target_compile_options(vela-capture PRIVATE -Wall -Wextra -Wno-unused-parameter)
