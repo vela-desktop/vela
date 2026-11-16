@@ -7,18 +7,119 @@ import contextlib
 import io
 import json
 import os
-import socket
 import shutil
+import socket
 import struct
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zlib
 
-from harness import Image, PrivateBus, Session, State, input_sleep_ms
+from harness import Image, PrivateBus, Session, State, TimeoutError, input_sleep_ms
+
+
+class OptionalIconCapability(unittest.TestCase):
+    def test_real_icon_case_gates_only_builds_without_svg(self):
+        from test_decorations import IconCache
+
+        for svg in (False, True):
+            with self.subTest(svg=svg), patch("test_decorations.Session") as factory:
+                factory.return_value.__enter__.return_value.state.return_value = {"capabilities": {"svg_icons": svg}}
+                scene = IconCache("test_evicted_icon_stays_on_screen_and_comes_back")
+                scene.write_icon = Mock(side_effect=RuntimeError("continued past capability gate"))
+                expected = RuntimeError if svg else unittest.SkipTest
+                with self.assertRaises(expected):
+                    scene.test_evicted_icon_stays_on_screen_and_comes_back()
+                self.assertEqual(scene.write_icon.call_count, int(svg))
+
+
+class TargetUploadObservation(unittest.TestCase):
+    def test_real_contention_case_uses_target_metric_and_requires_overlap(self):
+        from test_uploads import Uploads
+
+        for overlapped in (True, False):
+            with self.subTest(overlapped=overlapped), patch("test_uploads.Session") as factory:
+                vela = factory.return_value.__enter__.return_value
+                observation = {"deferred": True, "pending": True, "overlapped": overlapped, "frames": 0}
+                pending = State({"upload": {"replaced": 1}, "windows": [
+                    {"id": "greedy", "upload": {"pending": True}},
+                    {"id": "other", "upload": observation}]})
+                complete = dict(observation, pending=False, frames=2)
+                vela.state.return_value = State({"windows": [{"id": "other", "upload": complete}],
+                    "upload": {"frames_max": 999, "replaced": 1, "abandoned": 0,
+                               "chunks_peak": 16, "chunks_max": 16}})
+                vela.query.return_value = {"ok": True}
+                def waited(condition, **kwargs):
+                    self.assertTrue(condition(pending), kwargs.get("what", "condition"))
+                    return pending
+                vela.wait_for.side_effect = waited
+                scene = Uploads("test_competing_uploads_do_not_starve_another")
+                scene.size_for = Mock(return_value=(8192, 4608))
+                scene.open = Mock(side_effect=(("greedy", "greedy.log"), ("other", "other.log")))
+                scene.wait_client = Mock()
+                if overlapped:
+                    scene.test_competing_uploads_do_not_starve_another()
+                    scene.wait_client.assert_called_once_with("other.log", "released 0")
+                else:
+                    with self.assertRaises(AssertionError):
+                        scene.test_competing_uploads_do_not_starve_another()
+                    scene.wait_client.assert_not_called()
+                self.assertEqual([call.args[0] for call in vela.query.call_args_list],
+                                 ["test-upload-hold on", "test-upload-hold off"])
+
+
+class UploadDeviceExtents(unittest.TestCase):
+    def test_selected_buffers_fit_both_extents_and_exceed_the_actual_budget(self):
+        from test_uploads import upload_extent
+
+        budget = 128 * 1024 * 1024
+        for extent in ((4096, 16384), (16384, 4096), (8192, 5000), (32768, 2048)):
+            for requested in (4 * budget, 9 * budget // 8, 17 * budget // 16):
+                with self.subTest(extent=extent, requested=requested):
+                    width, height = upload_extent(extent, requested, budget, True)
+                    self.assertLessEqual(width, extent[0])
+                    self.assertLessEqual(height, extent[1])
+                    self.assertGreater(width * height * 4, budget)
+        with self.assertRaises(unittest.SkipTest):
+            upload_extent((4096, 4096), 4 * budget, budget, True)
+        width, height = upload_extent((4096, 4096), 4 * budget, budget)
+        self.assertEqual((width, height), (4096, 4096))
+        with self.assertRaises(AssertionError):
+            upload_extent((0, 4096), budget, budget)
+
+
+class RecorderReadiness(unittest.TestCase):
+    def recorder(self, program):
+        child = subprocess.Popen([sys.executable, "-u", "-c", program],
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        def cleanup():
+            if child.poll() is None:
+                child.kill()
+            child.communicate(timeout=5)
+        self.addCleanup(cleanup)
+        return child
+
+    def test_waits_for_a_complete_readiness_line(self):
+        from test_uploads import Uploads
+
+        child = self.recorder("import sys,time; print('starting'); "
+                              "sys.stdout.write('recor'); sys.stdout.flush(); "
+                              "time.sleep(0.05); print('ding'); time.sleep(20)")
+        Uploads().wait_recorder(child)
+        self.assertIsNone(child.poll())
+
+    def test_stalled_partial_line_is_bounded_and_recorder_is_reaped(self):
+        from test_uploads import Uploads
+
+        child = self.recorder("import sys,time; sys.stdout.write('first frame stalled'); "
+                              "sys.stdout.flush(); time.sleep(20)")
+        with self.assertRaisesRegex(AssertionError, "first frame stalled"):
+            Uploads().wait_recorder(child, timeout=0.2)
+        self.assertIsNotNone(child.returncode)
 
 
 class InputActionTimeouts(unittest.TestCase):
@@ -61,6 +162,128 @@ class StopBarrierScheduling(unittest.TestCase):
             Supervisor()._wait_stopped(123)
 
 
+class PersistentInput(unittest.TestCase):
+    def run_input(self, reply):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        program = os.path.join(directory, "input")
+        commands = os.path.join(directory, "commands")
+        with open(program, "w") as script:
+            script.write(f"#!{sys.executable}\nimport sys\n"
+                         "for number, line in enumerate(sys.stdin):\n"
+                         f"    with open({commands!r}, 'a') as log: log.write(line)\n"
+                         "    if number == 0: print('OK', flush=True)\n"
+                         f"    else: {reply}\n")
+        os.chmod(program, 0o700)
+        self.enterContext(patch("harness.tool", return_value=program))
+        session = Session()
+        session.client_env = dict(os.environ)
+        return session, commands
+
+    def test_one_keyboard_handles_multiple_actions_and_closes_after_a_failure(self):
+        session, commands = self.run_input("print('OK', flush=True)")
+        with self.assertRaisesRegex(RuntimeError, "test failure"):
+            with session.input_session() as send:
+                send("type", "first")
+                send("key", "Return")
+                raise RuntimeError("test failure")
+        # The initialization appears once, before any panel input, and
+        # cleanup closes stdin even when the caller raises inside the scene.
+        with open(commands) as log:
+            self.assertEqual(log.read(), "sleep\t0\ntype\tfirst\nkey\tReturn\n")
+
+    def test_action_words_can_be_typed_without_becoming_timeout_commands(self):
+        session, commands = self.run_input("print('OK', flush=True)")
+        with session.input_session() as send:
+            send("type", "sleep", "key", "Return")
+        with open(commands) as log:
+            self.assertEqual(log.read(), "sleep\t0\ntype\tsleep\tkey\tReturn\n")
+
+    def test_partial_reply_times_out_and_cleans_up(self):
+        session, _ = self.run_input("sys.stdout.write('O'); sys.stdout.flush()")
+        with patch("harness.TIME_SCALE", 0.02):
+            with self.assertRaisesRegex(TimeoutError, "timed out replying"):
+                with session.input_session() as send:
+                    send("key", "Return")
+
+    def test_refused_actions_and_exited_devices_fail(self):
+        for reply, message in (("print('ERROR', flush=True)", "refused"),
+                               ("sys.exit(0)", "exited before replying")):
+            with self.subTest(reply=reply):
+                session, _ = self.run_input(reply)
+                with self.assertRaisesRegex(AssertionError, message):
+                    with session.input_session() as send:
+                        send("key", "Return")
+
+
+class SessionReconnect(unittest.TestCase):
+    def session(self):
+        session = Session()
+        session.process = Mock()
+        session.process.poll.return_value = None
+        session.log_text = lambda: "restart diagnostic"
+        return session
+
+    def test_restarted_process_can_exist_before_its_socket_listens(self):
+        session = self.session()
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as listener:
+            session.socket_path = os.path.join(directory, "command.sock")
+            listener.bind(session.socket_path)  # The old path can exist but refuse connections.
+            listener.settimeout(2)
+
+            def start_command_socket():
+                time.sleep(0.03)
+                listener.listen()
+                with listener.accept()[0] as connection:
+                    connection.recv(1024)
+                    connection.sendall(b'{"outputs":[{"name":"HEADLESS-1"}]}\n')
+
+            server = threading.Thread(target=start_command_socket)
+            server.start()
+            try:
+                state = session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=1, interval=0.005)
+                self.assertEqual(state["outputs"][0]["name"], "HEADLESS-1")
+            finally:
+                server.join(timeout=3)
+            self.assertFalse(server.is_alive())
+
+    def test_reconnection_errors_are_only_retried_when_requested(self):
+        for error in (FileNotFoundError(), ConnectionRefusedError(), ConnectionResetError(), BrokenPipeError()):
+            with self.subTest(error=type(error).__name__):
+                session = self.session()
+                session.state = Mock(side_effect=[error, State({"outputs": [1]})])
+                with self.assertRaises(type(error)):
+                    session.wait_for(lambda s: s["outputs"])
+                session.state = Mock(side_effect=[error, State({"outputs": [1]})])
+                self.assertTrue(session.wait_for(lambda s: s["outputs"], reconnect=True)["outputs"])
+
+    def test_reconnection_is_bounded_and_reports_the_last_error(self):
+        session = self.session()
+        session.state = Mock(side_effect=ConnectionRefusedError("not ready"))
+        with self.assertRaisesRegex(TimeoutError, "ConnectionRefusedError.*not ready"):
+            session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.01, interval=0.001)
+
+    def test_exited_supervisor_and_unrelated_errors_fail_immediately(self):
+        session = self.session()
+        session.process.poll.return_value = 7
+        session.process.returncode = 7
+        with self.assertRaisesRegex(AssertionError, "supervisor exited.*7"):
+            session.wait_for(lambda s: s["outputs"], reconnect=True)
+        session.process.poll.return_value = None
+        for error in (PermissionError("denied"), json.JSONDecodeError("invalid state", "", 0)):
+            session.state = Mock(side_effect=error)
+            with self.assertRaises(type(error)):
+                session.wait_for(lambda s: s["outputs"], reconnect=True)
+
+    def test_accepted_socket_without_a_reply_still_times_out(self):
+        session = self.session()
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as listener:
+            session.socket_path = os.path.join(directory, "command.sock")
+            listener.bind(session.socket_path)
+            listener.listen()
+            with self.assertRaisesRegex(TimeoutError, "last connection error:.*[Tt]imeout"):
+                session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.02, interval=0.001)
+
+
 class CommandCleanupBarrier(unittest.TestCase):
     def test_query_observes_server_eof_after_the_reply(self):
         session = Session()
@@ -80,6 +303,22 @@ class CommandCleanupBarrier(unittest.TestCase):
             self.assertEqual(session.query("state"), {"outputs": []})
             self.assertTrue(eof_observed)
             connection.shutdown.assert_called_once_with(socket.SHUT_WR)
+
+    def test_incomplete_replies_are_connection_errors_but_complete_malformed_json_is_not(self):
+        session = Session()
+        session.socket_path = "/unused-mocked-socket"
+        for chunks in ((b'',), (b'{"outputs":', b'')):
+            with self.subTest(chunks=chunks), patch("harness.socket.socket") as factory:
+                connection = factory.return_value.__enter__.return_value
+                sequence = iter(chunks)
+                connection.recv.side_effect = lambda _size: next(sequence, b'')
+                with self.assertRaises(ConnectionResetError):
+                    session.query("state")
+        with patch("harness.socket.socket") as factory:
+            connection = factory.return_value.__enter__.return_value
+            connection.recv.side_effect = (b'{broken}\n', b'')
+            with self.assertRaises(json.JSONDecodeError):
+                session.query("state")
 
 
 class SessionCleanup(unittest.TestCase):

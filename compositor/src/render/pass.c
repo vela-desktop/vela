@@ -310,7 +310,9 @@ static void add_draw(struct vela_pass *pass, const struct draw *draw, const stru
 static bool prepare_texture(struct vela_pass *pass, const struct vela_texture_draw *in, struct draw *draw)
 {
     struct vela_texture *texture = vela_texture_from_wlr_texture(in->texture);
-    if (!texture || !texture->view || in->dst.width <= 0 || in->dst.height <= 0 || in->alpha <= 0.0f) {
+    // An image still being uploaded for the first time has nothing to show.
+    if (!texture || !texture->view || (!texture->foreign && !texture->uploaded) || in->dst.width <= 0
+        || in->dst.height <= 0 || in->alpha <= 0.0f) {
         return false;
     }
     if (in->wait_timeline) {

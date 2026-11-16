@@ -129,12 +129,14 @@ add_library(vela-pure STATIC
     src/diagnostics.c
     src/frame_clock.c
     src/geometry.c
+    src/icon_cache.c
     src/legacy_names.c
     src/lock_state.c
     src/motion.c
     src/output_config.c
     src/output_key.c
     src/path_security.c
+    src/security_policy.c
     src/sun.c
     src/supervisor_child.c
     src/sync.c
@@ -154,10 +156,12 @@ endif()
 # them, and so does the test build that counts allocations (below).
 add_library(vela-compositor-objects OBJECT
     src/a11y.c
+    src/activation.c
     src/error_screen.c
     src/bindings.c
     src/bluetooth.c
     src/brightness.c
+    src/client_policy.c
     src/command.c
     src/decoration.c
     src/focus.c
@@ -310,9 +314,9 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-sd-event-fail-preload PRIVATE ${CMAKE_DL_LIBS})
     target_compile_options(vela-sd-event-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-sd-event-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
-    # setenv and fstatat failures on the supervisor's restart path.
+    # Supervisor libc failures and isolated command-event registration failure.
     add_library(vela-libc-fail-preload MODULE tests/libc_fail_preload.c)
-    target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS})
+    target_link_libraries(vela-libc-fail-preload PRIVATE ${CMAKE_DL_LIBS} PkgConfig::WAYLAND_SERVER)
     target_compile_options(vela-libc-fail-preload PRIVATE -Wall -Wextra -Werror -fno-sanitize=all)
     set_target_properties(vela-libc-fail-preload PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_executable(vela-config-read-test tests/config_read_test.c)
@@ -328,6 +332,26 @@ if(VELA_BUILD_TOOLS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
     set_tests_properties(compositor.config-read PROPERTIES
         ENVIRONMENT "LD_PRELOAD=${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-getline-fail-preload>")
+
+    # The icon cache's entry budget and least-recently-used eviction.
+    add_executable(vela-icon-cache-test tests/icon_cache_test.c)
+    target_link_libraries(vela-icon-cache-test PRIVATE vela-pure)
+    target_compile_options(vela-icon-cache-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-icon-cache-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.icon-cache COMMAND vela-icon-cache-test)
+
+    # The same budget through the icon loader, on an icon theme the test
+    # writes: icons.c itself, with librsvg when the compositor has it.
+    add_executable(vela-icons-test tests/icons_test.c src/icons.c)
+    target_link_libraries(vela-icons-test PRIVATE vela-pure PkgConfig::WLROOTS)
+    if(RSVG_FOUND)
+        target_link_libraries(vela-icons-test PRIVATE PkgConfig::RSVG)
+        target_compile_definitions(vela-icons-test PRIVATE VELA_HAVE_RSVG=1)
+    endif()
+    target_compile_options(vela-icons-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-icons-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.icons COMMAND vela-icons-test
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
@@ -456,6 +480,31 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-wait-arrays-oom-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.wait-arrays-oom COMMAND vela-wait-arrays-oom-test)
 
+    # Parse the complete production IPC response, with and without librsvg.
+    # Minimal compositor-only builds do not gain a required Qt dependency.
+    find_package(Qt6 6.5 QUIET COMPONENTS Core)
+    if(TARGET Qt6::Core)
+        foreach(state_svg IN ITEMS 0 1)
+            if(state_svg)
+                set(state_target vela-command-state-test)
+                set(state_case compositor.command-state-json)
+            else()
+                set(state_target vela-command-state-no-svg-test)
+                set(state_case compositor.command-state-json-no-svg)
+            endif()
+            add_executable(${state_target} tests/command_state_test.cpp
+                tests/command_state_fixture.c ${VELA_PROTOCOL_HEADERS})
+            target_include_directories(${state_target} PRIVATE src ${VELA_GENERATED_DIR})
+            target_compile_definitions(${state_target} PRIVATE WLR_USE_UNSTABLE VELA_HAVE_RSVG=${state_svg})
+            target_compile_options(${state_target} PRIVATE -ffunction-sections -fdata-sections
+                -Wno-unused-parameter -Wno-missing-field-initializers)
+            target_link_options(${state_target} PRIVATE -Wl,--gc-sections)
+            target_link_libraries(${state_target} PRIVATE vela-pure Qt6::Core
+                PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+            add_test(NAME ${state_case} COMMAND ${state_target})
+        endforeach()
+    endif()
+
     # Production readback helpers: packed alpha, untouched padding and Vulkan
     # allocation/map failures, with Vulkan entry points stubbed instead of a GPU.
     add_executable(vela-readback-test tests/readback_test.c src/render/formats.c
@@ -487,6 +536,23 @@ if(VELA_BUILD_TOOLS)
         PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
     set_target_properties(vela-frame-path-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.frame-path COMMAND vela-frame-path-test)
+
+    # Shared-memory uploads under the staging budget, the deferred uploads'
+    # atomic switch and progress, and the image-extent cap: the production
+    # renderer, texture and pass code on a fake device that runs the copies
+    # and draws in memory (docs/memory-allocation-policy.md, point 6).
+    add_executable(vela-upload-test tests/upload_test.c tests/alloc_count.c src/render/formats.c
+        src/render/wait_arrays.c ${VELA_SHADERS})
+    target_include_directories(vela-upload-test PRIVATE src tests ${VELA_SHADER_DIR} ${VELA_GENERATED_DIR}
+        ${VULKAN_INCLUDE_DIRS})
+    target_compile_definitions(vela-upload-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-upload-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-upload-test PRIVATE -Wl,--gc-sections ${VELA_ALLOC_COUNT_WRAP})
+    target_link_libraries(vela-upload-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-upload-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.upload-staging COMMAND vela-upload-test)
 
     # Real output-source damage/idle policy with GPU work replaced by terminal
     # frame notifications; no private wlroots session state is accessed.
@@ -530,6 +596,26 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-x11-root-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
     add_test(NAME compositor.x11-root COMMAND vela-x11-root-test)
 
+    # App activation over real Wayland sockets with wlroots' token/serial
+    # validation; focus effects are observed without rendering or a GPU.
+    set(activation_xml ${WAYLAND_PROTOCOLS_DIR}/staging/xdg-activation/xdg-activation-v1.xml)
+    set(activation_client ${VELA_GENERATED_DIR}/xdg-activation-v1-client-protocol.h)
+    set(activation_code ${VELA_GENERATED_DIR}/xdg-activation-v1-client-protocol.c)
+    add_custom_command(OUTPUT ${activation_client} ${activation_code}
+        COMMAND ${WAYLAND_SCANNER} client-header ${activation_xml} ${activation_client}
+        COMMAND ${WAYLAND_SCANNER} private-code ${activation_xml} ${activation_code}
+        DEPENDS ${activation_xml})
+    add_executable(vela-activation-test tests/activation_test.c src/activation.c ${activation_client}
+        ${activation_code} ${VELA_PROTOCOL_HEADERS})
+    target_include_directories(vela-activation-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-activation-test PRIVATE WLR_USE_UNSTABLE _GNU_SOURCE)
+    target_compile_options(vela-activation-test PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_libraries(vela-activation-test PRIVATE vela-alloc PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::WAYLAND_CLIENT)
+    set_target_properties(vela-activation-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+    add_test(NAME compositor.activation COMMAND vela-activation-test)
+    set_tests_properties(compositor.activation PROPERTIES TIMEOUT 10)
+
     # The compositor's children on a real event loop, no GPU: an exit reaches
     # its callback, and a child that can't be watched is reaped.
     add_executable(vela-process-test tests/process_test.c src/process.c ${VELA_PROTOCOL_HEADERS})
@@ -570,6 +656,7 @@ if(VELA_BUILD_TOOLS)
             tests/output_config_test.cpp
             tests/output_key_test.cpp
             tests/path_security_test.cpp
+            tests/security_policy_test.cpp
             tests/lock_state_test.cpp
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp

@@ -291,7 +291,7 @@ Decisions already taken. Each design document explains why.
   [`vela-report`](reporting.md) for guided bug reports, `vela-update`,
   [signed packages with verified provenance](package-provenance.md) for Arch
   and Fedora and for every Beta release, and CI with sanitizers, static analysis and real AMD and NVIDIA
-  GPUs (RX 9070 XT and RTX 4070 Laptop) for GPU-affecting changes and releases.
+  GPUs (self-hosted RX 9070 XT and per-run Vast.ai NVIDIA RTX rentals) for GPU-affecting changes and releases.
 - **Languages**: English and Italian, switched live from Settings.
 
 ## Keeping this page current

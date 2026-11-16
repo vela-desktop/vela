@@ -36,6 +36,7 @@ struct vela_text;
 struct vela_output;
 struct vela_output_previews;
 struct vela_renderer;
+struct vela_client_policy;
 struct vela_scene;
 struct vela_tree;
 struct vela_view;
@@ -173,6 +174,7 @@ struct vela_server {
     struct wl_listener new_toplevel;
     struct wl_listener new_capture_request;
     struct wl_listener new_decoration;
+    struct wl_listener new_activation_token;
     struct wl_listener request_activation;
     struct wlr_xwayland *xwayland; // NULL without Xwayland
     struct wl_listener xwayland_ready;
@@ -217,6 +219,8 @@ struct vela_server {
     struct vela_child updates; // vela-update-daemon (updates.h)
     struct vela_brightness *brightness; // every output's brightness (brightness.h)
     struct vela_commands *commands; // the command socket (command.h)
+    // Which globals each client may bind (client_policy.h).
+    struct vela_client_policy *client_policy;
     // wlr-output-management (output_manager.h).
     struct wlr_output_manager_v1 *output_manager;
     struct vela_output_previews *output_previews;

@@ -18,6 +18,24 @@ Window {
     // panel. The compositor decides the width (anchored to the sides).
     visible: false
     width: 1280
+    // Fixed 0.1 geometry, shared by the app and tray overflow controls.
+    readonly property QtObject appStyle: QtObject {
+        readonly property int spacing: 4
+        readonly property int buttonWidth: 44
+        readonly property int buttonHeight: 40
+    }
+    readonly property real fixedTrayWidth: (transferIndicator.visible ? transferIndicator.width + 4 : 0)
+        + microphone.width + caffeine.width + (systemIcons.visible ? systemIcons.width + 2 : 0) + clock.width
+    readonly property real trayGroupWidth: fixedTrayWidth + (tray.visible ? tray.width + 4 : 0)
+    readonly property real fixedButtonsWidth: appStyle.buttonWidth * (Config.taskView ? 2 : 1)
+        + (Config.taskView ? appStyle.spacing : 0)
+    readonly property real trayMaximumWidth: Math.max(0, width - 24 - 8 - fixedButtonsWidth
+        - (taskRepeater.count > 0 ? appStyle.spacing + appStrip.minimumWidth : 0) - fixedTrayWidth - 4)
+    readonly property real buttonsLeft: 12
+    readonly property real buttonsRight: width - 12 - trayGroupWidth - 8
+    readonly property real buttonsAreaWidth: Math.max(0, buttonsRight - buttonsLeft)
+    readonly property real buttonsX: buttonClip.x + buttons.x
+
     height: Theme.taskbarHeight
     color: "transparent"
 
@@ -234,158 +252,199 @@ Window {
         }
     }
 
-    Row {
-        id: buttons
-        // Centered by hand instead of with anchors: so when an app opens or
-        // closes, the row slides to the new center instead of jumping. Or on
-        // the left, like earlier versions of Windows.
-        x: Config.taskbarAlignment === "left" ? 12 : Math.round((parent.width - width) / 2)
-        anchors.verticalCenter: parent.verticalCenter
-        spacing: 4
+    // Clip moving and dragged buttons too: their click targets must never
+    // enter the tray while a row animation or a resize is in progress.
+    Item {
+        id: buttonClip
+        objectName: "taskbarButtonClip"
+        x: root.buttonsLeft
+        width: Math.min(root.buttonsAreaWidth, Math.max(0,
+            (root.primary ? (transferIndicator.visible ? transferIndicator.x : tray.x) : clock.x) - x - 4))
+        height: parent.height
+        clip: true
+        Row {
+            id: buttons
+            objectName: "taskbarButtons"
+            // Centered by hand instead of with anchors: so when an app opens or
+            // closes, the row slides to the new center instead of jumping. Or on
+            // the left, like earlier versions of Windows.
+            x: Math.max(root.buttonsLeft, Math.min(root.buttonsRight - width, preferredX)) - buttonClip.x
+            readonly property real preferredX: Config.taskbarAlignment === "left"
+                ? root.buttonsLeft : Math.round((root.width - width) / 2)
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: root.appStyle.spacing
 
-        Behavior on x {
-            enabled: Theme.motion > 0
-            Eased {}
-        }
-        // The button of an app just opened comes in growing.
-        add: Transition {
-            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.normal }
-            Eased { property: "scale"; from: 1 - 0.5 * Theme.motion; to: 1; duration: Theme.slow }
-        }
-        move: Transition {
-            Eased { property: "x"; duration: Theme.normal * Theme.motion }
-        }
-
-        TaskbarButton {
-            id: startButton
-            active: Shell.startMenuOpen
-            onClicked: { root.fromHere(); Shell.toggleStartMenu() }
-            onRightClicked: root.openWinX(false)
-            StartGlyph { anchors.centerIn: parent }
-        }
-
-        // Task View: two overlapping windows, like the Windows 11 icon.
-        TaskbarButton {
-            visible: Config.taskView
-            tooltip: qsTr("Task view")
-            onClicked: { root.fromHere(); Shell.taskViewRequested() }
-            Item {
-                anchors.centerIn: parent
-                width: 20
-                height: 18
-                Rectangle {
-                    x: 0
-                    y: 4
-                    width: 13
-                    height: 13
-                    radius: 2.5
-                    color: "transparent"
-                    border.width: 1.5
-                    border.color: Theme.text
-                }
-                Rectangle {
-                    x: 6
-                    y: 0
-                    width: 13
-                    height: 13
-                    radius: 2.5
-                    color: Theme.accentFill
-                    opacity: 0.9
-                }
+            Behavior on x {
+                enabled: Theme.motion > 0
+                Eased {}
             }
-        }
-
-        Repeater {
-            id: taskRepeater
-            model: Tasks
+            // The button of an app just opened comes in growing.
+            add: Transition {
+                NumberAnimation { property: "opacity"; from: 0; to: 1; duration: Theme.normal }
+                Eased { property: "scale"; from: 1 - 0.5 * Theme.motion; to: 1; duration: Theme.slow }
+            }
+            move: Transition {
+                Eased { property: "x"; duration: Theme.normal * Theme.motion }
+            }
 
             TaskbarButton {
-                id: task
-                draggable: true
-                // Dropped further away: it moves by as many places as buttons
-                // it passed.
-                onDropped: dx => {
-                    const to = Math.max(0, Math.min(taskRepeater.count - 1, index + Math.round(dx / (width + buttons.spacing))))
-                    if (to !== index) Tasks.move(index, to)
-                }
-                onDraggingChanged: if (dragging) Menus.preview = null
-                required property int index
-                required property string key
-                required property string name
-                required property string iconName
-                required property int windowCount
-                required property bool windowActive
-                required property string desktopId
+                id: startButton
+                objectName: "startButton"
+                active: Shell.startMenuOpen
+                onClicked: { root.fromHere(); Shell.toggleStartMenu() }
+                onRightClicked: root.openWinX(false)
+                // Vela's existing Start glyph.
+                StartGlyph { anchors.centerIn: parent }
+            }
 
-                tooltip: name
-                running: windowCount > 0
-                active: windowActive
-                onClicked: {
+            // Task View: two overlapping windows, like the Windows 11 icon.
+            TaskbarButton {
+                visible: Config.taskView
+                tooltip: qsTr("Task view")
+                onClicked: { root.fromHere(); Shell.taskViewRequested() }
+                Item {
+                    anchors.centerIn: parent
+                    width: 20
+                    height: 18
+                    Rectangle {
+                        x: 0
+                        y: 4
+                        width: 13
+                        height: 13
+                        radius: 2.5
+                        color: "transparent"
+                        border.width: 1.5
+                        border.color: Theme.text
+                    }
+                    Rectangle {
+                        x: 6
+                        y: 0
+                        width: 13
+                        height: 13
+                        radius: 2.5
+                        color: Theme.accentFill
+                        opacity: 0.9
+                    }
+                }
+            }
+
+            TaskbarApps {
+                id: appStrip
+                objectName: "taskbarApps"
+                style: root.appStyle
+                visible: taskRepeater.count > 0
+                width: Math.min(implicitWidth, Math.max(0, root.buttonsAreaWidth - root.fixedButtonsWidth - buttons.spacing))
+                height: root.appStyle.buttonHeight
+                onContentXChanged: {
+                    previewDelay.stop()
                     Menus.preview = null
-                    Tasks.activate(index)
-                }
-                onMiddleClicked: Tasks.launchNew(index)
-                // The wheel: the volume of this app only, if it's playing
-                // sound, with the indicator. A step every notch (120),
-                // touchpads add up their small ones.
-                property real wheelRest: 0
-                onWheeled: delta => {
-                    wheelRest += delta
-                    while (Math.abs(wheelRest) >= 120) {
-                        root.fromHere()
-                        if (!Sound.stepTaskVolume(desktopId, wheelRest > 0 ? 1 : -1)) {
-                            wheelRest = 0
-                            return
-                        }
-                        wheelRest -= wheelRest > 0 ? 120 : -120
-                    }
-                }
-                // The previews of its windows, with the mouse resting on the
-                // button (at once, if another button's are already open).
-                onHoveredChanged: {
-                    Menus.previewButtonHovered = hovered
-                    if (hovered && windowCount > 0) {
-                        previewDelay.task = task
-                        if (Menus.preview) {
-                            previewDelay.triggered()
-                        } else {
-                            previewDelay.restart()
-                        }
-                    } else if (previewDelay.task === task) {
-                        previewDelay.stop()
-                    }
-                }
-                onRightClicked: shift => {
-                    Menus.preview = null
-                    if ((shift || Shell.shiftHeld()) && windowCount > 0) {
-                        const state = Tasks.windowState(index)
-                        root.openAbove(Menus.windowEntries(state.maximized, state.minimized, true,
-                            action => Tasks.windowAction(task.index, action)), task, true)
-                    } else {
-                        root.openAbove(root.jumpList(task), task, true, { minWidth: 256, rebuild: () => root.jumpList(task) })
-                    }
                 }
 
-                // The compositor flies minimized windows here.
-                function reportGeometry() {
-                    if (windowCount > 0) {
-                        const p = mapToItem(null, 0, 0)
-                        Tasks.setButtonGeometry(index, root, Qt.rect(p.x, p.y, width, height))
-                    }
-                }
-                onXChanged: reportGeometry()
-                onWindowCountChanged: reportGeometry()
-                Connections {
-                    target: buttons
-                    function onXChanged() { task.reportGeometry() }
-                }
+                Repeater {
+                    id: taskRepeater
+                    model: Tasks
 
-                Image {
-                    anchors.fill: parent
-                    source: Theme.icons + encodeURIComponent(task.iconName)
-                    sourceSize: Qt.size(width, height)
-                    smooth: true
-                    mipmap: true
+                    TaskbarButton {
+                        id: task
+                        objectName: "taskButton-" + index
+                        draggable: true
+                        // Dropped further away: it moves by as many places as buttons
+                        // it passed.
+                        onDropped: dx => {
+                            const to = Math.max(0, Math.min(taskRepeater.count - 1, index + Math.round(dx / (width + buttons.spacing))))
+                            if (to !== index) Tasks.move(index, to)
+                        }
+                        onDraggingChanged: if (dragging) Menus.preview = null
+                        required property int index
+                        required property string key
+                        required property string name
+                        required property string iconName
+                        required property int windowCount
+                        required property bool windowActive
+                        required property string desktopId
+
+                        tooltip: name
+                        running: windowCount > 0
+                        active: windowActive
+                        onClicked: {
+                            Menus.preview = null
+                            Tasks.activate(index)
+                        }
+                        onMiddleClicked: Tasks.launchNew(index)
+                        // The wheel: the volume of this app only, if it's playing
+                        // sound, with the indicator. A step every notch (120),
+                        // touchpads add up their small ones.
+                        property real wheelRest: 0
+                        onWheeled: delta => {
+                            wheelRest += delta
+                            while (Math.abs(wheelRest) >= 120) {
+                                root.fromHere()
+                                if (!Sound.stepTaskVolume(desktopId, wheelRest > 0 ? 1 : -1)) {
+                                    wheelRest = 0
+                                    return
+                                }
+                                wheelRest -= wheelRest > 0 ? 120 : -120
+                            }
+                        }
+                        // The previews of its windows, with the mouse resting on the
+                        // button (at once, if another button's are already open).
+                        onHoveredChanged: {
+                            Menus.previewButtonHovered = hovered
+                            if (hovered && appStrip.fullyVisible(task) && windowCount > 0) {
+                                previewDelay.task = task
+                                if (Menus.preview) {
+                                    previewDelay.triggered()
+                                } else {
+                                    previewDelay.restart()
+                                }
+                            } else if (previewDelay.task === task) {
+                                previewDelay.stop()
+                            }
+                        }
+                        onRightClicked: shift => {
+                            Menus.preview = null
+                            if ((shift || Shell.shiftHeld()) && windowCount > 0) {
+                                const state = Tasks.windowState(index)
+                                root.openAbove(Menus.windowEntries(state.maximized, state.minimized, true,
+                                    action => Tasks.windowAction(task.index, action)), task, true)
+                            } else {
+                                root.openAbove(root.jumpList(task), task, true, { minWidth: 256, rebuild: () => root.jumpList(task) })
+                            }
+                        }
+
+                        // The compositor flies minimized windows here.
+                        function reportGeometry() {
+                            if (windowCount > 0) {
+                                Tasks.setButtonGeometry(index, root, appStrip.buttonGeometry(task, root.contentItem))
+                            }
+                        }
+                        onXChanged: reportGeometry()
+                        onWindowCountChanged: reportGeometry()
+                        onActiveChanged: if (active) Qt.callLater(() => appStrip.reveal(task))
+                        Component.onCompleted: if (active) Qt.callLater(() => appStrip.reveal(task))
+                        Connections {
+                            target: appStrip
+                            function onGeometryChanged() { task.reportGeometry() }
+                        }
+                        // The row moves down too, when a floating bar grows taller.
+                        Connections {
+                            target: buttons
+                            function onXChanged() { task.reportGeometry() }
+                            function onYChanged() { task.reportGeometry() }
+                        }
+                        Connections {
+                            target: buttonClip
+                            function onXChanged() { task.reportGeometry() }
+                        }
+
+                        Image {
+                            anchors.fill: parent
+                            source: Theme.icons + encodeURIComponent(task.iconName)
+                            sourceSize: Qt.size(width, height)
+                            smooth: true
+                            mipmap: true
+                        }
+                    }
                 }
             }
         }
@@ -489,9 +548,15 @@ Window {
 
     // Notification area: the apps' icons (Telegram, Discord, Steam...), left
     // of the clock like on Windows.
-    Row {
+    TaskbarApps {
         id: tray
+        objectName: "taskbarTray"
+        style: root.appStyle
+        previousLabel: qsTr("Previous tray icons")
+        nextLabel: qsTr("Next tray icons")
+        spacing: 0
         visible: root.primary
+        width: Math.min(implicitWidth, root.trayMaximumWidth)
         anchors { right: microphone.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
         Repeater {
@@ -552,10 +617,12 @@ Window {
         }
     }
 
+
     // The microphone in use (docs/audio.md §7.2), like Windows: who listens
     // in the tooltip, a click opens Settings > Sound.
     Item {
         id: microphone
+        objectName: "microphone"
         visible: root.primary && Audio.microphoneUsers.length > 0
         anchors { right: caffeine.left; top: parent.top; bottom: parent.bottom }
         width: visible ? 32 : 0
@@ -611,6 +678,7 @@ Window {
     // tooltip and at the top of the menu. Breeze's only cup is KTeaTime's.
     Item {
         id: caffeine
+        objectName: "caffeine"
         visible: root.primary
         anchors { right: systemIcons.left; top: parent.top; bottom: parent.bottom }
         width: visible ? 32 : 0
@@ -706,6 +774,7 @@ Window {
     // it; the right button opens their menus (§14.5).
     Item {
         id: systemIcons
+        objectName: "systemIcons"
         visible: root.primary
         anchors { right: clock.left; top: parent.top; bottom: parent.bottom; rightMargin: 2 }
         width: visible ? iconsRow.width + 16 : 0
@@ -773,6 +842,7 @@ Window {
     // Clock: time on top, date below.
     Item {
         id: clock
+        objectName: "taskbarClock"
         anchors { right: parent.right; top: parent.top; bottom: parent.bottom; rightMargin: 12 }
         width: clockColumn.implicitWidth + 16 + (Notifications.history.count > 0 || Notifications.doNotDisturb ? 22 : 0)
 

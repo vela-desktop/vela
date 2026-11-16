@@ -14,7 +14,9 @@
 #include "lock.h"
 #include "output.h"
 #include "output_manager.h"
+#include "path_security.h"
 #include "render/renderer.h"
+#include "security_policy.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
@@ -34,6 +36,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <wlr/backend/headless.h>
+#include <wlr/backend/multi.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -43,6 +46,9 @@
 #include <wlr/util/log.h>
 
 #define MAX_LINE 4096 // a connection sending more is closed
+// The shell, Settings, the CLI and a few watchers are a handful: a peer that
+// opens more only exhausts descriptors and memory.
+#define MAX_CLIENTS 32
 
 // What a connection can follow with "watch <topic>" (docs/brightness.md
 // §7.2): a name, and the whole state as one line.
@@ -78,6 +84,10 @@ struct vela_commands {
     struct wl_event_source *source;
     char path[108];
     struct wl_list clients;
+    int client_count;
+    // test-output, test-power and test-shell: only in a headless session
+    // started with VELA_TEST_COMMANDS=1 (the functional tests).
+    bool test_commands;
 };
 
 static bool starts_with(const char *text, const char *prefix)
@@ -121,20 +131,36 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
     const char *t = "true";
     const char *f = "false";
     struct vela_view *focused = vela_views_focused(server);
+    const char *focused_id = focused && focused->ext_handle ? focused->ext_handle->identifier : NULL;
+#if VELA_HAVE_RSVG
+    const bool svg_icons = true;
+#else
+    const bool svg_icons = false;
+#endif
     vela_buffer_appendf(json, "{\"locked\":%s,\"workspace\":%d,\"workspaces\":%d,\"focused\":",
         server->locked ? t : f, server->workspaces->current, server->workspaces->count);
-    struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
-    // The private state socket exposes retention and terminal counts so GPU
-    // lifecycle tests can prove they cancelled real in-flight work.
-    if (focused && focused->ext_handle && focused->ext_handle->identifier) {
-        vela_buffer_append_json(json, focused->ext_handle->identifier);
+    if (focused_id) {
+        vela_buffer_append_json(json, focused_id);
     } else {
         vela_buffer_append(json, "null");
     }
+    vela_buffer_appendf(json, ",\"capabilities\":{\"svg_icons\":%s}", svg_icons ? t : f);
+    struct vela_readback_stats readbacks = vela_renderer_readback_stats(server->renderer);
+    // The private state socket exposes retention and terminal counts so GPU
+    // lifecycle tests can prove they cancelled real in-flight work.
     vela_buffer_appendf(json, ",\"readback\":{\"pending\":%zu,\"bytes\":%zu,\"completed\":%llu,\"cancelled\":%llu,\"failed\":%llu,\"rejected\":%llu,\"submitted\":%llu}",
         readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
         (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed,
         (unsigned long long)readbacks.rejected, (unsigned long long)readbacks.submitted);
+    struct vela_upload_stats uploads = vela_renderer_upload_stats(server->renderer);
+    vela_buffer_appendf(json, ",\"upload\":{\"chunks\":%d,\"chunks_peak\":%d,\"chunks_max\":%d,"
+        "\"in_place\":%llu,\"deferred\":%llu,\"replaced\":%llu,\"completed\":%llu,\"abandoned\":%llu,"
+        "\"pieces\":%llu,\"rejected\":%llu,\"frames_max\":%llu,\"budget_bytes\":%zu}",
+        uploads.chunks, uploads.chunks_peak, uploads.chunks_max, (unsigned long long)uploads.in_place,
+        (unsigned long long)uploads.deferred, (unsigned long long)uploads.replaced,
+        (unsigned long long)uploads.completed, (unsigned long long)uploads.abandoned,
+        (unsigned long long)uploads.pieces, (unsigned long long)uploads.rejected,
+        (unsigned long long)uploads.frames_max, uploads.budget_bytes);
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;
@@ -168,6 +194,12 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         vela_buffer_append_json(json, view->ext_handle->identifier);
         vela_buffer_append(json, ",\"app\":");
         vela_buffer_append_json(json, vela_view_app_id(view));
+        struct wlr_surface *surface = vela_view_surface(view);
+        struct vela_upload_observation upload = vela_texture_upload_observation(
+            surface ? wlr_surface_get_texture(surface) : NULL);
+        vela_buffer_appendf(json, ",\"upload\":{\"deferred\":%s,\"pending\":%s,\"overlapped\":%s,\"frames\":%llu}",
+            upload.deferred ? t : f, upload.pending ? t : f, upload.overlapped ? t : f,
+            (unsigned long long)upload.frames);
         vela_buffer_append(json, ",\"title\":");
         vela_buffer_append_json(json, vela_view_title(view));
         vela_buffer_appendf(json, ",\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,\"output\":", frame.x, frame.y,
@@ -265,6 +297,11 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         window_rects_json(server, &reply);
     } else if (strcmp(line, "state") == 0) {
         state_json(server, &reply);
+    } else if (strcmp(line, "test-upload-hold on") == 0 || strcmp(line, "test-upload-hold off") == 0) {
+        // Answers run before run_command's test-only gate, so authorize here.
+        const bool allowed = server->commands && server->commands->test_commands;
+        if (allowed) vela_renderer_test_hold_uploads(server->renderer, strcmp(line, "test-upload-hold on") == 0);
+        vela_buffer_appendf(&reply, "{\"ok\":%s}", allowed ? "true" : "false");
     } else if (strcmp(line, "scanout-policy") == 0) {
         // Settings must report the compositor's environment, not its own.
         vela_buffer_appendf(&reply, "{\"envDisabled\":%s,\"enabled\":%s}",
@@ -494,6 +531,10 @@ static void brightness(struct vela_server *server, const char *arguments)
 static void run_command(struct vela_server *server, const char *line)
 {
     struct vela_a11y *a11y = server->a11y;
+    if (vela_command_test_only(line) && !(server->commands && server->commands->test_commands)) {
+        wlr_log(WLR_ERROR, "Refused a test-only command: start a headless compositor with VELA_TEST_COMMANDS=1");
+        return;
+    }
     if (strcmp(line, "logout") == 0) {
         wlr_log(WLR_INFO, "Exit requested by the shell");
         wl_display_terminate(server->display);
@@ -506,6 +547,7 @@ static void run_command(struct vela_server *server, const char *line)
     } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
         || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
         || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")
+        || starts_with(line, "test-upload-hold ")
         || strcmp(line, "brightness") == 0 || starts_with(line, "watch ") || starts_with(line, "brightness-live ")) {
         // already answered to whoever asked, or about the connection itself
     } else if (starts_with(line, "brightness-probe ")) {
@@ -704,6 +746,9 @@ static void client_destroy(struct client *client)
 {
     bool live = client->brightness_live;
     wl_list_remove(&client->link);
+    if (client->server->commands) {
+        --client->server->commands->client_count;
+    }
     wl_event_source_remove(client->source);
     close(client->fd);
     stop_watching(client);
@@ -769,11 +814,70 @@ static int handle_client(int fd, uint32_t mask, void *data)
     return 0;
 }
 
+// The socket file is private to this user, but the descriptor may have been
+// passed on, and the runtime directory may be reachable from a sandbox.
+// Every command acts on the whole session: only this user's unsandboxed
+// processes may talk to it.
+static bool peer_allowed(struct vela_server *server, int fd)
+{
+    struct ucred peer = { 0 };
+    socklen_t length = sizeof(peer);
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &length) != 0 || length != sizeof(peer)) {
+        wlr_log_errno(WLR_ERROR, "Command socket: can't identify a peer; refused");
+        return false;
+    }
+    if (peer.uid != geteuid()) {
+        wlr_log(WLR_ERROR, "Command socket: refused a peer of another user (uid %u)", (unsigned)peer.uid);
+        return false;
+    }
+    // Only a peer verified to be outside a sandbox: one that exited right
+    // after sending its commands, or hides its /proc root, is refused too.
+    enum vela_sandbox sandbox = vela_peer_sandbox(fd, peer.pid);
+    if (sandbox != VELA_SANDBOX_NONE) {
+        wlr_log(WLR_ERROR, "Command socket: refused a %s peer (process %d)",
+            sandbox == VELA_SANDBOX_FLATPAK ? "sandboxed" : "unverifiable", (int)peer.pid);
+        return false;
+    }
+    if (server->commands->client_count >= MAX_CLIENTS) {
+        wlr_log(WLR_ERROR, "Command socket: %d connections already open; refused another", MAX_CLIENTS);
+        return false;
+    }
+    return true;
+}
+
+static void find_headless(struct wlr_backend *candidate, void *data)
+{
+    if (wlr_backend_is_headless(candidate)) {
+        *(bool *)data = true;
+    }
+}
+
+// Only the functional tests drive outputs, power and the capture indicator
+// through the socket: they ask for it, and only on the headless backend.
+static bool test_commands_enabled(struct vela_server *server)
+{
+    if (!vela_env_one("VELA_TEST_COMMANDS")) {
+        return false;
+    }
+    bool headless = false;
+    wlr_multi_for_each_backend(server->backend, find_headless, &headless);
+    if (!headless || server->session) {
+        wlr_log(WLR_ERROR, "VELA_TEST_COMMANDS ignored: only for a headless compositor");
+        return false;
+    }
+    wlr_log(WLR_INFO, "VELA_TEST_COMMANDS: test-only commands enabled on the command socket");
+    return true;
+}
+
 static int handle_connection(int fd, uint32_t mask, void *data)
 {
     struct vela_server *server = data;
     int client_fd = accept4(fd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
     if (client_fd < 0) {
+        return 0;
+    }
+    if (!peer_allowed(server, client_fd)) {
+        close(client_fd);
         return 0;
     }
     struct client *client = VELA_NEW(struct client);
@@ -788,6 +892,7 @@ static int handle_connection(int fd, uint32_t mask, void *data)
         return 0;
     }
     wl_list_insert(server->commands->clients.prev, &client->link);
+    ++server->commands->client_count;
     return 0;
 }
 
@@ -797,17 +902,34 @@ void vela_commands_listen(struct vela_server *server)
     commands->fd = -1;
     wl_list_init(&commands->clients);
     server->commands = commands;
+    commands->test_commands = test_commands_enabled(server);
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!runtime_dir
+    if (!runtime_dir || !vela_runtime_dir_private(runtime_dir)
+        || !vela_path_component_safe(server->socket_name)
         || !vela_format(commands->path, sizeof(commands->path), "%s/vela-%s.sock", runtime_dir,
             server->socket_name)) {
+        wlr_log(WLR_ERROR, "No command socket: XDG_RUNTIME_DIR must be a private directory owned by this user");
         commands->path[0] = '\0';
         return;
     }
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     snprintf(address.sun_path, sizeof(address.sun_path), "%s", commands->path);
-    unlink(commands->path); // left over from a previous run
+    // Left over from a previous run: only a socket of ours, never whatever
+    // else has that name.
+    struct stat previous;
+    if (lstat(commands->path, &previous) == 0) {
+        if (!S_ISSOCK(previous.st_mode) || previous.st_uid != geteuid()) {
+            wlr_log(WLR_ERROR, "No command socket: %s exists and is not a socket of this user", commands->path);
+            commands->path[0] = '\0';
+            return;
+        }
+        unlink(commands->path);
+    }
     commands->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    // No umask() around bind(): it is process-wide, and other threads (the
+    // Vulkan driver's) could create files meanwhile. The private runtime
+    // directory checked above already keeps other users from reaching the
+    // socket before the chmod below.
     if (commands->fd < 0 || bind(commands->fd, (struct sockaddr *)&address, sizeof(address)) != 0
         || listen(commands->fd, 4) != 0) {
         wlr_log_errno(WLR_ERROR, "Can't listen for commands on %s", commands->path);
@@ -818,7 +940,9 @@ void vela_commands_listen(struct vela_server *server)
         }
         return;
     }
-    chmod(commands->path, 0600);
+    if (chmod(commands->path, 0600) != 0) {
+        wlr_log_errno(WLR_ERROR, "Can't restrict %s", commands->path);
+    }
     commands->source = wl_event_loop_add_fd(server->loop, commands->fd, WL_EVENT_READABLE, handle_connection, server);
     if (!commands->source) {
         wlr_log_errno(WLR_ERROR, "Can't watch for commands on %s", commands->path);

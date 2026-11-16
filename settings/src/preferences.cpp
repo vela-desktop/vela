@@ -12,6 +12,7 @@ extern "C" {
 
 #include "iconprovider.h"
 
+#include <QDateTime>
 #include <QDir>
 #include <QTime>
 #include <QJsonObject>
@@ -21,11 +22,13 @@ extern "C" {
 #include <QFile>
 #include <QFileInfo>
 #include <QLocalSocket>
+#include <QLockFile>
 #include <QProcess>
 #include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
+#include <QTemporaryFile>
 #include <QUrl>
 
 #include <algorithm>
@@ -91,7 +94,12 @@ void Preferences::reload()
 {
     QSettings settings = shellSettings();
     settings.sync();
+    loadShell(settings);
+    reloadCompositor();
+}
 
+void Preferences::loadShell(const QSettings& settings)
+{
     QString wallpaper = settings.value(QStringLiteral("appearance/wallpaper")).toString();
     if (wallpaper.isEmpty() || !QFileInfo::exists(wallpaper)) {
         wallpaper = vela::defaults::wallpaper();
@@ -141,8 +149,6 @@ void Preferences::reload()
         ? QStringLiteral("light")
         : QStringLiteral("dark");
     emit appThemeChanged();
-
-    reloadCompositor();
 }
 
 namespace {
@@ -303,11 +309,131 @@ void Preferences::queryCompositor()
     }
 }
 
-void Preferences::setShell(const QString& key, const QVariant& value)
+bool Preferences::setShell(const QString& key, const QVariant& value)
 {
-    QSettings settings = shellSettings();
-    settings.setValue(key, value);
-    settings.sync();
+    return saveShell({ { key, value } });
+}
+
+bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
+{
+    QSettings current = shellSettings();
+    current.sync();
+    const QString path = current.fileName();
+    const auto failed = [this, &path] {
+        // Restore from the current persisted choices, including changes
+        // another writer made since the UI last loaded. Never load defaults
+        // over the shown values when the file itself cannot be read.
+        const QFileInfo info(path);
+        if (info.isFile() && info.isReadable()) {
+            // A second QSettings for the real path shares its parsed cache,
+            // but not its FormatError. Parse a unique snapshot instead.
+            QFile persisted(path);
+            QTemporaryFile snapshot;
+            if (persisted.open(QIODevice::ReadOnly) && snapshot.open()) {
+                const QByteArray bytes = persisted.readAll();
+                if (persisted.error() == QFileDevice::NoError && snapshot.write(bytes) == bytes.size()
+                    && snapshot.flush()) {
+                    snapshot.close();
+                    QSettings saved(snapshot.fileName(), QSettings::IniFormat);
+                    (void)saved.allKeys();
+                    if (saved.status() == QSettings::NoError) {
+                        loadShell(saved);
+                    }
+                }
+            }
+        }
+        m_shellSaveFailed = true;
+        publishSaveError();
+        return false;
+    };
+    (void)current.allKeys();
+    if (current.status() != QSettings::NoError) {
+        return failed();
+    }
+    if (!QDir().mkpath(QFileInfo(path).absolutePath())) {
+        return failed();
+    }
+    // Cooperate with other QSettings writers while reading and replacing
+    // this file. Do not wait on a busy writer on the GUI thread.
+    QLockFile lock(path + QStringLiteral(".lock"));
+    if (!lock.tryLock()) {
+        return failed();
+    }
+    QByteArray original;
+    QFile source(path);
+    if (source.exists()) {
+        if (!source.open(QIODevice::ReadOnly)) {
+            return failed();
+        }
+        original = source.readAll();
+        if (source.error() != QFileDevice::NoError) {
+            return failed();
+        }
+        source.close();
+    }
+
+    // QSettings cannot discard pending writes. Serialize into a unique
+    // temporary file instead, so a failed write has no pending mutations in
+    // the shared cache for vela-shell.conf, even after the path is repaired.
+    QTemporaryFile temporary(QDir::tempPath() + QStringLiteral("/vela-settings-XXXXXX.ini"));
+    if (!temporary.open() || temporary.write(original) != original.size() || !temporary.flush()) {
+        return failed();
+    }
+    temporary.close();
+    {
+        QSettings staged(temporary.fileName(), QSettings::IniFormat);
+        (void)staged.allKeys(); // reject malformed input before changing it
+        if (staged.status() != QSettings::NoError) {
+            return failed();
+        }
+        for (const auto& [key, value] : changes) {
+            staged.setValue(key, value);
+        }
+        staged.sync();
+        if (staged.status() != QSettings::NoError) {
+            return failed();
+        }
+    }
+    QFile serialized(temporary.fileName());
+    if (!serialized.open(QIODevice::ReadOnly)) {
+        return failed();
+    }
+    QByteArray data = serialized.readAll();
+    if (serialized.error() != QFileDevice::NoError) {
+        return failed();
+    }
+    // QSettings readers cache size and modification time. Give every save
+    // a strictly newer timestamp, even within one clock tick (or after a
+    // clock adjustment), rather than alternating between two file sizes.
+    const QDateTime previousTime = QFileInfo(path).lastModified().toUTC();
+    QSaveFile destination(path);
+    if (!vela::openPrivateFile(destination) || destination.write(data) != data.size() || !destination.flush()) {
+        return failed();
+    }
+    QDateTime revision = QDateTime::currentDateTimeUtc();
+    if (previousTime.isValid() && revision <= previousTime) {
+        revision = previousTime.addMSecs(1);
+    }
+    if (!destination.setFileTime(revision, QFileDevice::FileModificationTime)) {
+        return failed();
+    }
+    // Coarse filesystems may round the millisecond away. Advance by one
+    // FAT timestamp quantum there, then verify the actual stored value.
+    if (previousTime.isValid() && destination.fileTime(QFileDevice::FileModificationTime).toUTC() <= previousTime) {
+        if (!destination.setFileTime(previousTime.addSecs(2), QFileDevice::FileModificationTime)
+            || destination.fileTime(QFileDevice::FileModificationTime).toUTC() <= previousTime) {
+            return failed();
+        }
+    }
+    if (!destination.commit()) {
+        return failed();
+    }
+    // This instance never staged writes to the real file, so sync only
+    // refreshes the shared reader cache; the native writer lock stays ours.
+    current.sync();
+    m_shellSaveFailed = false;
+    publishSaveError();
+    return true;
 }
 
 // ---------------------------------------------------------- wallpaper --
@@ -365,10 +491,11 @@ void Preferences::setWallpaper(const QString& pathOrUrl)
     while (recent.size() > 5) {
         recent.removeLast();
     }
-    QSettings settings = shellSettings();
-    settings.setValue(QStringLiteral("appearance/wallpaper"), path.startsWith(u':') ? QString() : path);
-    settings.setValue(QStringLiteral("appearance/recentWallpapers"), recent);
-    settings.sync();
+    if (!saveShell({ { QStringLiteral("appearance/wallpaper"), path.startsWith(u':') ? QString() : path },
+            { QStringLiteral("appearance/recentWallpapers"), recent } })) {
+        emit wallpaperChanged();
+        return;
+    }
     m_wallpaper = path;
     m_recentWallpapers = recent;
     emit wallpaperChanged();
@@ -381,8 +508,9 @@ void Preferences::setAccent(const QColor& color)
     if (!color.isValid() || color == m_accent) {
         return;
     }
-    m_accent = color;
-    setShell(QStringLiteral("appearance/accent"), color.name());
+    if (setShell(QStringLiteral("appearance/accent"), color.name())) {
+        m_accent = color;
+    }
     emit accentChanged();
 }
 
@@ -391,10 +519,13 @@ void Preferences::setAppTheme(const QString& theme)
     if (theme == m_appTheme || (theme != QLatin1String("light") && theme != QLatin1String("dark"))) {
         return;
     }
+    // Commit before changing the shown mode or starting GTK/KDE helpers.
+    if (!setShell(QStringLiteral("appearance/appTheme"), theme)) {
+        emit appThemeChanged();
+        return;
+    }
     m_appTheme = theme;
     const bool light = theme == QLatin1String("light");
-    // The shell and the compositor (title bars), Explorer.
-    setShell(QStringLiteral("appearance/appTheme"), theme);
     // GTK, the portal and whoever follows org.freedesktop.appearance.
     vela::process::startDetached(QStringLiteral("gsettings"),
         { QStringLiteral("set"), QStringLiteral("org.gnome.desktop.interface"), QStringLiteral("color-scheme"),
@@ -425,8 +556,9 @@ void Preferences::setShellTheme(const QString& theme)
     if (theme == m_shellTheme || (theme != QLatin1String("light") && theme != QLatin1String("dark"))) {
         return;
     }
-    m_shellTheme = theme;
-    setShell(QStringLiteral("appearance/shellTheme"), theme);
+    if (setShell(QStringLiteral("appearance/shellTheme"), theme)) {
+        m_shellTheme = theme;
+    }
     emit appThemeChanged();
 }
 
@@ -435,8 +567,9 @@ void Preferences::setShellTheme(const QString& theme)
 void Preferences::setTaskbarAlignment(const QString& alignment)
 {
     if (alignment != m_taskbarAlignment) {
-        m_taskbarAlignment = alignment;
-        setShell(QStringLiteral("taskbar/alignment"), alignment);
+        if (setShell(QStringLiteral("taskbar/alignment"), alignment)) {
+            m_taskbarAlignment = alignment;
+        }
         emit taskbarChanged();
     }
 }
@@ -444,8 +577,9 @@ void Preferences::setTaskbarAlignment(const QString& alignment)
 void Preferences::setEndTask(bool on)
 {
     if (on != m_endTask) {
-        m_endTask = on;
-        setShell(QStringLiteral("taskbar/endTask"), on);
+        if (setShell(QStringLiteral("taskbar/endTask"), on)) {
+            m_endTask = on;
+        }
         emit taskbarChanged();
     }
 }
@@ -453,8 +587,9 @@ void Preferences::setEndTask(bool on)
 void Preferences::setTaskbarAllScreens(bool on)
 {
     if (on != m_taskbarAllScreens) {
-        m_taskbarAllScreens = on;
-        setShell(QStringLiteral("taskbar/allScreens"), on);
+        if (setShell(QStringLiteral("taskbar/allScreens"), on)) {
+            m_taskbarAllScreens = on;
+        }
         emit taskbarChanged();
     }
 }
@@ -462,8 +597,9 @@ void Preferences::setTaskbarAllScreens(bool on)
 void Preferences::setShowDesktopCorner(bool on)
 {
     if (on != m_showDesktopCorner) {
-        m_showDesktopCorner = on;
-        setShell(QStringLiteral("taskbar/showDesktopCorner"), on);
+        if (setShell(QStringLiteral("taskbar/showDesktopCorner"), on)) {
+            m_showDesktopCorner = on;
+        }
         emit taskbarChanged();
     }
 }
@@ -471,8 +607,9 @@ void Preferences::setShowDesktopCorner(bool on)
 void Preferences::setTaskView(bool on)
 {
     if (on != m_taskView) {
-        m_taskView = on;
-        setShell(QStringLiteral("taskbar/taskView"), on);
+        if (setShell(QStringLiteral("taskbar/taskView"), on)) {
+            m_taskView = on;
+        }
         emit taskbarChanged();
     }
 }
@@ -480,8 +617,9 @@ void Preferences::setTaskView(bool on)
 void Preferences::setDoNotDisturb(bool on)
 {
     if (on != m_doNotDisturb) {
-        m_doNotDisturb = on;
-        setShell(QStringLiteral("notifications/doNotDisturb"), on);
+        if (setShell(QStringLiteral("notifications/doNotDisturb"), on)) {
+            m_doNotDisturb = on;
+        }
         emit doNotDisturbChanged();
     }
 }
@@ -490,7 +628,14 @@ void Preferences::setDoNotDisturb(bool on)
 
 void Preferences::publishSaveError()
 {
-    const QString message = tr("Check that you can write %1.").arg(compositorConfigPath());
+    QStringList paths;
+    if (m_shellSaveFailed) {
+        paths.append(shellSettings().fileName());
+    }
+    if (m_compositorSaveFailed) {
+        paths.append(compositorConfigPath());
+    }
+    const QString message = paths.isEmpty() ? QString() : tr("Check that you can write %1.").arg(paths.join(u'\n'));
     if (m_saveError == message) {
         return;
     }
@@ -500,6 +645,7 @@ void Preferences::publishSaveError()
 
 void Preferences::noteSaveFailure()
 {
+    m_compositorSaveFailed = true;
     publishSaveError();
     if (m_reportingSaveFailure) {
         return;
@@ -519,11 +665,8 @@ void Preferences::noteSaveFailure()
 
 void Preferences::clearSaveError()
 {
-    if (m_saveError.isEmpty()) {
-        return;
-    }
-    m_saveError.clear();
-    emit saveErrorChanged();
+    m_compositorSaveFailed = false;
+    publishSaveError();
 }
 
 bool Preferences::saveCompositorKeys(const QStringList& keys)
@@ -1077,8 +1220,9 @@ void Preferences::setFourFingers(const QString& action)
 void Preferences::setClipboardHistory(bool on)
 {
     if (on != m_clipboardHistory) {
-        m_clipboardHistory = on;
-        setShell(QStringLiteral("clipboard/history"), on);
+        if (setShell(QStringLiteral("clipboard/history"), on)) {
+            m_clipboardHistory = on;
+        }
         emit clipboardChanged();
     }
 }

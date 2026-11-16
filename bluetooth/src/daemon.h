@@ -155,6 +155,9 @@ struct vela_bt_search {
 struct vela_bt_power {
     bool active;
     bool on;
+    bool reversing; // BlueZ may still be applying the cancelled, opposite Set
+    bool set_accepted; // a Set for this request received a successful reply
+    uint64_t busy_until; // bounded retry window for a reversal refused as Busy
     int attempt;
     char *adapter;
     sd_bus_slot *call;

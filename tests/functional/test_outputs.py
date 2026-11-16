@@ -136,7 +136,11 @@ class Outputs(unittest.TestCase):
                         "move", 1200, 300, "sleep", "100", "up", "keyup", "super")
         self.vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2", what="on the second output")
         self.vela.keys("super+up")
-        state = self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
+        self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
+        # The state flag precedes the client's configure acknowledgement and
+        # resized buffer. Check the final geometry after those have arrived.
+        state = self.vela.wait_for(lambda s: s.window(window)["w"] == second["w"],
+                                   what="the maximized client's resized buffer")
         maximized = state.window(window)
         self.assertEqual((maximized["x"], maximized["w"]), (960, 960))
 

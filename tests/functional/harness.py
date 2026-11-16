@@ -13,10 +13,12 @@ Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
 import atexit
+from contextlib import contextmanager
 import json
 import math
 import os
 import re
+import select
 import shutil
 import struct
 import signal
@@ -296,6 +298,8 @@ class Session:
             "WLR_BACKENDS": "headless",
             "WLR_LIBINPUT_NO_DEVICES": "1",
             "VELA_DEBUG_INPUT": "1",
+            # test-output, test-power, test-shell on the command socket.
+            "VELA_TEST_COMMANDS": "1",
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
             "HOME": os.path.join(self.directory, "home"),
@@ -409,15 +413,17 @@ class Session:
             connection.connect(self.socket_path)
             connection.sendall((line + "\n").encode())
 
-    def query(self, line):
+    def query(self, line, timeout=None):
         with socket.socket(socket.AF_UNIX) as connection:
+            if timeout is not None:
+                connection.settimeout(timeout)
             connection.connect(self.socket_path)
             connection.sendall((line + "\n").encode())
             data = b""
             while not data.endswith(b"\n"):
                 chunk = connection.recv(65536)
                 if not chunk:
-                    break
+                    raise ConnectionResetError("compositor closed before completing its reply")
                 data += chunk
             # The reply precedes server-side watch cleanup. Half-close after
             # receiving it and wait for EOF so resource-pressure snapshots do
@@ -427,15 +433,33 @@ class Session:
                 pass
         return json.loads(data)
 
-    def state(self):
-        return State(self.query("state"))
+    def state(self, timeout=None):
+        return State(self.query("state", timeout=timeout))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
-        """Waits until condition(state) is true; returns the state."""
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05,
+                 reconnect=False):
+        """Wait for condition(state). Reconnection is opt-in after an expected crash."""
         deadline = time.monotonic() + timeout * TIME_SCALE
         last = None
+        connection_error = None
         while time.monotonic() < deadline:
-            last = self.state() if read_state else None
+            if reconnect and self.process.poll() is not None:
+                raise AssertionError(f"the supervisor exited (code {self.process.returncode}):\n"
+                                     f"{self.log_text()[-3000:]}")
+            try:
+                if not read_state:
+                    last = None
+                elif reconnect:
+                    last = self.state(timeout=max(0.001, deadline - time.monotonic()))
+                else:
+                    last = self.state()
+            except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError,
+                    socket.timeout) as error:
+                if not reconnect:
+                    raise
+                connection_error = repr(error)
+                time.sleep(interval)
+                continue
             try:
                 if condition(last):
                     return last
@@ -447,6 +471,7 @@ class Session:
         lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
         errors = "".join(line for line in lines if "[ERROR]" in line)
         raise TimeoutError(f"after {timeout * TIME_SCALE:g} s this still isn't true: {what}\nlast state: {last}\n"
+                           f"last connection error: {connection_error}\n"
                            f"--- Vela's errors ---\n{errors[-2500:]}"
                            f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 
@@ -467,6 +492,53 @@ class Session:
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         finally:
             _profile("input-gestures", time.perf_counter() - began)
+
+    @contextmanager
+    def input_session(self):
+        """One vela-input (and so one virtual keyboard) for a whole scene.
+
+        A new vela-input per action brings its keymap to the seat: the
+        notification center loses the keyboard and closes, like Start."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        pending = bytearray()
+
+        def send(*actions):
+            """Execute a command, allowing its requested sleeps plus I/O overhead."""
+            session.stdin.write("\t".join(map(str, actions)) + "\n")
+            session.stdin.flush()
+            sleep_ms = input_sleep_ms(actions)
+            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
+            # select + os.read also bounds partial replies: TextIO.readline()
+            # can block forever after a process writes a non-newline prefix.
+            while b"\n" not in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
+                    raise TimeoutError(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
+                chunk = os.read(session.stdout.fileno(), 4096)
+                if not chunk:
+                    raise AssertionError(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
+                pending.extend(chunk)
+                if len(pending) > 4096:
+                    raise AssertionError("vela-input reply exceeded 4096 bytes")
+            line, _, rest = pending.partition(b"\n")
+            pending[:] = rest
+            if line.decode("utf-8", errors="replace").strip() != "OK":
+                raise AssertionError(f"vela-input refused {actions!r}")
+        try:
+            send("sleep", 0)  # the device and its keymap exist before a panel takes focus
+            yield send
+        finally:
+            try:
+                session.stdin.close()
+            except BrokenPipeError:
+                pass  # The process may have already died after a timeout.
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                session.kill()
+                session.wait()
+            session.stdout.close()
 
     def randr(self, *args):
         """Configures outputs as Settings > Display does (wlr-output-management)."""

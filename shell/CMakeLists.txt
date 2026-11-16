@@ -114,6 +114,7 @@ set(VELA_QML_FILES
     qml/Taskbar.qml
     qml/TaskbarButton.qml
     qml/StartGlyph.qml
+    qml/TaskbarApps.qml
     qml/StartMenu.qml
     qml/tiles.js
     qml/AppTile.qml
@@ -238,6 +239,25 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-controls-no-effects COMMAND vela-shell-test)
     set_tests_properties(shell-controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(shell-controls shell-controls-no-effects PROPERTIES TIMEOUT 60)
+    # Exercise the real taskbar layout and pointer targets with private services.
+    qt_add_executable(vela-taskbar-test tests/taskbar_test.cpp ${PROJECT_SOURCE_DIR}/common/tests/accessibleprobe.h)
+    target_compile_definitions(vela-taskbar-test PRIVATE QUICK_TEST_SOURCE_DIR="${PROJECT_SOURCE_DIR}/tests/taskbar")
+    target_compile_options(vela-taskbar-test PRIVATE -Wall -Wextra)
+    target_include_directories(vela-taskbar-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
+    target_link_libraries(vela-taskbar-test PRIVATE vela-controls vela-controlsplugin Qt6::QuickTest)
+    # Compile the production pieces with a private Menus singleton in their
+    # module (directory imports cannot resolve singletons).
+    set(taskbar_fakes ${PROJECT_SOURCE_DIR}/tests/taskbar/Menus.qml)
+    foreach(file IN LISTS taskbar_fakes)
+        get_filename_component(name ${file} NAME)
+        set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name} QT_QML_SINGLETON_TYPE TRUE)
+    endforeach()
+    qt_add_qml_module(vela-taskbar-test URI Vela.Taskbar.Test VERSION 1.0
+        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml qml/StartGlyph.qml ${taskbar_fakes})
+    add_test(NAME shell-taskbar COMMAND vela-taskbar-test)
+    add_test(NAME shell-taskbar-no-effects COMMAND vela-taskbar-test)
+    set_tests_properties(shell-taskbar-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(shell-taskbar shell-taskbar-no-effects PROPERTIES TIMEOUT 60)
 
     qt_add_executable(vela-tool-path-test tests/velatool.cpp src/velatool.h)
     target_include_directories(vela-tool-path-test PRIVATE src)
@@ -319,3 +339,12 @@ qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell vela-bluetooth-
     LUPDATE_TARGET vela-shell_lupdate
     LRELEASE_TARGET vela-shell_lrelease
     LUPDATE_OPTIONS -source-language en -target-language it -no-obsolete -locations none)
+
+if(VELA_BUILD_TOOLS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-iconprovider-test tests/iconprovider.cpp)
+    target_include_directories(vela-iconprovider-test PRIVATE src)
+    target_link_libraries(vela-iconprovider-test PRIVATE vela-controls Qt6::Gui Qt6::Test)
+    add_test(NAME shell-iconprovider COMMAND vela-iconprovider-test)
+    set_tests_properties(shell-iconprovider PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()

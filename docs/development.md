@@ -280,6 +280,8 @@ caffeine status
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness.
 
+The socket accepts only processes of the same user outside a sandbox. `test-output`, `test-power` and `test-shell` are refused unless the compositor runs headless with `VELA_TEST_COMMANDS=1`, which the functional harness sets; see the [security model](security-model.md#command-socket).
+
 ### Release promo recordings
 
 `scripts/record-promo.py` produces authentic release footage from a **single
@@ -497,6 +499,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   decoration.c      Vela's title bar
   snapshot.c        frozen window images for close/minimize/maximize animations
   focus.c           keyboard focus between windows and shell pieces
+  activation.c      app activation tokens and background focus prevention
   interact.c        pointer on windows: move, resize, title bar, keyboard move
   bindings.c        shortcuts, window menu and window actions
   switcher.c        Alt+Tab
