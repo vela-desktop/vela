@@ -55,6 +55,81 @@ vela_credential_owner()
     esac
 }
 
+vela_credential_kwallet_pending()
+(
+    # Read process/socket metadata only, never cmdline, environ, descriptors,
+    # the PAM socket, or wallet contents. The optional proc root is for tests;
+    # the session always uses the kernel's /proc.
+    proc_root=${1:-/proc}
+    user_id=$(id -u) || { printf '%s\n' unknown; exit; }
+    [ -r "$proc_root/self/status" ] || { printf '%s\n' unknown; exit; }
+    IFS=$(printf ' \t')
+
+    # kwallet-pam binds this listener before its daemonizing parent returns.
+    # It also covers the short interval before the child execs ksecretd. An
+    # inherited variable or a stale socket pathname alone proves nothing.
+    if [ -n "${PAM_KWALLET5_LOGIN:-}" ]; then
+        metadata_seen=0
+        if ! {
+            while read -r _address _refs _protocol flags type _state _inode path; do
+                metadata_seen=1
+                if [ "$path" = "$PAM_KWALLET5_LOGIN" ] &&
+                    [ "$flags" = 00010000 ] && [ "$type" = 0001 ]; then
+                    printf '%s\n' pending
+                    exit
+                fi
+            done < "$proc_root/net/unix"
+        } 2>/dev/null; then
+            printf '%s\n' unknown
+            exit
+        fi
+        [ "$metadata_seen" -eq 1 ] || { printf '%s\n' unknown; exit; }
+    fi
+
+    for process in "$proc_root"/[0-9]*; do
+        [ -d "$process" ] || continue
+        # comm remains readable for our own processes, including while PAM
+        # waits before D-Bus registration. Exe and effective UID confirm it.
+        if ! { IFS= read -r name < "$process/comm"; } 2>/dev/null; then
+            continue
+        fi
+        [ "$name" = ksecretd ] || continue
+        effective_uid=
+        state=
+        if ! {
+            while read -r key first second _rest; do
+                case "$key" in
+                    State:) state=$first ;;
+                    Uid:) effective_uid=$second; break ;;
+                esac
+            done < "$process/status"
+        } 2>/dev/null; then
+            [ -d "$process" ] || continue
+            printf '%s\n' unknown
+            exit
+        fi
+        case "$state" in Z|X|x) continue ;; esac
+        case "$effective_uid" in
+            ''|*[!0-9]*)
+                [ -d "$process" ] || continue
+                printf '%s\n' unknown
+                exit ;;
+        esac
+        [ "$effective_uid" = "$user_id" ] || continue
+        executable=$(readlink "$process/exe" 2>/dev/null) || {
+            [ -d "$process" ] || continue
+            printf '%s\n' unknown
+            exit
+        }
+        case "$executable" in
+            */ksecretd|*/ksecretd\ \(deleted\))
+                printf '%s\n' pending
+                exit ;;
+        esac
+    done
+    printf '%s\n' none
+)
+
 vela_credential_mark()
 {
     # XDG_RUNTIME_DIR is private (0700). Do not write to a predictable /tmp path.
@@ -100,8 +175,8 @@ vela_credential_ensure()
                     kwallet)
                         # The native compatibility wrapper may start before its
                         # Secret Service provider (ksecretd). Do not mistake
-                        # this for a terminal failure: launch the separate
-                        # provider, leaving the native daemon untouched.
+                        # this for a terminal failure. Check for a pending PAM
+                        # instance before launching the separate provider.
                         native_available=1 ;;
                     none) ;;
                     unknown)
@@ -119,6 +194,39 @@ vela_credential_ensure()
             vela_credential_mark conflict "Secret Service already belongs to $current, not $backend"
             exit 1 ;;
     esac
+
+    if [ "$backend" = kwallet ]; then
+        # PAM can be waiting for its hash/environment without owning any bus
+        # name yet (notably KWallet 6.14). Never race it with a fresh provider.
+        attempt=0
+        while :; do
+            current=$(vela_credential_owner)
+            case "$current" in
+                "$backend") vela_credential_mark ok ''; exit 0 ;;
+                none) ;;
+                unknown)
+                    vela_credential_mark unverified 'cannot identify the existing Secret Service owner'
+                    exit 1 ;;
+                *)
+                    vela_credential_mark conflict "Secret Service already belongs to $current, not $backend"
+                    exit 1 ;;
+            esac
+            pending=$(vela_credential_kwallet_pending)
+            case "$pending" in
+                none) break ;;
+                pending)
+                    if [ "$attempt" -ge 10 ]; then
+                        vela_credential_mark unverified 'an existing KWallet provider is still starting; leaving it untouched'
+                        exit 1
+                    fi
+                    sleep 0.2
+                    attempt=$((attempt + 1)) ;;
+                *)
+                    vela_credential_mark unverified 'cannot check for a pending KWallet provider'
+                    exit 1 ;;
+            esac
+        done
+    fi
 
     if [ ! -x "$binary" ]; then
         if [ "$native_available" -eq 1 ]; then
@@ -159,8 +267,27 @@ vela_credential_ensure()
                 exit 1 ;;
         esac
     done
+    # Gather fallback information first: its bus lookup may itself allow the
+    # Secret Service provider to become ready. The final authoritative lookup
+    # must follow *all* waits/queries before native-only cleanup.
+    native=none
     if [ "$backend" = kwallet ]; then
         native=$(vela_credential_owner org.kde.kwalletd6)
+    fi
+    current=$(vela_credential_owner)
+    case "$current" in
+        "$backend") vela_credential_mark ok ''; exit 0 ;;
+        none) ;;
+        unknown)
+            vela_credential_stop_started_unit
+            vela_credential_mark unverified 'cannot identify the Secret Service owner'
+            exit 1 ;;
+        *)
+            vela_credential_stop_started_unit
+            vela_credential_mark conflict "Secret Service belongs to $current, not $backend"
+            exit 1 ;;
+    esac
+    if [ "$backend" = kwallet ]; then
         case "$native" in
             kwallet)
                 # Our unit launches ksecretd, not kwalletd6. If it never

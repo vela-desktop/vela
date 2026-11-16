@@ -28,6 +28,11 @@ if(VELA_BUILD_TOOLS)
             ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend
             ${CMAKE_CURRENT_SOURCE_DIR}/vela-session-env
             ${CMAKE_CURRENT_SOURCE_DIR}/vela-kwallet-compat.service)
+    set_tests_properties(session.credential-compat PROPERTIES TIMEOUT 30)
+    add_test(NAME session.credential-pending
+        COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/credential-pending.py
+            ${CMAKE_CURRENT_SOURCE_DIR}/credential-compat/ensure-backend)
+    set_tests_properties(session.credential-pending PROPERTIES TIMEOUT 30)
 endif()
 install(FILES ${CMAKE_CURRENT_BINARY_DIR}/vela.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions)
 install(FILES vela-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
