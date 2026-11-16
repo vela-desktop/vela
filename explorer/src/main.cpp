@@ -10,6 +10,7 @@
 // for "Open with", service menus) is prepared afterwards. With
 // VELA_FILES_TIMING=1 it prints how long it took.
 
+#include "renderingpolicy.h"
 #include "appmodel.h"
 #include "../../common/filetransferrequest.h"
 #include "controls.h"
@@ -63,18 +64,14 @@ double sinceProcessStart()
 
 } // namespace
 
+/** Initialize Files and its text policy, then serve file requests and the Qt event loop. */
 int main(int argc, char* argv[])
 {
     QElapsedTimer sinceMain;
     sinceMain.start();
     const bool timing = qEnvironmentVariableIntValue("VELA_FILES_TIMING") > 0;
 
-    // Text with FreeType and font hinting, like Plasma and Windows: crisper
-    // than Qt Quick's default text (distance fields, no hinting), on the
-    // output's real pixels even at fractional scales.
-    if (qEnvironmentVariableIsEmpty("QT_QUICK_DEFAULT_TEXT_RENDER_TYPE")) {
-        QQuickWindow::setTextRenderType(QQuickWindow::NativeTextRendering);
-    }
+    vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-files"));
     QQmlApplicationEngine* qmlEngine = nullptr;

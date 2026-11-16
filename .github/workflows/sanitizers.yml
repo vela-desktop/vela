@@ -104,7 +104,9 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
             exclude='^packaging-update$'
           fi
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-ctest.xml" -LE gpu -E "$exclude"
+          # The Qt Quick RHI glyph test needs an OpenGL context; hosted Arch CI
+          # runs it under Xvfb/Mesa, not in this CPU-only sanitizer job.
+          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-ctest.xml" -LE "gpu|rhi" -E "$exclude"
       - name: Upload sanitizer test timings
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

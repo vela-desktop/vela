@@ -40,9 +40,9 @@ This is a package smoke test, NOT a graphical login or Vulkan test.
 
 ## Shared hardware CI requirements
 
-Both GPU workflows use pinned Node.js 24-based GitHub Actions and require a
+All three manual GPU workflows use pinned Node.js 24-based GitHub Actions and require a
 **GitHub Actions self-hosted runner >= 2.327.1**. Update the runner before
-dispatching either workflow. Their hardware test jobs set
+dispatching a workflow. Their hardware test jobs set
 `VELA_GPU_CI_STRICT=1`, so even individual Python `unittest` skips and
 empty suites fail CTest (not only CTest-level skips). They also set
 `VELA_GPU_EXPECT_VENDOR` to check the DRM render node actually selected
@@ -61,8 +61,7 @@ The dedicated GPU workflows set `VELA_SHUTDOWN_STRESS_CYCLES=30` and
 live-window logout cycles, check supervised exit without a compositor restart,
 and require Vulkan validation to be enabled during those tests. The validation
 check fails if the requested layer is missing. These are GPU-backed **headless**
-tests: passing them does not certify direct KMS, real display power cycling or
-Intel ANV. See [the physical hardware matrix](hardware.md#gpu-resource-cleanup-and-driver-regression-checks).
+tests: passing them does not certify direct KMS or real display power cycling. See [the physical hardware matrix](hardware.md#gpu-resource-cleanup-and-driver-regression-checks).
 
 ## GPU CI policy
 
@@ -84,18 +83,23 @@ Other documents link here instead of restating the requirements.
   blockers until fixed, explicitly retested and reclassified.
 - **Pass means:** the workflows actually build the selected revision on
   the expected hardware, run the full `gpu`-labeled CTest suite, and reject
-  missing, failed or skipped test cases. `vulkaninfo` by itself is not
-  a pass; a headless GPU pass does not certify physical DRM/KMS, VT
+  missing, failed or skipped test cases. Qt Quick's separate OpenGL
+  `text-rendering-rhi` test belongs to hosted Mesa/Xvfb CI, not to the
+  real-hardware compositor GPU suite, and is still mandatory there.
+  `vulkaninfo` by itself is not a pass; a headless GPU pass does not certify
+  physical DRM/KMS, VT
   switching, screen sharing, or suspend/resume.
 - **Runner safety:** only manually dispatch trusted, reviewed code to
   personal self-hosted machines; use unprivileged runner accounts with no
   personal credentials, privileged sudo, or writable secrets.
 
-The two runners are AMD Radeon RX 9070 XT (Mesa/RADV, CachyOS) and NVIDIA
-GeForce RTX 4070 Laptop GPU (proprietary driver, Arch/CachyOS).
+The two mandatory runners are AMD Radeon RX 9070 XT (Mesa/RADV, CachyOS) and
+NVIDIA GeForce RTX 4070 Laptop GPU (proprietary driver, Arch/CachyOS).
+An experimental Intel Alder Lake UHD Graphics runner (Mesa/ANV, CachyOS)
+adds optional coverage; it is not yet required for merges or releases.
 
 **Enforcement today:** this is a maintainer/release policy, **not yet an
-automatic GitHub branch-protection gate**. Both workflows currently use
+automatic GitHub branch-protection gate**. All three workflows currently use
 `workflow_dispatch` only. A future automated PR status check could
 validate completed run conclusions, their exact commit SHAs, coverage and
 exemptions, and report a required pass/fail result. Do not label the current
@@ -144,7 +148,7 @@ The Arch/CachyOS runner needs the
 `vulkan-tools`, `vulkan-validation-layers`, the proprietary NVIDIA Vulkan
 driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy`,
 `python-pillow` and the same X11 tools (`xorg-xwayland`, `xorg-xrandr`,
-`xorg-xrdb`, `xorg-xprop`). Both workflows check these before building.
+`xorg-xrdb`, `xorg-xprop`). The AMD and NVIDIA workflows check these before building.
 Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
 the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
 The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
@@ -164,10 +168,60 @@ persistent personal machine: the build and tests execute locally. Use
 a restricted unprivileged runner account without personal credentials,
 and keep the laptop awake during a run.
 
+## Manual real-GPU CI (self-hosted Intel, experimental)
+
+[GPU CI - Intel (manual)](../.github/workflows/gpu-intel.yml) targets an
+organization runner labeled **`vela-intel`** (plus `self-hosted`,
+`linux`, `x64`). It is **opt-in and informational**, not an additional
+mandatory merge or release check. Like the AMD runner, this workflow only
+supports `workflow_dispatch`: PR and push events do not dispatch it.
+The organization runner group must permit access to the public
+`vela-desktop/vela` repository; restrict its scope to trusted workflows.
+
+Initial test machine: Intel Alder Lake-UP3 UHD Graphics (PCI `8086:46b3`),
+Mesa ANV 26.2.5 on CachyOS, 8 GB RAM and 256 GB UFS. Vulkan 1.4,
+the expected driver and the necessary DRM/dma-buf extensions have been
+verified manually. This does **not** yet establish a passing GPU CI baseline.
+
+Install the [normal build dependencies](development.md#distribution-dependencies)
+plus `vulkan-intel`, `vulkan-tools`, `vulkan-validation-layers`,
+`python-numpy`, `python-pillow`, `python-dbus`, `dbus`,
+`xorg-xwayland`, `xorg-xrandr`, `xorg-xrdb` and `xorg-xprop`
+on the host. The workflow never installs packages or uses sudo.
+It isolates Intel's Mesa ANV ICD (not `intel_hasvk` or Lavapipe),
+requires `DRIVER_ID_INTEL_OPEN_SOURCE_MESA`, Vulkan >= 1.4 and
+PCI vendor `0x8086`, and verifies the DRM render node actually
+selected by Vela. After building, a separate headless compositor smoke
+check verifies Vela's actual Intel renderer **even for partial runs**
+that select only sharpness or CPU-fence tests. A qualifying `vulkaninfo`
+result alone is never reported as an Intel compositor pass.
+
+The Intel build is limited to **two concurrent compiler jobs** for the
+8 GB machine, with a 180-minute job timeout. It executes the same
+GPU-labeled functional, sharpness and sharpness-cpu suites, retains
+strict no-skip/no-missing-test enforcement, shutdown stress and
+validation layers, and uploads Intel-specific Vulkan/CTest/JUnit
+diagnostics. Optional coverage (`gpu-intel`) and promo smoke tests
+mirror AMD; the coverage upload is performed by a separate
+GitHub-hosted job, not the self-hosted runner.
+
+The first run establishes the baseline. Integrated Intel graphics
+previously exposed timing-sensitive `test_ready` failures because
+the client and compositor share the GPU engine
+([C core notes](c-core.md)); investigate rather than silently
+skip or loosen assertions. Headless CI does not certify physical
+KMS, suspend/resume or display power cycling.
+
+Run the service as an unprivileged account, without passwordless sudo,
+personal credentials or access to personal files, and dispatch only
+trusted, reviewed revisions. It can coexist with a Niri desktop:
+the workflow builds a temporary copy of Vela and runs it headlessly,
+although build/GPU load may affect responsiveness.
+
 ### Running only some tests
 
 The whole GPU suite takes about 17 minutes on the NVIDIA laptop; checking
-one failure again doesn't need it. Both workflows take two optional inputs:
+one failure again doesn't need it. All three workflows take two optional inputs:
 
 - **tests**: a CTest regex, such as `functional-shell` or
   `functional-(capture|x11-native)`.

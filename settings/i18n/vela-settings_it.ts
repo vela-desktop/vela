@@ -1334,6 +1334,10 @@ Specifiche sistema
 <context>
     <name>Main</name>
     <message>
+        <source>Could not save settings</source>
+        <translation>Impossibile salvare le impostazioni</translation>
+    </message>
+    <message>
         <source>Direct scanout</source>
         <translation>Scanout diretto</translation>
     </message>
@@ -3227,6 +3231,13 @@ Specifiche sistema
     <message>
         <source>The update service isn&apos;t responding.</source>
         <translation>Il servizio di aggiornamento non risponde.</translation>
+    </message>
+</context>
+<context>
+    <name>Preferences</name>
+    <message>
+        <source>Check that you can write %1.</source>
+        <translation>Controlla di poter scrivere %1.</translation>
     </message>
 </context>
 </TS>

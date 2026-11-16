@@ -14,7 +14,38 @@ import unittest
 from unittest.mock import patch
 import zlib
 
-from harness import Image, Session, State
+from harness import Image, Session, State, input_sleep_ms
+
+
+class InputActionTimeouts(unittest.TestCase):
+    def test_action_words_used_as_operands_do_not_extend_the_timeout(self):
+        self.assertEqual(input_sleep_ms(("type", "sleep", "key", "Return")), 0)
+        self.assertEqual(input_sleep_ms(("type", "sleep", "sleep", 75, "key", "sleep")), 75)
+        self.assertEqual(input_sleep_ms(("move", 20, 30, "down", "sleep", 10,
+                                         "up", "right", "click", "sleep", 15)), 25)
+
+
+class RealShellInputTimeouts(unittest.TestCase):
+    def test_sleep_text_through_the_actual_shell_input_session(self):
+        from test_shell import RealShell
+
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        program = os.path.join(directory, "input")
+        commands = os.path.join(directory, "commands")
+        with open(program, "w") as script:
+            script.write(f"#!{sys.executable}\nimport sys\n"
+                         "for line in sys.stdin:\n"
+                         f"    with open({commands!r}, 'a') as log: log.write(line)\n"
+                         "    print('OK', flush=True)\n")
+        os.chmod(program, 0o700)
+        scene = RealShell()
+        scene.vela = Session()  # no start(): this regression needs no compositor
+        scene.vela.client_env = dict(os.environ)
+        with patch("test_shell.tool", return_value=program), patch("harness.tool", return_value=program):
+            with scene.input_session() as send:
+                send("type", "sleep", "key", "Return")
+        with open(commands) as log:
+            self.assertEqual(log.readlines()[-1], "type\tsleep\tkey\tReturn\n")
 
 
 class SessionCleanup(unittest.TestCase):
@@ -74,6 +105,58 @@ class SessionCleanup(unittest.TestCase):
         session.clients.append(client)
         session.stop()
         self.assertIsNotNone(client.returncode)
+
+    def test_startup_uses_private_home_and_state_paths(self):
+        session = Session()
+        host_home = os.environ.get("HOME")
+        with tempfile.TemporaryDirectory() as missing_build, patch("harness.BUILD", missing_build):
+            with contextlib.redirect_stdout(io.StringIO()), self.assertRaises(FileNotFoundError):
+                session.start()
+        root = session.directory
+        self.assertEqual(session.env["HOME"], os.path.join(root, "home"))
+        self.assertEqual(session.env["XDG_STATE_HOME"], os.path.join(root, "state"))
+        for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"):
+            self.assertEqual(os.path.dirname(session.env[key]), root)
+        self.assertNotEqual(session.env["HOME"], host_home)
+        self.assertEqual(os.environ.get("HOME"), host_home)
+        self.assertFalse(os.path.exists(root))
+
+    def test_compositor_launch_receives_private_environment(self):
+        """Verify the compositor receives private XDG paths, not just Session.env."""
+        session = Session()
+        launched = {}
+
+        def record_popen(*args, **kwargs):
+            launched.update(kwargs)
+            raise FileNotFoundError("compositor launch intercepted")
+
+        with patch("harness.subprocess.Popen", side_effect=record_popen), \
+                contextlib.redirect_stdout(io.StringIO()), self.assertRaises(FileNotFoundError):
+            session.start()
+        env = launched["env"]
+        root = session.directory
+        self.assertEqual(env["HOME"], os.path.join(root, "home"))
+        self.assertEqual(env["XDG_STATE_HOME"], os.path.join(root, "state"))
+        for key in ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME"):
+            self.assertEqual(os.path.dirname(env[key]), root)
+        self.assertFalse(os.path.exists(root))
+
+    def test_home_creation_failure_does_not_mask_error_or_leak_directory(self):
+        """An early mkdir error must not try to dump a non-existent log."""
+        session = Session()
+        real_mkdir = os.mkdir
+
+        def deny_private_home(path, *args, **kwargs):
+            if os.fspath(path).endswith("/home"):
+                raise PermissionError("injected home failure")
+            return real_mkdir(path, *args, **kwargs)
+
+        with patch("harness.os.mkdir", side_effect=deny_private_home), \
+                contextlib.redirect_stdout(io.StringIO()), \
+                self.assertRaisesRegex(PermissionError, "injected home failure"):
+            session.start()
+        self.assertIsNone(session.log_path)
+        self.assertFalse(os.path.exists(session.directory))
 
     def test_failed_startup_removes_temporary_directory_and_closes_log(self):
         session = Session()

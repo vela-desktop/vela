@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#include "processlaunch.h"
 #include "snip.h"
 #include "snipcrop.h"
 #include "../../common/privatefile.h"
@@ -13,7 +14,6 @@
 #include <LayerShellQt/Window>
 
 #include <QDateTime>
-#include <QDesktopServices>
 #include <QDir>
 #include <QGuiApplication>
 #include <QJsonArray>
@@ -50,6 +50,7 @@ QVariantList queryWindows()
 
 } // namespace
 
+/** Connect screenshot capture, save notifications and opening the saved image. */
 Snip::Snip(QQmlEngine* engine, WindowCapture* capture, Clipboard* clipboard, NotificationServer* notifications,
     QObject* parent)
     : QObject(parent)
@@ -75,7 +76,7 @@ Snip::Snip(QQmlEngine* engine, WindowCapture* capture, Clipboard* clipboard, Not
     connect(m_notifications, &NotificationServer::ActionInvoked, this, [this](uint id, const QString&) {
         const QString path = m_saved.take(id);
         if (!path.isEmpty()) {
-            QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+            vela::process::startDetached(QStringLiteral("xdg-open"), { path });
         }
     });
 }

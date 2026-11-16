@@ -20,7 +20,7 @@ sudo pacman -S --needed base-devel git cmake ninja pkgconf wlroots0.20 wayland w
     libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
     vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
     pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
-    pipewire wireplumber systemd-libs
+    pipewire wireplumber systemd-libs xdg-utils
 ```
 </details>
 
@@ -36,7 +36,7 @@ sudo dnf install git cmake ninja-build gcc gcc-c++ pkgconf-pkg-config \
     vulkan-headers vulkan-loader-devel glslc freetype-devel harfbuzz-devel \
     fontconfig-devel pam-devel polkit-devel librsvg2-devel cairo-devel \
     zlib-devel gtest-devel python3 python3-numpy python3-pillow shared-mime-info \
-    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel
+    pipewire-devel wireplumber-devel pipewire pipewire-utils wireplumber systemd-devel xdg-utils
 ```
 </details>
 
@@ -53,7 +53,7 @@ GPU/DRM functionality.
 ```sh
 sudo apt update
 sudo apt install --no-install-recommends \
-    ca-certificates git build-essential cmake ninja-build pkgconf \
+    ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
     libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
@@ -132,6 +132,28 @@ sh scripts/run-nested.sh
 ```
 
 Vela opens as a window that behaves like a virtual monitor. If `build/shell/vela-shell` exists, the script starts it together with the compositor.
+
+Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh temporary
+`HOME` and `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_CACHE_HOME`, and
+`XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
+including on SIGTERM. A Linux subreaper supervises all session descendants;
+unresponsive processes are SIGKILLed after a bounded grace period. The manual
+launchers require Python 3.9+ and Linux kernel 5.3+ with procfs and pidfd
+support for identity-safe descendant signalling. This keeps test wallpaper/cache writes away from
+your real Vela state.
+The test starts with default settings. To **copy** your existing Vela configuration
+(`vela/` and `Vela/` only) into the temporary home, without editing the originals.
+Symlinks inside the same Vela configuration tree are copied as private files;
+symlinks escaping that tree or forming cycles are skipped with a warning:
+
+```sh
+VELA_TEST_COPY_CONFIG=1 sh scripts/run-nested.sh
+```
+
+These launchers are **not a security sandbox**: the host `XDG_RUNTIME_DIR`
+and D-Bus addresses remain available, and nested mode retains the host Wayland
+display connection. Do not use the manual launchers to test destructive system
+operations. Promo recording has its own private-bus environment.
 
 Files and Settings are launched from the same build tree when available, even if an
 older Vela package is installed in `/usr/bin`. This includes opening them from

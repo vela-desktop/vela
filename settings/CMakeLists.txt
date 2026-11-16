@@ -189,3 +189,17 @@ if(VELA_BUILD_TOOLS AND VELA_BUILD_COMPOSITOR)
     add_test(NAME settings-displays COMMAND vela-displays-test $<TARGET_FILE:vela-display-test-server>)
     set_tests_properties(settings-displays PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen" TIMEOUT 60)
 endif()
+
+# Preference persistence and failure recovery in a private home.
+if(VELA_BUILD_TOOLS)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-preferences-test tests/preferences_test.cpp
+        src/preferences.cpp src/preferences.h
+        ${PROJECT_SOURCE_DIR}/compositor/src/color.c
+        ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c)
+    target_include_directories(vela-preferences-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
+    target_compile_options(vela-preferences-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-preferences-test PRIVATE vela-process Qt6::DBus Qt6::Gui Qt6::Network Qt6::Quick Qt6::Test)
+    add_test(NAME settings-preferences COMMAND vela-preferences-test)
+    set_tests_properties(settings-preferences PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+endif()
