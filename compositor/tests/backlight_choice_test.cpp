@@ -10,6 +10,7 @@ extern "C" {
 }
 
 #include <gtest/gtest.h>
+#include "privatetemp.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -25,8 +26,7 @@ struct Tree {
 
     Tree()
     {
-        char pattern[] = "/tmp/vela-sysfs-XXXXXX";
-        root = mkdtemp(pattern);
+        root = vela::test::privateTempDirectory("vela-sysfs");
         // card1 on the GPU at 0000:00:02.0, with an eDP and a DP connector.
         fs::path gpu = root / "devices/pci0000:00/0000:00:02.0";
         fs::create_directories(gpu / "drm/card1/card1-eDP-1");

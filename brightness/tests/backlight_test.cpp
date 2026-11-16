@@ -13,6 +13,7 @@ extern "C" {
 #include "fake_clock.hpp"
 
 #include <gtest/gtest.h>
+#include "privatetemp.h"
 
 #include <algorithm>
 #include <cerrno>
@@ -32,8 +33,7 @@ struct Tree {
 
     explicit Tree(const char* device = "intel_backlight")
     {
-        char pattern[] = "/tmp/vela-backlight-XXXXXX";
-        root = mkdtemp(pattern);
+        root = vela::test::privateTempDirectory("vela-backlight");
         dir = root / "class" / "backlight" / device;
         fs::create_directories(dir);
     }

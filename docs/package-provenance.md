@@ -51,6 +51,15 @@ Git revision with native packaging tools (`makepkg` on Arch, `rpmbuild` plus
 `dnf builddep` on Fedora 44/45).
 The optional GitHub CLI downloads workflow artifacts but does not verify them.
 
+The standalone `packaging/verify-attestation.py` helper accepts only regular
+package files contained in its current working directory. Run it from the
+download directory; the updater selects that directory automatically. It
+hashes a private snapshot and passes that same snapshot to Cosign, so the
+input filename cannot become a command option or change the verified file
+between hashing and signature verification. Symlinks escaping the selected
+directory and non-regular files are rejected before contacting the service.
+Changes to the original download during verification also cause rejection.
+
 Use `--build` to skip all binary download paths explicitly. Installing from
 a user-selected source repository remains a trust decision: signatures
 authenticate the claimed builder and revision but cannot prove that its source

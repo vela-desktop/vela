@@ -9,6 +9,7 @@ extern "C" {
 }
 
 #include <gtest/gtest.h>
+#include "privatetemp.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -22,9 +23,7 @@ class Settings : public ::testing::Test {
 protected:
     void SetUp() override
     {
-        std::string pattern = (std::filesystem::temp_directory_path() / "vela-settings-test-XXXXXX").string();
-        ASSERT_NE(mkdtemp(pattern.data()), nullptr);
-        m_dir = pattern;
+        m_dir = vela::test::privateTempDirectory("vela-settings-test");
         setenv("XDG_CONFIG_HOME", m_dir.c_str(), 1);
     }
     void TearDown() override { std::filesystem::remove_all(m_dir); }
