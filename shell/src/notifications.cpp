@@ -36,12 +36,8 @@ QImage decodeImage(const QVariant& value)
     argument.beginStructure();
     argument >> width >> height >> rowStride >> hasAlpha >> bitsPerSample >> channels >> pixels;
     argument.endStructure();
-    if (width <= 0 || height <= 0 || bitsPerSample != 8 || (channels != 3 && channels != 4)
-        || pixels.size() < qsizetype(rowStride) * (height - 1) + qsizetype(width) * channels) {
-        return {};
-    }
-    const QImage::Format format = channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
-    return QImage(reinterpret_cast<const uchar*>(pixels.constData()), width, height, rowStride, format).copy();
+    (void)hasAlpha; // the channel count says it
+    return decodeNotificationImage(width, height, rowStride, bitsPerSample, channels, pixels);
 }
 
 // An icon for Image: file (path or file://) or theme name.
@@ -60,6 +56,29 @@ QString iconSource(const QString& icon)
 }
 
 } // namespace
+
+QImage decodeNotificationImage(
+    int width, int height, int rowStride, int bitsPerSample, int channels, const QByteArray& pixels)
+{
+    if (width <= 0 || height <= 0 || width > maxNotificationImageSide || height > maxNotificationImageSide
+        || bitsPerSample != 8 || (channels != 3 && channels != 4)) {
+        return {};
+    }
+    // QImage takes a stride of zero or less as "compute it", and would then
+    // read rows the buffer doesn't have: a row must fit in its stride.
+    const qsizetype rowBytes = qsizetype(width) * channels;
+    if (qsizetype(rowStride) < rowBytes) {
+        return {};
+    }
+    // The last row needs only its pixels, not the padding after them.
+    // Both terms fit in 64 bits: at most 2^31 × 4096 and 4096 × 4.
+    if (pixels.size() < qsizetype(rowStride) * (height - 1) + rowBytes) {
+        return {};
+    }
+    const QImage::Format format = channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
+    // copy(): the QImage above only borrows the D-Bus bytes.
+    return QImage(reinterpret_cast<const uchar*>(pixels.constData()), width, height, rowStride, format).copy();
+}
 
 NotificationServer::NotificationServer(QObject* parent)
     : QAbstractListModel(parent)
