@@ -20,6 +20,17 @@
 #include <memory>
 #include <vector>
 
+// The body markup the shell shows (spec 1.2, "body-markup"): <b>, <i>, <u>
+// and <a href> with an http, https or mailto link stay; any other tag,
+// <img> included, is shown as text. The bounded result goes to Text.StyledText,
+// which would otherwise load an <img src> from anywhere.
+QString sanitizeNotificationBody(const QString& body);
+
+// Bounds on what a client on the bus can make the shell keep.
+constexpr int maxNotificationSummaryChars = 512;
+constexpr int maxNotificationBodyChars = 4096;
+constexpr int maxNotificationHistory = 100; // the oldest leave the center
+
 // The pixels of an "image-data" hint, (iiibiiay) in the spec, as a QImage;
 // null if the fields don't describe a buffer that holds them. The data comes
 // from any client on the session bus: every size is checked before a byte is
