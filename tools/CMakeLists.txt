@@ -274,6 +274,10 @@ add_custom_command(OUTPUT ${CONTENTION_SHADER}
         ${CMAKE_CURRENT_SOURCE_DIR}/shaders/contention.comp
     DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/contention.comp ${TOOLS_SHADER})
 add_executable(vela-slowgpu vela-slowgpu.c ${TOOLS_SHADER} ${CONTENTION_SHADER})
+add_executable(vela-gpu-calibration-test gpu-calibration-test.c)
+target_link_libraries(vela-gpu-calibration-test PRIVATE m)
+target_compile_options(vela-gpu-calibration-test PRIVATE -Wall -Wextra -Werror)
+add_test(NAME benchmark-gpu-calibration COMMAND vela-gpu-calibration-test)
 add_test(NAME benchmark-slowgpu-cli COMMAND ${Python3_EXECUTABLE}
     ${PROJECT_SOURCE_DIR}/benchmarks/tests/slowgpu_cli.py $<TARGET_FILE:vela-slowgpu>)
 set_tests_properties(benchmark-slowgpu-cli PROPERTIES TIMEOUT 20)

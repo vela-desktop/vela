@@ -517,6 +517,16 @@ The versioned `p2-neutral-client-v3` workload fixes these samples for both modes
   a median of 75–225 ms for the fixed 150 ms request; gaps in production or
   visible updates over two seconds invalidate coverage. The absence of
   contention is never inferred merely from use of a compute-only queue.
+  JSON-mode calibration uses the same GPU timestamps as the audit, excluding
+  host submission and fence-wakeup time. Before exposing the producer surface,
+  it warms the GPU and requires three consecutive jobs within 10% of the
+  requested duration, with a bounded 64-sample/iteration search. The selected
+  iteration count is then fixed throughout measurement. Calibration records
+  retain GPU and wall durations, sample count and the clock domain; failed
+  convergence stops the producer. The 150 ms stimulus, 75–225 ms audit tolerance,
+  measured samples and historical archive formulas are unchanged. Rebuild
+  `vela-slowgpu` and refresh the installed tools before a new campaign; changed
+  executable hashes prevent resuming an old campaign with the new instrument.
 - **CPU contention:** a fresh input/animation control, then the same tests while
   one integer worker runs on each allowed CPU, capped at 32 workers. Each worker
   records its pinned CPU, PID, work counters and kernel CPU time every 500 ms.

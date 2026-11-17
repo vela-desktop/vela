@@ -46,6 +46,7 @@
 #include "linux-drm-syncobj-v1-client-protocol.h"
 #include "presentation-time-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
+#include "gpu-calibration.h"
 
 static int WIDTH = 512; // JSON workload uses a larger window behind the neutral client.
 static int HEIGHT = 320;
@@ -475,15 +476,20 @@ static void setupVulkan(void)
 
 // Launches the slow job. With exportFence, returns its sync_file (not signaled
 // yet); without, waits for it to finish.
+static double gpuDurationMs(void)
+{
+    uint64_t values[2];
+    check(vkGetQueryPoolResults(device, timing, 0, 2, sizeof(values), values, sizeof(uint64_t),
+                               VK_QUERY_RESULT_64_BIT), "GPU timestamp results");
+    const uint64_t mask = timestampBits == 64 ? UINT64_MAX : (1ull << timestampBits) - 1;
+    return ((values[1] - values[0]) & mask) * timestampPeriod / 1e6;
+}
+
 static void finishJob(void)
 {
     check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX), "wait GPU fence");
     if (jsonOutput && pendingFrame) {
-        uint64_t values[2];
-        check(vkGetQueryPoolResults(device, timing, 0, 2, sizeof(values), values, sizeof(uint64_t),
-                                   VK_QUERY_RESULT_64_BIT), "GPU timestamp results");
-        const uint64_t mask = timestampBits == 64 ? UINT64_MAX : (1ull << timestampBits) - 1;
-        const double duration = ((values[1] - values[0]) & mask) * timestampPeriod / 1e6;
+        const double duration = gpuDurationMs();
         if(contention)loadGpuNs+=(uint64_t)(duration*1e6+.5);
         else printf("{\"event\":\"gpu-complete\",\"frame\":%" PRIu64 ",\"gpu_duration_ms\":%.6f,"
                "\"submitted_monotonic_ns\":%" PRIu64 ",\"observed_monotonic_ns\":%.0f}\n",
@@ -541,7 +547,7 @@ static int runJob(int exportFence)
     };
     check(vkQueueSubmit(queue, 1, &submit, fence), "vkQueueSubmit");
     if (!exportFence) {
-        vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+        check(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX), "wait calibration fence");
         return -1;
     }
     const VkSemaphoreGetFdInfoKHR getFd = {
@@ -554,33 +560,32 @@ static int runJob(int exportFence)
     return fd;
 }
 
-// How many iterations to last `targetMs` on this GPU.
+static double calibrationWallMs;
+
+static double calibrationSample(uint32_t count, void* context)
+{
+    (void)context;
+    iterations = count;
+    const double start = nowMs();
+    runJob(0);
+    calibrationWallMs = nowMs() - start;
+    // Match the audit's clock domain: host scheduling, submission and fence
+    // wake-up costs must not replace the requested GPU work.
+    return jsonOutput ? gpuDurationMs() : calibrationWallMs;
+}
+
+// Freeze the work before creating the measured surface; never tune it from
+// foreground results or adapt it during a measurement window.
 static void calibrate(double targetMs)
 {
-    double elapsed = 0.0;
-    for (;;) {
-        const double start = nowMs();
-        runJob(0);
-        elapsed = nowMs() - start;
-        if (elapsed >= 20.0 || iterations >= (1u << 30)) {
-            break;
-        }
-        iterations *= 2;
-    }
-    for (int round = 0; round < 2; ++round) {
-        double scaled = (double)iterations * targetMs / elapsed;
-        if (!isfinite(scaled) || scaled < 1 || scaled > (double)(1u << 30)) {
-            die("GPU delay calibration is outside the supported iteration range");
-        }
-        iterations = (uint32_t)scaled;
-        // Keep every cooperative dispatch non-empty after calibration.
-        if (iterations < dispatches) iterations = dispatches;
-        const double start = nowMs();
-        runJob(0);
-        elapsed = nowMs() - start;
-    }
-    if (jsonOutput) printf("{\"event\":\"calibrated\",\"iterations\":%u,\"dispatches\":%u,\"wall_duration_ms\":%.6f}\n", iterations, dispatches, elapsed);
-    else printf("GPU job: %u iterations over %u dispatches, %.0f ms\n", iterations, dispatches, elapsed);
+    struct GpuCalibration result;
+    if (!gpu_calibrate(targetMs, dispatches, calibrationSample, NULL, &result))
+        die("GPU delay calibration did not converge within the supported sample/iteration limits");
+    iterations = result.iterations;
+    if (jsonOutput) printf("{\"event\":\"calibrated\",\"iterations\":%u,\"dispatches\":%u,\"wall_duration_ms\":%.6f,"
+                           "\"gpu_duration_ms\":%.6f,\"clock\":\"gpu-timestamps\",\"samples\":%u}\n",
+                           iterations, dispatches, calibrationWallMs, result.duration_ms, result.samples);
+    else printf("GPU job: %u iterations over %u dispatches, %.0f ms\n", iterations, dispatches, result.duration_ms);
     fflush(stdout);
 }
 
@@ -826,7 +831,8 @@ int main(int argc, char* argv[])
             desktopLoad=1;
         } else if (!strcmp(argv[i], "--help")) {
             puts("Usage: vela-slowgpu [MS] [--implicit] [--fullscreen] [--monolithic] [--json --until-stdin-eof [--timeout 1..240]] [--contention] [--desktop-load]\n"
-                 "JSON mode: bounded startup/runtime, GPU timestamps and fixed synchronization evidence.");
+                 "JSON mode: bounded startup/runtime, GPU timestamps and fixed synchronization evidence.\n"
+                 "Calibration: gpu-timestamp-calibration-v1 (bounded convergence before measurement).");
             return 0;
         } else {
             char* end = NULL;

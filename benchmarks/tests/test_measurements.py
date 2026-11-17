@@ -271,6 +271,16 @@ class MeasurementCampaign(unittest.TestCase):
                 assume_yes=True,layout=self.layout,phases=['slow-apps'],fast=True)
         self.assertEqual(self.calls,[])
 
+    def test_wall_clock_calibrated_producer_is_rejected_before_takeover(self):
+        from vela_bench.campaign import execute
+        from types import SimpleNamespace
+        for name in ('vela-slowgpu','vela-bench-cpuload'):
+            self.setup['files'][str(self.layout.helper.parent/name)]='fixture'
+        with self.assertRaisesRegex(BenchError,'lacks GPU timestamp calibration'):
+            execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='--contention --timeout 1..240')),
+                assume_yes=True,layout=self.layout,phases=['slow-apps'],fast=True)
+        self.assertEqual(self.calls,[])
+
 
 
 class SlowWorkload(unittest.TestCase):

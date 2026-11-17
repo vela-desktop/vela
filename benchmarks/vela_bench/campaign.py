@@ -392,6 +392,8 @@ def require_selection_instruments(host, layout, setup, current, selection):
                 trusted(tool)
             help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
             if '--contention' not in help or '--desktop-load' not in help:raise BenchError('Installed GPU helper lacks P3 observed load support')
+            if 'gpu-timestamp-calibration-v1' not in help:
+                raise BenchError('Installed GPU producer lacks GPU timestamp calibration; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
     if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
         pattern = layout.helper.parent / "vela-pattern"
         if str(pattern) not in setup["files"]:
@@ -423,6 +425,8 @@ def require_selection_instruments(host, layout, setup, current, selection):
             raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
         if '--timeout 1..240' not in help:
             raise BenchError('Installed GPU producer lacks the extended slow-apps deadline; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
+        if 'gpu-timestamp-calibration-v1' not in help:
+            raise BenchError('Installed GPU producer lacks GPU timestamp calibration; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
 
 
 def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=False, fast=False, seed=0,

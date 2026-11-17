@@ -234,7 +234,7 @@ class ObservationCampaign(unittest.TestCase):
         patch('vela_bench.campaign.require_uinput').start()
         self.options=[]
         from types import SimpleNamespace
-        self.host=SimpleNamespace(run=lambda *a,**k:SimpleNamespace(stdout='--observe --peer --workspace --desktop-load --contention P3 v2'))
+        self.host=SimpleNamespace(run=lambda *a,**k:SimpleNamespace(stdout='--observe --peer --workspace --desktop-load --contention P3 v2 gpu-timestamp-calibration-v1'))
         for name in ('vela-bench-desktop','vela-bench-input','vela-slowgpu','vela-bench-cpuload'):self.setup['files'][str(self.layout.helper.parent/name)]='fixture-hash'
         patch('vela_bench.desktop.audit_observation',side_effect=self.audit_fixture).start()
         patch('vela_bench.campaign.audit_pilot',return_value={'status':'passed','checks':{'restored':True}}).start()

@@ -90,6 +90,13 @@ def main(vela_sync_test=False):
                 assert result['status']=='passed',result['failures']
                 assert len(result['scenarios'])==8
                 assert measurements.audit_measurements(directory,'vela',profile,'slow-apps')==result
+                for mode in ('explicit', 'implicit'):
+                    rows = [json.loads(line) for line in
+                            (directory / f'vela-producer-{mode}.jsonl').read_text().splitlines()]
+                    calibrated = next(row for row in rows if row['event'] == 'calibrated')
+                    assert calibrated['clock'] == 'gpu-timestamps'
+                    assert 135 <= calibrated['gpu_duration_ms'] <= 165
+                    assert 3 <= calibrated['samples'] <= 64
                 for kind in ('cpu','gpu'):
                     sample=result['scenarios'][kind]
                     assert sample['input']['actions']==100 and sample['motion']['submitted']==600
