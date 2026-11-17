@@ -2,7 +2,7 @@
 
 > **Status:** Accepted. **Checked:** 17 November 2026, `d784004`.
 >
-> **Remaining:** S7, color (10 bit, HDR, `color-management-v1`), and later the refresh-rate policy for VRR during animations (§11).
+> **Remaining:** S5 blurred-background cache, S6 live blur behind the title bar and animated hover, S7, color (10 bit, HDR, `color-management-v1`), and later the refresh-rate policy for VRR during animations (§11).
 
 > **Design history:** the stage log and risk register below preserve decisions
 > made earlier in development. Descriptions such as “postponed” refer to the
