@@ -22,7 +22,7 @@
 
 // The body markup the shell shows (spec 1.2, "body-markup"): <b>, <i>, <u>
 // and <a href> with an http, https or mailto link stay; any other tag,
-// <img> included, is shown as text. The result goes to Text.StyledText,
+// <img> included, is shown as text. The bounded result goes to Text.StyledText,
 // which would otherwise load an <img src> from anywhere.
 QString sanitizeNotificationBody(const QString& body);
 

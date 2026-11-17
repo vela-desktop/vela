@@ -10,6 +10,7 @@
 #include <QDBusConnectionInterface>
 #include <QDBusMetaType>
 #include <QRegularExpression>
+#include <QStringView>
 #include <QUrl>
 #include <QtDebug>
 
@@ -20,6 +21,7 @@ namespace {
 
 constexpr int defaultTimeoutMs = 6000; // like Windows (about six seconds)
 constexpr int maxVisible = 4; // the oldest expire early
+constexpr QStringView closeLink = u"</a>";
 
 // "image-data" (and the old "image_data" and "icon_data"): (iiibiiay).
 QImage decodeImage(const QVariant& value)
@@ -72,7 +74,7 @@ QString keptTag(const QString& tag, int& openLinks)
             return QStringLiteral(""); // closes nothing
         }
         --openLinks;
-        return QStringLiteral("</a>");
+        return closeLink.toString();
     }
     // A delimiter of its own: the pattern contains )" itself.
     static const QRegularExpression link(QStringLiteral(R"re(^\s*a\s+href\s*=\s*(?:"([^"]*)"|'([^']*)')\s*$)re"),
@@ -90,42 +92,67 @@ QString keptTag(const QString& tag, int& openLinks)
         return {};
     }
     ++openLinks;
-    return QStringLiteral("<a href=\"") + url.toString(QUrl::FullyEncoded).toHtmlEscaped() + QStringLiteral("\">");
+    // StyledText takes the attribute literally and stops at either quote.
+    // FullyEncoded protects double quotes and angle brackets; encode apostrophes too.
+    QString encoded = url.toString(QUrl::FullyEncoded);
+    encoded.replace(QLatin1Char('\''), QLatin1String("%27"));
+    return QStringLiteral("<a href=\"") + encoded + QStringLiteral("\">");
 }
 
 } // namespace
 
 QString sanitizeNotificationBody(const QString& body)
 {
+    const QStringView input(body);
+    const QStringView prefix = input.left(std::min(input.size(), qsizetype(maxNotificationBodyChars)));
+    constexpr qsizetype maxEntityLength = 34; // 32 name characters plus & and ;
+    static const QRegularExpression entity(
+        QStringLiteral(R"(^&(?:[A-Za-z][A-Za-z0-9]{0,31}|#[0-9]{1,10}|#[xX][0-9A-Fa-f]{1,8});$)"));
+
     QString out;
-    out.reserve(body.size());
+    out.reserve(prefix.size());
     int openLinks = 0;
-    qsizetype i = 0;
-    while (i < body.size()) {
-        const QChar c = body.at(i);
-        if (c == QLatin1Char('>')) {
-            out += QLatin1String("&gt;");
-            ++i;
-            continue;
+    for (qsizetype i = 0; i < prefix.size();) {
+        const QChar c = prefix.at(i);
+        qsizetype consumed = 1;
+        int nextOpenLinks = openLinks;
+        QString tag;
+        QStringView piece = prefix.sliced(i, 1);
+        if (c == QLatin1Char('<')) {
+            const qsizetype end = prefix.indexOf(QLatin1Char('>'), i + 1);
+            if (end >= 0) {
+                tag = keptTag(prefix.sliced(i + 1, end - i - 1).toString(), nextOpenLinks);
+            }
+            if (tag.isNull()) {
+                piece = u"&lt;";
+            } else {
+                piece = tag;
+                consumed = end - i + 1;
+            }
+        } else if (c == QLatin1Char('>')) {
+            piece = u"&gt;";
+        } else if (c == QLatin1Char('&')) {
+            const QStringView candidate = input.sliced(i, std::min(input.size() - i, maxEntityLength));
+            const qsizetype end = candidate.indexOf(QLatin1Char(';'));
+            if (end >= 0 && entity.matchView(candidate.first(end + 1)).hasMatch()) {
+                consumed = end + 1;
+                piece = candidate.first(consumed);
+            }
+        } else if (c.isHighSurrogate() && i + 1 < input.size() && input.at(i + 1).isLowSurrogate()) {
+            consumed = 2;
+            piece = input.sliced(i, consumed);
         }
-        if (c != QLatin1Char('<')) {
-            out += c;
-            ++i;
-            continue;
+        // Append whole tokens and keep room to close every retained link.
+        const qsizetype closingLength = nextOpenLinks * closeLink.size();
+        if (i + consumed > prefix.size() || out.size() + piece.size() + closingLength > maxNotificationBodyChars) {
+            break;
         }
-        const qsizetype end = body.indexOf(QLatin1Char('>'), i + 1);
-        const QString kept = end < 0 ? QString() : keptTag(body.mid(i + 1, end - i - 1), openLinks);
-        if (kept.isNull()) {
-            // Not ours: its "<" becomes text, and the rest of it with it.
-            out += QLatin1String("&lt;");
-            ++i;
-            continue;
-        }
-        out += kept;
-        i = end + 1;
+        out += piece;
+        openLinks = nextOpenLinks;
+        i += consumed;
     }
     for (; openLinks > 0; --openLinks) {
-        out += QLatin1String("</a>");
+        out += closeLink;
     }
     return out;
 }
@@ -313,7 +340,7 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     n.icon = iconFor(id, app_icon, hints);
     // Bounded before anything keeps them (popup, center, replacements).
     n.summary = summary.left(maxNotificationSummaryChars);
-    n.body = sanitizeNotificationBody(body.left(maxNotificationBodyChars));
+    n.body = sanitizeNotificationBody(body);
     n.hasDefault = false;
     for (qsizetype i = 0; i + 1 < actions.size(); i += 2) {
         if (actions[i] == QLatin1String("default")) {

@@ -418,9 +418,10 @@ if(VELA_BUILD_TOOLS)
         src/notifications.h)
     target_include_directories(vela-notification-limits-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
     target_compile_options(vela-notification-limits-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-notification-limits-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    target_link_libraries(vela-notification-limits-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
     add_test(NAME shell-notification-limits COMMAND vela-notification-limits-test)
-    set_tests_properties(shell-notification-limits PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    set_tests_properties(shell-notification-limits PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
 
     # "image-data" from the bus: refused when it doesn't hold its own rows.
     qt_add_executable(vela-notification-image-test tests/notification_image.cpp src/notifications.cpp
