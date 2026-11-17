@@ -170,7 +170,7 @@ python3 -m unittest discover -s packaging/tests -v
 ctest --test-dir build -R '^packaging-update$' --output-on-failure
 ```
 
-These tests require Python 3.10+, Git, Bash and a POSIX shell. Each scenario uses
+These tests require Python 3.13+, Git, Bash and a POSIX shell. Each scenario uses
 temporary repositories and an isolated home/config/cache. Git's global and
 system configuration is disabled; only file transport is allowed. The test
 adapter records the requested clone/fetch URL, rejects SSH and unexpected
@@ -375,7 +375,7 @@ DRM/KMS, and this matrix cannot represent every GPU generation or setup
 
 `scripts/run-headless.sh` starts a real Vela session on wlroots' headless backend. No Vela window appears on the current desktop, but apps can be opened, moved, snapped and captured exactly as in a visible session.
 
-The manual headless and nested launchers (Python 3.9+ and Linux 5.3+ with
+The manual headless and nested launchers (Python 3.13+ and Linux 5.3+ with
 procfs/pidfd support required) give every run a
 temporary home, configuration, data, cache, and state directory. A Linux subreaper
 terminates/reaps detached descendants before removal; unresponsive processes

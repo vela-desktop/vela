@@ -64,7 +64,7 @@ BuildRequires:  qt6-qtwayland-devel
 BuildRequires:  qt6-qttools-devel
 BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  layer-shell-qt-devel
-BuildRequires:  python3
+BuildRequires:  python3 >= 3.13
 BuildRequires:  pipewire-devel
 BuildRequires:  wireplumber-devel
 # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3), and
@@ -89,7 +89,7 @@ Requires:       qt6-qtwayland
 Requires:       layer-shell-qt
 Requires:       pam
 Requires:       polkit
-Requires:       python3
+Requires:       python3 >= 3.13
 Requires:       xorg-x11-server-Xwayland
 Requires:       pipewire
 Requires:       wireplumber

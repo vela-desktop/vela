@@ -18,6 +18,7 @@ import unittest
 
 import test_shell
 from harness import BUILD, Image, Session, TimeoutError
+import builtins
 
 # The LG of §3 on the first output, the Mi on the second (test-output add).
 MONITORS = """
@@ -126,7 +127,7 @@ class Watcher:
         while True:
             try:
                 chunk = self.socket.recv(65536)
-            except socket.timeout:
+            except builtins.TimeoutError:
                 break
             if not chunk:
                 break

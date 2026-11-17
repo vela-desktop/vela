@@ -120,7 +120,7 @@ class BlurPolicy(unittest.TestCase):
         return [(to_srgb((v - 1 / 255) * under) - 1, to_srgb((v + 1 / 255) * under) + 1) for v in c]
 
     def start(self, vela, namespace):
-        color = "%02x%02x%02x" % self.WALLPAPER
+        color = "{:02x}{:02x}{:02x}".format(*self.WALLPAPER)
         for args in (["wallpaper", "--color", color],
                      ["taskbar", "--blur", "--clear", "--namespace", namespace]):
             vela.clients.append(subprocess.Popen([tool("vela-panel"), *args], env=vela.client_env))
@@ -150,7 +150,7 @@ class BlurPolicy(unittest.TestCase):
         client's window gets the plain blur either way."""
         for app_id, acrylic in (("vela-test", True), ("test.app", False)):
             with self.subTest(app_id=app_id), Session() as vela:
-                color = "%02x%02x%02x" % self.WALLPAPER
+                color = "{:02x}{:02x}{:02x}".format(*self.WALLPAPER)
                 vela.clients.append(subprocess.Popen([tool("vela-panel"), "wallpaper", "--color", color],
                                                      env=vela.client_env))
                 vela.wait_for(lambda s: s.output["frames"] > 0)

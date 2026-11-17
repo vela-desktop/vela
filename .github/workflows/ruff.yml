@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-name: Python lint
+name: Python checks
 
 on:
   push:
@@ -31,3 +31,48 @@ jobs:
           version: '0.17.5'
           args: check --output-format=github
           src: .
+
+  python-minimum:
+    name: Python 3.13 tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up minimum supported Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+
+      - name: Install CPU test dependencies
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake dbus-daemon
+
+      - name: Scripts
+        run: python -m unittest discover -s scripts/tests -v
+
+      - name: Packaging
+        run: python -m unittest discover -s packaging/tests -v
+
+      - name: Reporter
+        run: PYTHONPATH=report python -m unittest discover -s report/tests -v
+
+      - name: Functional harness
+        run: PYTHONPATH=tests/functional python -m unittest discover -s tests/harness -v
+
+      - name: Audio metadata parser (CPU-only)
+        run: python -m unittest discover -s tests/audio -p 'test_fixture.py' -k DefaultReadTest -v
+
+      - name: Configure and smoke-test standalone reporter
+        run: |
+          cmake -S . -B build-report-cli \
+            -DVELA_BUILD_COMPOSITOR=OFF -DVELA_BUILD_SHELL=OFF \
+            -DVELA_BUILD_POLKIT=OFF -DVELA_BUILD_TOOLS=OFF -DVELA_REPORT_GUI=OFF \
+            -DPython3_EXECUTABLE="$(command -v python)"
+          build-report-cli/report/vela-report --help
+
+      - name: Validate Python syntax
+        run: |
+          python -m compileall -q compositor/tests packaging report scripts session/tests tests
+          python -m py_compile packaging/vela-update-state report/vela-report.in

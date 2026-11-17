@@ -362,10 +362,8 @@ def install(path, output):
 
 def artifact_digest(path):
     """Stable digest for a completed output (not just existence or file size)."""
-    digest = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            digest.update(chunk)
+        digest = hashlib.file_digest(stream, "sha256")
     return {"sha256": digest.hexdigest(), "size": path.stat().st_size}
 
 
@@ -414,8 +412,7 @@ def build_fingerprint(binaries):
     for name, path in sorted(binaries.items()):
         result.update(name.encode() + b"\0")
         with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                result.update(chunk)
+            hashlib.file_digest(stream, lambda: result)
         result.update(b"\0")
     return result.hexdigest()
 

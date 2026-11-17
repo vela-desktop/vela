@@ -13,6 +13,7 @@ Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
 import atexit
+import builtins
 from contextlib import contextmanager
 import json
 import math
@@ -427,7 +428,7 @@ class Session:
                 else:
                     last = self.state()
             except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError,
-                    socket.timeout) as error:
+                    builtins.TimeoutError) as error:
                 if not reconnect:
                     raise
                 connection_error = repr(error)
