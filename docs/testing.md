@@ -17,7 +17,8 @@ The `gpu` label groups `functional`, `sharpness` and `sharpness-cpu`; the latter
 uses CPU fence synchronization while rendering still requires a GPU.
 The separate `rhi` label covers Qt Quick's OpenGL glyph rendering, which is
 verified with Mesa software OpenGL under Xvfb in hosted CI, not the real-GPU
-compositor suites.
+compositor suites. It is the path of Files, Settings and the polkit prompt;
+the shell renders with Vulkan, which this test does not cover yet.
 
 ```sh
 ctest --test-dir build -LE 'gpu|rhi' --output-on-failure # GPU/RHI-independent suites
@@ -557,7 +558,7 @@ connected to the session the tests run in. The bus runs without the host's
 leaves the group itself (`setsid`) is not followed.
 
 `tests/functional/test_shell.py` runs the actual Qt shell with a private D-Bus
-session and isolated configuration, using threaded OpenGL rendering, CPU
+session and isolated configuration, using threaded Vulkan rendering, CPU
 compositor synchronization and a 100 Hz output. It checks repeated Super
 toggles, reopening during the close animation, and the Wayland trace of each
 native surface lifetime: configure and ACK precede the first buffer, the hidden

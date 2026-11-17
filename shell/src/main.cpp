@@ -63,6 +63,7 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QPointer>
 #include <QScreen>
 #include <QStyleHints>
@@ -72,6 +73,7 @@
 
 #include <cstdio>
 #include <memory>
+#include <mutex>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
@@ -111,7 +113,7 @@ private:
 
 void releaseHiddenPanel(QQuickWindow* window)
 {
-    // Qt can retain the wl_surface and its EGL buffers after hide(). A new
+    // Qt can retain the wl_surface and its buffers after hide(). A new
     // layer role then shares that native surface with the previous rendering
     // cycle. Use a fresh surface on reopen, including its configure handshake.
     // Keep the QML window, models and LayerShellQt settings intact.
@@ -140,6 +142,17 @@ void setupTaskbar(QQuickWindow* window, QScreen* screen)
     QObject::connect(window, &QWindow::heightChanged, window, [window, layer] {
         layer->setExclusiveZone(window->height());
     });
+    // The API Qt Quick actually renders with, once per session in vela.log
+    // (rendering::configureVulkan). Emitted on the render thread.
+    QObject::connect(window, &QQuickWindow::sceneGraphInitialized, window, [window] {
+        static std::once_flag logged;
+        std::call_once(logged, [window] {
+            const auto api = window->rendererInterface()->graphicsApi();
+            qInfo("vela-shell: Qt Quick renders with %s",
+                api == QSGRendererInterface::Vulkan ? "Vulkan"
+                    : api == QSGRendererInterface::OpenGL ? "OpenGL" : "another API");
+        });
+    }, Qt::DirectConnection);
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -293,6 +306,7 @@ int main(int argc, char* argv[])
     }
 
     vela::rendering::configureApplication();
+    vela::rendering::configureVulkan();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
