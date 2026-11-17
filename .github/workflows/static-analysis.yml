@@ -44,6 +44,30 @@ jobs:
             fi
           fi
 
+  # Every tracked shell script, found by its shebang: the updater (which runs
+  # sudo), the session scripts, CI and packaging helpers. Cheap, so it runs
+  # on every PR, docs-only ones included.
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck all shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck --version | sed -n 2p
+          mapfile -t scripts < <(git ls-files -z | while IFS= read -r -d '' file; do
+            [ -f "$file" ] && head -n1 -- "$file" | grep -qE '^#!.*[/ ](ba|da)?sh( |$)' && printf '%s\n' "$file"
+          done)
+          printf 'Checking %d scripts\n' "${#scripts[@]}"
+          printf '  %s\n' "${scripts[@]}"
+          for script in "${scripts[@]}"; do
+            if head -n1 -- "$script" | grep -q bash; then bash -n "$script"; else sh -n "$script"; fi
+          done
+          shellcheck -S warning -x "${scripts[@]}"
+
   static-analysis:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
@@ -61,15 +85,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Shell syntax and ShellCheck
-        shell: bash
-        run: |
-          for script in packaging/vela-update session/vela-session-env scripts/*.sh; do
-            sh -n "$script"
-          done
-          bash -n scripts/ci-check-package.sh
-          shellcheck -S warning scripts/ci-check-package.sh
 
       # Analyze the compositor's C code, without needing Qt or a GPU.
       - name: Configure Clang static analyzer
