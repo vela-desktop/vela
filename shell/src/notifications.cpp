@@ -9,6 +9,7 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMetaType>
+#include <QRegularExpression>
 #include <QUrl>
 #include <QtDebug>
 
@@ -59,7 +60,77 @@ QString iconSource(const QString& icon)
     return QStringLiteral("image://icon/") + QString::fromUtf8(QUrl::toPercentEncoding(icon));
 }
 
+// One tag of the body, without its angle brackets: what to write in its
+// place, an empty string to drop it, or a null string to show it as text.
+QString keptTag(const QString& tag, int& openLinks)
+{
+    const QString lower = tag.trimmed().toLower();
+    for (const char* simple : { "b", "/b", "i", "/i", "u", "/u", "br", "br/", "br /" }) {
+        if (lower == QLatin1String(simple)) {
+            return QLatin1Char('<') + lower + QLatin1Char('>');
+        }
+    }
+    if (lower == QLatin1String("/a")) {
+        if (openLinks == 0) {
+            return QStringLiteral(""); // closes nothing
+        }
+        --openLinks;
+        return QStringLiteral("</a>");
+    }
+    static const QRegularExpression link(QStringLiteral(R"(^\s*a\s+href\s*=\s*(?:"([^"]*)"|'([^']*)')\s*$)"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = link.match(tag);
+    if (!match.hasMatch()) {
+        return {};
+    }
+    QString href = match.captured(1).isNull() ? match.captured(2) : match.captured(1);
+    href.replace(QLatin1String("&amp;"), QLatin1String("&"));
+    const QUrl url(href, QUrl::StrictMode);
+    const QString scheme = url.scheme().toLower();
+    if (!url.isValid()
+        || (scheme != QLatin1String("http") && scheme != QLatin1String("https") && scheme != QLatin1String("mailto"))) {
+        return {};
+    }
+    ++openLinks;
+    return QStringLiteral("<a href=\"") + url.toString(QUrl::FullyEncoded).toHtmlEscaped() + QStringLiteral("\">");
+}
+
 } // namespace
+
+QString sanitizeNotificationBody(const QString& body)
+{
+    QString out;
+    out.reserve(body.size());
+    int openLinks = 0;
+    qsizetype i = 0;
+    while (i < body.size()) {
+        const QChar c = body.at(i);
+        if (c == QLatin1Char('>')) {
+            out += QLatin1String("&gt;");
+            ++i;
+            continue;
+        }
+        if (c != QLatin1Char('<')) {
+            out += c;
+            ++i;
+            continue;
+        }
+        const qsizetype end = body.indexOf(QLatin1Char('>'), i + 1);
+        const QString kept = end < 0 ? QString() : keptTag(body.mid(i + 1, end - i - 1), openLinks);
+        if (kept.isNull()) {
+            // Not ours: its "<" becomes text, and the rest of it with it.
+            out += QLatin1String("&lt;");
+            ++i;
+            continue;
+        }
+        out += kept;
+        i = end + 1;
+    }
+    for (; openLinks > 0; --openLinks) {
+        out += QLatin1String("</a>");
+    }
+    return out;
+}
 
 NotificationServer::NotificationServer(QObject* parent)
     : QAbstractListModel(parent)
@@ -210,8 +281,9 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     n.id = id;
     n.appName = app_name;
     n.icon = iconFor(id, app_icon, hints);
-    n.summary = summary;
-    n.body = body;
+    // Bounded before anything keeps them (popup, center, replacements).
+    n.summary = summary.left(maxNotificationSummaryChars);
+    n.body = sanitizeNotificationBody(body.left(maxNotificationBodyChars));
     n.hasDefault = false;
     for (qsizetype i = 0; i + 1 < actions.size(); i += 2) {
         if (actions[i] == QLatin1String("default")) {
@@ -250,6 +322,7 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
             Q_EMIT countChanged();
         }
         if (n.transient) {
+            m_images.remove(id); // iconFor() stored it; nothing will show it
             Q_EMIT NotificationClosed(id, uint(Reason::Expired));
         } else {
             toHistory(n);
@@ -333,6 +406,11 @@ void NotificationServer::toHistory(const Notification& n)
         { n.id, n.appName, n.icon, n.summary, n.body, n.actions, n.hasDefault, QDateTime::currentDateTime() });
     m_history.endInsertRows();
     Q_EMIT m_history.countChanged();
+    // A client that never stops would grow the center (and its images)
+    // without end: past the cap the oldest leave, as if they had expired.
+    while (int(m_history.m_items.size()) > maxNotificationHistory) {
+        close(m_history.m_items.back().id, Reason::Expired);
+    }
 }
 
 int NotificationServer::historyRow(uint id) const

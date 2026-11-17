@@ -20,6 +20,17 @@
 #include <memory>
 #include <vector>
 
+// The body markup the shell shows (spec 1.2, "body-markup"): <b>, <i>, <u>
+// and <a href> with an http, https or mailto link stay; any other tag,
+// <img> included, is shown as text. The result goes to Text.StyledText,
+// which would otherwise load an <img src> from anywhere.
+QString sanitizeNotificationBody(const QString& body);
+
+// Bounds on what a client on the bus can make the shell keep.
+constexpr int maxNotificationSummaryChars = 512;
+constexpr int maxNotificationBodyChars = 4096;
+constexpr int maxNotificationHistory = 100; // the oldest leave the center
+
 // The notification center (Win+N): past notifications, most recent first,
 // until dismissed. Those expired from the popup end up here (not "transient"
 // ones) and, with "Do not disturb", all non-critical ones.
