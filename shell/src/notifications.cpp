@@ -13,6 +13,7 @@
 #include <QtDebug>
 
 #include <algorithm>
+#include <cstring>
 
 namespace {
 
@@ -36,12 +37,8 @@ QImage decodeImage(const QVariant& value)
     argument.beginStructure();
     argument >> width >> height >> rowStride >> hasAlpha >> bitsPerSample >> channels >> pixels;
     argument.endStructure();
-    if (width <= 0 || height <= 0 || bitsPerSample != 8 || (channels != 3 && channels != 4)
-        || pixels.size() < qsizetype(rowStride) * (height - 1) + qsizetype(width) * channels) {
-        return {};
-    }
-    const QImage::Format format = channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
-    return QImage(reinterpret_cast<const uchar*>(pixels.constData()), width, height, rowStride, format).copy();
+    (void)hasAlpha; // the channel count says it
+    return decodeNotificationImage(width, height, rowStride, bitsPerSample, channels, pixels);
 }
 
 // An icon for Image: file (path or file://) or theme name.
@@ -60,6 +57,38 @@ QString iconSource(const QString& icon)
 }
 
 } // namespace
+
+QImage decodeNotificationImage(
+    int width, int height, int rowStride, int bitsPerSample, int channels, const QByteArray& pixels)
+{
+    if (width <= 0 || height <= 0 || width > maxNotificationImageSide || height > maxNotificationImageSide
+        || bitsPerSample != 8 || (channels != 3 && channels != 4)) {
+        return {};
+    }
+    // QImage takes a stride of zero or less as "compute it", and would then
+    // read rows the buffer doesn't have: a row must fit in its stride.
+    const qsizetype rowBytes = qsizetype(width) * channels;
+    if (qsizetype(rowStride) < rowBytes) {
+        return {};
+    }
+    // The last row needs only its pixels, not the padding after them: that is
+    // what libnotify sends (gdk_pixbuf_get_pixels_with_length). Both terms
+    // fit in 64 bits: at most 2^31 × 4096 and 4096 × 4.
+    if (pixels.size() < qsizetype(rowStride) * (height - 1) + rowBytes) {
+        return {};
+    }
+    // Row by row, only each row's pixels: a QImage over the D-Bus bytes would
+    // read the whole stride of the last row too, past the buffer's end.
+    const QImage::Format format = channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
+    QImage image(width, height, format);
+    if (image.isNull()) {
+        return {}; // out of memory
+    }
+    for (int y = 0; y < height; ++y) {
+        std::memcpy(image.scanLine(y), pixels.constData() + qsizetype(rowStride) * y, size_t(rowBytes));
+    }
+    return image;
+}
 
 NotificationServer::NotificationServer(QObject* parent)
     : QAbstractListModel(parent)
