@@ -6,7 +6,7 @@ For renderer design and frame scheduling, see [renderer.md](renderer.md). For th
 
 ## Build
 
-Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
+Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3.13 or newer. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
 
 ## Distribution dependencies
 
@@ -116,7 +116,7 @@ To set an option when configuring a build, use `-DNAME=VALUE` (for example,
 | `VELA_BUILD_COMPOSITOR` | `ON` | Build the Wayland compositor and session integration. |
 | `VELA_BUILD_SHELL` | `ON` | Build the Qt Quick shell, Settings, Files and lock screen. |
 | `VELA_BUILD_TOOLS` | `ON` | Build development tools and enable the CTest suites. |
-| `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.10 or newer. |
+| `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.13 or newer. |
 | `VELA_REPORT_GUI` | Same as `VELA_BUILD_SHELL` | Build the ordinary Qt Widgets reporting window, also usable in other desktops. |
 | `VELA_WLROOTS` | `wlroots-0.20` | pkg-config name used for wlroots. Only wlroots 0.20 is supported. |
 | `VELA_CPU_TARGET` | `x86-64-v3` | x86-64 ISA/codegen baseline; optional local override such as `native` or `znver5` for single-machine builds. The installed `vela-session` performs a v3 CPU preflight before launching the compositor. |
@@ -143,7 +143,7 @@ Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh tempor
 `XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
 including on SIGTERM. A Linux subreaper supervises all session descendants;
 unresponsive processes are SIGKILLed after a bounded grace period. The manual
-launchers require Python 3.9+ and Linux kernel 5.3+ with procfs and pidfd
+launchers require Python 3.13+ and Linux kernel 5.3+ with procfs and pidfd
 support for identity-safe descendant signalling. This keeps test wallpaper/cache writes away from
 your real Vela state.
 The test starts with default settings. To **copy** your existing Vela configuration

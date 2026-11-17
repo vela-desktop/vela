@@ -6,11 +6,9 @@ background check and the notification. It is the 0.1 release blocker in the
 [release-channels.md](release-channels.md). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
-> daemon), U3 (the Qt client), U4 (the Settings page), U5 (the shell's
-> notifications) and U6 (packaging and docs) are done; U7, real updates on
-> real systems, is done in containers, in a real session and against the
-> `v0.1.0` Beta release. See §11.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing. Stages U0–U7, including real updates on real systems, are in §11.
 
 ## 1. What there is today
 

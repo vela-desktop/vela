@@ -5,7 +5,7 @@
 """Offline Ubuntu 26.10 updater contracts: real Git, mocked APT/CMake/CPack."""
 
 import json
-from pathlib import Path
+import unittest
 
 from test_update import UpdateFixture
 
