@@ -1,4 +1,4 @@
-# Host allocation policy — design draft
+# Host allocation policy
 
 > **Status:** accepted with option c, fifth revision, 9 November 2026,
 > against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the

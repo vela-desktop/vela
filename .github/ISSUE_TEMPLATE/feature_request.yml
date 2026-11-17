@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Feature request
+description: Suggest a change to how Vela works or looks
+title: "feature: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues and the [roadmap](https://github.com/vela-desktop/vela/blob/main/docs/roadmap.md) first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The task or situation, and what gets in the way today.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would help?
+      description: How you imagine it working. Screenshots or mock-ups from other desktops are welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you tried instead?
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Window management
+        - Shell (taskbar, Start, notifications, quick settings)
+        - Files
+        - Settings
+        - Lock screen and session
+        - Installation and updates
+        - Other
