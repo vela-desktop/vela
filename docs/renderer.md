@@ -1,5 +1,9 @@
 # The Vela renderer
 
+> **Status:** Accepted. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** S7, color (10 bit, HDR, `color-management-v1`), and later the refresh-rate policy for VRR during animations (§11).
+
 > **Design history:** the stage log and risk register below preserve decisions
 > made earlier in development. Descriptions such as “postponed” refer to the
 > historical stage, not necessarily the current build. See the [README](../README.md),
@@ -11,13 +15,12 @@ of milestone 2 (blur, rounded corners, shadows) and of everything that comes
 after. This document comes before the code: decisions are made here, and the
 code follows them.
 
-> **Status:** design discussed and approved in its fundamental choices (§2,
-> also summarized in §13). Stages **S0–S6 are done** (§11): Vela's scene and
-> renderer are the only ones, apps reach the screen bit for bit at every scale,
-> each frame is drawn as late as possible before the vblank, windows have
-> rounded corners and shadows, the shell's panels have acrylic blur, Qt/KDE
-> apps have Vela's title bar, and an app whose GPU is late never makes the
-> screen wait (§7.3). Next: S7.
+The fundamental choices are approved (§2, also summarized in §13). Stages
+**S0–S6 are done** (§11): Vela's scene and renderer are the only ones, apps
+reach the screen bit for bit at every scale, each frame is drawn as late as
+possible before the vblank, windows have rounded corners and shadows, the
+shell's panels have acrylic blur, Qt/KDE apps have Vela's title bar, and an
+app whose GPU is late never makes the screen wait (§7.3).
 
 ## 1. Goals
 

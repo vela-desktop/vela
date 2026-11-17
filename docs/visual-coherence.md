@@ -6,13 +6,12 @@ comes before the code. It lists what is wrong today, what is different on
 purpose, the invariants the code must keep, and the changes, in the order
 they are made and with how each is verified.
 
-> **Status:** approved design, implemented in the order of §8; done: PR 1
-> (§6.1), PR 2 (§6.2), PR 3 (§6.3), PR 4 (§6.4), PR 5 (§6.5), PR 6 (§6.6),
-> PR 7 (§6.7), PR 8 (the shared pieces of §6.8 and §6.9, §6.11 reporting),
-> PR 9 (§6.10), PR 10 (§6.9 for the other panels), PR 11 (the rest of §6.8,
-> §6.11 failing).
-> Each change has one explanation, in §6; the plan in §8 only says which pull
-> request carries it.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing from the plan: PRs 1–11 of §8 are merged. §10 lists what may come later.
+
+Each change has one explanation, in §6; the plan in §8 only says which pull
+request carries it.
 
 ## 1. Goals
 
