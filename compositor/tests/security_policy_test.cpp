@@ -80,17 +80,17 @@ TEST(SecurityPolicy, SystemPromptProgram)
         EXPECT_TRUE(vela_system_prompt_program(exe, "/usr")) << exe;
     }
     // The right name anywhere the user can write, or the wrong program in /usr.
-    for (const char *exe : { "/home/user/pinentry", "/tmp/kwalletd6", "/usrx/bin/pinentry", "/usr/bin/firefox",
-             "/usr/bin/../../tmp/pinentry", "/usr/bin/pinentry-qt (copy)", "/usr/bin/", "pinentry", "" }) {
+    for (const char *exe : { "/home/user/pinentry", "/opt/kwalletd6", "/usrx/bin/pinentry", "/usr/bin/firefox",
+             "/usr/bin/../../opt/pinentry", "/usr/bin/pinentry-qt (copy)", "/usr/bin/", "pinentry", "" }) {
         EXPECT_FALSE(vela_system_prompt_program(exe, "/usr")) << exe;
     }
     EXPECT_FALSE(vela_system_prompt_program(nullptr, "/usr"));
     EXPECT_FALSE(vela_system_prompt_program("/usr/bin/pinentry", nullptr));
     EXPECT_FALSE(vela_system_prompt_program("/usr/bin/pinentry", "relative"));
     // A directory given by the tests, with or without its final slash.
-    EXPECT_TRUE(vela_system_prompt_program("/tmp/vela-test/prompts/pinentry-test", "/tmp/vela-test/prompts/"));
-    EXPECT_TRUE(vela_system_prompt_program("/tmp/vela-test/prompts/pinentry-test", "/tmp/vela-test/prompts"));
-    EXPECT_FALSE(vela_system_prompt_program("/tmp/vela-test/prompts2/pinentry-test", "/tmp/vela-test/prompts"));
+    EXPECT_TRUE(vela_system_prompt_program("/home/test/prompts/pinentry-test", "/home/test/prompts/"));
+    EXPECT_TRUE(vela_system_prompt_program("/home/test/prompts/pinentry-test", "/home/test/prompts"));
+    EXPECT_FALSE(vela_system_prompt_program("/home/test/prompts2/pinentry-test", "/home/test/prompts"));
 }
 
 TEST(SecurityPolicy, PeerProgram)
