@@ -31,7 +31,7 @@ Additional options are `--state-dir`, `--description-file`, `--duration`
 Run `vela-report --help` for details. Options prefill the guided workflow;
 they do not bypass collection or export confirmation.
 
-The installed desktop entry is **Vela Report**. Python 3.10 or newer is the
+The installed desktop entry is **Vela Report**. Python 3.13 or newer is the
 only CLI dependency. The normal build includes the Qt Widgets frontend; a
 CLI-only build does not require Qt, Wayland, X11 or wlroots:
 
