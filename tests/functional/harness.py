@@ -279,6 +279,9 @@ class Session:
             "VELA_DEBUG_INPUT": "1",
             # test-output, test-power, test-shell on the command socket.
             "VELA_TEST_COMMANDS": "1",
+            # Where install_prompt() puts stand-in system prompts: trusted
+            # like /usr, only with VELA_TEST_COMMANDS on the headless backend.
+            "VELA_TEST_PROMPT_DIR": os.path.join(self.directory, "prompts"),
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
             "HOME": os.path.join(self.directory, "home"),
@@ -526,6 +529,15 @@ class Session:
         self.input(*actions)
 
     # -------------------------------------------------------- windows --
+
+    def install_prompt(self, name="pinentry-test"):
+        """A copy of vela-pattern named like a system prompt program, in the
+        directory the test compositor trusts as installed (VELA_TEST_PROMPT_DIR)."""
+        directory = os.path.join(self.directory, "prompts")
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, name)
+        shutil.copy2(tool("vela-pattern"), path)
+        return path
 
     def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
                     env=None, glass=False):

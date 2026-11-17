@@ -3,6 +3,7 @@
 
 #include "security_policy.h"
 
+#include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -141,6 +142,92 @@ enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
     }
     close(pidfd);
     return result;
+}
+
+// Keep in sync with docs/security-model.md, "System prompts". Names are
+// matched as substrings: the same program shows up as "kwalletd6",
+// "org.kde.kwalletd6" or an X11 class. The program check below is what a
+// client cannot choose.
+static const char *const prompt_names[] = {
+    "kwalletd", "ksecretd", "polkit-kde-authentication-agent", "pinentry", "gcr-prompter", "systemprompter",
+};
+// The programs behind those names, by the start of their file name.
+static const char *const prompt_programs[] = {
+    "kwalletd", "ksecretd", "polkit-kde-authentication-agent", "pinentry", "gcr-prompter",
+};
+
+bool vela_system_prompt_name(const char *app_id)
+{
+    if (!app_id) {
+        return false;
+    }
+    char id[256];
+    size_t n = 0;
+    for (; app_id[n] && n + 1 < sizeof(id); ++n) {
+        id[n] = (char)tolower((unsigned char)app_id[n]);
+    }
+    id[n] = '\0';
+    for (size_t i = 0; i < sizeof(prompt_names) / sizeof(prompt_names[0]); ++i) {
+        if (strstr(id, prompt_names[i])) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool vela_system_prompt_program(const char *exe, const char *trusted_dir)
+{
+    if (!exe || !trusted_dir || exe[0] != '/' || trusted_dir[0] != '/') {
+        return false;
+    }
+    // Inside the trusted directory, as a path component ("/usr" never
+    // matches "/usrlocal"). readlink gives a canonical path: no "..".
+    size_t dir = strlen(trusted_dir);
+    while (dir > 1 && trusted_dir[dir - 1] == '/') {
+        --dir;
+    }
+    if (strncmp(exe, trusted_dir, dir) != 0 || exe[dir] != '/' || strstr(exe, "/../")) {
+        return false;
+    }
+    const char *base = strrchr(exe, '/') + 1;
+    size_t length = strcspn(base, " ");
+    if (length == 0 || (base[length] != '\0' && strcmp(base + length, " (deleted)") != 0)) {
+        return false;
+    }
+    for (size_t i = 0; i < sizeof(prompt_programs) / sizeof(prompt_programs[0]); ++i) {
+        size_t prefix = strlen(prompt_programs[i]);
+        if (prefix <= length && strncmp(base, prompt_programs[i], prefix) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool vela_peer_program(int socket_fd, pid_t pid, char *exe, size_t size)
+{
+    if (!exe || size < 2 || pid <= 0) {
+        return false;
+    }
+    int pidfd = peer_pidfd(socket_fd);
+    if (pidfd < 0) {
+        return false;
+    }
+    bool ok = false;
+    char path[64];
+    int written = snprintf(path, sizeof(path), "/proc/%ld/exe", (long)pid);
+    if (pidfd_pid(pidfd) == (long)pid && written > 0 && (size_t)written < sizeof(path)) {
+        ssize_t length = readlink(path, exe, size - 1);
+        if (length > 0 && (size_t)length < size - 1) {
+            exe[length] = '\0';
+            ok = true;
+        }
+    }
+    // Still alive afterwards: /proc/<pid> was the peer's all along.
+    if (ok && syscall(SYS_pidfd_send_signal, pidfd, 0, NULL, 0) != 0) {
+        ok = false;
+    }
+    close(pidfd);
+    return ok;
 }
 
 bool vela_shm_layout_valid(int width, int height, size_t stride, uint32_t bpp)
