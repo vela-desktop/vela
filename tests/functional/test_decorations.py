@@ -336,7 +336,7 @@ class IconCache(unittest.TestCase):
                         "[scalable/apps]\nSize=48\nType=Scalable\n")
         with open(os.path.join(apps, "vela.test.held.svg"), "w") as svg:
             svg.write('<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16">'
-                      '<rect width="16" height="16" fill="#%02x%02x%02x"/></svg>\n' % color)
+                      '<rect width="16" height="16" fill="#{:02x}{:02x}{:02x}"/></svg>\n'.format(*color))
 
     def icon(self, vela, window):
         """The color at the middle of the window's bar icon (scale 1)."""

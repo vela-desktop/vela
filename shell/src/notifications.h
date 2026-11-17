@@ -31,6 +31,14 @@ constexpr int maxNotificationSummaryChars = 512;
 constexpr int maxNotificationBodyChars = 4096;
 constexpr int maxNotificationHistory = 100; // the oldest leave the center
 
+// The pixels of an "image-data" hint, (iiibiiay) in the spec, as a QImage;
+// null if the fields don't describe a buffer that holds them. The data comes
+// from any client on the session bus: every size is checked before a byte is
+// read, and images larger than maxNotificationImageSide on a side are refused.
+constexpr int maxNotificationImageSide = 4096;
+QImage decodeNotificationImage(
+    int width, int height, int rowStride, int bitsPerSample, int channels, const QByteArray& pixels);
+
 // The notification center (Win+N): past notifications, most recent first,
 // until dismissed. Those expired from the popup end up here (not "transient"
 // ones) and, with "Do not disturb", all non-critical ones.

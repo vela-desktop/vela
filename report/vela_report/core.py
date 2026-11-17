@@ -349,10 +349,8 @@ class Report:
     def manifest(self):
         artifacts = {}
         for name, item in self.artifacts.items():
-            digest = hashlib.sha256()
             with self._open_artifact(name) as stream:
-                for block in iter(lambda: stream.read(65536), b""):
-                    digest.update(block)
+                digest = hashlib.file_digest(stream, "sha256")
             artifacts[name] = dict(item, sha256=digest.hexdigest())
         return self.redactor.value({
             "schema_version": 1, "reporter_version": VERSION, "reporter_build": self.build,

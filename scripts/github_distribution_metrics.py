@@ -4,7 +4,7 @@
 """Archive GitHub-side aggregate metrics; never Vela runtime telemetry."""
 
 import argparse
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 import json
 import os
 from pathlib import Path
@@ -186,7 +186,7 @@ def summarize_releases(assets):
 
 
 def collect(repo, output, releases_token, traffic_token, now=None):
-    now = now or datetime.now(timezone.utc)
+    now = now or datetime.now(UTC)
     if now.tzinfo is None or now.utcoffset() != timedelta(0):
         raise ValueError("Collection time must be UTC")
     today = now.date()

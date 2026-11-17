@@ -1,7 +1,10 @@
 # Vela themes: declarative Level 2.5 design
 
-> Status: design contract, implemented as far as "Supported today" says. Items marked **planned** are not implemented. PR #205 and #206
-> are superseded, not discarded.
+> **Status:** Accepted. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** what "Supported today" does not list: items marked **planned** are not implemented, and the merge gate has open items.
+
+PR #205 and #206 are superseded, not discarded.
 
 ## Product contract
 

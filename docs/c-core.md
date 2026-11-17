@@ -1,5 +1,9 @@
 # The C core
 
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** the input paths ported line by line in step 9 of §4 (gestures, wheel lines, touchpad settings, pointer constraints, paste and keyboard layouts) need a check by hand on real hardware.
+
 The compositor has been rewritten in plain C, one subsystem at a time, with
 the behavior that users and tests can observe left exactly as it is. This
 document records where it started, the rules the C code follows, the order

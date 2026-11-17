@@ -1,5 +1,9 @@
 # Compositor security model
 
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** no unfinished implementation work is identified in this document; continue security regression testing and review as the compositor evolves.
+
 This page describes the trust boundaries of `vela-compositor`: who may talk
 to it, which Wayland protocols each client may use, how the screen lock
 survives crashes, and what the renderer refuses from clients. To report a
