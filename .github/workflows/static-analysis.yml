@@ -44,6 +44,36 @@ jobs:
             fi
           fi
 
+  # clang-format on the C and C++ lines this PR changes, nothing else:
+  # existing code follows .clang-format as it is touched.
+  clang-format:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true' && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - name: Install clang-format 18
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang-format-18
+      - name: Check the changed lines
+        shell: bash
+        run: |
+          set -euo pipefail
+          # HEAD is the PR merged into its base; HEAD^1 is the base.
+          mapfile -t skip < <(grep -vE '^\s*(#|$)' .clang-format-ignore | sed 's/^/:(exclude,glob)/')
+          out=$(git clang-format-18 --binary clang-format-18 --diff 'HEAD^1' -- \
+              '*.c' '*.h' '*.cpp' '*.hpp' "${skip[@]}")
+          case "$out" in
+            ''|'no modified files to format'|'clang-format did not modify any files') echo "$out"; exit 0 ;;
+          esac
+          printf '%s\n' "$out"
+          echo "::error::Changed lines differ from .clang-format. Locally: git clang-format origin/main"
+          exit 1
+
   static-analysis:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'

@@ -145,6 +145,34 @@ jobs:
       - name: Tests
         run: ctest --test-dir build --output-on-failure --parallel 2 -E '^packaging-update$'
 
+      # qmllint over every QML module, with the build's import paths
+      # (qt_add_qml_module's all_qmllint target). Report only for now: the
+      # warnings already in main are counted, not yet failed on.
+      - name: QML lint (report only)
+        shell: bash
+        run: |
+          set +e
+          cmake --build build --target all_qmllint > qmllint.log 2>&1
+          status=$?
+          warnings=$(grep -c '^Warning:' qmllint.log)
+          echo "qmllint exit status $status, $warnings warnings"
+          {
+            echo '### qmllint'
+            echo "$warnings warnings (report only; full log in the qmllint artifact)"
+            echo
+            grep -oE '\[[a-z-]+\]$' qmllint.log | sort | uniq -c | sort -rn | head -20 | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -q 'unknown target' qmllint.log && echo '::warning::all_qmllint target not available'
+          exit 0
+
+      - name: Upload qmllint log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: qmllint
+          path: qmllint.log
+          if-no-files-found: ignore
+
       # Run the actual glyph shaders on CPU-only runners. Direct invocation
       # makes unavailable graphics (exit 77) fail here instead of silently skip.
       - name: Text rendering through Mesa RHI
