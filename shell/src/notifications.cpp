@@ -77,7 +77,9 @@ QString keptTag(const QString& tag, int& openLinks)
         --openLinks;
         return QStringLiteral("</a>");
     }
-    static const QRegularExpression link(QStringLiteral(R"(^\s*a\s+href\s*=\s*(?:"([^"]*)"|'([^']*)')\s*$)"),
+    // QLatin1String, not QStringLiteral: a raw string doesn't survive that
+    // macro's u"" pasting in GCC.
+    static const QRegularExpression link(QLatin1String(R"(^\s*a\s+href\s*=\s*(?:"([^"]*)"|'([^']*)')\s*$)"),
         QRegularExpression::CaseInsensitiveOption);
     const QRegularExpressionMatch match = link.match(tag);
     if (!match.hasMatch()) {
