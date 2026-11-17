@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# The GPU CI policy (docs/ci-quality.md#gpu-ci-policy) as a commit status:
+# a pull request that changes GPU-affecting files needs a successful full
+# suite from both manual GPU workflows, AMD and NVIDIA, on its exact head SHA.
+# Make the "gpu-ci/amd-nvidia" status required on main and release/* to turn
+# it into a merge gate.
+#
+# The privileged event reads GitHub API metadata only; never check out or run
+# untrusted PR code here. A finished GPU run re-evaluates the PRs at its SHA.
+name: GPU CI gate
+
+on:
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, labeled, unlabeled]
+  workflow_run:
+    workflows: ["GPU CI - AMD (manual)", "GPU CI - NVIDIA (manual)"]
+    types: [requested, completed]
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+  pull-requests: read
+  statuses: write
+
+concurrency:
+  group: vela-gpu-gate-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || 'all' }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Check GPU runs on the head SHA
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish the gpu-ci/amd-nvidia status
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const statusContext = 'gpu-ci/amd-nvidia';
+            const exemptLabel = 'gpu: not affected';
+            const fullSuite = 'Full GPU suite';
+            const workflows = [['AMD', 'gpu-amd.yml'], ['NVIDIA', 'gpu-nvidia.yml']];
+            const targetUrl = context.serverUrl + '/' + owner + '/' + repo + '/actions/runs/' + context.runId;
+            // Exempt by policy: documentation and translations. Anything
+            // else counts as GPU-affecting until a maintainer labels the PR.
+            const noGpuImpact = path =>
+              /^(README|CONTRIBUTING|CONTRIBUTORS|SECURITY)\.md$/.test(path) ||
+              path.startsWith('docs/') ||
+              path.startsWith('.github/ISSUE_TEMPLATE/') ||
+              (/(^|\/)i18n\//.test(path) && path.endsWith('.ts'));
+
+            const evaluate = async pr => {
+              const sha = pr.head.sha;
+              const short = sha.slice(0, 7);
+              if ((pr.labels || []).some(label => label.name === exemptLabel)) {
+                return ['success', 'Exempt: labelled "' + exemptLabel + '"'];
+              }
+              const files = await github.paginate(github.rest.pulls.listFiles, {
+                owner, repo, pull_number: pr.number, per_page: 100
+              });
+              const affecting = files.some(file =>
+                !noGpuImpact(file.filename) || (file.previous_filename && !noGpuImpact(file.previous_filename)));
+              if (!affecting) return ['success', 'No GPU-affecting files changed'];
+              const needed = [];
+              let failed = false;
+              for (const [vendor, workflow] of workflows) {
+                const { data } = await github.rest.actions.listWorkflowRuns({
+                  owner, repo, workflow_id: workflow, head_sha: sha, per_page: 100
+                });
+                // Only full runs on this exact commit count: a run filtered
+                // with "tests" or "test_filter" is titled "Partial GPU run".
+                const runs = data.workflow_runs.filter(run =>
+                  run.head_sha === sha && (run.display_title || '').startsWith(fullSuite));
+                if (runs.some(run => run.conclusion === 'success')) continue;
+                if (runs.some(run => run.status !== 'completed')) {
+                  needed.push(vendor + ' running');
+                } else if (runs.length) {
+                  needed.push(vendor + ' failed');
+                  failed = true;
+                } else {
+                  needed.push(vendor);
+                }
+              }
+              if (!needed.length) return ['success', 'AMD and NVIDIA full suites passed on ' + short];
+              const state = failed && needed.every(item => item.endsWith(' failed')) ? 'failure' : 'pending';
+              return [state, 'Needs full GPU suite on ' + short + ': ' + needed.join(', ')];
+            };
+
+            let prs;
+            if (context.eventName === 'pull_request_target') {
+              prs = [context.payload.pull_request];
+            } else {
+              const open = await github.paginate(github.rest.pulls.list, { owner, repo, state: 'open', per_page: 100 });
+              const sha = context.payload.workflow_run?.head_sha;
+              prs = sha ? open.filter(pr => pr.head?.sha === sha) : open;
+            }
+            let errors = 0;
+            for (const pr of prs) {
+              try {
+                const [state, description] = await evaluate(pr);
+                await github.rest.repos.createCommitStatus({
+                  owner, repo, sha: pr.head.sha, state, context: statusContext,
+                  description: description.slice(0, 140), target_url: targetUrl
+                });
+                core.info('#' + pr.number + ': ' + state + ' - ' + description);
+              } catch (error) {
+                errors++;
+                core.warning('#' + pr.number + ': ' + error.message);
+              }
+            }
+            if (errors) core.setFailed(errors + ' pull request(s) could not be evaluated');

@@ -102,12 +102,16 @@ vary between runs. An experimental Intel Alder Lake UHD Graphics runner
 (Mesa/ANV, CachyOS) adds optional coverage; it is not yet required for
 merges or releases.
 
-**Enforcement today:** this is a maintainer/release policy, **not yet an
-automatic GitHub branch-protection gate**. All three workflows currently use
-`workflow_dispatch` only. A future automated PR status check could
-validate completed run conclusions, their exact commit SHAs, coverage and
-exemptions, and report a required pass/fail result. Do not label the current
-manual policy as an automatically enforced merge requirement.
+**Enforcement:** the [GPU CI gate](../.github/workflows/gpu-gate.yml)
+publishes the `gpu-ci/amd-nvidia` commit status on every pull request. It is
+`success` when the PR changes only documentation or translations, carries the
+maintainer label `gpu: not affected`, or has a successful **full** run of both
+workflows on its exact head SHA (runs dispatched with `tests` or
+`test_filter` are titled "Partial GPU run" and don't count). Otherwise it is
+`pending`, or `failure` once the only runs left are failed ones. A finished
+GPU run re-evaluates the PRs at its SHA. The status becomes a merge gate when
+it is marked required in the branch protection of `main` and `release/*`.
+The GPU workflows themselves still start only by `workflow_dispatch`.
 
 ## Manual real-GPU CI (self-hosted AMD)
 

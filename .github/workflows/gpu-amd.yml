@@ -4,6 +4,8 @@
 # Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
 # The self-hosted runner must have the custom 'vela-amd' label.
 name: GPU CI - AMD (manual)
+# The GPU CI gate (gpu-gate.yml) counts only runs titled "Full GPU suite".
+run-name: ${{ inputs.tests == '' && inputs.test_filter == '' && 'Full GPU suite' || 'Partial GPU run' }} (AMD) on ${{ github.ref_name }}
 
 on:
   workflow_dispatch:

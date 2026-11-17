@@ -5,6 +5,8 @@
 # Each run rents a fresh single-GPU Vast.ai container (scripts/vast-runner.py)
 # from the image of nvidia-ci-image.yml, and destroys it at the end.
 name: GPU CI - NVIDIA (manual)
+# The GPU CI gate (gpu-gate.yml) counts only runs titled "Full GPU suite".
+run-name: ${{ inputs.tests == '' && inputs.test_filter == '' && 'Full GPU suite' || 'Partial GPU run' }} (NVIDIA) on ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
