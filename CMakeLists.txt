@@ -64,6 +64,9 @@ if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(bluetooth)
     add_subdirectory(updates)
     add_subdirectory(session)
+    # Parsers of untrusted bytes: replayed in ctest, fuzzed with libFuzzer
+    # when VELA_BUILD_FUZZERS is on (docs/testing.md, "Fuzzing").
+    add_subdirectory(fuzz)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
 if(VELA_BUILD_SHELL OR VELA_BUILD_CAPTURE_TOOLS OR VELA_BUILD_TOOLS)

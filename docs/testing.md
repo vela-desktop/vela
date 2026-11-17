@@ -624,6 +624,34 @@ the test writes, including a held icon whose entry is evicted (the cases
 that draw an icon need librsvg). `functional-decorations` (GPU) has a
 client cycle through 600 app ids with `vela-pattern --cycle-app-ids`.
 
+## Fuzzing
+
+`fuzz/` holds libFuzzer targets for parsers of bytes Vela doesn't control:
+
+| Target | Parser | Input |
+| --- | --- | --- |
+| `config` | `vela_config_read` (`compositor/src/config.c`) | `vela.conf` |
+| `ini` | `vela_ini_read`, `vela_desktop_conf_read` | `.desktop` files of installed apps, `desktop.conf` |
+| `ddc` | `vela_ddc_parse_reply`, `vela_ddc_parse_request` | DDC/CI bytes from a monitor |
+
+Each target also checks properties, not only crashes. For example, a DDC
+reply that parses re-encodes to one that parses the same. ctest replays each
+target over `fuzz/corpus/<target>` plus 5,000 seeded inputs
+(`fuzz-replay.<target>`, any compiler), so the sanitizer CI covers them too.
+For a real run:
+
+```sh
+sh fuzz/build.sh build-fuzz        # Clang with libFuzzer; no wlroots or Qt needed
+build-fuzz/vela-fuzz-config -max_total_time=60 fuzz/corpus/config
+```
+
+`-DVELA_BUILD_FUZZERS=ON` builds the same binaries with CMake (Clang only).
+The [fuzzing workflow](../.github/workflows/fuzz.yml) runs each target for a
+minute on PRs that touch these parsers and for ten minutes every night. A
+crash's reproducer is uploaded as an artifact; it goes into the target's
+corpus with the fix. The notification image decoder (`shell/`) is Qt code
+and is covered by its unit tests instead.
+
 ## Frame-path allocations
 
 The frame path draws without allocating once warmed

@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# libFuzzer on the parsers of untrusted bytes (fuzz/): one minute per target
+# when a PR touches them, ten minutes per target every night. A crash fails
+# the run and its reproducer is uploaded; add it to fuzz/corpus/<target>
+# with the fix, so ctest replays it from then on.
+name: Fuzzing
+
+on:
+  pull_request:
+    paths:
+      - 'fuzz/**'
+      - 'compositor/src/config.c'
+      - 'compositor/src/desktop_conf.c'
+      - 'compositor/src/legacy_names.c'
+      - 'compositor/src/path_security.c'
+      - 'compositor/src/util.c'
+      - 'brightness/src/ddc.c'
+      - 'common/alloc/alloc.c'
+      - '.github/workflows/fuzz.yml'
+  schedule:
+    - cron: '17 2 * * *'
+  workflow_dispatch:
+    inputs:
+      seconds:
+        description: Seconds per target
+        type: number
+        default: 600
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [config, ini, ddc]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Clang and libFuzzer
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q --no-install-recommends clang-18 libclang-rt-18-dev
+      - name: Build
+        run: CC=clang-18 sh fuzz/build.sh build-fuzz
+      - name: Fuzz ${{ matrix.target }}
+        env:
+          EVENT: ${{ github.event_name }}
+          SECONDS_INPUT: ${{ inputs.seconds }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          case "$EVENT" in
+            pull_request) seconds=60 ;;
+            workflow_dispatch) seconds=$SECONDS_INPUT ;;
+            *) seconds=600 ;;
+          esac
+          # A scratch corpus seeded from the repository's: the run may grow it.
+          mkdir -p corpus crashes
+          cp "fuzz/corpus/$TARGET/"* corpus/
+          "build-fuzz/vela-fuzz-$TARGET" -max_total_time="$seconds" -timeout=10 -rss_limit_mb=2048 \
+              -artifact_prefix=crashes/ -print_final_stats=1 corpus
+      - name: Upload reproducers
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: fuzz-crashes-${{ matrix.target }}
+          path: crashes/
+          if-no-files-found: ignore
