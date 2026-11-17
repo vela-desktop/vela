@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!@Python3_EXECUTABLE@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 from pathlib import Path

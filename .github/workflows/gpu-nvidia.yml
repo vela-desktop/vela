@@ -445,15 +445,13 @@ jobs:
     name: Destroy the Vast.ai GPU
     needs: [start-runner, gpu-nvidia]
     if: always()
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 includes Python >= 3.13; cleanup must not depend on a download.
+    runs-on: ubuntu-26.04
     environment: gpu-nvidia
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-        with:
-          python-version: '3.13'
       - name: Token for the organization's runners
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -468,7 +466,7 @@ jobs:
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           ORG: ${{ github.repository_owner }}
           LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
-        run: python3 scripts/vast-runner.py stop --org "$ORG" --label "$LABEL"
+        run: /usr/bin/python3 scripts/vast-runner.py stop --org "$ORG" --label "$LABEL"
 
   publish-nvidia-coverage:
     name: Codecov NVIDIA upload (GitHub hosted)
