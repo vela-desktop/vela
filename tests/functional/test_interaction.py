@@ -223,7 +223,7 @@ class Interaction(unittest.TestCase):
         x, y, _, _ = self.frame(window)
         self.vela.command("window active move")
         self.vela.keys("Right", "Right", "Right", "Down", "Return")
-        state = self.vela.wait_for(lambda s: s.window(window)["x"] == x + 30, what="moved 30 to the right")
+        self.vela.wait_for(lambda s: s.window(window)["x"] == x + 30, what="moved 30 to the right")
         self.assertEqual(self.frame(window)[1], y + 10)
         # Esc: back to how it was.
         self.vela.command("window active move")

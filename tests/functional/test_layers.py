@@ -58,7 +58,8 @@ class Layers(unittest.TestCase):
             blurred = vela.pixels()
         # The wallpaper has sharp bands every 24 rows: behind the bar, only
         # when blurred does it become a gradient, with many colors.
-        column = lambda image: {image.at(900, y) for y in range(image.height - BAR, image.height)}
+        def column(image):
+            return {image.at(900, y) for y in range(image.height - BAR, image.height)}
         self.assertLessEqual(len(column(plain)), 4)
         self.assertGreaterEqual(len(column(blurred)), 12)
         # Outside the bar nothing changes.

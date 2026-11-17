@@ -30,6 +30,8 @@ import time
 from xml.sax.saxutils import escape as xml_escape
 import zlib
 
+from renderer_identity import verify_renderer_vendor
+
 # Opt-in only: keep the functional test harness standard-library-only.
 _PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
 _WAYLAND_TRACE = re.compile(r"\[\d{2}:\d{2}:\d{2}\.\d{6}\] ")
@@ -56,8 +58,6 @@ def _print_profile():
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
-
-from renderer_identity import verify_renderer_vendor
 
 
 def tool(name):

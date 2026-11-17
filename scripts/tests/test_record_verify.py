@@ -3,7 +3,6 @@ import importlib.util
 import json
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import types
 import unittest

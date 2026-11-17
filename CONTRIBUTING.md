@@ -32,6 +32,21 @@ Details: [testing](docs/testing.md), [configuration and diagnostics](docs/config
 
 Code quality integrations (coverage, automated area labels, SonarQube Cloud, DCO) are described in [docs/code-quality-integrations.md](docs/code-quality-integrations.md).
 
+Lint all Python sources from the repository root before opening a PR:
+
+```sh
+uvx ruff==0.17.5 check .
+```
+
+Alternatively, install `ruff==0.17.5` with pip and run `ruff check .`.
+The root [`ruff.toml`](ruff.toml) enables Ruff's standard `E4`, `E7`, `E9`
+and `F` rules for Python 3.10+, including tests and the Python entry points
+`packaging/vela-update-state` and `report/vela-report.in`. Generated build
+trees and downloaded Arch packaging sources are excluded. The **Python lint**
+workflow runs the same check for every pull request and pushes to `main` and
+release branches. When upgrading Ruff, update the version in the configuration,
+workflow and commands here together.
+
 ## Pull request checklist
 
 - Explain what changed, why it changed, and how you tested it.

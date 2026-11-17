@@ -796,8 +796,8 @@ class Supervisor(unittest.TestCase):
             self.assertIsNotNone(first)
             os.kill(first, signal.SIGSEGV)
             vela.wait_for_log("restarted after a crash")
-            second = vela.wait_for(lambda s: child_compositor(vela.process.pid) not in (None, first),
-                                   read_state=False, what="a new compositor")
+            vela.wait_for(lambda s: child_compositor(vela.process.pid) not in (None, first),
+                          read_state=False, what="a new compositor")
             vela.wait_for(lambda s: s["outputs"], what="the new compositor responds", reconnect=True)
 
     def test_unwritable_lock_marker_ends_session_without_restart(self):

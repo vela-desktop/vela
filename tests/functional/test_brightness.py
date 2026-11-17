@@ -563,7 +563,7 @@ class QuickSettings(test_shell.RealShell):
         wait_brightness(self.vela, lambda o: all(o.get(n, {}).get("state") == "ready"
                                                  for n in ("HEADLESS-1", "HEADLESS-2")), "both ready")
         # The shell has its taskbar on the new display too.
-        self.vela.wait_for(lambda s: sum(l["namespace"] == "vela-taskbar" and l["mapped"] for l in s["layers"]) == 2,
+        self.vela.wait_for(lambda s: sum(layer["namespace"] == "vela-taskbar" and layer["mapped"] for layer in s["layers"]) == 2,
                            what="a taskbar on each display")
         time.sleep(0.5)
         box = self.open_panel()

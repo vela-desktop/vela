@@ -11,7 +11,7 @@ if not module.is_dir():
     sys.path.insert(0, str(helpers / "report"))
 else:
     sys.path.insert(0, str(here))
-from vela_report.cli import main
+from vela_report.cli import main  # noqa: E402 -- Locate the installed helpers before importing.
 
 gui = here / "vela-report-gui"
 if not gui.is_file():
