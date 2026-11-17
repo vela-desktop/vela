@@ -5,8 +5,9 @@ own and the peripherals' (mice, keyboards, headsets, game controllers),
 whatever way they connect (a Logitech receiver, Bluetooth, USB). Only
 UPower is read; there is no backend for any one vendor.
 
-> **Status:** implemented (§9); a check in a real session, with a real
-> mouse running low and a laptop, remains.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** a check in a real session, with a real mouse running low and a laptop. The tests are in §9.
 
 Battery notifications were left out of the first Bluetooth work
 ([bluetooth.md §3](bluetooth.md#3-scope)) to keep it smaller; this

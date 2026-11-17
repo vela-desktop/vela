@@ -5,11 +5,9 @@ Settings. It replaces today's three backends, which drive command-line tools
 (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** design approved. **A0 to A5 are done** (§13): the test
-> fixture, the `vela-audio` library, the shell and Settings on it, the
-> microphone in use in the tray, Vela's files (names, the automatic sample
-> rate, each device's rates and format). A6: packaging and docs are done;
-> the tests on real hardware ([hardware](hardware.md#sound)) are next.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** the tests on real hardware ([hardware](hardware.md#sound)). Stages A0–A6 are in §13.
 
 ## 1. Goals
 

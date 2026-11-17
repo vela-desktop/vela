@@ -7,9 +7,9 @@ of a laptop through its kernel backlight. The compositor owns the state of
 every output. This document comes before the code: decisions are made here,
 and the code follows them.
 
-> **Status:** design approved; B0 done, its timings measured with `--bench`
-> on the monitors of §3; B1 to B4 done, tested on fake monitors and a
-> fake backlight; the tests on real hardware of §12 remain (§15).
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** the tests on real hardware of §12 ([hardware](hardware.md#brightness)). Stages B0–B4 are in §15.
 
 ## 1. Goals
 
