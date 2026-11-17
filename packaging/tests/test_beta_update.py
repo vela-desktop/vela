@@ -3,7 +3,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Offline contracts for the numbered Beta release channel."""
 
-import hashlib
 import json
 import os
 import pty

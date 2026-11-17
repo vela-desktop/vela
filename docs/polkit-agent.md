@@ -6,9 +6,9 @@ renaming the PC, changing the date, mounting a disk...). It replaces KDE's
 agent (`plasma-polkit-agent.service`). This document comes before the code:
 decisions are made here, and the code follows them.
 
-> **Status:** design approved (§2). Stages **P0–P3 are done** (§11): the
-> agent, the dialog, `Vela.Controls` and the compositor changes, with their
-> tests (§10). Next: P4, trying it in the real session.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** P4, trying it in the real session (§10, "by hand"). Stages are in §11.
 
 ## 1. Goals
 

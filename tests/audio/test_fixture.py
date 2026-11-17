@@ -146,8 +146,7 @@ class DefaultReadTest(unittest.TestCase):
     again for happens about once in 1000 reads, too rarely to wait for."""
 
     HEADER = 'Found "default" metadata 35\n'
-    KEY = HEADER + ("update: id:0 key:'default.audio.sink' value:'{ \"name\": \"%s\" }' type:'Spa:String:JSON'\n"
-                    % HEADPHONES)
+    KEY = HEADER + (f"update: id:0 key:'default.audio.sink' value:'{{ \"name\": \"{HEADPHONES}\" }}' type:'Spa:String:JSON'\n")
 
     def reads(self, *outputs):
         """default("sink") with pw-metadata printing `outputs` in turn; the
