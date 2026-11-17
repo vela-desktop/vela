@@ -42,7 +42,7 @@ public slots:
         }
         context->setParent(engine);
         for (const char* name : { "Config", "Tasks", "Tray", "Shell", "Transfers", "Sharing",
-                 "Audio", "Access", "Status", "Notifications", "Effects", "Apps", "Jumps", "Sound" }) {
+                 "Audio", "Access", "Status", "Notifications", "Effects", "Apps", "Jumps", "Sound", "Capture" }) {
             const QByteArray property = QByteArray(name).toLower();
             engine->rootContext()->setContextProperty(QLatin1String(name), context->property(property).value<QObject*>());
         }

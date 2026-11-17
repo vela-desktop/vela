@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Acceptance rejects missing PID 1 recovery and irreproducible instruments."""
+
+import copy
+from pathlib import Path
+import tempfile
+import unittest
+
+from vela_bench.archive import atomic_json
+from vela_bench.host import FAULT_UNIT
+from vela_bench.qualification import audit_pilot, qualification_summary
+
+
+class QualificationAcceptance(unittest.TestCase):
+    def test_quiet_profile_must_match_frozen_autostarts_and_exact_overrides(self):
+        from vela_bench.session_profile import POLICY
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            inventory = [{'name': 'arch-update-tray.desktop', 'allowed': False},
+                         {'name': 'kaccess.desktop', 'allowed': True}]
+            atomic_json(directory / 'state.json', {'stage': 'failed', 'result': 'failed',
+                'conditions_snapshot': {}, 'conditions_restore': {'status': 'passed'},
+                'plan': {'desktop_profile_policy': POLICY, 'autostart_inventory': inventory},
+                'fault_injected': 'crash', 'unit': FAULT_UNIT, 'supervision': {'SERVICE_RESULT': 'signal'},
+                'fault_uinput_cleanup': 'passed'})
+            atomic_json(directory / 'vela-session.json', {'fixture_hidden_from_both_trees': True, 'graphical_session_target': 'active'})
+            atomic_json(directory / 'vela-conditions.json', {'status': 'passed'})
+            good = {'policy': POLICY, 'autostart_inventory': inventory, 'disabled_autostarts': ['arch-update-tray.desktop']}
+            for key, value in ((None, None), ('policy', {}), ('autostart_inventory', []), ('disabled_autostarts', ['kaccess.desktop'])):
+                profile = copy.deepcopy(good)
+                if key: profile[key] = value
+                atomic_json(directory / 'vela-desktop-profile.json', profile)
+                with self.subTest(field=key):
+                    self.assertEqual(audit_pilot(directory, 'vela', 'crash')['status'], 'passed' if key is None else 'failed')
+
+    def test_input_policy_requires_release_and_cursor_evidence_for_new_runs(self):
+        from vela_bench.input_isolation import POLICY
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            atomic_json(directory / 'vela-session.json', {'fixture_hidden_from_both_trees': True, 'graphical_session_target': 'active'})
+            atomic_json(directory / 'vela-conditions.json', {'status': 'passed'})
+            atomic_json(directory / 'state.json', {'stage': 'failed', 'result': 'failed',
+                'conditions_snapshot': {}, 'conditions_restore': {'status': 'passed'},
+                'plan': {'input_policy': POLICY}, 'fault_injected': 'crash', 'unit': FAULT_UNIT,
+                'supervision': {'SERVICE_RESULT': 'signal'}, 'fault_uinput_cleanup': 'passed'})
+            guard = {'policy': POLICY, 'status': 'released', 'error': None, 'release_verified_after_worker_exit': True}
+            for case in ('good', 'no-release', 'guard-error', 'wrong-cursor', 'never-acquired'):
+                changed = copy.deepcopy(guard)
+                if case == 'no-release': changed['release_verified_after_worker_exit'] = False
+                if case == 'guard-error': changed['error'] = 'hotplug'
+                if case == 'never-acquired': changed['acquisition_attempted'] = False
+                atomic_json(directory / 'input-isolation.json', changed)
+                atomic_json(directory / 'vela-cursor-profile.json', {} if case == 'wrong-cursor' else POLICY)
+                with self.subTest(case=case):
+                    self.assertEqual(audit_pilot(directory, 'vela', 'crash')['status'], 'passed' if case == 'good' else 'failed')
+
+    def test_fault_requires_pid1_result_input_cleanup_and_complete_hardware_restore(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            atomic_json(directory / "vela-session.json", {"fixture_hidden_from_both_trees": True, "graphical_session_target": "active"})
+            atomic_json(directory / "vela-conditions.json", {"status": "passed"})
+            good = {"stage": "failed", "result": "failed", "conditions_snapshot": {}, "conditions_restore": {"status": "passed"},
+                    "fault_injected": "crash", "unit": FAULT_UNIT, "supervision": {"SERVICE_RESULT": "signal"}, "fault_uinput_cleanup": "passed"}
+            for case in ("good", "wrong-exit", "leaked-input", "restore-failed", "wrong-fault"):
+                state = copy.deepcopy(good)
+                if case == "wrong-exit": state["supervision"]["SERVICE_RESULT"] = "success"
+                elif case == "leaked-input": state["fault_uinput_cleanup"] = "failed"
+                elif case == "restore-failed": state["conditions_restore"]["status"] = "failed"
+                elif case == "wrong-fault": state["fault_injected"] = "hang"
+                atomic_json(directory / "state.json", state)
+                with self.subTest(case=case):
+                    self.assertEqual(audit_pilot(directory, "vela", "crash")["status"], "passed" if case == "good" else "failed")
+
+    def test_independent_block_variation_cannot_be_hidden_by_complete_execution(self):
+        def block(value):
+            return {"target": "vela", "status": "complete", "fault": None, "profile": {"mode": {"refresh_mhz": 60000}},
+                    "audit": {"status": "passed", "calibration": {"input": {"metrics": {"injection_to_presentation_upper_ms": {"p50": value}}}}}}
+        blocks = [block(5), block(50)] + [{"target": "vela", "status": "complete", "fault": fault, "audit": {"status": "passed"}}
+                                               for fault in ("crash", "hang")]
+        result = qualification_summary(blocks, ["vela"])
+        self.assertEqual(result["status"], "pending")
+        self.assertFalse(result["checks"]["vela/A-A-repeatability"])
+        self.assertEqual(result["repeatability"]["vela"]["p50_range_ms"], 45)
+        self.assertFalse(result["performance_comparison_available"])
+
+
+if __name__ == "__main__":
+    unittest.main()

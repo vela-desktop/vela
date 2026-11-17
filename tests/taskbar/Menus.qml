@@ -7,6 +7,7 @@ import QtQuick
 
 QtObject {
     property var preview: null
+    property var snapLayout: null
     property bool previewButtonHovered: false
     property var tooltip: null
     property string panelScreen: ""

@@ -46,7 +46,8 @@ static void retire(struct vela_texture *texture)
         free(texture); // the renderer is already closed: nothing left to free
         return;
     }
-    if (texture->buffer) {
+    struct wlr_buffer *buffer = texture->buffer;
+    if (buffer) {
         wlr_addon_finish(&texture->addon);
         texture->buffer = NULL;
     }
@@ -54,7 +55,9 @@ static void retire(struct vela_texture *texture)
         abandon_upload(texture, NULL);
     }
     if (texture->image) {
-        vela_renderer_retire_image(texture->renderer, texture->image, texture->view, texture->memory);
+        vela_renderer_retire_buffer(texture->renderer, texture->image, texture->view, texture->memory, buffer);
+    } else if (buffer) {
+        wlr_buffer_unlock(buffer);
     }
     wl_list_remove(&texture->link);
     free(texture);
@@ -88,9 +91,6 @@ static void texture_destroy(struct wlr_texture *wlr)
     // resources are freed when the GPU has finished reading them; unlocking
     // the buffer can destroy it, so it comes last.
     retire(texture);
-    if (buffer) {
-        wlr_buffer_unlock(buffer);
-    }
 }
 
 static bool create_view(struct vela_vulkan *vk, const struct vela_pixel_format *format, VkImage image,

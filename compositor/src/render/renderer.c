@@ -249,6 +249,11 @@ static void destroy_target(struct vela_target *target);
 
 static void destroy(struct vela_renderer *r)
 {
+    r->destroying = true;
+    if (r->retire_timer) {
+        wl_event_source_remove(r->retire_timer);
+        r->retire_timer = NULL;
+    }
     // Host memory and buffer locks only: first, while every buffer they
     // lock still exists.
     vela_renderer_destroy_passes(r);
@@ -302,6 +307,7 @@ static void destroy(struct vela_renderer *r)
         if (retired->memory) {
             vkFreeMemory(device, retired->memory, NULL);
         }
+        if (retired->buffer) wlr_buffer_unlock(retired->buffer);
     }
     r->retired_count = 0;
     for (int i = 0; i < r->used_semaphore_count; ++i) {
@@ -1255,7 +1261,23 @@ bool vela_renderer_wait(struct vela_renderer *r, uint64_t point)
     return completed;
 }
 
-void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory)
+static int collect_retired_buffers(void *data)
+{
+    struct vela_renderer *r = data;
+    vela_renderer_collect(r);
+    if (!vela_vulkan_unusable(r->vk)) {
+        for (int i = 0; i < r->retired_count; ++i) {
+            if (r->retired[i].buffer) {
+                wl_event_source_timer_update(r->retire_timer, 1);
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+void vela_renderer_retire_buffer(struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory,
+    struct wlr_buffer *buffer)
 {
     // Uploads recorded but not yet submitted count too: they will end up in
     // the next submission.
@@ -1275,10 +1297,26 @@ void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageV
         if (memory) {
             vkFreeMemory(device, memory, NULL);
         }
+        if (buffer) wlr_buffer_unlock(buffer);
         return;
     }
     r->retired = vela_grow(r->retired, &r->retired_capacity, r->retired_count + 1, sizeof(*r->retired));
-    r->retired[r->retired_count++] = (struct retired_image) { point, image, view, memory };
+    r->retired[r->retired_count++] = (struct retired_image) { point, image, view, memory, buffer };
+    // A client may wait for wl_buffer.release before drawing again. Collect
+    // even on an idle desktop, without waiting for another output frame.
+    if (buffer && !r->destroying && r->vk->loss_display && !vela_vulkan_unusable(r->vk)) {
+        if (!r->retire_timer) {
+            r->retire_timer = wl_event_loop_add_timer(wl_display_get_event_loop(r->vk->loss_display),
+                collect_retired_buffers, r);
+        }
+        if (r->retire_timer) wl_event_source_timer_update(r->retire_timer, 1);
+        else vela_vulkan_abort(r->vk, "wl_event_loop_add_timer(buffer retirement)");
+    }
+}
+
+void vela_renderer_retire_image(struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory)
+{
+    vela_renderer_retire_buffer(r, image, view, memory, NULL);
 }
 
 void vela_renderer_collect(struct vela_renderer *r)
@@ -1313,6 +1351,7 @@ void vela_renderer_collect(struct vela_renderer *r)
         if (retired.memory) {
             vkFreeMemory(device, retired.memory, NULL);
         }
+        if (retired.buffer) wlr_buffer_unlock(retired.buffer);
     }
     r->retired_count = kept;
 

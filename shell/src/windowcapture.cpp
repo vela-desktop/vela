@@ -169,8 +169,10 @@ struct CaptureCallbacks {
     {
         auto* self = static_cast<WindowCapture*>(data);
         if (Window* window = self->m_windows.take(handle)) {
+            const QString identifier = window->identifier;
             self->m_thumbnails.remove(window->identifier);
             delete window;
+            emit self->windowClosed(identifier);
         }
         ext_foreign_toplevel_handle_v1_destroy(handle);
     }
