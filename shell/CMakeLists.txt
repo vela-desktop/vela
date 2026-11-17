@@ -318,7 +318,8 @@ if(VELA_BUILD_TOOLS)
     endforeach()
     qt_add_qml_module(vela-taskbar-test URI Vela.Taskbar.Test VERSION 1.0
         QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml
-        qml/NotificationCenter.qml qml/NotificationList.qml qml/SmallButton.qml qml/ShadowRoom.qml ${taskbar_fakes})
+        qml/NotificationCenter.qml qml/NotificationList.qml qml/SmallButton.qml qml/ShadowRoom.qml
+        qml/SnapAssist.qml ${taskbar_fakes})
     add_test(NAME shell-taskbar COMMAND vela-taskbar-test)
     add_test(NAME shell-taskbar-no-effects COMMAND vela-taskbar-test)
     set_tests_properties(shell-taskbar-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")

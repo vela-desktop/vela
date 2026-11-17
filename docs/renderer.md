@@ -682,6 +682,13 @@ finished. So a client dmabuf's import is freed as soon as wlroots stops using it
 (when the GPU is done reading it) and redone if the app sends it again: 9 µs per
 import (median; 40 µs at most), against whole frames lost.
 
+The buffer lock also lasts until the imported Vulkan memory is actually freed,
+including deferred retirement after GPU completion. Releasing the buffer as
+soon as the texture is destroyed lets its producer attach a new write fence
+while that import is still resident, stalling unrelated submissions again.
+A retirement timer collects these imports even when the desktop stops drawing;
+the producer need not wait for another output frame to receive its release.
+
 Measured (headless at 60 Hz, `tools/vela-slowgpu`: an app whose GPU work, on a
 compute queue so as not to compete for the graphics one, ends ~150 ms after the
 commit; the cursor moving for 1 s):

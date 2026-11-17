@@ -317,6 +317,7 @@ struct retired_image {
     VkImage image;
     VkImageView view;
     VkDeviceMemory memory;
+    struct wlr_buffer *buffer; // ownership until the import has been freed
 };
 
 // A semaphore used by a submission: free again when the timeline reaches
@@ -382,6 +383,8 @@ struct vela_renderer {
     struct used_semaphore *used_semaphores;
     int used_semaphore_count, used_semaphore_capacity;
     struct retired_image *retired;
+    struct wl_event_source *retire_timer;
+    bool destroying;
     int retired_count, retired_capacity;
     struct staging_chunk *staging;
     int staging_count, staging_capacity;
@@ -477,6 +480,9 @@ void vela_renderer_collect(struct vela_renderer *renderer);
 // and the work being recorded. view and memory can be VK_NULL_HANDLE.
 void vela_renderer_retire_image(struct vela_renderer *renderer, VkImage image, VkImageView view,
     VkDeviceMemory memory);
+// Takes the texture's buffer lock; releases it only after freeing its import.
+void vela_renderer_retire_buffer(struct vela_renderer *renderer, VkImage image, VkImageView view,
+    VkDeviceMemory memory, struct wlr_buffer *buffer);
 // Signals the next point of the syncobj timeline with `sync_file` (not closed;
 // -1: the work is already done). Returns the point, 0 without a timeline.
 uint64_t vela_renderer_signal_sync_point(struct vela_renderer *renderer, int sync_file);

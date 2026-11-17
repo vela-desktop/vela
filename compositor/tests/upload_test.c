@@ -872,6 +872,49 @@ static void extent_cap_dmabuf(void)
     fixture_finish(&f);
 }
 
+// A released dmabuf can immediately receive another implicit write fence.
+// Its import must already be gone when the client gets that permission,
+// including when no subsequent output frame is scheduled.
+static void dmabuf_release_follows_import_retirement(bool shutdown, bool lost)
+{
+    struct fixture f;
+    fixture_init(&f);
+    f.vk.loss_display = wl_display_create();
+    assert(f.vk.loss_display);
+    struct wl_event_loop *loop = wl_display_get_event_loop(f.vk.loss_display);
+    wlr_drm_format_set_add(&f.vk.texture_formats, DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR);
+    struct vela_dmabuf_extent limit = { DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR, { 640, 480 } };
+    f.vk.texture_extents = &limit;
+    f.vk.texture_extent_count = 1;
+    struct wlr_buffer *buffer = new_target(64, 64);
+    struct wlr_texture *texture = texture_from_buffer(&f.renderer->base, buffer);
+    assert(texture && buffer->n_locks == 2);
+    struct fake_image *image = (struct fake_image *)((struct vela_texture *)texture)->image;
+    f.renderer->last_point = completed_point + 1;
+    wlr_texture_destroy(texture);
+    assert(buffer->n_locks == 2 && !image->destroyed);
+    assert(f.renderer->retire_timer);
+    // Timer dispatch before completion must retain both the lock and import.
+    wl_event_loop_dispatch(loop, 5);
+    assert(buffer->n_locks == 2 && !image->destroyed);
+    if (shutdown) {
+        f.vk.loss.lost = lost;
+        destroy(f.renderer);
+        f.renderer = NULL;
+        wl_event_loop_dispatch(loop, 0); // the retirement timer was removed
+    } else {
+        complete_gpu(f.renderer->last_point);
+        wl_event_loop_dispatch(loop, 5);
+        assert(f.renderer->retired_count == 0);
+    }
+    assert(image->destroyed && buffer->n_locks == 1);
+    wlr_buffer_unlock(buffer);
+    wlr_buffer_drop(buffer);
+    wlr_drm_format_set_finish(&f.vk.texture_formats);
+    fixture_finish(&f);
+    wl_display_destroy(f.vk.loss_display);
+}
+
 // A small buffer is copied when it comes (in place), in one frame's budget.
 static void small_upload_is_in_place(void)
 {
@@ -1242,6 +1285,9 @@ int main(void)
 {
     extent_cap_shm();
     extent_cap_dmabuf();
+    dmabuf_release_follows_import_retirement(false, false);
+    dmabuf_release_follows_import_retirement(true, false);
+    dmabuf_release_follows_import_retirement(true, true);
     small_upload_is_in_place();
     oversized_buffer_stays_within_budget();
     several_surfaces_share_the_budget();
