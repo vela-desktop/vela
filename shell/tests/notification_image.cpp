@@ -7,6 +7,7 @@
 
 #include "notifications.h"
 
+#include <QColor>
 #include <QTest>
 
 #include <limits>
@@ -34,10 +35,18 @@ private slots:
 
     void paddedRowsDecode()
     {
-        // Rows of 9 bytes padded to 12; the last row needs no padding.
-        const QImage image = decodeNotificationImage(3, 2, 12, 8, 3, pixels(12 + 9));
+        // Rows of 9 bytes padded to 12; the last row has no padding, as
+        // libnotify sends it. Nothing past the buffer is read (ASan), the
+        // padding stays out and each row lands where it belongs.
+        QByteArray data = pixels(12, '\x01');
+        data.replace(9, 3, QByteArray(3, '\xee'));
+        data += pixels(9, '\x02');
+        const QImage image = decodeNotificationImage(3, 2, 12, 8, 3, data);
         QVERIFY(!image.isNull());
         QCOMPARE(image.format(), QImage::Format_RGB888);
+        QCOMPARE(image.pixelColor(2, 0), QColor(1, 1, 1));
+        QCOMPARE(image.pixelColor(0, 1), QColor(2, 2, 2));
+        QCOMPARE(image.pixelColor(2, 1), QColor(2, 2, 2));
     }
 
     void strideThatHidesRowsIsRefused_data()
