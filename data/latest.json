@@ -1,11 +1,11 @@
 {
-  "collected_at": "2026-11-16T11:15:29+00:00",
-  "downloads_since_previous_snapshot": 4,
-  "previous_snapshot_date": "2026-11-15",
-  "release_asset_downloads_observed_maxima": 342,
-  "release_asset_downloads_total": 163,
-  "release_assets": 12,
-  "releases": 2,
+  "collected_at": "2026-11-17T11:50:25+00:00",
+  "downloads_since_previous_snapshot": 40,
+  "previous_snapshot_date": "2026-11-16",
+  "release_asset_downloads_observed_maxima": 382,
+  "release_asset_downloads_total": 203,
+  "release_assets": 20,
+  "releases": 3,
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "traffic_status": "ok"

@@ -1,36 +1,41 @@
 {
-  "collected_at": "2026-11-16T11:15:29+00:00",
+  "collected_at": "2026-11-17T11:50:25+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 141,
+      "count": 104,
       "referrer": "velade.org",
-      "uniques": 117
+      "uniques": 82
     },
     {
-      "count": 44,
+      "count": 33,
       "referrer": "github.com",
-      "uniques": 25
-    },
-    {
-      "count": 42,
-      "referrer": "news.ycombinator.com",
-      "uniques": 39
-    },
-    {
-      "count": 36,
-      "referrer": "reddit.com",
-      "uniques": 29
+      "uniques": 19
     },
     {
       "count": 28,
-      "referrer": "com.reddit.frontpage",
-      "uniques": 23
+      "referrer": "reddit.com",
+      "uniques": 26
     },
     {
-      "count": 9,
+      "count": 23,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 18
+    },
+    {
+      "count": 22,
+      "referrer": "news.ycombinator.com",
+      "uniques": 21
+    },
+    {
+      "count": 6,
+      "referrer": "youtube.com",
+      "uniques": 6
+    },
+    {
+      "count": 5,
       "referrer": "Google",
-      "uniques": 9
+      "uniques": 5
     },
     {
       "count": 2,
@@ -46,11 +51,6 @@
       "count": 2,
       "referrer": "search.brave.com",
       "uniques": 2
-    },
-    {
-      "count": 2,
-      "referrer": "app.raindrop.io",
-      "uniques": 1
     }
   ],
   "schema_version": 1,
