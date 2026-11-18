@@ -15,13 +15,45 @@ ROOT = Path(__file__).resolve().parents[1]
 MENUS = [ROOT / "shell/qml", ROOT / "explorer/qml"]
 PAGE = ROOT / "settings/qml/pages/ContextMenuPage.qml"
 GROUPS = ("desktop", "file", "folder", "taskbar", "start", "winx")
-KEY = rf"(?:{'|'.join(GROUPS)})\.[A-Za-z]+"
+KEY = rf"(?:{'|'.join(GROUPS)})\.\w+"
+
+
+def strip_comments(text: str) -> str:
+    """The QML without its // and /* */ comments, strings left whole: a
+    commented-out entry counts on neither side."""
+    out = []
+    i, quote = 0, None
+    while i < len(text):
+        c = text[i]
+        if quote:
+            out.append(c)
+            if c == "\\" and i + 1 < len(text):
+                out.append(text[i + 1])
+                i += 1
+            elif c == quote:
+                quote = None
+        elif c in "\"'`":
+            quote = c
+            out.append(c)
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = len(text) if end < 0 else end
+            continue
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = len(text) if end < 0 else end + 2
+            continue
+        else:
+            out.append(c)
+        i += 1
+    return "".join(out)
 
 
 def menu_keys(text: str) -> set[str]:
     """`key: "file.copy"`, `key: pinned ? "taskbar.pinned" : ...` and the
     helpers taking the key first (`item("winx.files", ...)`)."""
     keys = set()
+    text = strip_comments(text)
     for line in re.findall(r"key:[^,}]*", text):
         keys.update(re.findall(rf'"({KEY})"', line))
     keys.update(re.findall(rf'\w+\("({KEY})",', text))
@@ -30,6 +62,7 @@ def menu_keys(text: str) -> set[str]:
 
 def page_keys(text: str) -> set[str]:
     keys = set()
+    text = strip_comments(text)
     for group in re.findall(r"keys:\s*\[([^\]]*)\]", text):
         keys.update(re.findall(rf'"({KEY})"', group))
     return keys
@@ -42,8 +75,8 @@ def check(menus: str, page: str) -> list[str]:
 
 
 def main() -> int:
-    menus = "\n".join(p.read_text() for d in MENUS for p in sorted(d.glob("*.qml")))
-    failures = check(menus, PAGE.read_text())
+    menus = "\n".join(p.read_text(encoding="utf-8") for d in MENUS for p in sorted(d.glob("*.qml")))
+    failures = check(menus, PAGE.read_text(encoding="utf-8"))
     for failure in failures:
         print(failure, file=sys.stderr)
     return 1 if failures else 0

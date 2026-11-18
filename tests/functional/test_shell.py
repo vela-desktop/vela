@@ -1363,8 +1363,10 @@ class QtShell(RealShell):
             show()
             self.vela.wait_for(lambda s: self.mapped(s, namespace), what=f"{name} open")
             time.sleep(1.5)
-            start = time.monotonic()
+            # From the moment Escape was sent: vela-input's own startup
+            # mustn't count as the panel's exit animation.
             self.vela.input("key", "Escape")
+            start = time.monotonic()
             self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{name} closed")
             took[name] = time.monotonic() - start
             time.sleep(0.5)

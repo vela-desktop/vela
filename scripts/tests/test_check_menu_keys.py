@@ -39,6 +39,19 @@ class MenuKeys(unittest.TestCase):
         self.assertEqual(m.check(MENUS, PAGE + '{ keys: ["desktop.view"], text: qsTr("View") }'),
                          ["desktop.view: in Settings, in no menu"])
 
+    def test_a_key_with_digits_is_seen(self):
+        self.assertEqual(m.check(MENUS + '{ key: "file.openWith2", text: qsTr("Open with") }', PAGE),
+                         ["file.openWith2: in a menu, not in Settings"])
+
+    def test_a_commented_out_entry_counts_on_neither_side(self):
+        menus = MENUS.replace('    item("winx.files"', '    // item("winx.files"')
+        self.assertEqual(m.check(menus, PAGE), ["winx.files: in Settings, in no menu"])
+        page = PAGE + '/* { keys: ["desktop.view"], text: qsTr("View") } */'
+        self.assertEqual(m.check(MENUS, page), [])
+
+    def test_comment_marks_inside_strings_stay(self):
+        self.assertEqual(m.strip_comments('a: "http://x" // gone\nb'), 'a: "http://x" \nb')
+
     def test_keys_of_other_lists_are_ignored(self):
         self.assertNotIn("magnifier", m.menu_keys(MENUS))
 
