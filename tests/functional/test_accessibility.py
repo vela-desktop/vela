@@ -78,7 +78,7 @@ class Accessibility(unittest.TestCase):
         # Scheduled between two times around now: on already at startup.
         now = time.localtime()
         minutes = now.tm_hour * 60 + now.tm_min
-        self.start([f"night-light-schedule=hours", f"night-light-from={clock(minutes - 60)}",
+        self.start(["night-light-schedule=hours", f"night-light-from={clock(minutes - 60)}",
                     f"night-light-to={clock(minutes + 60)}"])
         self.assertTrue(self.a11y()["nightLight"])
         # A range that doesn't include now: it turns off at "reload-config".

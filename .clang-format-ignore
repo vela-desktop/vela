@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Third-party code kept close to upstream: never reformatted.
+compositor/src/scene/output_capture.c
+common/color/**
+protocols/**

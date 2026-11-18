@@ -1,7 +1,8 @@
 # Vulkan device-loss and fatal-render policy — beta 0.1
 
-> **Status:** merged in PR #147 (30 October 2026). Real GPU resets are not
-> tested on the daily-use machine (see below).
+> **Status:** Implemented in #147, merged 30 October 2026. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** a real GPU reset, not tested on the daily-use machine (see below).
 
 ## Failure classification
 

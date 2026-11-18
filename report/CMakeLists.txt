@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
 # An RPM archive is an immutable snapshot. When extracted within the CI Git
 # checkout, git status would inspect its parent repository and mark the RPM
 # dirty because of untracked rpmbuild/ files. Use explicit package provenance.
