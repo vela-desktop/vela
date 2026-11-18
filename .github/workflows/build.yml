@@ -81,6 +81,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up minimum supported Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
       - name: Validate standalone Sigstore verifier syntax
         run: python3 -m py_compile packaging/verify-attestation.py packaging/vela-update-state
       - name: Private session lifecycle and isolation (CPU-only)
@@ -104,7 +108,7 @@ jobs:
   # Pin the official Arch x86_64 container manifest. All these jobs run
   # pacman -Syu, but cannot silently change their base image identity.
   # Refresh the digest intentionally when updating the builder environment.
-  # Independent of packaging contracts; both jobs still gate packaging.
+  # Independent of packaging contracts; both jobs gate Beta publication.
   build:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
@@ -143,7 +147,7 @@ jobs:
           ccache --show-stats
 
       - name: Tests
-        run: ctest --test-dir build --output-on-failure --parallel 2 -E '^packaging-update$'
+        run: ctest --test-dir build --output-on-failure --parallel 4 -E '^packaging-update$'
 
       # Run the actual glyph shaders on CPU-only runners. Direct invocation
       # makes unavailable graphics (exit 77) fail here instead of silently skip.
@@ -170,10 +174,11 @@ jobs:
             sh -n "$script"
           done
 
-  # Package compilation is independent of the normal Arch test build. Both
-  # remain required for Beta publication, but can run concurrently on PRs.
+  # Package compilation can start alongside the test jobs. Beta publication
+  # waits for the packaging contracts, builds and clean-install smoke tests.
   package:
-    needs: packaging-tests
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -348,17 +353,20 @@ jobs:
             rm -rf -- "$work"
           fi
 
-  # Fedora CTest suite is a reusable workflow: its result gates releases.
+  # Fedora CTest and updater integration tests gate releases.
   fedora-tests:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
     uses: ./.github/workflows/fedora.yml
+    with:
+      updater_fixtures: true
     permissions:
       contents: read
 
   # Build native RPMs from the SAME revision as Arch for both supported Fedora releases.
   fedora-package:
-    needs: packaging-tests
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -503,14 +511,6 @@ jobs:
           else
             [[ "${rpms[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
           fi
-          # Exercise the full local Git -> builddep -> rpmbuild -> DNF updater path
-          # against a tiny fixture before installing the actual Vela RPM.
-          dnf install -y git rpm-build dnf5-plugins
-          bash packaging/fedora/tests/ci-updater-local-build.sh
-          # The updater fixture performs several local RPM transactions.
-          # Refresh Fedora metadata before the real runtime dependency install:
-          # cached mirrors can reference packages already superseded (404).
-          dnf clean metadata
           # Use normal DNF defaults so recommended desktop/updater tools
           # are exercised along with the mandatory runtime dependencies.
           dnf --refresh install -y "${rpms[0]}"
@@ -533,11 +533,6 @@ jobs:
           for tool in git flock curl dnf rpmbuild python3; do
             command -v "$tool"
           done
-          # Validate local RPM install/upgrade/downgrade/reinstall with real DNF5.
-          dnf install -y rpm-build
-          if [[ "$GITHUB_REF" != refs/tags/v0.* ]]; then
-            bash packaging/fedora/tests/ci-dnf-transactions.sh
-          fi
           for name in vela-compositor vela-session vela-shell vela-settings vela-files vela-lock vela-update vela-report; do
             command -v "$name"
           done
@@ -583,7 +578,7 @@ jobs:
   # main keep ephemeral Experimental build artifacts without GitHub Releases.
   publish-beta:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
-    needs: [build, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
+    needs: [build, packaging-tests, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
     runs-on: ubuntu-latest
     permissions:
       contents: write

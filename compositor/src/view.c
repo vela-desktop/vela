@@ -6,6 +6,8 @@
 #include "activation.h"
 #include "alloc/alloc.h"
 #include "capture_watch.h"
+#include "client_policy.h"
+#include "command.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -16,12 +18,14 @@
 #include "popup.h"
 #include "scene/capture.h"
 #include "scene/scene.h"
+#include "security_policy.h"
 #include "server.h"
 #include "snapshot.h"
 #include "util.h"
 #include "workspace.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -119,24 +123,37 @@ const char *vela_view_app_id(const struct vela_view *view)
 
 bool vela_view_is_system_prompt(const struct vela_view *view)
 {
-    // By app id (Wayland) or class (X11): KWallet and ksecretd, KDE's polkit
-    // agent, pinentry, GNOME's keyring prompt.
-    const char *app = vela_view_app_id(view);
-    char id[256];
-    size_t n = 0;
-    for (; app[n] && n + 1 < sizeof(id); ++n) {
-        id[n] = (char)tolower((unsigned char)app[n]);
+    // The name is checked live (an app id can change after map); the
+    // program, which can't, once at map (security_policy.h).
+    return view->prompt_program && vela_system_prompt_name(vela_view_app_id(view));
+}
+
+// Whether the window's process is a system prompt program installed by the
+// system, outside any sandbox. X11 windows never are: their client is
+// Xwayland, and _NET_WM_PID is whatever the app writes.
+static bool view_runs_prompt_program(struct vela_view *view)
+{
+    if (!view->xdg || !view->xdg->resource) {
+        return false;
     }
-    id[n] = '\0';
-    const char *known[] = {
-        "kwalletd", "ksecretd", "polkit-kde-authentication-agent", "pinentry", "gcr-prompter", "systemprompter",
-    };
-    for (size_t i = 0; i < sizeof(known) / sizeof(known[0]); ++i) {
-        if (strstr(id, known[i])) {
-            return true;
-        }
+    struct wl_client *client = wl_resource_get_client(view->xdg->resource);
+    if (vela_client_sandboxed(view->server, client)) {
+        return false;
     }
-    return false;
+    pid_t pid = 0;
+    wl_client_get_credentials(client, &pid, NULL, NULL);
+    char exe[PATH_MAX];
+    if (!vela_peer_program(wl_client_get_fd(client), pid, exe, sizeof(exe))) {
+        return false;
+    }
+    // The functional tests install their stand-in prompt in a private
+    // directory; only a headless compositor started for tests honours it.
+    const char *trusted = "/usr";
+    const char *test_dir = vela_commands_test_mode(view->server) ? getenv("VELA_TEST_PROMPT_DIR") : NULL;
+    if (test_dir && test_dir[0] == '/') {
+        trusted = test_dir;
+    }
+    return vela_system_prompt_program(exe, trusted);
 }
 
 static struct vela_view *view_parent(const struct vela_view *view)
@@ -1206,6 +1223,7 @@ void vela_view_mapped(struct vela_view *view)
 {
     struct vela_server *server = view->server;
     view->mapped = true;
+    view->prompt_program = view_runs_prompt_program(view);
     if (view->xdg) {
         vela_view_update_decoration(view); // the bar is part of the frame to place
     }

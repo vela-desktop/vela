@@ -63,6 +63,9 @@ struct vela_view {
     struct vela_surface_node *surface_node;
 
     bool mapped;
+    // Its process is a system prompt program, unsandboxed (set at map,
+    // vela_view_is_system_prompt): the name alone gives no special place.
+    bool prompt_program;
     bool activated; // the active window (keyboard)
     bool maximized;
     bool fullscreen;

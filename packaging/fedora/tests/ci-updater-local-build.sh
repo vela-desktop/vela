@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: GPL-3.0-or-later
-# Run only as root in a disposable Fedora 44/45 CI container, BEFORE installing
-# the real vela-git RPM. Exercises the updater with real Git, DNF5 and RPM.
+# Run only as root in a disposable Fedora 44/45 CI container without Vela
+# installed. Exercises the updater with real Git, DNF5 and RPM.
 set -euo pipefail
 
 test "$(id -u)" -eq 0

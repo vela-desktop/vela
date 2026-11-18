@@ -199,7 +199,8 @@ class Windows(unittest.TestCase):
             y = w["y"] + 50
             time.sleep(0.4)
             image = self.vela.pixels()
-            at = lambda lx, ly: image.at(round(lx * self.scale), round(ly * self.scale))
+            def at(lx, ly):
+                return image.at(round(lx * self.scale), round(ly * self.scale))
             self.assertEqual(at(x + 100, y + 75), magenta, f"popup anchored at {anchor_x}")
             self.assertEqual(at(x + 3, y + 3), magenta)
             self.assertEqual(at(x + 196, y + 146), magenta)

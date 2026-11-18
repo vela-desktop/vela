@@ -58,6 +58,61 @@ TEST(SecurityPolicy, PeerSandbox)
     close(pair[1]);
 }
 
+TEST(SecurityPolicy, SystemPromptName)
+{
+    for (const char *name : { "pinentry", "org.gnupg.pinentry-qt", "kwalletd6", "org.kde.ksecretd",
+             "org.kde.polkit-kde-authentication-agent-1", "gcr-prompter", "org.gnome.keyring.SystemPrompter",
+             "PINENTRY-GTK" }) {
+        EXPECT_TRUE(vela_system_prompt_name(name)) << name;
+    }
+    for (const char *name : { "", "org.mozilla.firefox", "vela-pattern", "keyring" }) {
+        EXPECT_FALSE(vela_system_prompt_name(name)) << name;
+    }
+    EXPECT_FALSE(vela_system_prompt_name(nullptr));
+}
+
+TEST(SecurityPolicy, SystemPromptProgram)
+{
+    // Installed by the system, under the program's own name.
+    for (const char *exe : { "/usr/bin/pinentry-qt", "/usr/bin/kwalletd6", "/usr/bin/ksecretd",
+             "/usr/lib/polkit-kde-authentication-agent-1", "/usr/libexec/kf6/polkit-kde-authentication-agent-1",
+             "/usr/libexec/gcr-prompter", "/usr/bin/pinentry-qt (deleted)" }) {
+        EXPECT_TRUE(vela_system_prompt_program(exe, "/usr")) << exe;
+    }
+    // The right name anywhere the user can write, or the wrong program in /usr.
+    for (const char *exe : { "/home/user/pinentry", "/opt/kwalletd6", "/usrx/bin/pinentry", "/usr/bin/firefox",
+             "/usr/bin/../../opt/pinentry", "/usr/bin/pinentry-qt (copy)", "/usr/bin/", "pinentry", "" }) {
+        EXPECT_FALSE(vela_system_prompt_program(exe, "/usr")) << exe;
+    }
+    EXPECT_FALSE(vela_system_prompt_program(nullptr, "/usr"));
+    EXPECT_FALSE(vela_system_prompt_program("/usr/bin/pinentry", nullptr));
+    EXPECT_FALSE(vela_system_prompt_program("/usr/bin/pinentry", "relative"));
+    // A directory given by the tests, with or without its final slash.
+    EXPECT_TRUE(vela_system_prompt_program("/home/test/prompts/pinentry-test", "/home/test/prompts/"));
+    EXPECT_TRUE(vela_system_prompt_program("/home/test/prompts/pinentry-test", "/home/test/prompts"));
+    EXPECT_FALSE(vela_system_prompt_program("/home/test/prompts2/pinentry-test", "/home/test/prompts"));
+}
+
+TEST(SecurityPolicy, PeerProgram)
+{
+    int pair[2];
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair), 0);
+    char self[4096] = {};
+    ASSERT_GT(readlink("/proc/self/exe", self, sizeof(self) - 1), 0);
+    char exe[4096];
+    // The peer of a socketpair is this very process.
+    ASSERT_TRUE(vela_peer_program(pair[0], getpid(), exe, sizeof(exe)));
+    EXPECT_STREQ(exe, self);
+    // Another pid than the connection's, or none: unknown.
+    EXPECT_FALSE(vela_peer_program(pair[0], getppid(), exe, sizeof(exe)));
+    EXPECT_FALSE(vela_peer_program(pair[0], 0, exe, sizeof(exe)));
+    // Too small to hold the path: refused, not truncated.
+    char tiny[4];
+    EXPECT_FALSE(vela_peer_program(pair[0], getpid(), tiny, sizeof(tiny)));
+    close(pair[0]);
+    close(pair[1]);
+}
+
 TEST(SecurityPolicy, PidNotTiedToTheConnectionIsUnknown)
 {
     // A live, unsandboxed process with this pid exists (this one), but the

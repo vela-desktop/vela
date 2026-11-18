@@ -1,9 +1,9 @@
 """Offline contracts for the GPU promo quality verifier."""
 import importlib.util
+import hashlib
 import json
 from pathlib import Path
 import struct
-import sys
 import tempfile
 import types
 import unittest
@@ -17,6 +17,15 @@ spec.loader.exec_module(verify)
 
 
 class VerifyPromoTests(unittest.TestCase):
+    def test_digest_covers_empty_and_multibuffer_binary_files(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "capture.mp4"
+            for payload in (b"", bytes(range(256)) * 4097 + b"\0trailing bytes"):
+                with self.subTest(size=len(payload)):
+                    path.write_bytes(payload)
+                    self.assertEqual(verify.digest(path), {
+                        "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)})
+
     def test_black_frame_detector_tolerates_short_transitions(self):
         size = 64 * 36
         white, black = bytes([255]) * size, bytes(size)
