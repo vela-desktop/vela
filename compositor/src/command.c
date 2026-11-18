@@ -700,6 +700,11 @@ static char *topic_line(struct vela_server *server, int topic)
     return text;
 }
 
+bool vela_commands_test_mode(struct vela_server *server)
+{
+    return server->commands && server->commands->test_commands;
+}
+
 void vela_commands_notify(struct vela_server *server, const char *name)
 {
     int topic = topic_index(name);
