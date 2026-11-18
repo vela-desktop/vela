@@ -25,7 +25,7 @@ see the [roadmap](roadmap.md).
 <table>
 <tr>
 <td width="34%" valign="top"><img src="screenshots/snap-layouts.webp" alt="Snap layouts flyout over the maximize button"><br><sub><b>Snap layouts</b>: hover the maximize button or press Super+Z.</sub></td>
-<td width="33%" valign="top"><img src="screenshots/context-menu.webp" alt="Vela desktop context menu"><br><sub><b>Context menus</b> with a compact primary view and KDE service menus under "Show more options".</sub></td>
+<td width="33%" valign="top"><img src="screenshots/context-menu.webp" alt="Vela desktop context menu"><br><sub><b>Context menus</b> with KDE service menus right in the menu, and every entry can be hidden in Settings.</sub></td>
 <td width="33%" valign="top"><img src="screenshots/panels.webp" alt="Quick settings and the notification center"><br><sub><b>Quick settings</b> (Super+A) and the <b>notification center</b> (Super+N).</sub></td>
 </tr>
 </table>
@@ -67,7 +67,7 @@ see the [roadmap](roadmap.md).
 - **Snipping tool** (Super+Shift+S or PrtSc): capture a rectangle, a window or a full
   screen, straight to the clipboard and to `Pictures/Screenshots`.
 - **Desktop icons** with thumbnails, drag and drop to and from apps, Properties, and
-  undo. Also **Run** (Super+R) and **Show desktop** (Super+D).
+  undo. Also **Show desktop** (Super+D).
 - **Light and dark** modes and a coordinated accent palette, applied to KDE and GTK apps
   too.
 - **Themes**: Vela Official, Vela Floating, Window Glass and Vela Expressive (inspired by
