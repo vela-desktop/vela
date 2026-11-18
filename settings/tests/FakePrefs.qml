@@ -50,6 +50,8 @@ QtObject {
     property var surfacePictures: ({})
     // Context menu: the keys of the hidden entries.
     property var hiddenMenuEntries: []
+    // The write fails, as with the file locked: the list stays as it was.
+    property bool refuseMenuWrites: false
     // The changes asked for, in order: [call, arguments...].
     property var calls: []
 
@@ -61,6 +63,7 @@ QtObject {
         shellTheme = "dark"
         visualTheme = "vela"
         hiddenMenuEntries = []
+        refuseMenuWrites = false
         surfaceStyles = { taskbar: "", startmenu: "", notifications: "" }
         taskbarAlignment = "center"
         startIcon = "vela"
@@ -94,6 +97,10 @@ QtObject {
 
     function setMenuEntriesHidden(keys, hidden) {
         record(["setMenuEntriesHidden", keys, hidden])
+        if (refuseMenuWrites) {
+            hiddenMenuEntriesChanged()
+            return
+        }
         const list = hiddenMenuEntries.filter(k => keys.indexOf(k) < 0)
         hiddenMenuEntries = hidden ? list.concat(keys) : list
     }

@@ -95,13 +95,21 @@ Page {
         ] }
     ]
 
-    // The entries apps add, read when the page opens; an app's submenu is
-    // in the name ("Ark › Extract here").
-    readonly property var services: ServiceMenus.all().map(s => ({
-        keys: [s.key],
-        text: s.submenu ? s.submenu + " › " + s.text : s.text,
-        icon: s.icon
-    }))
+    // The entries apps add, read again each time the page opens; an app's
+    // submenu is in the name ("Ark › Extract here"), and two entries with
+    // the same name say whose they are (the file's name in the key,
+    // service/<file>/<action>).
+    readonly property var services: {
+        const all = ServiceMenus.all()
+        const name = s => s.submenu ? s.submenu + " › " + s.text : s.text
+        const count = Object.create(null)
+        all.forEach(s => count[name(s)] = (count[name(s)] || 0) + 1)
+        return all.map(s => ({
+            keys: [s.key],
+            text: count[name(s)] > 1 ? name(s) + " (" + s.key.split("/")[1] + ")" : name(s),
+            icon: s.icon
+        }))
+    }
 
     CardGroup {
         title: qsTr("Menus")

@@ -72,6 +72,20 @@ Item {
             verify(recent.checked)
         }
 
+        function test_a_refused_write_puts_the_switch_back() {
+            card.expanded = true
+            tryVerify(() => toggle("taskbar.close"))
+            waitForRendering(root)
+            Prefs.refuseMenuWrites = true
+            mouseClick(toggle("taskbar.close"))
+            compare(Prefs.calls.length, 1)
+            verify(toggle("taskbar.close").checked, "still shown, so still on")
+            Prefs.refuseMenuWrites = false
+            mouseClick(toggle("taskbar.close"))
+            compare(Prefs.calls[1], ["setMenuEntriesHidden", ["taskbar.close"], true], "the next click hides it again")
+            verify(!toggle("taskbar.close").checked)
+        }
+
         function test_a_switch_follows_a_change_made_elsewhere() {
             card.expanded = true
             tryVerify(() => toggle("taskbar.pinned"))

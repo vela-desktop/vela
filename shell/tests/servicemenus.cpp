@@ -52,6 +52,9 @@ private slots:
             "[Desktop Action record]\nName=Record\nExec=\""
             + QCoreApplication::applicationFilePath().toUtf8() + "\" --record %F\n";
         QVERIFY(writeFile(root + QStringLiteral("/kio/servicemenus/fixture.desktop"), desktop));
+        QVERIFY(writeFile(root + QStringLiteral("/kio/servicemenus/folders.desktop"),
+            "[Desktop Entry]\nType=Service\nMimeType=inode/directory;\nActions=usage;\n"
+            "[Desktop Action usage]\nName=Disk usage\nExec=true %f\n"));
     }
 
     /** Cover missing context, removed field codes and a quoted empty program. */
@@ -75,24 +78,38 @@ private slots:
         QVERIFY(!QFile::exists(qEnvironmentVariable("VELA_SERVICE_MENU_PROBE")));
     }
 
-    /** Each entry has a key made of its file and action, the same in actionsFor() and all(). */
+    /** Keys made of the file and the action: all() lists every entry, on a fresh instance too,
+     *  actionsFor() those for the files. */
     void keysNameTheFileAndTheAction()
     {
-        ServiceMenus menus;
-        QStringList forFile;
-        for (const QVariant& action : menus.actionsFor({ selected })) {
-            forFile << action.toMap().value(QStringLiteral("key")).toString();
-        }
-        QStringList everyEntry;
-        for (const QVariant& action : menus.all()) {
-            everyEntry << action.toMap().value(QStringLiteral("key")).toString();
-        }
-        const QStringList expected { QStringLiteral("service/fixture/missing"),
-            QStringLiteral("service/fixture/deprecated"), QStringLiteral("service/fixture/blank"),
+        const auto keys = [](const QVariantList& actions) {
+            QStringList out;
+            for (const QVariant& action : actions) {
+                out << action.toMap().value(QStringLiteral("key")).toString();
+            }
+            out.sort();
+            return out;
+        };
+        const QStringList forFile { QStringLiteral("service/fixture/blank"),
+            QStringLiteral("service/fixture/deprecated"), QStringLiteral("service/fixture/missing"),
             QStringLiteral("service/fixture/record") };
-        QCOMPARE(forFile, expected);
-        QCOMPARE(everyEntry, expected);
-        QCOMPARE(menus.all().first().toMap().value(QStringLiteral("text")).toString(), QStringLiteral("Missing"));
+        ServiceMenus fresh;
+        QCOMPARE(keys(fresh.all()), QStringList(forFile) << QStringLiteral("service/folders/usage"));
+        ServiceMenus menus;
+        QCOMPARE(keys(menus.actionsFor({ selected })), forFile);
+    }
+
+    /** all() reads the files again: an entry installed while Settings is open shows up. */
+    void allSeesEntriesInstalledLater()
+    {
+        ServiceMenus menus;
+        const qsizetype before = menus.all().size();
+        const QString path = qEnvironmentVariable("XDG_DATA_HOME") + QStringLiteral("/kio/servicemenus/later.desktop");
+        QVERIFY(writeFile(path,
+            "[Desktop Entry]\nType=Service\nMimeType=all/all;\nActions=a;\n"
+            "[Desktop Action a]\nName=Later\nExec=true %f\n"));
+        QCOMPARE(menus.all().size(), before + 1);
+        QVERIFY(QFile::remove(path));
     }
 
     /** Valid expansions keep the selected path and its directory intact. */

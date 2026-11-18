@@ -95,7 +95,12 @@ Column {
                         anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
                         checked: row.shown
                         Accessible.name: row.modelData.text
-                        onToggled: Prefs.setMenuEntriesHidden(row.modelData.keys, !checked)
+                        onToggled: {
+                            Prefs.setMenuEntriesHidden(row.modelData.keys, !checked)
+                            // A save that failed leaves row.shown as it was,
+                            // and the binding wouldn't move the switch back.
+                            checked = Qt.binding(() => row.shown)
+                        }
                     }
                 }
             }

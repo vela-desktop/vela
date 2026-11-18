@@ -13,6 +13,8 @@
 #include <QStringList>
 #include <QVariantList>
 
+#include <functional>
+
 class QSettings;
 
 // The user's choices, in the two files holding them:
@@ -386,6 +388,9 @@ signals:
 private:
     bool setShell(const QString& key, const QVariant& value);
     bool saveShell(const QList<QPair<QString, QVariant>>& changes);
+    // The same write, the changes made by `edit` on the file as read under
+    // its lock (a list another writer may have changed meanwhile).
+    bool saveShell(const std::function<void(QSettings&)>& edit);
     void loadShell(const QSettings& settings);
     // vela.conf: reread, only these keys changed, then "reload-config".
     // False when the file could not be opened, written or committed.

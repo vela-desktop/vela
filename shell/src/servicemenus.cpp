@@ -93,6 +93,13 @@ ServiceMenus::ServiceMenus(QObject* parent)
 void ServiceMenus::load()
 {
     m_loaded = true;
+    m_actions = scan();
+    qInfo("vela-shell: %lld KDE service menu entries", static_cast<long long>(m_actions.size()));
+}
+
+QList<ServiceMenus::Action> ServiceMenus::scan()
+{
+    QList<Action> actions;
     // The user's first: the same name hides the system one.
     QSet<QString> seen;
     QStringList dirs;
@@ -141,12 +148,12 @@ void ServiceMenus::load()
                 action.icon = group.value(QStringLiteral("Icon"));
                 action.exec = group.value(QStringLiteral("Exec"));
                 if (!action.name.isEmpty() && !action.exec.isEmpty()) {
-                    m_actions.append(action);
+                    actions.append(action);
                 }
             }
         }
     }
-    qInfo("vela-shell: %lld KDE service menu entries", static_cast<long long>(m_actions.size()));
+    return actions;
 }
 
 QVariantList ServiceMenus::actionsFor(const QStringList& paths)
@@ -187,11 +194,11 @@ QVariantList ServiceMenus::actionsFor(const QStringList& paths)
 
 QVariantList ServiceMenus::all()
 {
-    if (!m_loaded) {
-        load();
-    }
+    // Read again: an app installed since shows up. A list apart from the
+    // one run() uses, whose ids an open menu may still hold.
     QVariantList out;
-    for (const Action& a : std::as_const(m_actions)) {
+    const QList<Action> actions = scan();
+    for (const Action& a : actions) {
         out.append(QVariantMap { { QStringLiteral("key"), a.key }, { QStringLiteral("text"), a.name },
             { QStringLiteral("icon"), a.icon }, { QStringLiteral("submenu"), a.submenu } });
     }

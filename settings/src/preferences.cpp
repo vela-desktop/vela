@@ -408,6 +408,15 @@ bool Preferences::setShell(const QString& key, const QVariant& value)
 
 bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
 {
+    return saveShell([&changes](QSettings& staged) {
+        for (const auto& [key, value] : changes) {
+            staged.setValue(key, value);
+        }
+    });
+}
+
+bool Preferences::saveShell(const std::function<void(QSettings&)>& edit)
+{
     QSettings current = shellSettings();
     current.sync();
     const QString path = current.fileName();
@@ -468,9 +477,7 @@ bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
         if (staged.status() != QSettings::NoError) {
             return failed();
         }
-        for (const auto& [key, value] : changes) {
-            staged.setValue(key, value);
-        }
+        edit(staged);
         staged.sync();
         if (staged.status() != QSettings::NoError) {
             return failed();
@@ -695,25 +702,41 @@ void Preferences::setDesktopIcons(bool on)
 
 void Preferences::setMenuEntriesHidden(const QStringList& keys, bool hidden)
 {
-    QStringList list = m_hiddenMenuEntries;
-    for (const QString& key : keys) {
-        if (key.isEmpty()) {
-            continue;
+    // On the list in the file, under its lock: keys another writer hid
+    // since Settings read it stay hidden.
+    QStringList committed;
+    const bool saved = saveShell([&](QSettings& staged) {
+        QStringList list = staged.value(QStringLiteral("menus/hidden")).toStringList();
+        list.removeAll(QString());
+        for (const QString& key : keys) {
+            if (key.isEmpty()) {
+                continue;
+            }
+            list.removeAll(key);
+            if (hidden) {
+                list.append(key);
+            }
         }
-        list.removeAll(key);
-        if (hidden) {
-            list.append(key);
+        if (list.isEmpty()) {
+            staged.remove(QStringLiteral("menus/hidden"));
+        } else {
+            staged.setValue(QStringLiteral("menus/hidden"), list);
         }
-    }
-    if (list != m_hiddenMenuEntries && setShell(QStringLiteral("menus/hidden"), list)) {
-        m_hiddenMenuEntries = list;
+        committed = list;
+    });
+    if (saved) {
+        m_hiddenMenuEntries = committed;
     }
     emit menusChanged(); // a switch the write refused goes back
 }
 
 void Preferences::showAllMenuEntries()
 {
-    setMenuEntriesHidden(m_hiddenMenuEntries, false);
+    // Every key in the file, those hidden elsewhere too.
+    if (saveShell([](QSettings& staged) { staged.remove(QStringLiteral("menus/hidden")); })) {
+        m_hiddenMenuEntries.clear();
+    }
+    emit menusChanged();
 }
 
 void Preferences::setStartPinned(bool on)

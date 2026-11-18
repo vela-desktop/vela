@@ -25,7 +25,8 @@ public:
     // across sessions (the hidden entries in Settings).
     Q_INVOKABLE QVariantList actionsFor(const QStringList& paths);
     // Every entry installed, whatever it applies to: [{key, text, icon,
-    // submenu}] (Settings > Personalization > Context menu).
+    // submenu}] (Settings > Personalization > Context menu), read again at
+    // each call.
     Q_INVOKABLE QVariantList all();
     Q_INVOKABLE void run(int id, const QStringList& paths) const;
 
@@ -42,6 +43,7 @@ private:
         QList<int> requiredUrls;
     };
     void load();
+    static QList<Action> scan();
 
     QList<Action> m_actions;
     bool m_loaded = false;
