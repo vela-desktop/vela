@@ -198,11 +198,11 @@ Item {
 
     // --- menus (docs/renderer.md §14.9) ---
     function openMenu(entries, x, y, keyboard) {
-        menuPoint = Qt.point(x, y)
         menus.open(entries, x, y, { keyboard: !!keyboard })
     }
-    property point menuPoint
 
+    // The entries apps add for these files (KDE service menus), in their
+    // submenus: a group of their own in the menu, before Properties.
     function serviceEntries(paths) {
         const out = []
         const submenus = {}
@@ -220,12 +220,6 @@ Item {
         }
         return out
     }
-    function showMoreOptions(paths) {
-        const x = menuPoint.x
-        const y = menuPoint.y
-        Qt.callLater(() => openMenu(paths.length > 0 ? classicItemEntries(paths) : classicBackgroundEntries(), x, y))
-    }
-
     function newEntries() {
         const entries = [
             { text: qsTr("&Folder"), icon: "folder-new", shortcut: qsTr("Ctrl+Shift+N"), action: () => Ops.createFolder(page.location) },
@@ -339,32 +333,14 @@ Item {
                 { text: qsTr("&TAR file"), icon: "application-x-tar", action: () => Ops.compress(paths, "tar") }
             ] },
             { text: qsTr("Copy as &path"), icon: "edit-copy-path", shortcut: qsTr("Ctrl+Shift+C"), action: () => Ops.copyAsPath(paths) },
-            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Ops.showProperties(paths) },
-            { separator: true },
-            { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => page.showMoreOptions(paths) }
-        )
-        return entries
-    }
-    function classicItemEntries(paths) {
-        const modern = itemEntries(paths)
-        const entries = [{ text: qsTr("&Open"), action: () => page.openSelection() }]
-        const openWith = modern.find(e => e.text === qsTr("Open &with"))
-        if (openWith) entries.push(openWith)
+            { text: qsTr("Create &shortcut"), icon: "insert-link", enabled: writable, action: () => Ops.createLinks(paths) })
         const services = serviceEntries(paths)
         if (services.length > 0) entries.push({ separator: true }, ...services)
         entries.push(
             { separator: true },
-            { text: qsTr("Cu&t"), action: () => Ops.cut(paths) },
-            { text: qsTr("&Copy"), action: () => Ops.copy(paths) },
-            { separator: true },
-            { text: qsTr("Create &shortcut"), action: () => Ops.createLinks(paths) },
-            { text: qsTr("&Delete"), action: () => Ops.trash(paths) },
-            { text: qsTr("Re&name"), enabled: paths.length === 1, action: () => page.renamingPath = paths[0] },
-            { separator: true },
-            { text: qsTr("P&roperties"), action: () => Ops.showProperties(paths) })
+            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Ops.showProperties(paths) })
         return entries
     }
-
     // The menu of the folder's empty space.
     function backgroundMenu(x, y, keyboard) {
         if (!isFolder) return
@@ -390,29 +366,20 @@ Item {
             entries.push({ text: qsTr("&Undo ") + Ops.undoText, icon: "edit-undo", shortcut: "Ctrl+Z", action: () => Ops.undo() })
         }
         entries.push(
-            { text: qsTr("&Paste"), icon: "edit-paste", shortcut: "Ctrl+V", enabled: Ops.canPaste, action: () => page.paste() },
+            { text: qsTr("&Paste"), icon: "edit-paste", shortcut: "Ctrl+V", enabled: Ops.canPaste, action: () => page.paste() })
+        if (Ops.canPaste) {
+            entries.push({ text: qsTr("Paste &shortcut"), icon: "insert-link", action: () => Ops.pasteLinks(page.location) })
+        }
+        entries.push(
             { separator: true },
             { text: qsTr("&New"), icon: "list-add", children: newEntries() },
             { separator: true },
-            { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([page.location]) },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(page.location) },
-            { separator: true },
-            { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => page.showMoreOptions([]) })
-        return entries
-    }
-    function classicBackgroundEntries() {
-        const entries = [
-            { text: qsTr("&View"), children: viewEntries() },
-            { text: qsTr("S&ort by"), children: sortEntries() },
-            { text: qsTr("R&efresh"), action: () => page.refresh() },
-            { separator: true },
-            { text: qsTr("&Paste"), enabled: Ops.canPaste, action: () => page.paste() },
-            { text: qsTr("Paste &shortcut"), enabled: Ops.canPaste, action: () => Ops.pasteLinks(page.location) }
-        ]
+            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(page.location) })
         const services = serviceEntries([page.location])
         if (services.length > 0) entries.push({ separator: true }, ...services)
-        entries.push({ separator: true }, { text: qsTr("&New"), children: newEntries() }, { separator: true },
-            { text: qsTr("P&roperties"), action: () => Ops.showProperties([page.location]) })
+        entries.push(
+            { separator: true },
+            { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([page.location]) })
         return entries
     }
 
@@ -461,10 +428,7 @@ Item {
             else if (event.key === Qt.Key_Menu || (shift && event.key === Qt.Key_F10)) {
                 const row = folder.currentIndex
                 const p = page.mapToItem(null, page.width / 2, page.height / 2)
-                if (shift && event.key === Qt.Key_F10) {
-                    page.menuPoint = p
-                    page.showMoreOptions(folder.selectedPaths())
-                } else if (row >= 0 && folder.isSelected(row)) page.itemMenu(row, p.x, p.y, true)
+                if (row >= 0 && folder.isSelected(row)) page.itemMenu(row, p.x, p.y, true)
                 else page.backgroundMenu(p.x, p.y, true)
             }
             else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {

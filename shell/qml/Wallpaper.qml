@@ -45,14 +45,12 @@ Window {
 
     // --- menus (docs/renderer.md §14.9) ---
 
-    property point menuPoint // where the last menu opened: "Show more options" opens there
-
     function openMenu(entries, x, y, keyboard) {
-        menuPoint = Qt.point(x, y)
         Menus.open(entries, x, y, { screen: root.screen ? root.screen.name : "", keyboard: !!keyboard })
     }
 
-    // The KDE service menu entries for these files, in their submenus.
+    // The entries apps add for these files (KDE service menus), in their
+    // submenus: a group of their own in the menu, before Properties.
     function serviceEntries(paths) {
         const out = []
         const submenus = {}
@@ -69,66 +67,6 @@ Window {
             }
         }
         return out
-    }
-
-    // "Show more options" (Shift+F10, Shift+right click): the full menu, with
-    // the entries apps added (KDE service menus), like the classic Windows
-    // menu.
-    function showMoreOptions(paths) {
-        const x = menuPoint.x
-        const y = menuPoint.y
-        Qt.callLater(() => openMenu(paths.length > 0 ? classicFileEntries(paths) : classicDesktopEntries(), x, y))
-    }
-
-    function classicDesktopEntries() {
-        const modern = desktopEntries()
-        const entries = [modern[0], modern[1], modern[2], { separator: true },
-            { text: qsTr("&Paste"), enabled: Desktop.canPaste, action: () => Desktop.paste() },
-            { text: qsTr("Paste &shortcut"), enabled: Desktop.canPaste, action: () => { FileActions.pasteLinks(Desktop.directory); Desktop.refresh() } }]
-        if (Desktop.undoText !== "") {
-            entries.push({ text: qsTr("&Undo ") + Desktop.undoText, shortcut: "Ctrl+Z", action: () => Desktop.undo() })
-        }
-        const services = serviceEntries([Desktop.directory])
-        entries.push({ separator: true })
-        if (services.length > 0) {
-            entries.push(...services, { separator: true })
-        }
-        entries.push(
-            modern.find(e => e.text === qsTr("&New")),
-            { separator: true },
-            modern.find(e => e.text === qsTr("&Display settings")),
-            modern.find(e => e.text === qsTr("&Personalize")))
-        return entries
-    }
-
-    function classicFileEntries(paths) {
-        const items = paths.map(p => icons.itemFor(p)).filter(i => i && !i.isTrash)
-        if (items.length === 0) {
-            return fileEntries(paths)
-        }
-        const files = items.map(i => i.path)
-        const single = files.length === 1 ? items[0] : null
-        const modern = fileEntries(files)
-        const entries = [{ text: qsTr("&Open"), action: () => Desktop.openOnScreen(files, root.screen ? root.screen.name : Shell.primaryScreen) }]
-        const openWith = modern.find(e => e.text === qsTr("Open &with"))
-        if (openWith) {
-            entries.push(openWith)
-        }
-        const services = serviceEntries(files)
-        if (services.length > 0) {
-            entries.push({ separator: true }, ...services)
-        }
-        entries.push(
-            { separator: true },
-            { text: qsTr("Cu&t"), action: () => Desktop.cut(files) },
-            { text: qsTr("&Copy"), action: () => Desktop.copy(files) },
-            { separator: true },
-            { text: qsTr("Create &shortcut"), action: () => { FileActions.createLinks(files, Desktop.directory); Desktop.refresh() } },
-            { text: qsTr("&Delete"), action: () => Desktop.trash(files) },
-            { text: qsTr("Re&name"), enabled: !!single, action: () => icons.startRename(single.path) },
-            { separator: true },
-            { text: qsTr("P&roperties"), action: () => Menus.showProperties(files, root.screen ? root.screen.name : Shell.primaryScreen) })
-        return entries
     }
 
     // The background: View, Sort by, Refresh, Undo, New...
@@ -163,7 +101,9 @@ Window {
             entries.push({ text: qsTr("&Undo ") + Desktop.undoText, icon: "edit-undo", shortcut: "Ctrl+Z", action: () => Desktop.undo() })
         }
         if (Desktop.canPaste) {
-            entries.push({ text: qsTr("&Paste"), icon: "edit-paste", shortcut: "Ctrl+V", action: () => Desktop.paste() })
+            entries.push(
+                { text: qsTr("&Paste"), icon: "edit-paste", shortcut: "Ctrl+V", action: () => Desktop.paste() },
+                { text: qsTr("Paste &shortcut"), icon: "insert-link", action: () => { FileActions.pasteLinks(Desktop.directory); Desktop.refresh() } })
         }
         entries.push(
             { separator: true },
@@ -172,10 +112,12 @@ Window {
             system(qsTr("&Display settings"), "preferences-desktop-display", "display"),
             system(qsTr("&Personalize"), "preferences-desktop-wallpaper", "personalize"),
             { separator: true },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(Desktop.directory) },
-            { separator: true },
-            { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => root.showMoreOptions([]) }
+            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(Desktop.directory) }
         )
+        const services = serviceEntries([Desktop.directory])
+        if (services.length > 0) {
+            entries.push({ separator: true }, ...services)
+        }
         return entries
     }
 
@@ -240,9 +182,15 @@ Window {
                 { text: qsTr("&TAR file"), icon: "application-x-tar", action: () => Desktop.compress(files, "tar") }
             ] },
             { text: qsTr("Copy as &path"), icon: "edit-copy-path", shortcut: qsTr("Ctrl+Shift+C"), action: () => Desktop.copyAsPath(files) },
-            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Menus.showProperties(files, root.screen ? root.screen.name : Shell.primaryScreen) },
+            { text: qsTr("Create &shortcut"), icon: "insert-link", action: () => { FileActions.createLinks(files, Desktop.directory); Desktop.refresh() } }
+        )
+        const services = serviceEntries(files)
+        if (services.length > 0) {
+            entries.push({ separator: true }, ...services)
+        }
+        entries.push(
             { separator: true },
-            { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => root.showMoreOptions(files) }
+            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Menus.showProperties(files, root.screen ? root.screen.name : Shell.primaryScreen) }
         )
         return entries
     }
@@ -347,16 +295,15 @@ Window {
             Menus.confirm(qsTr("Delete multiple items"), qsTr("Permanently delete all the items in the Recycle Bin?"), qsTr("Yes"),
                 () => Desktop.emptyTrash(), root.screen ? root.screen.name : Shell.primaryScreen)
         }
-        // The menu for the selection or the background: the modern one with
-        // the Menu key, the full one with Shift+F10 (like Windows 11).
-        function keyboardMenu(classic) {
+        // The menu for the selection or the background (the Menu key or
+        // Shift+F10).
+        function keyboardMenu() {
             const paths = selectedPaths()
             const item = paths.length > 0 ? itemFor(paths[0]) : null
             if (item) {
-                root.openMenu(classic ? root.classicFileEntries(paths) : root.fileEntries(paths),
-                    item.x + item.width / 2, item.y + item.height / 2, true)
+                root.openMenu(root.fileEntries(paths), item.x + item.width / 2, item.y + item.height / 2, true)
             } else {
-                root.openMenu(classic ? root.classicDesktopEntries() : root.desktopEntries(), 40, 40, true)
+                root.openMenu(root.desktopEntries(), 40, 40, true)
             }
         }
         // Arrows: the nearest icon in that direction.
@@ -434,10 +381,8 @@ Window {
                 Desktop.paste()
             } else if (ctrl && event.key === Qt.Key_Z) {
                 Desktop.undo()
-            } else if (event.key === Qt.Key_Menu) {
-                keyboardMenu(false)
-            } else if (shift && event.key === Qt.Key_F10) {
-                keyboardMenu(true)
+            } else if (event.key === Qt.Key_Menu || (shift && event.key === Qt.Key_F10)) {
+                keyboardMenu()
             } else if (event.key === Qt.Key_Left) {
                 moveSelection(-1, 0)
             } else if (event.key === Qt.Key_Right) {
@@ -517,8 +462,7 @@ Window {
             }
             onClicked: mouse => {
                 if (mouse.button === Qt.RightButton) {
-                    const classic = (mouse.modifiers & Qt.ShiftModifier) || Shell.shiftHeld()
-                    root.openMenu(classic ? root.classicDesktopEntries() : root.desktopEntries(), mouse.x, mouse.y)
+                    root.openMenu(root.desktopEntries(), mouse.x, mouse.y)
                 }
             }
         }
@@ -760,9 +704,7 @@ Window {
                     onClicked: mouse => {
                         if (mouse.button === Qt.RightButton) {
                             const p = mapToItem(icons, mouse.x, mouse.y)
-                            const classic = (mouse.modifiers & Qt.ShiftModifier) || Shell.shiftHeld()
-                            const paths = icons.selectedPaths()
-                            root.openMenu(classic ? root.classicFileEntries(paths) : root.fileEntries(paths), p.x, p.y)
+                            root.openMenu(root.fileEntries(icons.selectedPaths()), p.x, p.y)
                         }
                     }
                     onDoubleClicked: mouse => {
