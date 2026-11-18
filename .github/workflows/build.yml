@@ -530,7 +530,10 @@ jobs:
           for dependency in git util-linux rpm dnf5; do
             grep -Fx "$dependency" <<< "$installed_requires"
           done
-          for tool in git flock curl dnf rpmbuild python3; do
+          # The DNF fixture job exercises rpmbuild. Here, verify the package
+          # recommends the build toolchain for users who need a local build.
+          rpm -q --recommends "$package_name" | grep -Fx rpm-build
+          for tool in git flock curl dnf python3; do
             command -v "$tool"
           done
           for name in vela-compositor vela-session vela-shell vela-settings vela-files vela-lock vela-update vela-report; do
