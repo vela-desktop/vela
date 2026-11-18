@@ -53,7 +53,7 @@ Window {
     // submenus: a group of their own in the menu, before Properties.
     function serviceEntries(paths) {
         const out = []
-        const submenus = {}
+        const submenus = Object.create(null) // a submenu may be called "constructor"
         for (const a of ServiceMenus.actionsFor(paths)) {
             const entry = { key: a.key, text: a.text, icon: a.icon, action: () => ServiceMenus.run(a.id, paths) }
             if (a.submenu) {
@@ -141,7 +141,7 @@ Window {
                 { text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => Desktop.openOnScreen([first.path], root.screen ? root.screen.name : Shell.primaryScreen) },
                 { text: qsTr("&Empty Recycle Bin"), icon: "trash-empty", enabled: !Desktop.trashEmpty(), action: () => icons.askEmptyTrash() },
                 { separator: true },
-                { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), enabled: false }
+                { key: "file.properties", text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), enabled: false }
             ]
         }
         const files = items.filter(i => !i.isTrash).map(i => i.path)

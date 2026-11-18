@@ -205,7 +205,7 @@ Item {
     // submenus: a group of their own in the menu, before Properties.
     function serviceEntries(paths) {
         const out = []
-        const submenus = {}
+        const submenus = Object.create(null) // a submenu may be called "constructor"
         for (const a of ServiceMenus.actionsFor(paths)) {
             const entry = { key: a.key, text: a.text, icon: a.icon, action: () => ServiceMenus.run(a.id, paths) }
             if (a.submenu) {
@@ -280,7 +280,7 @@ Item {
                 { text: qsTr("Cu&t"), icon: "edit-cut", enabled: false },
                 { text: qsTr("&Delete permanently"), icon: "edit-delete", shortcut: qsTr("Del"), action: () => page.deleteSelection(true) },
                 { separator: true },
-                { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties(paths) }
+                { key: "file.properties", text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties(paths) }
             ]
         }
         const single = paths.length === 1 ? paths[0] : ""
@@ -426,9 +426,10 @@ Item {
                 Ops.showProperties(folder.selectionCount > 0 ? folder.selectedPaths() : [page.location])
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) page.openSelection()
             else if (event.key === Qt.Key_Menu || (shift && event.key === Qt.Key_F10)) {
-                const row = folder.currentIndex
+                // The selection's menu, even with the current row moved off
+                // it (Ctrl+arrows); the folder's only without a selection.
                 const p = page.mapToItem(null, page.width / 2, page.height / 2)
-                if (row >= 0 && folder.isSelected(row)) page.itemMenu(row, p.x, p.y, true)
+                if (folder.selectionCount > 0) page.openMenu(page.itemEntries(folder.selectedPaths()), p.x, p.y, true)
                 else page.backgroundMenu(p.x, p.y, true)
             }
             else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {
