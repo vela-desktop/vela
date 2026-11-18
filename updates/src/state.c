@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,26 +62,45 @@ static int on_run_exit(sd_event_source *source, int fd, uint32_t revents, void *
     return 0;
 }
 
-static void watch_run(struct vela_up_daemon *d)
+static int on_run_watch_retry(sd_event_source *source, uint64_t usec, void *data)
 {
-    d->run_watch = sd_event_source_disable_unref(d->run_watch);
-    if (!d->run.present) {
-        return;
+    vela_up_state_reload(data);
+    return 0;
+}
+
+static void retry_run_watch(struct vela_up_daemon *d)
+{
+    int r = sd_event_add_time_relative(d->event, &d->run_watch, CLOCK_MONOTONIC, 250000, 0, on_run_watch_retry, d);
+    if (r < 0) {
+        vela_up_log("retry watching the running update: %s", strerror(-r));
     }
-    int fd = (int)syscall(SYS_pidfd_open, d->run.pid, 0);
+}
+
+static bool watch_live_run(struct vela_up_daemon *d, const struct vela_up_run *run)
+{
+    int fd = (int)syscall(SYS_pidfd_open, run->pid, 0);
     if (fd < 0) {
-        return;
+        if (errno == ESRCH || !vela_up_run_alive("/proc", run)) {
+            return false;
+        }
+        retry_run_watch(d);
+        return true;
     }
-    // Still the run's process now that the pidfd holds it.
-    if (!vela_up_run_alive("/proc", &d->run)) {
+    // Check identity after opening the pidfd. A readable pidfd also
+    // identifies exit before the process has been reaped from /proc.
+    struct pollfd status = { .fd = fd, .events = POLLIN };
+    if (!vela_up_run_alive("/proc", run) || poll(&status, 1, 0) > 0) {
         close(fd);
-        return;
+        return false;
     }
+    // Exit between poll() and registration still leaves the fd readable.
     if (sd_event_add_io(d->event, &d->run_watch, fd, EPOLLIN, on_run_exit, d) < 0) {
         close(fd);
-        return;
+        retry_run_watch(d);
+    } else {
+        sd_event_source_set_io_fd_own(d->run_watch, true);
     }
-    sd_event_source_set_io_fd_own(d->run_watch, true);
+    return true;
 }
 
 static void read_source(struct vela_up_daemon *d)
@@ -133,6 +153,15 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     free(path);
 
+    path = path_in(d->state_dir, "run.json");
+    struct vela_up_run run;
+    int r = vela_up_run_read(path, &run);
+    free(path);
+    d->run_watch = sd_event_source_disable_unref(d->run_watch);
+    bool live = r >= 0 && run.present && watch_live_run(d, &run);
+
+    // If the updater has exited, read the final report it wrote before exit
+    // before considering the remaining run.json an interrupted install.
     path = path_in(d->state_dir, "install.json");
     struct vela_up_install install = { 0 };
     bool changed = stat(path, &observed) == 0
@@ -157,35 +186,24 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     free(path);
 
-    path = path_in(d->state_dir, "run.json");
-    struct vela_up_run run;
-    int r = vela_up_run_read(path, &run);
-    free(path);
     vela_up_run_clear(&d->run);
-    if (r >= 0 && run.present) {
-        if (vela_up_run_alive("/proc", &run)) {
-            d->run = run;
-        } else {
-            // Killed without its exit trap: an install that never wrote its
-            // end was cancelled.
-            if (strcmp(run.action, "install") == 0
-                && (!d->install.present || d->install.finished_at < run.started_at)) {
-                vela_up_install_clear(&d->install);
-                d->install.present = true;
-                d->install.channel = vela_strdup(run.channel);
-                d->install.result = vela_strdup("cancelled");
-                d->install.error_code = vela_strdup("cancelled");
-                d->install.error_message = vela_strdup("The update was interrupted.");
-                d->install.installed_version = vela_strdup("");
-                d->install.finished_at = (int64_t)time(NULL);
-            }
-            vela_up_run_clear(&run);
+    if (live) {
+        d->run = run;
+    } else {
+        // Killed without its exit trap: an install that never wrote its end was cancelled.
+        if (r >= 0 && run.present && strcmp(run.action, "install") == 0
+            && (!d->install.present || d->install.finished_at < run.started_at)) {
+            vela_up_install_clear(&d->install);
+            d->install.present = true;
+            d->install.channel = vela_strdup(run.channel);
+            d->install.result = vela_strdup("cancelled");
+            d->install.error_code = vela_strdup("cancelled");
+            d->install.error_message = vela_strdup("The update was interrupted.");
+            d->install.installed_version = vela_strdup("");
+            d->install.finished_at = (int64_t)time(NULL);
         }
-    } else if (r >= 0) {
         vela_up_run_clear(&run);
     }
-    watch_run(d);
-
     if (d->starting
         && ((d->run.present && strcmp(d->run.action, "install") == 0)
             || (d->install.present && d->install.finished_at >= d->starting_at))) {

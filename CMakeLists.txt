@@ -26,8 +26,12 @@ option(VELA_BUILD_CAPTURE_TOOLS "Build the lightweight screen-dump CLI separatel
 option(VELA_BUILD_GPU_TEST_TOOLS "Build GPU-intensive test clients (only relevant when VELA_BUILD_TOOLS=ON)" ON)
 
 option(VELA_BUILD_COMPOSITOR "Build the compositor (needs wlroots)" ON)
+option(VELA_BUILD_FUZZERS "Build libFuzzer fuzz targets (needs Clang)" OFF)
 option(VELA_BUILD_SHELL "Build the shell, Files and Settings (needs Qt 6 and LayerShellQt)" ON)
 option(VELA_BUILD_TOOLS "Build the test tools (vela-screen-dump, vela-windows, vela-input...) and the tests (ctest)" ON)
+if(VELA_BUILD_FUZZERS AND NOT VELA_BUILD_COMPOSITOR)
+    message(FATAL_ERROR "VELA_BUILD_FUZZERS requires VELA_BUILD_COMPOSITOR. For a standalone build, use sh fuzz/build.sh.")
+endif()
 if(VELA_BUILD_TOOLS)
     enable_testing()
     find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
@@ -64,6 +68,9 @@ if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(bluetooth)
     add_subdirectory(updates)
     add_subdirectory(session)
+    # Parsers of untrusted bytes: replayed in ctest, fuzzed with libFuzzer
+    # when VELA_BUILD_FUZZERS is on (docs/testing.md, "Fuzzing").
+    add_subdirectory(fuzz)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
 if(VELA_BUILD_SHELL OR VELA_BUILD_CAPTURE_TOOLS OR VELA_BUILD_TOOLS)
