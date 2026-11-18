@@ -13,6 +13,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -61,26 +62,26 @@ static int on_run_exit(sd_event_source *source, int fd, uint32_t revents, void *
     return 0;
 }
 
-static void watch_run(struct vela_up_daemon *d)
+static bool watch_live_run(struct vela_up_daemon *d, const struct vela_up_run *run)
 {
-    d->run_watch = sd_event_source_disable_unref(d->run_watch);
-    if (!d->run.present) {
-        return;
-    }
-    int fd = (int)syscall(SYS_pidfd_open, d->run.pid, 0);
+    int fd = (int)syscall(SYS_pidfd_open, run->pid, 0);
     if (fd < 0) {
-        return;
+        return errno != ESRCH && vela_up_run_alive("/proc", run);
     }
-    // Still the run's process now that the pidfd holds it.
-    if (!vela_up_run_alive("/proc", &d->run)) {
+    // Check identity after opening the pidfd. A readable pidfd also
+    // identifies exit before the process has been reaped from /proc.
+    struct pollfd status = { .fd = fd, .events = POLLIN };
+    if (!vela_up_run_alive("/proc", run) || poll(&status, 1, 0) > 0) {
         close(fd);
-        return;
+        return false;
     }
+    // Exit between poll() and registration still leaves the fd readable.
     if (sd_event_add_io(d->event, &d->run_watch, fd, EPOLLIN, on_run_exit, d) < 0) {
         close(fd);
-        return;
+    } else {
+        sd_event_source_set_io_fd_own(d->run_watch, true);
     }
-    sd_event_source_set_io_fd_own(d->run_watch, true);
+    return true;
 }
 
 static void read_source(struct vela_up_daemon *d)
@@ -161,9 +162,10 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     struct vela_up_run run;
     int r = vela_up_run_read(path, &run);
     free(path);
+    d->run_watch = sd_event_source_disable_unref(d->run_watch);
     vela_up_run_clear(&d->run);
     if (r >= 0 && run.present) {
-        if (vela_up_run_alive("/proc", &run)) {
+        if (watch_live_run(d, &run)) {
             d->run = run;
         } else {
             // Killed without its exit trap: an install that never wrote its
@@ -184,8 +186,6 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     } else if (r >= 0) {
         vela_up_run_clear(&run);
     }
-    watch_run(d);
-
     if (d->starting
         && ((d->run.present && strcmp(d->run.action, "install") == 0)
             || (d->install.present && d->install.finished_at >= d->starting_at))) {

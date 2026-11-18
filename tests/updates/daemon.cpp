@@ -13,9 +13,12 @@
 #include <QDBusArgument>
 #include <QDBusReply>
 #include <QDBusVariant>
+#include <QScopeGuard>
 
 #include <csignal>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 // Counts the signals it is connected to.
 class SignalCounter : public QObject {
@@ -475,6 +478,34 @@ private Q_SLOTS:
         ::kill(pid_t(byHand.processId()), SIGKILL);
         byHand.waitForFinished();
         QVERIFY(QFile::exists(state(QStringLiteral("run.json"))));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("cancelled"));
+    }
+
+    void runExitedBeforeReaping()
+    {
+        QVERIFY(startDaemon());
+        const pid_t child = fork();
+        if (child == 0) {
+            for (;;) {
+                pause();
+            }
+        }
+        QVERIFY(child > 0);
+        const auto reap = qScopeGuard([child] {
+            kill(child, SIGKILL);
+            waitpid(child, nullptr, 0);
+        });
+
+        const QJsonObject run { { "schema_version", 2 }, { "action", "install" }, { "channel", "experimental" },
+            { "pid", child }, { "started_at", QDateTime::currentSecsSinceEpoch() } };
+        QVERIFY(write(state(QStringLiteral("run.json")), QJsonDocument(run).toJson()));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("installing"));
+
+        QCOMPARE(kill(child, SIGKILL), 0);
+        siginfo_t status {};
+        // Keep the exited child in /proc until after the daemon reports cancellation.
+        QCOMPARE(waitid(P_PID, id_t(child), &status, WEXITED | WNOWAIT), 0);
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
         QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("cancelled"));
     }
