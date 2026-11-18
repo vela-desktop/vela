@@ -261,7 +261,7 @@ Item {
             { text: qsTr("Select &none"), icon: "edit-select-none", action: () => folder.clearSelection() },
             { text: qsTr("&Invert selection"), icon: "edit-select-invert", action: () => folder.invertSelection() },
             { separator: true },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", enabled: page.isFolder, action: () => System.openTerminal(page.location) },
+            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", enabled: page.isFolder, action: () => System.openTerminal(page.location) },
             { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"),
               action: () => Ops.showProperties(folder.selectionCount > 0 ? folder.selectedPaths() : [page.location]) }
         ]
@@ -308,7 +308,7 @@ Item {
         // A shortcut: where the original is.
         if (single !== "" && Ops.isLink(single)) {
             const target = Ops.linkTarget(single)
-            entries.push({ text: qsTr("Open file &location"), icon: "folder-open",
+            entries.push({ text: qsTr("Open file &location"), icon: "folder-open-symbolic",
                 action: () => page.navigate(target.substring(0, target.lastIndexOf("/")) || "/", target) })
         }
         if (files.length > 0 && files.length === paths.length) {
@@ -321,7 +321,7 @@ Item {
             entries.push(Places.isPinned(single)
                 ? { text: qsTr("Unpin from &Quick access"), icon: "window-unpin", action: () => Places.unpin(single) }
                 : { text: qsTr("Pin to &Quick access"), icon: "window-pin", action: () => Places.pin(single) })
-            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(single) })
+            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(single) })
         }
         if (single !== "" && Ops.isArchive(single)) {
             entries.push({ text: qsTr("Extract &all..."), icon: "archive-extract", action: () => Ops.extractAll(single) })
@@ -374,7 +374,7 @@ Item {
             { separator: true },
             { text: qsTr("&New"), icon: "list-add", children: newEntries() },
             { separator: true },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(page.location) })
+            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(page.location) })
         const services = serviceEntries([page.location])
         if (services.length > 0) entries.push({ separator: true }, ...services)
         entries.push(

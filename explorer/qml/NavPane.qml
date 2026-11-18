@@ -122,7 +122,7 @@ Flickable {
             entries.push(Places.isPinned(loc)
                 ? { text: qsTr("&Unpin from Quick access"), icon: "window-unpin", action: () => Places.unpin(loc) }
                 : { text: qsTr("Pin to &Quick access"), icon: "window-pin", action: () => Places.pin(loc) })
-            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(loc) })
+            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(loc) })
             if (entry.device !== "") {
                 entries.push({ text: qsTr("E&ject"), icon: "media-eject", action: () => Places.eject(entry.device) })
             }

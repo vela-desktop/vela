@@ -109,10 +109,10 @@ Window {
             { separator: true },
             { text: qsTr("&New"), icon: "list-add", children: newEntries },
             { separator: true },
-            system(qsTr("&Display settings"), "preferences-desktop-display", "display"),
-            system(qsTr("&Personalize"), "preferences-desktop-wallpaper", "personalize"),
+            system(qsTr("&Display settings"), "monitor-symbolic", "display"),
+            system(qsTr("&Personalize"), "draw-brush-symbolic", "personalize"),
             { separator: true },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(Desktop.directory) }
+            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(Desktop.directory) }
         )
         const services = serviceEntries([Desktop.directory])
         if (services.length > 0) {
@@ -164,7 +164,7 @@ Window {
             entries.push({ text: qsTr("Open &with"), icon: "document-open", children: openWith })
         }
         if (single && single.isDir) {
-            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(single.path) })
+            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(single.path) })
         }
         if (single && single.isApp) {
             const id = Apps.idForDesktopFile(single.path)

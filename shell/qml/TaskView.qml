@@ -138,7 +138,7 @@ Window {
     function desktopMenu(index) {
         return [
             { text: qsTr("&Rename"), icon: "edit-rename", action: () => root.renaming = index },
-            { text: qsTr("Choose &background"), icon: "preferences-desktop-wallpaper", action: () => { System.trigger("personalize"); root.close() } },
+            { text: qsTr("Choose &background"), icon: "draw-brush-symbolic", action: () => { System.trigger("personalize"); root.close() } },
             { separator: true },
             { text: qsTr("Move &left"), icon: "go-previous", enabled: index > 0, action: () => Desktops.move(index, index - 1) },
             { text: qsTr("Move r&ight"), icon: "go-next", enabled: index < Desktops.count - 1, action: () => Desktops.move(index, index + 1) },

@@ -74,7 +74,7 @@ Flickable {
                     const favorite = Places.isFavorite(path)
                     page.tab.menus.open([
                         { text: qsTr("&Open"), icon: "document-open", action: () => Ops.open([path]) },
-                        { text: qsTr("Open file &location"), icon: "folder-open", action: () => page.tab.navigate(row.modelData.location, path) },
+                        { text: qsTr("Open file &location"), icon: "folder-open-symbolic", action: () => page.tab.navigate(row.modelData.location, path) },
                         { separator: true },
                         favorite
                             ? { text: qsTr("Remove from &Favorites"), icon: "starred-symbolic", action: () => Places.setFavorite(path, false) }

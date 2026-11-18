@@ -115,7 +115,7 @@ Window {
         const taskbar = Tasks.isPinned(id)
             ? { text: qsTr("Unpin from &taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
             : { text: qsTr("Pin to &taskbar"), icon: "window-pin", action: () => Tasks.pin(id) }
-        const desktop = { text: qsTr("Add to &desktop"), icon: "user-desktop", action: () => root.addToDesktop(id) }
+        const desktop = { text: qsTr("Add to &desktop"), icon: "user-desktop-symbolic", action: () => root.addToDesktop(id) }
         const folder = { text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
         const uninstall = { text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
         // The same flat menu for a pinned tile and for all apps; a pinned

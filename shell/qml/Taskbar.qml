@@ -207,22 +207,22 @@ Window {
     // Win+X: the Start button menu.
     function winXEntries() {
         const item = (text, icon, name) => ({ text: text, icon: icon, enabled: System.available(name), action: () => System.trigger(name) })
-        const entries = [item(qsTr("Insta&lled apps"), "system-software-install", "installed-apps")]
+        const entries = [item(qsTr("Insta&lled apps"), "view-app-grid-symbolic", "installed-apps")]
         if (System.isLaptop()) {
-            entries.push(item(qsTr("Mobility &Center"), "computer-laptop", "mobility"))
+            entries.push(item(qsTr("Mobility &Center"), "computer-laptop-symbolic", "mobility"))
         }
         entries.push(
-            item(qsTr("P&ower options"), "preferences-system-power-management", "power"),
-            item(qsTr("E&vent viewer"), "text-x-log", "events"),
-            item(qsTr("S&ystem"), "computer", "system"),
-            item(qsTr("Net&work connections"), "preferences-system-network", "network"),
+            item(qsTr("P&ower options"), "battery-profile-powersave-symbolic", "power"),
+            item(qsTr("E&vent viewer"), "view-list-text-symbolic", "events"),
+            item(qsTr("S&ystem"), "computer-symbolic", "system"),
+            item(qsTr("Net&work connections"), "preferences-system-network-symbolic", "network"),
             { separator: true },
-            item(qsTr("&Terminal"), "utilities-terminal", "terminal"),
-            item(qsTr("Terminal (&Admin)"), "utilities-terminal", "terminal-admin"),
+            item(qsTr("&Terminal"), "utilities-terminal-symbolic", "terminal"),
+            item(qsTr("Terminal (&Admin)"), "utilities-terminal-symbolic", "terminal-admin"),
             { separator: true },
-            item(qsTr("Task manage&r"), "utilities-system-monitor", "task-manager"),
-            item(qsTr("Setti&ngs"), "preferences-system", "settings"),
-            item(qsTr("File &Explorer"), "system-file-manager", "files"),
+            item(qsTr("Task manage&r"), "office-chart-area", "task-manager"),
+            item(qsTr("Setti&ngs"), "preferences-system-symbolic", "settings"),
+            item(qsTr("File &Explorer"), "system-file-manager-symbolic", "files"),
             { text: qsTr("&Search"), icon: "search", action: () => { root.fromHere(); if (!Shell.startMenuOpen) Shell.toggleStartMenu() } },
             { separator: true },
             { text: qsTr("Sh&ut down or sign out"), icon: "system-shutdown", children: [
@@ -231,7 +231,7 @@ Window {
                 { text: qsTr("Sh&ut down"), icon: "system-shutdown", action: () => Shell.powerOff() },
                 { text: qsTr("&Restart"), icon: "system-reboot", action: () => Shell.reboot() }
             ] },
-            { text: qsTr("&Desktop"), icon: "user-desktop", action: () => Tasks.toggleDesktop() }
+            { text: qsTr("&Desktop"), icon: "user-desktop-symbolic", action: () => Tasks.toggleDesktop() }
         )
         return entries
     }
@@ -322,7 +322,7 @@ Window {
             onClicked: mouse => {
                 const p = root.screenPoint(emptyArea, mouse.x, 0)
                 root.openMenu([
-                    { text: qsTr("Task &manager"), icon: "utilities-system-monitor", enabled: System.available("task-manager"), action: () => System.trigger("task-manager") },
+                    { text: qsTr("Task &manager"), icon: "office-chart-area", enabled: System.available("task-manager"), action: () => System.trigger("task-manager") },
                     { text: qsTr("Taskbar &settings"), icon: "configure", enabled: System.available("taskbar-settings"), action: () => System.trigger("taskbar-settings") }
                 ], p.x, root.menuBottom, { above: true })
             }
@@ -739,7 +739,7 @@ Window {
             if (Notifications.automaticDoNotDisturb && !Notifications.doNotDisturb) {
                 entries.push({ separator: true },
                              { header: qsTr("Notifications are silenced meanwhile") },
-                             { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification",
+                             { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification-symbolic",
                                action: () => System.trigger("notification-settings") })
             }
             root.openAbove(entries, screenSharing, true, { minWidth: 260 })
@@ -904,7 +904,7 @@ Window {
             }
             entries.push({ separator: true },
                          { text: qsTr("Turn &off"), enabled: Access.caffeine, action: () => Access.caffeine = false },
-                         { text: qsTr("&Power settings"), icon: "preferences-system-power-management",
+                         { text: qsTr("&Power settings"), icon: "battery-profile-powersave-symbolic",
                            enabled: System.available("power"), action: () => System.trigger("power") })
             root.openAbove(entries, caffeine, true, { minWidth: 220 })
         }
@@ -993,9 +993,9 @@ Window {
                     && mouse.x < volumeIcon.x + iconsRow.x + volumeIcon.width + 5
                 root.openMenu(overVolume ? [
                     { text: qsTr("Open volume &mixer"), icon: "audio-volume-high", enabled: Audio.available, action: () => { root.fromHere(); Shell.soundOutputRequested() } },
-                    { text: qsTr("&Sound settings"), icon: "preferences-desktop-sound", enabled: System.available("sound-settings"), action: () => System.trigger("sound-settings") }
+                    { text: qsTr("&Sound settings"), icon: "audio-speakers-symbolic", enabled: System.available("sound-settings"), action: () => System.trigger("sound-settings") }
                 ] : [
-                    { text: qsTr("&Network and Internet settings"), icon: "preferences-system-network", enabled: System.available("network"), action: () => System.trigger("network") }
+                    { text: qsTr("&Network and Internet settings"), icon: "preferences-system-network-symbolic", enabled: System.available("network"), action: () => System.trigger("network") }
                 ], p.x, root.menuBottom, { above: true })
             }
             // Like the keyboard's volume keys, with the indicator: a step every
@@ -1108,8 +1108,8 @@ Window {
                 }
                 const p = root.screenPoint(clock, mouse.x, 0)
                 root.openMenu([
-                    { text: qsTr("&Adjust date and time"), icon: "preferences-system-time", enabled: System.available("datetime"), action: () => System.trigger("datetime") },
-                    { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification", enabled: System.available("notification-settings"), action: () => System.trigger("notification-settings") }
+                    { text: qsTr("&Adjust date and time"), icon: "clock", enabled: System.available("datetime"), action: () => System.trigger("datetime") },
+                    { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification-symbolic", enabled: System.available("notification-settings"), action: () => System.trigger("notification-settings") }
                 ], p.x, root.menuBottom, { above: true })
             }
         }
