@@ -14,6 +14,6 @@
 - [ ] Commits are signed off (`git commit -s`, DCO).
 - [ ] Changed C/C++ lines follow `.clang-format` (`git clang-format origin/main`).
 - [ ] Tests cover the change, or the PR says why they can't.
-- [ ] GPU-affecting: AMD and NVIDIA GPU suites requested on the head SHA ([policy](../docs/ci-quality.md#gpu-ci-policy)).
+- [ ] GPU-affecting: the full AMD and NVIDIA GPU suites passed on the exact candidate commit ([policy](https://github.com/vela-desktop/vela/blob/main/docs/ci-quality.md#gpu-ci-policy)).
 - [ ] User-visible: a line under "Unreleased" in `CHANGELOG.md`.
 - [ ] Docs updated where behavior changed.

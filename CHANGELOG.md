@@ -25,8 +25,9 @@ under "Unreleased" in the pull request that makes a user-visible change.
   and configuration paths; the lock survives compositor crashes.
 - Linux 6.5 or later is required.
 - The updater shipped up to this release only finds prereleases. Beta releases
-  are now normal releases, so update from a checkout:
-  `sh vela/packaging/vela-update --channel beta`
+  are now normal releases. For the first update, run
+  `sh packaging/vela-update --channel beta` from the root of an up-to-date
+  source checkout
   ([details](docs/release-channels.md#updating-older-beta-installations)).
 
 [All changes](https://github.com/vela-desktop/vela/compare/v0.1.1...v0.1.2)
