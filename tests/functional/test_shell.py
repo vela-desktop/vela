@@ -554,7 +554,7 @@ class QtShell(RealShell):
                          [(notification_id, 2) for notification_id in ids], signals)
         self.assertEqual(self.notification_action_events(signals), [(ids[0], "default")], signals)
 
-    def test_selected_primary_controls_run_dialog_and_notification_remap(self):
+    def test_selected_primary_controls_keyboard_panel_and_notification_remap(self):
         """The real Qt layers follow the selected output across off/on."""
         if not shutil.which("gdbus"):
             self.skipTest("gdbus required for desktop notification")
@@ -567,13 +567,13 @@ class QtShell(RealShell):
         time.sleep(0.5)
 
         with self.input_session() as send:
-            send("key", "super+r")
+            send("key", "super+v")
             self.vela.wait_for(
-                lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2"
-                          and s["focusedLayer"] == "vela-run",
-                timeout=8, what="Run dialog focused on explicitly selected output")
+                lambda s: (layer := self.layer(s, "vela-clipboard")) and layer["output"] == "HEADLESS-2"
+                          and s["focusedLayer"] == "vela-clipboard",
+                timeout=8, what="clipboard focused on explicitly selected output")
             send("key", "Escape")
-            self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="clipboard closed")
 
         self.send_notification("Hotplug notification", body="Must remain actionable after remapping")
         self.vela.wait_for(
@@ -1220,7 +1220,7 @@ class QtShell(RealShell):
                                  r'\.set_blur_region\(wl_region')
 
     def test_other_panels_can_reopen_after_native_surface_release(self):
-        for key, namespace in [("super+r", "vela-run"), ("super+a", "vela-quick-settings"),
+        for key, namespace in [("super+a", "vela-quick-settings"),
                                ("super+n", "vela-notification-center"), ("super+v", "vela-clipboard")]:
             with self.subTest(panel=namespace):
                 for _ in range(3):
@@ -1350,10 +1350,11 @@ class QtShell(RealShell):
         an animation (`normal`, 600 ms at 300%), menus and Task View vanish
         at once."""
         self.slow_animations()
-        cases = (("Run", lambda: self.vela.input("key", "super+r"), "vela-run", True),
+        # A panel opened from the keyboard first: a new virtual keyboard's
+        # first key may be lost, and Properties is closed with one.
+        cases = (("the clipboard", lambda: self.vela.input("key", "super+v"), "vela-clipboard", True),
                  ("Properties", lambda: self.shell_command(f'properties {json.dumps([self.vela.directory])}'),
                   "vela-properties", True),
-                 ("the clipboard", lambda: self.vela.input("key", "super+v"), "vela-clipboard", True),
                  ("the desktop menu", lambda: self.vela.input("move", 900, 500, "sleep", "300", "click", "right"),
                   "vela-context-menu", False),
                  ("Task View", lambda: self.vela.input("key", "super+Tab"), "vela-task-view", False))

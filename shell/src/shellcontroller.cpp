@@ -300,8 +300,6 @@ void ShellController::handleCommand(const QByteArray& command)
         emit switcherHidden();
     } else if (command == "winx") {
         emit winXRequested();
-    } else if (command == "run") {
-        emit runRequested();
     } else if (command == "show-desktop") {
         emit showDesktopRequested();
     } else if (command == "quick-settings") {

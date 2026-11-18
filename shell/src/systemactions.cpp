@@ -3,8 +3,6 @@
 
 #include "processlaunch.h"
 #include "systemactions.h"
-#include "appmodel.h"
-#include "mimeapps.h"
 #include "velatool.h"
 
 #include <QCoreApplication>
@@ -14,9 +12,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
-#include <QMimeDatabase>
 #include <QProcess>
-#include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtDebug>
@@ -203,18 +199,12 @@ QString SystemActions::command(const QString& name) const
     if (name == QLatin1String("settings")) {
         return first({ { "systemsettings", "systemsettings" }, { "gnome-control-center", "gnome-control-center" } });
     }
-    if (name == QLatin1String("system") || name == QLatin1String("computer")) {
-        return first({ { "kinfocenter", "kinfocenter" } });
-    }
-    if (name == QLatin1String("devices")) {
+    if (name == QLatin1String("system")) {
         return first({ { "kinfocenter", "kinfocenter" } });
     }
     if (name == QLatin1String("network")) {
         return first({ { "kcm_networkmanagement", "kcmshell6 kcm_networkmanagement" },
             { "nm-connection-editor", "nm-connection-editor" } });
-    }
-    if (name == QLatin1String("disks")) {
-        return first({ { "partitionmanager", "partitionmanager" }, { "gnome-disks", "gnome-disks" } });
     }
     if (name == QLatin1String("power") || name == QLatin1String("mobility")) {
         return first({ { "kcm_powerdevilprofilesconfig", "kcmshell6 kcm_powerdevilprofilesconfig" } });
@@ -262,64 +252,6 @@ bool SystemActions::isLaptop() const
         }
     }
     return false;
-}
-
-bool SystemActions::run(const QString& input)
-{
-    return runOnScreen(input, {});
-}
-
-/** Dispatch a file, URL or command and associate its launch with the requested output. */
-bool SystemActions::runOnScreen(const QString& input, const QString& screen)
-{
-    const QString text = input.trimmed();
-    if (text.isEmpty()) {
-        return false;
-    }
-    // Handle folders locally; xdg-open must never choose a browser for them.
-    const QString expanded = text.startsWith(u'~') ? QDir::homePath() + text.mid(1) : text;
-    const QFileInfo info(expanded);
-    bool ok = false;
-    if (info.isDir()) {
-        const QString files = velaFilesExecutable();
-        ok = !files.isEmpty() && vela::process::startDetached(files, { info.absoluteFilePath() });
-    } else if (info.isFile()) {
-        const QString mime = QMimeDatabase().mimeTypeForFile(info).name();
-        const QString id = MimeApps::defaultFor(mime);
-        if (m_apps && !id.isEmpty() && m_apps->launchWithFile(id, QUrl::fromLocalFile(info.absoluteFilePath()).toString())) {
-            ok = true;
-        } else {
-            if (screen.isEmpty()) emit chooseAppRequested(info.absoluteFilePath());
-            else emit chooseAppOnScreenRequested(info.absoluteFilePath(), screen);
-            ok = true;
-        }
-    } else if (text.contains(QLatin1String("://"))) {
-        const QUrl url(text);
-        if (url.scheme() == QLatin1String("http") || url.scheme() == QLatin1String("https"))
-            ok = vela::process::startDetached(QStringLiteral("xdg-open"), { text });
-        else if (url.isLocalFile()) {
-            const QFileInfo local(url.toLocalFile());
-            if (local.isDir()) {
-                const QString files = velaFilesExecutable();
-                ok = !files.isEmpty() && vela::process::startDetached(files, { local.absoluteFilePath() });
-            }
-        }
-    } else {
-        ok = spawn(text);
-    }
-    if (ok) {
-        QSettings settings;
-        QStringList history = settings.value(QStringLiteral("run/history")).toStringList();
-        history.removeAll(text);
-        history.prepend(text);
-        settings.setValue(QStringLiteral("run/history"), history.mid(0, 26));
-    }
-    return ok;
-}
-
-QStringList SystemActions::runHistory() const
-{
-    return QSettings().value(QStringLiteral("run/history")).toStringList();
 }
 
 /** Reveal a local item in Files or delegate selection to the standard file-manager API. */

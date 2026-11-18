@@ -215,10 +215,7 @@ Window {
             item(qsTr("P&ower options"), "preferences-system-power-management", "power"),
             item(qsTr("E&vent viewer"), "text-x-log", "events"),
             item(qsTr("S&ystem"), "computer", "system"),
-            item(qsTr("Device &manager"), "preferences-devices-tree", "devices"),
             item(qsTr("Net&work connections"), "preferences-system-network", "network"),
-            item(qsTr("Dis&k management"), "drive-harddisk", "disks"),
-            item(qsTr("Computer mana&gement"), "computer", "computer"),
             { separator: true },
             item(qsTr("&Terminal"), "utilities-terminal", "terminal"),
             item(qsTr("Terminal (&Admin)"), "utilities-terminal", "terminal-admin"),
@@ -227,7 +224,6 @@ Window {
             item(qsTr("Setti&ngs"), "preferences-system", "settings"),
             item(qsTr("File &Explorer"), "system-file-manager", "files"),
             { text: qsTr("&Search"), icon: "search", action: () => { root.fromHere(); if (!Shell.startMenuOpen) Shell.toggleStartMenu() } },
-            { text: qsTr("&Run"), icon: "system-run", action: () => { root.fromHere(); Shell.runRequested() } },
             { separator: true },
             { text: qsTr("Sh&ut down or sign out"), icon: "system-shutdown", children: [
                 { text: qsTr("Sign &out"), icon: "system-log-out", action: () => Shell.logout() },
@@ -999,7 +995,6 @@ Window {
                     { text: qsTr("Open volume &mixer"), icon: "audio-volume-high", enabled: Audio.available, action: () => { root.fromHere(); Shell.soundOutputRequested() } },
                     { text: qsTr("&Sound settings"), icon: "preferences-desktop-sound", enabled: System.available("sound-settings"), action: () => System.trigger("sound-settings") }
                 ] : [
-                    { text: qsTr("&Troubleshoot network problems"), icon: "network-workgroup", enabled: false },
                     { text: qsTr("&Network and Internet settings"), icon: "preferences-system-network", enabled: System.available("network"), action: () => System.trigger("network") }
                 ], p.x, root.menuBottom, { above: true })
             }

@@ -139,7 +139,6 @@ set(VELA_QML_FILES
     qml/MenuTextField.qml
     qml/MenuTextBox.qml
     qml/TextMenu.qml
-    qml/RunDialog.qml
     qml/ConfirmDialog.qml
     qml/BluetoothDialog.qml
     qml/BluetoothDevices.qml

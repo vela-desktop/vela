@@ -67,8 +67,8 @@ Window {
     // The names the shell uses (systemactions.cpp) for the menu entries.
     readonly property var aliases: ({
         "settings": "home", "personalize": "personalization", "taskbar-settings": "taskbar",
-        "notification-settings": "notifications", "sound-settings": "sound", "devices": "bluetooth",
-        "mobility": "power", "computer": "about", "installed-apps": "installed-apps",
+        "notification-settings": "notifications", "sound-settings": "sound",
+        "mobility": "power", "installed-apps": "installed-apps",
         "bluetooth-settings": "bluetooth", "night-light-settings": "night-light", "accessibility-settings": "accessibility",
         "colors-settings": "colors"
     })
