@@ -33,6 +33,21 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         self.assertIn("SHA256SUMS-fedora-45", build)
         self.assertIn("fedora-package-smoke", build)
         self.assertIn("fedora-tests, fedora-package, fedora-package-smoke", build)
+        self.assertIn("updater_fixtures: true", build)
+        for fixture in ("ci-updater-local-build.sh", "ci-dnf-transactions.sh"):
+            with self.subTest(fixture=fixture):
+                self.assertIn(fixture, fedora)
+                self.assertNotIn(fixture, build)
+
+    def test_package_builds_start_early_but_beta_waits_for_contracts(self):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        for name in ("package", "fedora-package"):
+            with self.subTest(job=name):
+                self.assertRegex(build, rf"(?m)^  {name}:\n    needs: changes$")
+        publish = build.split("\n  publish-beta:\n", 1)[1]
+        dependencies = re.search(r"(?m)^    needs: \[([^\]]+)\]$", publish)
+        self.assertIsNotNone(dependencies)
+        self.assertIn("packaging-tests", dependencies[1].split(", "))
 
     def test_fedora_beta_tag_pipeline_is_version_independent(self):
         # 0.1.2 is built from release/0.1 and 0.2.0 from main. Neither
