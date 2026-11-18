@@ -179,12 +179,8 @@
 <context>
     <name>Files</name>
     <message>
-        <source>File transfer did not start</source>
-        <translation>Impossibile avviare il trasferimento</translation>
-    </message>
-    <message>
         <source>A drive is being ejected or the transfer lock is unavailable. Try again.</source>
-        <translation>È in corso l'espulsione di un'unità oppure il blocco del trasferimento non è disponibile. Riprova.</translation>
+        <translation>È in corso l&apos;espulsione di un&apos;unità oppure il blocco del trasferimento non è disponibile. Riprova.</translation>
     </message>
     <message>
         <source>Invalid transfer request.</source>
@@ -620,6 +616,37 @@
     </message>
 </context>
 <context>
+    <name>PeekMedia</name>
+    <message>
+        <source>Back 10 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Pause</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Play</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Forward 10 seconds</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Speed</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Unmute</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Mute</source>
+        <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
     <name>PreviewPane</name>
     <message>
         <source> items selected</source>
@@ -706,6 +733,14 @@
     <message>
         <source> items, </source>
         <translation> elementi, </translation>
+    </message>
+    <message>
+        <source>Previous page (Page Up)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Next page (Page Down)</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source> x </source>
@@ -1020,28 +1055,8 @@
         <translation>Ctrl+Maiusc+C</translation>
     </message>
     <message>
-        <source>Show more options</source>
-        <translation>Mostra altre opzioni</translation>
-    </message>
-    <message>
-        <source>Shift+F10</source>
-        <translation>Maiusc+F10</translation>
-    </message>
-    <message>
-        <source>&amp;Copy</source>
-        <translation>&amp;Copia</translation>
-    </message>
-    <message>
         <source>Create &amp;shortcut</source>
         <translation>Crea c&amp;ollegamento</translation>
-    </message>
-    <message>
-        <source>&amp;Delete</source>
-        <translation>&amp;Elimina</translation>
-    </message>
-    <message>
-        <source>Re&amp;name</source>
-        <translation>Ri&amp;nomina</translation>
     </message>
     <message>
         <source>&amp;View</source>

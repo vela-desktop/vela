@@ -846,6 +846,301 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>ContextMenuPage</name>
+    <message>
+        <source>Desktop</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>A right click on the desktop&apos;s background</source>
+        <translation>Clic destro sullo sfondo del desktop</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>Visualizza</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordina per</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Aggiorna</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Incolla</translation>
+    </message>
+    <message>
+        <source>Paste shortcut</source>
+        <translation>Incolla collegamento</translation>
+    </message>
+    <message>
+        <source>New</source>
+        <translation>Nuovo</translation>
+    </message>
+    <message>
+        <source>Display settings</source>
+        <translation>Impostazioni schermo</translation>
+    </message>
+    <message>
+        <source>Personalize</source>
+        <translation>Personalizza</translation>
+    </message>
+    <message>
+        <source>Open in Terminal</source>
+        <translation>Apri in Terminale</translation>
+    </message>
+    <message>
+        <source>Files and folders</source>
+        <translation>File e cartelle</translation>
+    </message>
+    <message>
+        <source>On the desktop and in Files</source>
+        <translation>Sul desktop e in Esplora file</translation>
+    </message>
+    <message>
+        <source>Cut</source>
+        <translation>Taglia</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copia</translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation>Condividi</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Elimina</translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation>Apri</translation>
+    </message>
+    <message>
+        <source>Open in new tab (Files)</source>
+        <translation>Apri in una nuova scheda (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Open in new window (Files)</source>
+        <translation>Apri in una nuova finestra (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Open with</source>
+        <translation>Apri con</translation>
+    </message>
+    <message>
+        <source>Open file location (Files)</source>
+        <translation>Apri percorso file (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Pin to Start (apps on the desktop)</source>
+        <translation>Aggiungi a Start (app sul desktop)</translation>
+    </message>
+    <message>
+        <source>Add to Favorites</source>
+        <translation>Aggiungi ai Preferiti</translation>
+    </message>
+    <message>
+        <source>Pin to Quick access (Files)</source>
+        <translation>Aggiungi ad Accesso rapido (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Extract all (Files)</source>
+        <translation>Estrai tutto (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Compress to</source>
+        <translation>Comprimi in</translation>
+    </message>
+    <message>
+        <source>Copy as path</source>
+        <translation>Copia come percorso</translation>
+    </message>
+    <message>
+        <source>Create shortcut</source>
+        <translation>Crea collegamento</translation>
+    </message>
+    <message>
+        <source>Properties</source>
+        <translation>Proprietà</translation>
+    </message>
+    <message>
+        <source>Folder background</source>
+        <translation>Sfondo della cartella</translation>
+    </message>
+    <message>
+        <source>A right click on the empty space of a folder in Files</source>
+        <translation>Clic destro nello spazio vuoto di una cartella in Esplora file</translation>
+    </message>
+    <message>
+        <source>Taskbar apps</source>
+        <translation>App nella barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>A right click on an app&apos;s button in the taskbar</source>
+        <translation>Clic destro sul pulsante di un&apos;app nella barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Pinned files</source>
+        <translation>File aggiunti</translation>
+    </message>
+    <message>
+        <source>Recent files</source>
+        <translation>File recenti</translation>
+    </message>
+    <message>
+        <source>The app&apos;s tasks</source>
+        <translation>Le attività dell&apos;app</translation>
+    </message>
+    <message>
+        <source>The app, to open it again</source>
+        <translation>L&apos;app, per aprirla di nuovo</translation>
+    </message>
+    <message>
+        <source>Pin to taskbar</source>
+        <translation>Aggiungi alla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Close window</source>
+        <translation>Chiudi finestra</translation>
+    </message>
+    <message>
+        <source>Apps in Start</source>
+        <translation>App in Start</translation>
+    </message>
+    <message>
+        <source>A right click on an app in Start</source>
+        <translation>Clic destro su un&apos;app in Start</translation>
+    </message>
+    <message>
+        <source>Pin to Start</source>
+        <translation>Aggiungi a Start</translation>
+    </message>
+    <message>
+        <source>Move to front</source>
+        <translation>Sposta all&apos;inizio</translation>
+    </message>
+    <message>
+        <source>Add to desktop</source>
+        <translation>Aggiungi al desktop</translation>
+    </message>
+    <message>
+        <source>Open file location</source>
+        <translation>Apri percorso file</translation>
+    </message>
+    <message>
+        <source>Uninstall</source>
+        <translation>Disinstalla</translation>
+    </message>
+    <message>
+        <source>Start button</source>
+        <translation>Pulsante Start</translation>
+    </message>
+    <message>
+        <source>A right click on Start, or Win+X</source>
+        <translation>Clic destro su Start, oppure Win+X</translation>
+    </message>
+    <message>
+        <source>Installed apps</source>
+        <translation>App installate</translation>
+    </message>
+    <message>
+        <source>Mobility Center (laptops)</source>
+        <translation>Centro PC portatile (portatili)</translation>
+    </message>
+    <message>
+        <source>Power options</source>
+        <translation>Opzioni risparmio energia</translation>
+    </message>
+    <message>
+        <source>Event viewer</source>
+        <translation>Visualizzatore eventi</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>Sistema</translation>
+    </message>
+    <message>
+        <source>Network connections</source>
+        <translation>Connessioni di rete</translation>
+    </message>
+    <message>
+        <source>Terminal</source>
+        <translation>Terminale</translation>
+    </message>
+    <message>
+        <source>Terminal (Admin)</source>
+        <translation>Terminale (Admin)</translation>
+    </message>
+    <message>
+        <source>Task manager</source>
+        <translation>Gestione attività</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Impostazioni</translation>
+    </message>
+    <message>
+        <source>File Explorer</source>
+        <translation>Esplora file</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>Cerca</translation>
+    </message>
+    <message>
+        <source>Shut down or sign out</source>
+        <translation>Arresta il sistema o disconnetti</translation>
+    </message>
+    <message>
+        <source>Menus</source>
+        <translation>Menù</translation>
+    </message>
+    <message>
+        <source>Added by apps</source>
+        <translation>Aggiunte dalle app</translation>
+    </message>
+    <message>
+        <source>App entries</source>
+        <translation>Voci delle app</translation>
+    </message>
+    <message>
+        <source>In the menus of files and folders, before Properties</source>
+        <translation>Nei menù di file e cartelle, prima di Proprietà</translation>
+    </message>
+    <message>
+        <source>No app has added entries</source>
+        <translation>Nessuna app ha aggiunto voci</translation>
+    </message>
+    <message>
+        <source>Apps such as Ark or Filelight add theirs to the menus of files and folders</source>
+        <translation>App come Ark o Filelight aggiungono le loro ai menù di file e cartelle</translation>
+    </message>
+    <message>
+        <source>Show every entry again</source>
+        <translation>Mostra di nuovo tutte le voci</translation>
+    </message>
+    <message>
+        <source>All the entries you turned off come back in every menu</source>
+        <translation>Tutte le voci che hai disattivato tornano in ogni menù</translation>
+    </message>
+    <message>
+        <source>Show all</source>
+        <translation>Mostra tutte</translation>
+    </message>
+</context>
+<context>
     <name>DateTimePage</name>
     <message>
         <source>Set time automatically</source>
@@ -1640,6 +1935,10 @@ Specifiche sistema
         <translation>Start</translation>
     </message>
     <message>
+        <source>Context menu</source>
+        <translation>Menù contestuale</translation>
+    </message>
+    <message>
         <source>Apps</source>
         <translation>App</translation>
     </message>
@@ -1904,12 +2203,40 @@ Specifiche sistema
         <translation>taskbar allineamento sinistra centro termina attività</translation>
     </message>
     <message>
+        <source>right click menu entries items hide show service menus</source>
+        <translation>clic destro tasto destro menù voci nascondi mostra service menu</translation>
+    </message>
+    <message>
         <source>Time format</source>
         <translation>Formato dell&apos;ora</translation>
     </message>
     <message>
         <source>clock 24-hour 12-hour am pm time format hours</source>
         <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
+    </message>
+    <message>
+        <source>Choose your password manager</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vela needs to know which existing password store your apps should use. KWallet is only a temporary fallback until you choose. No passwords will be transferred. Your choice will take effect after signing out and back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> Unavailable providers are disabled; install the desired provider first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KWallet (KDE)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GNOME Keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decide later</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Show seconds</source>
@@ -2110,6 +2437,23 @@ Specifiche sistema
     <message>
         <source>Find a setting</source>
         <translation>Trova un&apos;impostazione</translation>
+    </message>
+</context>
+<context>
+    <name>MenuEntriesCard</name>
+    <message numerus="yes">
+        <source>%1. All %n entries shown</source>
+        <translation>
+            <numerusform>%1. %n voce mostrata</numerusform>
+            <numerusform>%1. Tutte le %n voci mostrate</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1. %n hidden</source>
+        <translation>
+            <numerusform>%1. %n nascosta</numerusform>
+            <numerusform>%1. %n nascoste</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -2486,6 +2830,14 @@ Specifiche sistema
     <message>
         <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
         <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Context menu</source>
+        <translation>Menù contestuale</translation>
+    </message>
+    <message>
+        <source>The entries of the right-click menus, those apps add too</source>
+        <translation>Le voci dei menù del tasto destro, anche quelle aggiunte dalle app</translation>
     </message>
     <message>
         <source>Start</source>
@@ -3168,6 +3520,54 @@ Specifiche sistema
     <message>
         <source>Clipboard history (Win+V), clear</source>
         <translation>Cronologia degli Appunti (Win+V), cancella</translation>
+    </message>
+    <message>
+        <source>Password manager (temporary)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose your password manager. The temporary KWallet fallback is not installed on this computer. No passwords are transferred; sign out and back in after choosing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose your existing password manager. KWallet is used only as a fallback until you choose. No passwords are transferred; sign out and back in to apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected password manager is not installed. Install it or choose the other provider, then sign out and back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This password manager will be used after signing out and back in. The running session still uses the previous choice.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another password manager owns Secret Service. Your choice is not active; check the Vela session log. No passwords were migrated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KWallet&apos;s native API is available, but Secret Service is not. Some KDE/Chromium apps may work, but libsecret clients may fail. Enable KWallet&apos;s Secret Service support and sign in again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected password manager could not be verified or started. Check the session log. Changing the choice requires a new login.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use this existing password store for apps. No passwords are transferred. Changes take effect after signing out and back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KWallet (KDE)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GNOME Keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select password manager</source>
+        <translation type="unfinished"></translation>
     </message>
     <message>
         <source>Updates</source>
