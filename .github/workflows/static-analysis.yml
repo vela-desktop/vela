@@ -58,15 +58,27 @@ jobs:
         run: |
           set -euo pipefail
           shellcheck --version | sed -n 2p
-          mapfile -t scripts < <(git ls-files -z | while IFS= read -r -d '' file; do
-            [ -f "$file" ] && head -n1 -- "$file" | grep -qE '^#!.*[/ ](ba|da)?sh( |$)' && printf '%s\n' "$file"
-          done)
-          printf 'Checking %d scripts\n' "${#scripts[@]}"
-          printf '  %s\n' "${scripts[@]}"
-          for script in "${scripts[@]}"; do
-            if head -n1 -- "$script" | grep -q bash; then bash -n "$script"; else sh -n "$script"; fi
-          done
-          shellcheck -S warning -x "${scripts[@]}"
+          # Match the interpreter after an optional env or env -S prefix.
+          shell_shebang='^#![[:blank:]]*/([^[:blank:]]*/)?(env[[:blank:]]+(-S[[:blank:]]+)?)?(bash|dash|sh)([[:blank:]]|$)'
+          git ls-files -z | {
+            scripts=()
+            while IFS= read -r -d '' file; do
+              [[ -f $file ]] || continue
+              IFS= read -r shebang < "$file" || [[ -n $shebang ]] || continue
+              [[ $shebang =~ $shell_shebang ]] || continue
+
+              scripts+=("$file")
+              printf '  %q\n' "$file"
+              case ${BASH_REMATCH[4]} in
+                bash) bash -n -- "$file" ;;
+                dash|sh) sh -n -- "$file" ;;
+              esac
+            done
+            printf 'Checking %d scripts with ShellCheck\n' "${#scripts[@]}"
+            if ((${#scripts[@]})); then
+              shellcheck -S warning -x -- "${scripts[@]}"
+            fi
+          }
 
   static-analysis:
     needs: changes
