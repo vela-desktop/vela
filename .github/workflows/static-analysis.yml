@@ -44,6 +44,42 @@ jobs:
             fi
           fi
 
+  # Every tracked shell script, found by its shebang: the updater (which runs
+  # sudo), the session scripts, CI and packaging helpers. Cheap, so it runs
+  # on every PR, docs-only ones included.
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: ShellCheck all shell scripts
+        shell: bash
+        run: |
+          set -euo pipefail
+          shellcheck --version | sed -n 2p
+          # Match the interpreter after an optional env or env -S prefix.
+          shell_shebang='^#![[:blank:]]*/([^[:blank:]]*/)?(env[[:blank:]]+(-S[[:blank:]]+)?)?(bash|dash|sh)([[:blank:]]|$)'
+          git ls-files -z | {
+            scripts=()
+            while IFS= read -r -d '' file; do
+              [[ -f $file ]] || continue
+              IFS= read -r shebang < "$file" || [[ -n $shebang ]] || continue
+              [[ $shebang =~ $shell_shebang ]] || continue
+
+              scripts+=("$file")
+              printf '  %q\n' "$file"
+              case ${BASH_REMATCH[4]} in
+                bash) bash -n -- "$file" ;;
+                dash|sh) sh -n -- "$file" ;;
+              esac
+            done
+            printf 'Checking %d scripts with ShellCheck\n' "${#scripts[@]}"
+            if ((${#scripts[@]})); then
+              shellcheck -S warning -x -- "${scripts[@]}"
+            fi
+          }
+
   # clang-format on the C and C++ lines this PR changes, nothing else:
   # existing code follows .clang-format as it is touched.
   clang-format:
@@ -91,15 +127,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-
-      - name: Shell syntax and ShellCheck
-        shell: bash
-        run: |
-          for script in packaging/vela-update session/vela-session-env scripts/*.sh; do
-            sh -n "$script"
-          done
-          bash -n scripts/ci-check-package.sh
-          shellcheck -S warning scripts/ci-check-package.sh
 
       # Analyze the compositor's C code, without needing Qt or a GPU.
       - name: Configure Clang static analyzer

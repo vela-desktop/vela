@@ -13,6 +13,7 @@ Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
 import atexit
+import builtins
 from contextlib import contextmanager
 import json
 import math
@@ -29,6 +30,8 @@ import threading
 import time
 from xml.sax.saxutils import escape as xml_escape
 import zlib
+
+from renderer_identity import verify_renderer_vendor
 
 # Opt-in only: keep the functional test harness standard-library-only.
 _PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
@@ -56,8 +59,6 @@ def _print_profile():
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
-
-from renderer_identity import verify_renderer_vendor
 
 
 def tool(name):
@@ -279,6 +280,9 @@ class Session:
             "VELA_DEBUG_INPUT": "1",
             # test-output, test-power, test-shell on the command socket.
             "VELA_TEST_COMMANDS": "1",
+            # Where install_prompt() puts stand-in system prompts: trusted
+            # like /usr, only with VELA_TEST_COMMANDS on the headless backend.
+            "VELA_TEST_PROMPT_DIR": os.path.join(self.directory, "prompts"),
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
             "HOME": os.path.join(self.directory, "home"),
@@ -427,7 +431,7 @@ class Session:
                 else:
                     last = self.state()
             except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError,
-                    socket.timeout) as error:
+                    builtins.TimeoutError) as error:
                 if not reconnect:
                     raise
                 connection_error = repr(error)
@@ -526,6 +530,15 @@ class Session:
         self.input(*actions)
 
     # -------------------------------------------------------- windows --
+
+    def install_prompt(self, name="pinentry-test"):
+        """A copy of vela-pattern named like a system prompt program, in the
+        directory the test compositor trusts as installed (VELA_TEST_PROMPT_DIR)."""
+        directory = os.path.join(self.directory, "prompts")
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, name)
+        shutil.copy2(tool("vela-pattern"), path)
+        return path
 
     def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
                     env=None, glass=False):

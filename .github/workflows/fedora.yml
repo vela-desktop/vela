@@ -13,6 +13,10 @@ on:
         type: boolean
         required: false
         default: false
+      updater_fixtures:
+        description: Run Fedora updater integration tests with local fixture RPMs
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       audio_diagnostics:
@@ -102,7 +106,18 @@ jobs:
           # against Fedora's native RPM/DNF backend.
           # Fedora's RPM smoke job exercises actual DNF transactions.
           # The GPU-labelled tests (functional-*, sharpness) need a GPU.
-          ctest --test-dir build-fedora --output-on-failure --parallel 2 -LE gpu -E '^packaging-update$'
+          ctest --test-dir build-fedora --output-on-failure --parallel 4 -LE gpu -E '^packaging-update$'
+
+      - name: Exercise the updater and DNF with fixture RPMs
+        if: inputs.updater_fixtures
+        shell: bash
+        run: |
+          set -euo pipefail
+          dnf install -y rpm-build dnf5-plugins
+          bash packaging/fedora/tests/ci-updater-local-build.sh
+          if [[ "$GITHUB_REF" != refs/tags/v0.* ]]; then
+            bash packaging/fedora/tests/ci-dnf-transactions.sh
+          fi
 
       # On-demand diagnostics only; normal required CTest results stay unchanged.
       - name: Compare isolated and full audio-core runs (diagnostic, non-blocking)
