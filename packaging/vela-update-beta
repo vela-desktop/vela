@@ -382,7 +382,7 @@ showBetaRecipeContent() {
 showBetaRecipe() {
     if [ -t 0 ] && [ -t 1 ] && command -v less >/dev/null 2>&1; then
         printf '\n%s\n' ":: Reviewing the package recipe (read-only). Scroll with arrows/PageUp/PageDown; press q to close and continue."
-        showBetaRecipeContent | LESS= LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
+        showBetaRecipeContent | LESS='' LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
         printf '%s\n' ":: Recipe preview closed; continuing update."
     else
         showBetaRecipeContent
@@ -404,7 +404,7 @@ fedora) manifest=SHA256SUMS-fedora
         [ "$VERSION_ID" != 45 ] || manifest=SHA256SUMS-fedora-45
         regex="^vela-$escaped_version-[0-9]+[.]fc${VERSION_ID}[.]x86_64[.]rpm$" ;;
 ubuntu) manifest=SHA256SUMS-ubuntu
-        regex="^vela_$escaped_version"_"amd64[.]deb$" ;;
+        regex="^vela_${escaped_version}_amd64[.]deb$" ;;
 esac
 release="$BASE/releases/download/$tag"
 phase downloading
@@ -430,7 +430,7 @@ for candidate in "$(dirname "$0")/verify-attestation.py" \
     if [ -f "$candidate" ]; then verifier="$candidate"; break; fi
 done
 [ -n "$verifier" ] || fail missing-tool "missing Sigstore verifier"
-verifier="$(CDPATH= cd -P -- "$(dirname "$verifier")" && pwd)/$(basename "$verifier")"
+verifier="$(CDPATH='' cd -P -- "$(dirname "$verifier")" && pwd)/$(basename "$verifier")"
 if ! (cd "$work" && python3 -I "$verifier" --repository "$REPO" --commit "$latestFull" \
     --kind release --release-tag "$tag" "./$package"); then
     fail verification-failed "the package's signed provenance was rejected"
