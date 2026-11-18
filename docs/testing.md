@@ -638,7 +638,9 @@ Each target also checks properties, not only crashes. For example, a DDC
 reply that parses re-encodes to one that parses the same. ctest replays each
 target over `fuzz/corpus/<target>` plus 5,000 seeded inputs
 (`fuzz-replay.<target>`, any compiler), so the sanitizer CI covers them too.
-For a real run:
+Run the file-based targets from a writable working directory you control.
+They create a private fixture directory there and remove it on normal exit.
+For a libFuzzer run:
 
 ```sh
 sh fuzz/build.sh build-fuzz        # Clang with libFuzzer; no wlroots or Qt needed

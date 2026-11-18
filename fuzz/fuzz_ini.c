@@ -18,10 +18,7 @@ static void seen(void *data, const char *text)
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    char path[4096];
-    if (!vela_fuzz_config_file("app.desktop", data, size, path, sizeof(path))) {
-        return 0;
-    }
+    const char *path = vela_fuzz_config_file("app.desktop", data, size);
     static const char *const keys[] = { "Name", "Icon", "Exec", "" };
     char values[4][256];
     (void)vela_ini_read(path, "Desktop Entry", keys, values, 4);

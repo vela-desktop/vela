@@ -8,15 +8,11 @@
 #include "config.h"
 #include "fuzz.h"
 
-#include <stdio.h>
 #include <string.h>
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
-    char path[4096];
-    if (!vela_fuzz_config_file("vela.conf", data, size, path, sizeof(path))) {
-        return 0;
-    }
+    vela_fuzz_config_file("vela.conf", data, size);
     struct vela_config config;
     vela_config_read(&config);
     for (int i = 0; i < config.count; ++i) {
