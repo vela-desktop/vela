@@ -138,8 +138,9 @@ Client DMA-BUF imports still use the normal renderer and need guest testing.
 
 On the tested guest, compositor-owned Vulkan buffers import successfully,
 but a VirGL/EGL shell buffer aborts in Venus's `vn_GetMemoryFdPropertiesKHR`
-(`vn_call_vkGetMemoryResourcePropertiesMESA`). Qt's Vulkan backend avoids that
-abort; OpenGL through **Zink on Venus** also works for the shell and Files.
+(`vn_call_vkGetMemoryResourcePropertiesMESA`). Qt's Vulkan backend, which the
+shell always uses, avoids that abort; OpenGL through **Zink on Venus** also
+works for Files and the other OpenGL clients.
 Vela therefore defaults `MESA_LOADER_DRIVER_OVERRIDE=zink` for processes it
 launches on Venus, preserving explicit overrides, including empty values.
 The full-session environment hook passes this selection to systemd --user,

@@ -12,6 +12,7 @@ namespace {
 
 std::once_flag textOnce;
 std::once_flag antialiasingOnce;
+std::once_flag vulkanOnce;
 
 } // namespace
 
@@ -42,6 +43,16 @@ void configureApplication()
 {
     configureTextRenderer();
     configureGrayscaleAntialiasing();
+}
+
+/** Select Qt Quick's Vulkan backend unless the environment already names one. */
+void configureVulkan()
+{
+    std::call_once(vulkanOnce, [] {
+        // The environment, not QQuickWindow::setGraphicsApi(): a request from
+        // C++ would override an explicit QSG_RHI_BACKEND.
+        process::setPrivateEnvironmentDefault("QSG_RHI_BACKEND", "vulkan");
+    });
 }
 
 } // namespace vela::rendering

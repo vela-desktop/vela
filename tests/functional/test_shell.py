@@ -65,7 +65,7 @@ class RealShell(unittest.TestCase):
             file.write(self.wallpaper)
         env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland",
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
-                   QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
+                   QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
                    VELA_DEBUG_SELECTION="1", **self.shell_env)
         # Check with this private HOME/config/bus, not the developer's theme
@@ -92,6 +92,9 @@ class RealShell(unittest.TestCase):
         self.assertTrue(self.mapped(state, "vela-taskbar"))
         self.assertTrue(self.mapped(state, "vela-wallpaper"))
         self.assertNotIn("layer_surface has never been configured", self.vela.log_text())
+        # Like the compositor: Vulkan, never Qt's platform default
+        # (rendering::configureVulkan).
+        self.assertIn("vela-shell: Qt Quick renders with Vulkan", self.vela.log_text())
 
     def slow_animations(self):
         """animation-duration=300 (Settings' slider), so captures land inside
