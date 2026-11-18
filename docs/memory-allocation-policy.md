@@ -1,19 +1,14 @@
 # Host allocation policy
 
-> **Status:** accepted with option c, fifth revision, 9 November 2026,
-> against `main` at `bb6cc0c`. Migration steps 1–3 are done (#148): the
-> fail-closed recovery, `common/alloc` with its CI check, and the unchecked
-> `realloc` and `getline` sites. Step 4 is done (#243). Step 5 is done
-> (#246): `VELA_MUST` and the classification of library results, the local
-> paths for descriptor exhaustion, the fallbacks removed with the baseline
-> at zero, and the C++ new handler. Step 6 is done: the frame path draws
-> without allocating, measured on the CPU and on a GPU. Step 7 is done,
-> and with it the migration: the image-extent cap, upload staging in pieces
-> under a byte budget, with deferred uploads that switch atomically and
-> progress oldest first (point 6, "As implemented"), and the icon cache's
-> entry budget (see "Migration order"). Every factual claim names the
-> code it was checked against; claims not yet measured are marked
-> *to verify*.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing; the migration is complete (see "Migration order").
+
+The fifth revision was accepted with option c on 9 November 2026, against
+`main` at `bb6cc0c`. Migration steps 1–3 are in #148, step 4 in #243, step 5
+in #246, step 6 in #250 and step 7 in #252. Every factual claim names the
+code it was checked against; claims not yet measured are marked
+*to verify*.
 
 ## Decision in one paragraph
 

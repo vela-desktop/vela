@@ -31,18 +31,14 @@ Settings tile, since Wi-Fi, Bluetooth and the others act on the real system
 bus."""
 
 import argparse
-import bisect
 import hashlib
 import json
 import math
-import mmap
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
 
@@ -64,7 +60,7 @@ TILE_W, TILE_H, TILE_GAP_X, TILE_GAP_Y, PANEL_PADDING = 104, 82, 8, 4, 16
 
 # The capture engine is shared with record-promo.py.
 sys.path.insert(0, str(ROOT / "scripts"))
-from recording_core import (Scene, Desktop, Take, record, lossless, has_drawtext,  # noqa: E402
+from recording_core import (Scene, Desktop, Take as Take, record, lossless, has_drawtext,  # noqa: E402
                             check_user_namespaces)
 
 class Maximize(Scene):

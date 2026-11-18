@@ -226,12 +226,24 @@ class FullscreenStack(unittest.TestCase):
     def test_system_prompt_stays_visible_over_reactivated_fullscreen(self):
         with Session(size="1280x720@60") as vela:
             fullscreen = game(vela)
-            prompt = vela.open_window(280, 180, app_id="pinentry")
+            program = vela.install_prompt()
+            prompt = vela.open_window(command=[program, "--app-id", "pinentry", "280", "180"])
             x, y = center(vela.state().window(prompt))
             baseline = vela.pixels().at(x, y)
             vela.input("move", 10, 10, "down", "up")
             vela.wait_for(lambda s: s["focused"] == fullscreen, what="game receives click")
             self.assertEqual(vela.pixels().at(x, y), baseline)
+
+    def test_prompt_name_alone_gets_no_place_over_fullscreen(self):
+        """Any app can call itself "pinentry": only the installed program stays on top."""
+        with Session(size="1280x720@60") as vela:
+            fullscreen = game(vela)
+            impostor = vela.open_window(280, 180, app_id="pinentry")
+            x, y = center(vela.state().window(impostor))
+            baseline = vela.pixels().at(x, y)
+            vela.input("move", 10, 10, "down", "up")
+            vela.wait_for(lambda s: s["focused"] == fullscreen, what="game receives click")
+            self.assertNotEqual(vela.pixels().at(x, y), baseline)
 
     def test_new_app_on_secondary_does_not_demote_primary_game(self):
         with Session(size="1280x720@60") as vela:

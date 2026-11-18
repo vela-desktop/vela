@@ -87,7 +87,10 @@ start)
         (
             # Do not inherit the parent's open-file-description lock.
             exec 9>&-
+            # Read by vela_credential_session_current (credential-compat/ensure-backend).
+            # shellcheck disable=SC2034
             VELA_CREDENTIAL_SESSION_STATE=$STATE
+            # shellcheck disable=SC2034
             VELA_CREDENTIAL_SESSION_TOKEN=$session_token
             vela_credential_session_current || exit 0
             credential_issue=0

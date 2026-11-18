@@ -1,0 +1,6 @@
+[Desktop Entry]
+Name=Files
+Icon=system-file-manager
+Exec=vela-files %U
+[Desktop Action new]
+Name=New window

@@ -1129,8 +1129,8 @@ class UpdateSources(UpdateFixture):
         shutil.copytree(self.source, alternate)
         self.env["TEST_INTERRUPT_CONFIG_COMMIT"] = "1"
         try:
-            result = self.run_update("--source", str(alternate), "--check",
-                                     source=False, status=143)
+            self.run_update("--source", str(alternate), "--check",
+                            source=False, status=143)
         finally:
             self.env.pop("TEST_INTERRUPT_CONFIG_COMMIT")
         self.assertEqual(self.config.read_bytes(), original_config)

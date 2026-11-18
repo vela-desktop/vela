@@ -1,5 +1,6 @@
 """Offline regression tests for the single-build promo capture workflow."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import tempfile
 import types
@@ -330,9 +331,19 @@ class PromoTests(unittest.TestCase):
             one.write_bytes(b"compositor")
             two.write_bytes(b"recorder")
             original = promo.build_fingerprint({"a": one, "b": two})
+            self.assertEqual(original, hashlib.sha256(b"a\0compositor\0b\0recorder\0").hexdigest())
             self.assertEqual(original, promo.build_fingerprint({"b": two, "a": one}))
             two.write_bytes(b"new recorder")
             self.assertNotEqual(original, promo.build_fingerprint({"a": one, "b": two}))
+
+    def test_artifact_digest_preserves_full_binary_content_and_size(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "capture.mp4"
+            for payload in (b"", bytes(range(256)) * 4097 + b"\0trailing bytes"):
+                with self.subTest(size=len(payload)):
+                    path.write_bytes(payload)
+                    self.assertEqual(promo.artifact_digest(path), {
+                        "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)})
 
     def test_resume_requires_matching_manifest_and_complete_outputs(self):
         with tempfile.TemporaryDirectory() as folder:

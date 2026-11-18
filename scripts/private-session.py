@@ -159,7 +159,7 @@ def _reap(process):
 def _require_pidfds():
     """Reject unsupported platforms before launching any session process."""
     if not hasattr(os, "pidfd_open") or not hasattr(signal, "pidfd_send_signal"):
-        raise OSError("Private session supervision needs Python 3.9+ and Linux 5.3+ (pidfd)")
+        raise OSError("Private session supervision needs Python 3.13+ and Linux 5.3+ (pidfd)")
     fd = os.pidfd_open(os.getpid())
     try:
         signal.pidfd_send_signal(fd, 0)

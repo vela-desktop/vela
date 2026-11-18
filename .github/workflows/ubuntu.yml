@@ -10,6 +10,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ubuntu-build-${{ github.event.pull_request.number && format('pr-{0}', github.event.pull_request.number) || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   ubuntu-build:
     name: Compile and test (Ubuntu 26.10)
@@ -97,7 +101,7 @@ jobs:
             echo "Expected at least 200 non-GPU tests; discovered ${count:-none}" >&2
             exit 1
           fi
-          ctest --test-dir build-ubuntu --output-on-failure --parallel 2 -LE 'gpu|distro-packaging'
+          ctest --test-dir build-ubuntu --output-on-failure --parallel 4 -LE 'gpu|distro-packaging'
       - name: Build channel-specific DEB
         run: |
           set -euo pipefail
