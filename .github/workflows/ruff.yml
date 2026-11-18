@@ -52,9 +52,6 @@ jobs:
       - name: Scripts
         run: python -m unittest discover -s scripts/tests -v
 
-      - name: Packaging
-        run: python -m unittest discover -s packaging/tests -v
-
       - name: Reporter
         run: PYTHONPATH=report python -m unittest discover -s report/tests -v
 

@@ -9,8 +9,10 @@ expensive Build jobs after an inexpensive source-change check.
 ## Package and updater contracts
 
 The [Build workflow](../.github/workflows/build.yml) runs the offline
-`packaging/tests` suite before the full build. The regular Arch build excludes
-CTest's `packaging-update` to avoid running that same suite twice. It checks public HTTPS defaults, migration of old
+`packaging/tests` suite on Python 3.13 alongside the Arch and Fedora package
+builds. Beta publication requires the suite and the clean-install smoke tests
+to pass. The hosted distro CTest jobs exclude `packaging-update` because Build
+owns the suite. It checks public HTTPS defaults, migration of old
 SSH configuration and mirrors, revision selection, CI artifact selection and
 failure handling. It uses real Git with isolated configuration and rejects
 unexpected transports; package tools are simulated. See [testing.md](testing.md)

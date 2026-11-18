@@ -34,6 +34,16 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         self.assertIn("fedora-package-smoke", build)
         self.assertIn("fedora-tests, fedora-package, fedora-package-smoke", build)
 
+    def test_package_builds_start_early_but_beta_waits_for_contracts(self):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        for name in ("package", "fedora-package"):
+            with self.subTest(job=name):
+                self.assertRegex(build, rf"(?m)^  {name}:\n    needs: changes$")
+        publish = build.split("\n  publish-beta:\n", 1)[1]
+        dependencies = re.search(r"(?m)^    needs: \[([^\]]+)\]$", publish)
+        self.assertIsNotNone(dependencies)
+        self.assertIn("packaging-tests", dependencies[1].split(", "))
+
     def test_fedora_beta_tag_pipeline_is_version_independent(self):
         # 0.1.2 is built from release/0.1 and 0.2.0 from main. Neither
         # release number should be embedded in the RPM or release asset names.

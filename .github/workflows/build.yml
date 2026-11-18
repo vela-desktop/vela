@@ -81,6 +81,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: Set up minimum supported Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
       - name: Validate standalone Sigstore verifier syntax
         run: python3 -m py_compile packaging/verify-attestation.py packaging/vela-update-state
       - name: Private session lifecycle and isolation (CPU-only)
@@ -104,7 +108,7 @@ jobs:
   # Pin the official Arch x86_64 container manifest. All these jobs run
   # pacman -Syu, but cannot silently change their base image identity.
   # Refresh the digest intentionally when updating the builder environment.
-  # Independent of packaging contracts; both jobs still gate packaging.
+  # Independent of packaging contracts; both jobs gate Beta publication.
   build:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
@@ -170,10 +174,11 @@ jobs:
             sh -n "$script"
           done
 
-  # Package compilation is independent of the normal Arch test build. Both
-  # remain required for Beta publication, but can run concurrently on PRs.
+  # Package compilation can start alongside the test jobs. Beta publication
+  # waits for the packaging contracts, builds and clean-install smoke tests.
   package:
-    needs: packaging-tests
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -358,7 +363,8 @@ jobs:
 
   # Build native RPMs from the SAME revision as Arch for both supported Fedora releases.
   fedora-package:
-    needs: packaging-tests
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -583,7 +589,7 @@ jobs:
   # main keep ephemeral Experimental build artifacts without GitHub Releases.
   publish-beta:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
-    needs: [build, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
+    needs: [build, packaging-tests, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
     runs-on: ubuntu-latest
     permissions:
       contents: write
