@@ -62,11 +62,29 @@ static int on_run_exit(sd_event_source *source, int fd, uint32_t revents, void *
     return 0;
 }
 
+static int on_run_watch_retry(sd_event_source *source, uint64_t usec, void *data)
+{
+    vela_up_state_reload(data);
+    return 0;
+}
+
+static void retry_run_watch(struct vela_up_daemon *d)
+{
+    int r = sd_event_add_time_relative(d->event, &d->run_watch, CLOCK_MONOTONIC, 250000, 0, on_run_watch_retry, d);
+    if (r < 0) {
+        vela_up_log("retry watching the running update: %s", strerror(-r));
+    }
+}
+
 static bool watch_live_run(struct vela_up_daemon *d, const struct vela_up_run *run)
 {
     int fd = (int)syscall(SYS_pidfd_open, run->pid, 0);
     if (fd < 0) {
-        return errno != ESRCH && vela_up_run_alive("/proc", run);
+        if (errno == ESRCH || !vela_up_run_alive("/proc", run)) {
+            return false;
+        }
+        retry_run_watch(d);
+        return true;
     }
     // Check identity after opening the pidfd. A readable pidfd also
     // identifies exit before the process has been reaped from /proc.
@@ -78,6 +96,7 @@ static bool watch_live_run(struct vela_up_daemon *d, const struct vela_up_run *r
     // Exit between poll() and registration still leaves the fd readable.
     if (sd_event_add_io(d->event, &d->run_watch, fd, EPOLLIN, on_run_exit, d) < 0) {
         close(fd);
+        retry_run_watch(d);
     } else {
         sd_event_source_set_io_fd_own(d->run_watch, true);
     }
@@ -134,6 +153,15 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     free(path);
 
+    path = path_in(d->state_dir, "run.json");
+    struct vela_up_run run;
+    int r = vela_up_run_read(path, &run);
+    free(path);
+    d->run_watch = sd_event_source_disable_unref(d->run_watch);
+    bool live = r >= 0 && run.present && watch_live_run(d, &run);
+
+    // If the updater has exited, read the final report it wrote before exit
+    // before considering the remaining run.json an interrupted install.
     path = path_in(d->state_dir, "install.json");
     struct vela_up_install install = { 0 };
     bool changed = stat(path, &observed) == 0
@@ -158,32 +186,22 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     free(path);
 
-    path = path_in(d->state_dir, "run.json");
-    struct vela_up_run run;
-    int r = vela_up_run_read(path, &run);
-    free(path);
-    d->run_watch = sd_event_source_disable_unref(d->run_watch);
     vela_up_run_clear(&d->run);
-    if (r >= 0 && run.present) {
-        if (watch_live_run(d, &run)) {
-            d->run = run;
-        } else {
-            // Killed without its exit trap: an install that never wrote its
-            // end was cancelled.
-            if (strcmp(run.action, "install") == 0
-                && (!d->install.present || d->install.finished_at < run.started_at)) {
-                vela_up_install_clear(&d->install);
-                d->install.present = true;
-                d->install.channel = vela_strdup(run.channel);
-                d->install.result = vela_strdup("cancelled");
-                d->install.error_code = vela_strdup("cancelled");
-                d->install.error_message = vela_strdup("The update was interrupted.");
-                d->install.installed_version = vela_strdup("");
-                d->install.finished_at = (int64_t)time(NULL);
-            }
-            vela_up_run_clear(&run);
+    if (live) {
+        d->run = run;
+    } else {
+        // Killed without its exit trap: an install that never wrote its end was cancelled.
+        if (r >= 0 && run.present && strcmp(run.action, "install") == 0
+            && (!d->install.present || d->install.finished_at < run.started_at)) {
+            vela_up_install_clear(&d->install);
+            d->install.present = true;
+            d->install.channel = vela_strdup(run.channel);
+            d->install.result = vela_strdup("cancelled");
+            d->install.error_code = vela_strdup("cancelled");
+            d->install.error_message = vela_strdup("The update was interrupted.");
+            d->install.installed_version = vela_strdup("");
+            d->install.finished_at = (int64_t)time(NULL);
         }
-    } else if (r >= 0) {
         vela_up_run_clear(&run);
     }
     if (d->starting

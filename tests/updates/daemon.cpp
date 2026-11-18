@@ -482,9 +482,28 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("cancelled"));
     }
 
+    void runExitedBeforeReaping_data()
+    {
+        QTest::addColumn<bool>("failPidfdWatch");
+        QTest::newRow("pidfd") << false;
+#ifdef VELA_SD_EVENT_FAIL_PRELOAD
+        QTest::newRow("retry") << true;
+#endif
+    }
+
     void runExitedBeforeReaping()
     {
-        QVERIFY(startDaemon());
+        QFETCH(bool, failPidfdWatch);
+        QMap<QString, QString> environment;
+#ifdef VELA_SD_EVENT_FAIL_PRELOAD
+        if (failPidfdWatch) {
+            environment.insert(QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD));
+            environment.insert(QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), QStringLiteral("pidfd_io"));
+        }
+#else
+        Q_UNUSED(failPidfdWatch);
+#endif
+        QVERIFY(startDaemon(environment));
         const pid_t child = fork();
         if (child == 0) {
             for (;;) {

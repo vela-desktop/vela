@@ -13,7 +13,8 @@
 static void seen(void *data, const char *text)
 {
     (void)data;
-    (void)strlen(text);
+    volatile size_t length = strlen(text);
+    (void)length;
 }
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)

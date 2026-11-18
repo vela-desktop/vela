@@ -11,13 +11,17 @@ on:
   pull_request:
     paths:
       - 'fuzz/**'
+      - 'CMakeLists.txt'
       - 'compositor/src/config.c'
       - 'compositor/src/desktop_conf.c'
       - 'compositor/src/legacy_names.c'
       - 'compositor/src/path_security.c'
       - 'compositor/src/util.c'
+      - 'compositor/src/*.h'
       - 'brightness/src/ddc.c'
+      - 'brightness/src/*.h'
       - 'common/alloc/alloc.c'
+      - 'common/alloc/*.h'
       - '.github/workflows/fuzz.yml'
   schedule:
     - cron: '17 2 * * *'

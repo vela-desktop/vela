@@ -16,7 +16,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     uint16_t value = 0;
     uint16_t max = 0;
     enum vela_ddc_reply reply = vela_ddc_parse_reply(data + 1, size - 1, feature, &value, &max);
-    if (!vela_ddc_reply_name(reply)) {
+    if (reply != VELA_DDC_REPLY_OK && reply != VELA_DDC_REPLY_UNSUPPORTED && reply != VELA_DDC_REPLY_NULL
+        && reply != VELA_DDC_REPLY_BAD) {
         __builtin_trap();
     }
     if (reply == VELA_DDC_REPLY_OK) {

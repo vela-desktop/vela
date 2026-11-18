@@ -10,16 +10,31 @@
 #include "fuzz.h"
 
 #include <dirent.h>
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 static int run_file(const char *path)
 {
-    FILE *file = fopen(path, "rbe");
+    int fd = open(path, O_RDONLY | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) {
+        fprintf(stderr, "replay: cannot open %s\n", path);
+        return 1;
+    }
+    struct stat st;
+    if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode)) {
+        fprintf(stderr, "replay: cannot read %s as a regular file\n", path);
+        close(fd);
+        return 1;
+    }
+    FILE *file = fdopen(fd, "rb");
     if (!file) {
         fprintf(stderr, "replay: cannot open %s\n", path);
+        close(fd);
         return 1;
     }
     uint8_t *data = NULL;
@@ -39,6 +54,12 @@ static int run_file(const char *path)
         size_t got = fread(data + size, 1, capacity - size, file);
         size += got;
         if (got == 0) {
+            if (ferror(file)) {
+                fprintf(stderr, "replay: cannot finish reading %s\n", path);
+                fclose(file);
+                free(data);
+                return 1;
+            }
             break;
         }
     }
@@ -104,8 +125,19 @@ int main(int argc, char **argv)
 {
     int failures = 0;
     for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--random") == 0 && i + 1 < argc) {
-            run_random(strtol(argv[++i], NULL, 10));
+        if (strcmp(argv[i], "--random") == 0) {
+            if (++i == argc) {
+                fprintf(stderr, "replay: --random requires a count\n");
+                return 1;
+            }
+            char *end;
+            errno = 0;
+            long count = strtol(argv[i], &end, 10);
+            if (errno == ERANGE || end == argv[i] || *end || count < 0) {
+                fprintf(stderr, "replay: invalid --random count: %s\n", argv[i]);
+                return 1;
+            }
+            run_random(count);
         } else {
             failures += run_path(argv[i]);
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "fuzz.h"
+#include "path_security.h"
 
 #include <err.h>
 #include <fcntl.h>
@@ -57,7 +58,8 @@ static void prepare_fixture(const char *name)
 
 const char *vela_fuzz_config_file(const char *name, const uint8_t *data, size_t size)
 {
-    if (!path[0]) {
+    const bool first_write = !path[0];
+    if (first_write) {
         prepare_fixture(name);
     }
     int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC | O_NOFOLLOW, 0600);
@@ -70,6 +72,15 @@ const char *vela_fuzz_config_file(const char *name, const uint8_t *data, size_t 
     }
     if (fwrite(data, 1, size, file) != size || fclose(file) != 0) {
         err(EXIT_FAILURE, "write the fuzz input file");
+    }
+    if (first_write) {
+        fd = vela_path_open_read(path);
+        if (fd < 0) {
+            err(EXIT_FAILURE,
+                "open the fixture with the config reader; run from a working directory without control characters "
+                "(such as tabs)");
+        }
+        close(fd);
     }
     return path;
 }

@@ -638,7 +638,8 @@ Each target also checks properties, not only crashes. For example, a DDC
 reply that parses re-encodes to one that parses the same. ctest replays each
 target over `fuzz/corpus/<target>` plus 5,000 seeded inputs
 (`fuzz-replay.<target>`, any compiler), so the sanitizer CI covers them too.
-Run the file-based targets from a writable working directory you control.
+Run the file-based targets from a writable working directory you control,
+with no control characters (such as tabs) in its path.
 They create a private fixture directory there and remove it on normal exit.
 For a libFuzzer run:
 
@@ -647,7 +648,8 @@ sh fuzz/build.sh build-fuzz        # Clang with libFuzzer; no wlroots or Qt need
 build-fuzz/vela-fuzz-config -max_total_time=60 fuzz/corpus/config
 ```
 
-`-DVELA_BUILD_FUZZERS=ON` builds the same binaries with CMake (Clang only).
+`-DVELA_BUILD_FUZZERS=ON` builds the same binaries with CMake when using
+Clang and `VELA_BUILD_COMPOSITOR=ON`.
 The [fuzzing workflow](../.github/workflows/fuzz.yml) runs each target for a
 minute on PRs that touch these parsers and for ten minutes every night. A
 crash's reproducer is uploaded as an artifact; it goes into the target's

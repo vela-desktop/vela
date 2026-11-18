@@ -21,7 +21,8 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         if (!value) {
             __builtin_trap();
         }
-        (void)strlen(value);
+        volatile size_t length = strlen(value);
+        (void)length;
         (void)vela_config_flag(&config, config.entries[i].key, false);
     }
     (void)vela_config_get(&config, "", "fallback");
