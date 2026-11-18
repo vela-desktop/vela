@@ -200,7 +200,7 @@ bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32
     if (alt_nested && sym == XKB_KEY_s) {
         return shell(server, "toggle-start");
     }
-    // Win+X: the Start button menu; Win+R: Run; Win+D: the desktop; Win+A:
+    // Win+X: the Start button menu; Win+D: the desktop; Win+A:
     // quick settings; Win+N: notification center and calendar; Win+I:
     // Settings; Win+E: File Explorer. Inside KDE with Alt.
     static const struct {
@@ -208,7 +208,6 @@ bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32
         const char *command;
     } shell_keys[] = {
         { XKB_KEY_x, "winx" },
-        { XKB_KEY_r, "run" },
         { XKB_KEY_d, "show-desktop" },
         { XKB_KEY_a, "quick-settings" },
         { XKB_KEY_n, "notification-center" },

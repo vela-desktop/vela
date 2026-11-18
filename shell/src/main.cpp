@@ -197,9 +197,6 @@ const Panel panels[] = {
     // Right-click menus: the whole output, transparent, above everything; a
     // click outside closes them. Arrows, Enter and Esc.
     { "ContextMenu", "vela-context-menu", layerOverlay, fill, -1, keysOnDemand },
-    // "Run", at the bottom left above the taskbar, like in Windows; the
-    // window touches both, the dialog rests 12 units from them.
-    { "RunDialog", "vela-run", layerTop, bottomLeft, 0, keysOnDemand },
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
@@ -422,10 +419,7 @@ int main(int argc, char* argv[])
     TrayModel tray;
     tray.start();
     SystemActions system;
-    system.setAppModel(&apps);
     // Use the QML caller's output; keyboard focus can change when a menu closes.
-    QObject::connect(&system, &SystemActions::chooseAppRequested, &shell, &ShellController::openWithRequested);
-    QObject::connect(&system, &SystemActions::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     QObject::connect(&shell, &ShellController::settingsRequested, &system, [&system] { system.trigger(QStringLiteral("settings")); });
     QObject::connect(&shell, &ShellController::filesRequested, &system, [&system] { system.trigger(QStringLiteral("files")); });
     JumpLists jumps(&apps);

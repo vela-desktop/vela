@@ -198,16 +198,16 @@ Item {
 
     // --- menus (docs/renderer.md §14.9) ---
     function openMenu(entries, x, y, keyboard) {
-        menuPoint = Qt.point(x, y)
         menus.open(entries, x, y, { keyboard: !!keyboard })
     }
-    property point menuPoint
 
+    // The entries apps add for these files (KDE service menus), in their
+    // submenus: a group of their own in the menu, before Properties.
     function serviceEntries(paths) {
         const out = []
-        const submenus = {}
+        const submenus = Object.create(null) // a submenu may be called "constructor"
         for (const a of ServiceMenus.actionsFor(paths)) {
-            const entry = { text: a.text, icon: a.icon, action: () => ServiceMenus.run(a.id, paths) }
+            const entry = { key: a.key, text: a.text, icon: a.icon, action: () => ServiceMenus.run(a.id, paths) }
             if (a.submenu) {
                 if (!submenus[a.submenu]) {
                     submenus[a.submenu] = { text: a.submenu, children: [] }
@@ -220,12 +220,6 @@ Item {
         }
         return out
     }
-    function showMoreOptions(paths) {
-        const x = menuPoint.x
-        const y = menuPoint.y
-        Qt.callLater(() => openMenu(paths.length > 0 ? classicItemEntries(paths) : classicBackgroundEntries(), x, y))
-    }
-
     function newEntries() {
         const entries = [
             { text: qsTr("&Folder"), icon: "folder-new", shortcut: qsTr("Ctrl+Shift+N"), action: () => Ops.createFolder(page.location) },
@@ -267,7 +261,7 @@ Item {
             { text: qsTr("Select &none"), icon: "edit-select-none", action: () => folder.clearSelection() },
             { text: qsTr("&Invert selection"), icon: "edit-select-invert", action: () => folder.invertSelection() },
             { separator: true },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", enabled: page.isFolder, action: () => System.openTerminal(page.location) },
+            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", enabled: page.isFolder, action: () => System.openTerminal(page.location) },
             { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"),
               action: () => Ops.showProperties(folder.selectionCount > 0 ? folder.selectedPaths() : [page.location]) }
         ]
@@ -286,85 +280,67 @@ Item {
                 { text: qsTr("Cu&t"), icon: "edit-cut", enabled: false },
                 { text: qsTr("&Delete permanently"), icon: "edit-delete", shortcut: qsTr("Del"), action: () => page.deleteSelection(true) },
                 { separator: true },
-                { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties(paths) }
+                { key: "file.properties", text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties(paths) }
             ]
         }
         const single = paths.length === 1 ? paths[0] : ""
         const singleDir = single !== "" && folder.isDirAt(folder.indexOf(single))
         const files = paths.filter(p => !folder.isDirAt(folder.indexOf(p)))
         const entries = [{ iconRow: [
-            { icon: "edit-cut", text: qsTr("Cut"), action: () => Ops.cut(paths) },
-            { icon: "edit-copy", text: qsTr("Copy"), action: () => Ops.copy(paths) },
-            { icon: "edit-rename", text: qsTr("Rename"), enabled: single !== "", action: () => page.renamingPath = single },
-            { icon: "document-share", text: qsTr("Share"), enabled: files.length > 0, action: () => Ops.share(files) },
-            { icon: "edit-delete", text: qsTr("Delete"), action: () => Ops.trash(paths) }
+            { key: "file.cut", icon: "edit-cut", text: qsTr("Cut"), action: () => Ops.cut(paths) },
+            { key: "file.copy", icon: "edit-copy", text: qsTr("Copy"), action: () => Ops.copy(paths) },
+            { key: "file.rename", icon: "edit-rename", text: qsTr("Rename"), enabled: single !== "", action: () => page.renamingPath = single },
+            { key: "file.share", icon: "document-share", text: qsTr("Share"), enabled: files.length > 0, action: () => Ops.share(files) },
+            { key: "file.delete", icon: "edit-delete", text: qsTr("Delete"), action: () => Ops.trash(paths) }
         ] }]
-        entries.push({ text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => page.openSelection() })
+        entries.push({ key: "file.open", text: qsTr("&Open"), icon: "document-open", shortcut: qsTr("Enter"), action: () => page.openSelection() })
         if (singleDir) {
-            entries.push({ text: qsTr("Open in new &tab"), icon: "page-new", action: () => page.openInNewTab(single) })
-            entries.push({ text: qsTr("Open in new &window"), icon: "window-new", action: () => Ops.newWindow(single) })
+            entries.push({ key: "file.newTab", text: qsTr("Open in new &tab"), icon: "page-new", action: () => page.openInNewTab(single) })
+            entries.push({ key: "file.newWindow", text: qsTr("Open in new &window"), icon: "window-new", action: () => Ops.newWindow(single) })
         }
         if (single !== "" && !singleDir) {
             const apps = Ops.appsFor(single)
             const openWith = apps.map(a => ({ text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => Ops.openWith(a.id, single) }))
             if (openWith.length > 0) openWith.push({ separator: true })
             openWith.push({ text: qsTr("Choose another app"), action: () => Ops.chooseApp(single) })
-            entries.push({ text: qsTr("Open &with"), icon: "document-open", children: openWith })
+            entries.push({ key: "file.openWith", text: qsTr("Open &with"), icon: "document-open", children: openWith })
         }
         // A shortcut: where the original is.
         if (single !== "" && Ops.isLink(single)) {
             const target = Ops.linkTarget(single)
-            entries.push({ text: qsTr("Open file &location"), icon: "folder-open",
+            entries.push({ key: "file.location", text: qsTr("Open file &location"), icon: "folder-open-symbolic",
                 action: () => page.navigate(target.substring(0, target.lastIndexOf("/")) || "/", target) })
         }
         if (files.length > 0 && files.length === paths.length) {
             const favorite = files.every(p => Places.isFavorite(p))
             entries.push(favorite
-                ? { text: qsTr("Remove from &Favorites"), icon: "starred-symbolic", action: () => files.forEach(p => Places.setFavorite(p, false)) }
-                : { text: qsTr("Add to &Favorites"), icon: "starred-symbolic", action: () => files.forEach(p => Places.setFavorite(p, true)) })
+                ? { key: "file.favorite", text: qsTr("Remove from &Favorites"), icon: "starred-symbolic", action: () => files.forEach(p => Places.setFavorite(p, false)) }
+                : { key: "file.favorite", text: qsTr("Add to &Favorites"), icon: "starred-symbolic", action: () => files.forEach(p => Places.setFavorite(p, true)) })
         }
         if (singleDir) {
             entries.push(Places.isPinned(single)
-                ? { text: qsTr("Unpin from &Quick access"), icon: "window-unpin", action: () => Places.unpin(single) }
-                : { text: qsTr("Pin to &Quick access"), icon: "window-pin", action: () => Places.pin(single) })
-            entries.push({ text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(single) })
+                ? { key: "file.quickAccess", text: qsTr("Unpin from &Quick access"), icon: "window-unpin", action: () => Places.unpin(single) }
+                : { key: "file.quickAccess", text: qsTr("Pin to &Quick access"), icon: "window-pin", action: () => Places.pin(single) })
+            entries.push({ key: "file.terminal", text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(single) })
         }
         if (single !== "" && Ops.isArchive(single)) {
-            entries.push({ text: qsTr("Extract &all..."), icon: "archive-extract", action: () => Ops.extractAll(single) })
+            entries.push({ key: "file.extract", text: qsTr("Extract &all..."), icon: "archive-extract", action: () => Ops.extractAll(single) })
         }
         entries.push(
-            { text: qsTr("Co&mpress to"), icon: "archive-insert", children: [
+            { key: "file.compress", text: qsTr("Co&mpress to"), icon: "archive-insert", children: [
                 { text: qsTr("&ZIP file"), icon: "application-zip", action: () => Ops.compress(paths, "zip") },
                 { text: qsTr("&7z file"), icon: "application-x-7z-compressed", action: () => Ops.compress(paths, "7z") },
                 { text: qsTr("&TAR file"), icon: "application-x-tar", action: () => Ops.compress(paths, "tar") }
             ] },
-            { text: qsTr("Copy as &path"), icon: "edit-copy-path", shortcut: qsTr("Ctrl+Shift+C"), action: () => Ops.copyAsPath(paths) },
-            { text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Ops.showProperties(paths) },
-            { separator: true },
-            { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => page.showMoreOptions(paths) }
-        )
-        return entries
-    }
-    function classicItemEntries(paths) {
-        const modern = itemEntries(paths)
-        const entries = [{ text: qsTr("&Open"), action: () => page.openSelection() }]
-        const openWith = modern.find(e => e.text === qsTr("Open &with"))
-        if (openWith) entries.push(openWith)
+            { key: "file.copyPath", text: qsTr("Copy as &path"), icon: "edit-copy-path", shortcut: qsTr("Ctrl+Shift+C"), action: () => Ops.copyAsPath(paths) },
+            { key: "file.createShortcut", text: qsTr("Create &shortcut"), icon: "insert-link", enabled: writable, action: () => Ops.createLinks(paths) })
         const services = serviceEntries(paths)
         if (services.length > 0) entries.push({ separator: true }, ...services)
         entries.push(
             { separator: true },
-            { text: qsTr("Cu&t"), action: () => Ops.cut(paths) },
-            { text: qsTr("&Copy"), action: () => Ops.copy(paths) },
-            { separator: true },
-            { text: qsTr("Create &shortcut"), action: () => Ops.createLinks(paths) },
-            { text: qsTr("&Delete"), action: () => Ops.trash(paths) },
-            { text: qsTr("Re&name"), enabled: paths.length === 1, action: () => page.renamingPath = paths[0] },
-            { separator: true },
-            { text: qsTr("P&roperties"), action: () => Ops.showProperties(paths) })
+            { key: "file.properties", text: qsTr("P&roperties"), icon: "document-properties", shortcut: qsTr("Alt+Enter"), action: () => Ops.showProperties(paths) })
         return entries
     }
-
     // The menu of the folder's empty space.
     function backgroundMenu(x, y, keyboard) {
         if (!isFolder) return
@@ -373,46 +349,37 @@ Item {
     function backgroundEntries() {
         if (isTrash) {
             return [
-                { text: qsTr("&View"), icon: "view-list-icons", children: viewEntries() },
-                { text: qsTr("S&ort by"), icon: "view-sort", children: sortEntries() },
-                { text: qsTr("R&efresh"), icon: "view-refresh", action: () => page.refresh() },
+                { key: "folder.view", text: qsTr("&View"), icon: "view-list-icons", children: viewEntries() },
+                { key: "folder.sort", text: qsTr("S&ort by"), icon: "view-sort", children: sortEntries() },
+                { key: "folder.refresh", text: qsTr("R&efresh"), icon: "view-refresh", action: () => page.refresh() },
                 { separator: true },
                 { text: qsTr("&Empty Recycle Bin"), icon: "trash-empty", enabled: folder.count > 0, action: () => page.askEmptyTrash() }
             ]
         }
         const entries = [
-            { text: qsTr("&View"), icon: "view-list-icons", children: viewEntries() },
-            { text: qsTr("S&ort by"), icon: "view-sort", children: sortEntries() },
-            { text: qsTr("R&efresh"), icon: "view-refresh", action: () => page.refresh() },
+            { key: "folder.view", text: qsTr("&View"), icon: "view-list-icons", children: viewEntries() },
+            { key: "folder.sort", text: qsTr("S&ort by"), icon: "view-sort", children: sortEntries() },
+            { key: "folder.refresh", text: qsTr("R&efresh"), icon: "view-refresh", action: () => page.refresh() },
             { separator: true }
         ]
         if (Ops.undoText !== "") {
-            entries.push({ text: qsTr("&Undo ") + Ops.undoText, icon: "edit-undo", shortcut: "Ctrl+Z", action: () => Ops.undo() })
+            entries.push({ key: "folder.undo", text: qsTr("&Undo ") + Ops.undoText, icon: "edit-undo", shortcut: "Ctrl+Z", action: () => Ops.undo() })
         }
         entries.push(
-            { text: qsTr("&Paste"), icon: "edit-paste", shortcut: "Ctrl+V", enabled: Ops.canPaste, action: () => page.paste() },
+            { key: "folder.paste", text: qsTr("&Paste"), icon: "edit-paste", shortcut: "Ctrl+V", enabled: Ops.canPaste, action: () => page.paste() })
+        if (Ops.canPaste) {
+            entries.push({ key: "folder.pasteShortcut", text: qsTr("Paste &shortcut"), icon: "insert-link", action: () => Ops.pasteLinks(page.location) })
+        }
+        entries.push(
             { separator: true },
-            { text: qsTr("&New"), icon: "list-add", children: newEntries() },
+            { key: "folder.new", text: qsTr("&New"), icon: "list-add", children: newEntries() },
             { separator: true },
-            { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([page.location]) },
-            { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(page.location) },
-            { separator: true },
-            { text: qsTr("Show more options"), icon: "view-more-symbolic", shortcut: qsTr("Shift+F10"), action: () => page.showMoreOptions([]) })
-        return entries
-    }
-    function classicBackgroundEntries() {
-        const entries = [
-            { text: qsTr("&View"), children: viewEntries() },
-            { text: qsTr("S&ort by"), children: sortEntries() },
-            { text: qsTr("R&efresh"), action: () => page.refresh() },
-            { separator: true },
-            { text: qsTr("&Paste"), enabled: Ops.canPaste, action: () => page.paste() },
-            { text: qsTr("Paste &shortcut"), enabled: Ops.canPaste, action: () => Ops.pasteLinks(page.location) }
-        ]
+            { key: "folder.terminal", text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(page.location) })
         const services = serviceEntries([page.location])
         if (services.length > 0) entries.push({ separator: true }, ...services)
-        entries.push({ separator: true }, { text: qsTr("&New"), children: newEntries() }, { separator: true },
-            { text: qsTr("P&roperties"), action: () => Ops.showProperties([page.location]) })
+        entries.push(
+            { separator: true },
+            { key: "folder.properties", text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([page.location]) })
         return entries
     }
 
@@ -459,12 +426,10 @@ Item {
                 Ops.showProperties(folder.selectionCount > 0 ? folder.selectedPaths() : [page.location])
             else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) page.openSelection()
             else if (event.key === Qt.Key_Menu || (shift && event.key === Qt.Key_F10)) {
-                const row = folder.currentIndex
+                // The selection's menu, even with the current row moved off
+                // it (Ctrl+arrows); the folder's only without a selection.
                 const p = page.mapToItem(null, page.width / 2, page.height / 2)
-                if (shift && event.key === Qt.Key_F10) {
-                    page.menuPoint = p
-                    page.showMoreOptions(folder.selectedPaths())
-                } else if (row >= 0 && folder.isSelected(row)) page.itemMenu(row, p.x, p.y, true)
+                if (folder.selectionCount > 0) page.openMenu(page.itemEntries(folder.selectedPaths()), p.x, p.y, true)
                 else page.backgroundMenu(p.x, p.y, true)
             }
             else if (event.key === Qt.Key_Home || event.key === Qt.Key_End) {

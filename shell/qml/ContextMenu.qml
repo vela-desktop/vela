@@ -3,6 +3,7 @@
 
 import QtQuick
 import Vela.Controls
+import "menufilter.js" as MenuFilter
 
 // The right-click menu window (docs/renderer.md §14): it covers the output and
 // is transparent; menus and submenus are panels inside it, and a click outside
@@ -26,6 +27,15 @@ Window {
         target: Menus
         function onOpenRequested(entries, x, y, options) {
             root.closeAll(false, true)
+            // Every entry hidden in Settings: no menu, and no window taking
+            // the next click.
+            if (MenuFilter.visible(entries, Style.hiddenMenuEntries).length === 0) {
+                root.closeAll(false)
+                if (options.onClosed) {
+                    options.onClosed()
+                }
+                return
+            }
             root.options = options
             // The requested output, or the main one (the output stays the last
             // one until changed).
@@ -56,7 +66,7 @@ Window {
     Connections {
         target: Shell
         function onWindowMenuRequested(window, output, x, y, maximized, resizable, keyboard) {
-            Menus.open(Menus.windowEntries(maximized, false, resizable, action => Shell.windowAction(window, action)),
+            Menus.open(Menus.windowEntries(maximized, false, resizable, action => Shell.windowAction(window, action), window),
                 x, y, { screen: output, keyboard: keyboard })
         }
     }
@@ -86,6 +96,17 @@ Window {
             }
         })
         panel.closeAllRequested.connect(() => root.closeAll(true))
+        // Its rows changed while open (an entry hidden or shown again): a
+        // submenu or a pending hover may point at a row that moved.
+        panel.layoutChanged.connect(() => {
+            if (root.pending && root.pending.panel === panel) {
+                root.pending = null
+            }
+            if (root.panels.length > panel.level + 1) {
+                root.closeFrom(panel.level + 1)
+                panel.forceActiveFocus()
+            }
+        })
         panel.pinToggled.connect(() => {
             if (root.options.rebuild && root.panels.length > 0) {
                 root.closeFrom(1)
@@ -118,7 +139,7 @@ Window {
         if (child && child.parentIndex === index) {
             return // already open
         }
-        const panel = openLevel(parentPanel.level + 1, parentPanel.entries[index].children, {
+        const panel = openLevel(parentPanel.level + 1, parentPanel.visibleEntries[index].children, {
             anchorX: parentPanel.x + parentPanel.width - 4,
             altX: parentPanel.x + 4,
             anchorY: parentPanel.y + rowY - 4,
@@ -131,7 +152,7 @@ Window {
     // Like Windows: submenus open (and close) after a short mouse pause, so
     // crossing other entries diagonally to reach them doesn't close them.
     function onHovered(panel, index, rowY) {
-        const entry = panel.entries[index]
+        const entry = panel.visibleEntries[index]
         const child = panels[panel.level + 1]
         if (child && child.parentIndex === index) {
             pending = null

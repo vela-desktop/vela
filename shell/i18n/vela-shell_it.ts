@@ -574,6 +574,18 @@
         <translation>&amp;Ingrandisci</translation>
     </message>
     <message>
+        <source>&amp;New desktop</source>
+        <translation>&amp;Nuovo desktop</translation>
+    </message>
+    <message>
+        <source>Move to &amp;desktop</source>
+        <translation>Sposta nel &amp;desktop</translation>
+    </message>
+    <message>
+        <source>Show on &amp;all desktops</source>
+        <translation>Mostra su &amp;tutti i desktop</translation>
+    </message>
+    <message>
         <source>&amp;Close</source>
         <translation>&amp;Chiudi</translation>
     </message>
@@ -1010,29 +1022,6 @@
     </message>
 </context>
 <context>
-    <name>RunDialog</name>
-    <message>
-        <source>Browse</source>
-        <translation>Sfoglia</translation>
-    </message>
-    <message>
-        <source>Browse...</source>
-        <translation>Sfoglia...</translation>
-    </message>
-    <message>
-        <source>Type the name of a program, folder, document or Internet resource, and Vela will open it for you.</source>
-        <translation>Digita il nome di un programma, cartella, documento o risorsa Internet e Vela lo aprirà.</translation>
-    </message>
-    <message>
-        <source>Open:</source>
-        <translation>Apri:</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
-    </message>
-</context>
-<context>
     <name>ScreenSharing</name>
     <message>
         <source>Your screen</source>
@@ -1201,10 +1190,6 @@
         <translation>&amp;Aggiungi a Start</translation>
     </message>
     <message>
-        <source>&amp;More</source>
-        <translation>A&amp;ltro</translation>
-    </message>
-    <message>
         <source>Couldn&apos;t find this application&apos;s launcher.</source>
         <translation>Impossibile trovare l&apos;avviatore di questa applicazione.</translation>
     </message>
@@ -1309,17 +1294,6 @@
     <message>
         <source>New desktop</source>
         <translation>Nuovo desktop</translation>
-    </message>
-</context>
-<context>
-    <name>TaskbarApps</name>
-    <message>
-        <source>Previous apps</source>
-        <translation>App precedenti</translation>
-    </message>
-    <message>
-        <source>Next apps</source>
-        <translation>App successive</translation>
     </message>
 </context>
 <context>
@@ -1469,20 +1443,8 @@
         <translation>Siste&amp;ma</translation>
     </message>
     <message>
-        <source>Device &amp;manager</source>
-        <translation>Gestione dispositi&amp;vi</translation>
-    </message>
-    <message>
         <source>Net&amp;work connections</source>
         <translation>Conn&amp;essioni di rete</translation>
-    </message>
-    <message>
-        <source>Dis&amp;k management</source>
-        <translation>Gestio&amp;ne disco</translation>
-    </message>
-    <message>
-        <source>Computer mana&amp;gement</source>
-        <translation>&amp;Gestione computer</translation>
     </message>
     <message>
         <source>&amp;Terminal</source>
@@ -1507,10 +1469,6 @@
     <message>
         <source>&amp;Search</source>
         <translation>&amp;Cerca</translation>
-    </message>
-    <message>
-        <source>&amp;Run</source>
-        <translation>E&amp;segui</translation>
     </message>
     <message>
         <source>Sh&amp;ut down or sign out</source>
@@ -1621,10 +1579,6 @@
         <translation>&amp;Impostazioni audio</translation>
     </message>
     <message>
-        <source>&amp;Troubleshoot network problems</source>
-        <translation>&amp;Diagnostica problemi di rete</translation>
-    </message>
-    <message>
         <source>&amp;Network and Internet settings</source>
         <translation>&amp;Impostazioni di rete e Internet</translation>
     </message>
@@ -1639,6 +1593,17 @@
     <message>
         <source>Show desktop</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TaskbarApps</name>
+    <message>
+        <source>Previous apps</source>
+        <translation>App precedenti</translation>
+    </message>
+    <message>
+        <source>Next apps</source>
+        <translation>App successive</translation>
     </message>
 </context>
 <context>
@@ -1718,24 +1683,8 @@
         <translation>Apri &amp;con</translation>
     </message>
     <message>
-        <source>Cu&amp;t</source>
-        <translation>&amp;Taglia</translation>
-    </message>
-    <message>
-        <source>&amp;Copy</source>
-        <translation>&amp;Copia</translation>
-    </message>
-    <message>
         <source>Create &amp;shortcut</source>
         <translation>Crea c&amp;ollegamento</translation>
-    </message>
-    <message>
-        <source>&amp;Delete</source>
-        <translation>&amp;Elimina</translation>
-    </message>
-    <message>
-        <source>Re&amp;name</source>
-        <translation>Ri&amp;nomina</translation>
     </message>
     <message>
         <source>P&amp;roperties</source>
@@ -1820,14 +1769,6 @@
     <message>
         <source>Open in &amp;Terminal</source>
         <translation>Apri in &amp;Terminale</translation>
-    </message>
-    <message>
-        <source>Show more options</source>
-        <translation>Mostra altre opzioni</translation>
-    </message>
-    <message>
-        <source>Shift+F10</source>
-        <translation>Maiusc+F10</translation>
     </message>
     <message>
         <source>Remove from &amp;Favorites</source>

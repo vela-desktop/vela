@@ -100,37 +100,33 @@ Window {
         const entries = []
         const recent = Jumps.recent(id, 5)
         if (recent.length > 0) {
-            entries.push({ header: qsTr("Recent") })
-            recent.forEach(f => entries.push({ text: f.name.replace(/&/g, "&&"), icon: f.icon, action: () => { Apps.launchWithFile(id, f.url); root.close() } }))
+            entries.push({ key: "start.recent", header: qsTr("Recent") })
+            recent.forEach(f => entries.push({ key: "start.recent", text: f.name.replace(/&/g, "&&"), icon: f.icon, action: () => { Apps.launchWithFile(id, f.url); root.close() } }))
         }
         const actions = Apps.actions(id)
         if (actions.length > 0) {
-            entries.push({ header: qsTr("Tasks") })
-            actions.forEach(a => entries.push({ text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => { Apps.launchAction(id, a.id); root.close() } }))
+            entries.push({ key: "start.tasks", header: qsTr("Tasks") })
+            actions.forEach(a => entries.push({ key: "start.tasks", text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => { Apps.launchAction(id, a.id); root.close() } }))
         }
         if (entries.length > 0) {
             entries.push({ separator: true })
         }
         const inStart = Shell.startPins.indexOf(id) >= 0
         const taskbar = Tasks.isPinned(id)
-            ? { text: qsTr("Unpin from &taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
-            : { text: qsTr("Pin to &taskbar"), icon: "window-pin", action: () => Tasks.pin(id) }
-        const desktop = { text: qsTr("Add to &desktop"), icon: "user-desktop", action: () => root.addToDesktop(id) }
-        const folder = { text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
-        const uninstall = { text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
+            ? { key: "start.taskbar", text: qsTr("Unpin from &taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
+            : { key: "start.taskbar", text: qsTr("Pin to &taskbar"), icon: "window-pin", action: () => Tasks.pin(id) }
+        const desktop = { key: "start.desktop", text: qsTr("Add to &desktop"), icon: "user-desktop-symbolic", action: () => root.addToDesktop(id) }
+        const folder = { key: "start.location", text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
+        const uninstall = { key: "start.uninstall", text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
+        // The same flat menu for a pinned tile and for all apps; a pinned
+        // tile can also move to the front.
+        entries.push(inStart
+            ? { key: "start.pin", text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
+            : { key: "start.pin", text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) })
         if (pinnedTile) {
-            entries.push(
-                { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) },
-                { text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) },
-                taskbar, desktop, folder, uninstall)
-        } else {
-            entries.push(
-                inStart
-                    ? { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
-                    : { text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) },
-                { text: qsTr("&More"), children: [taskbar, desktop, folder] },
-                uninstall)
+            entries.push({ key: "start.front", text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) })
         }
+        entries.push(taskbar, desktop, { separator: true }, folder, uninstall)
         return entries
     }
 

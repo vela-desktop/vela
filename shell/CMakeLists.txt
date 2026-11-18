@@ -133,13 +133,13 @@ set(VELA_QML_FILES
     qml/NotificationPopups.qml
     qml/NotificationToast.qml
     qml/Menus.qml
+    qml/menufilter.js
     qml/Styles.qml
     qml/ContextMenu.qml
     qml/MenuPanel.qml
     qml/MenuTextField.qml
     qml/MenuTextBox.qml
     qml/TextMenu.qml
-    qml/RunDialog.qml
     qml/ConfirmDialog.qml
     qml/BluetoothDialog.qml
     qml/BluetoothDevices.qml

@@ -13,6 +13,8 @@
 #include <QStringList>
 #include <QVariantList>
 
+#include <functional>
+
 class QSettings;
 
 // The user's choices, in the two files holding them:
@@ -70,6 +72,9 @@ class Preferences : public QObject {
     Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
     Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
+    // menus/hidden: the keys of the context menu entries the user hid
+    // (Personalization > Context menu, docs/renderer.md §14.12).
+    Q_PROPERTY(QStringList hiddenMenuEntries READ hiddenMenuEntries NOTIFY menusChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
     // notifications/silenceWhileSharing: Do not disturb by itself while the
@@ -210,6 +215,11 @@ public:
     void setStartPinned(bool on);
     bool desktopIcons() const { return m_desktopIcons; }
     void setDesktopIcons(bool on);
+    QStringList hiddenMenuEntries() const { return m_hiddenMenuEntries; }
+    // Hides or shows again one entry, or several at once (a group's).
+    Q_INVOKABLE void setMenuEntriesHidden(const QStringList& keys, bool hidden);
+    // Every entry back.
+    Q_INVOKABLE void showAllMenuEntries();
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
@@ -358,6 +368,7 @@ signals:
     void appThemeChanged();
     void taskbarChanged();
     void desktopChanged();
+    void menusChanged();
     void startChanged();
     void clockChanged();
     void doNotDisturbChanged();
@@ -377,6 +388,9 @@ signals:
 private:
     bool setShell(const QString& key, const QVariant& value);
     bool saveShell(const QList<QPair<QString, QVariant>>& changes);
+    // The same write, the changes made by `edit` on the file as read under
+    // its lock (a list another writer may have changed meanwhile).
+    bool saveShell(const std::function<void(QSettings&)>& edit);
     void loadShell(const QSettings& settings);
     // vela.conf: reread, only these keys changed, then "reload-config".
     // False when the file could not be opened, written or committed.
@@ -417,6 +431,7 @@ private:
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_desktopIcons = true;
+    QStringList m_hiddenMenuEntries;
     bool m_startPinned = true;
     QString m_startIcon = QStringLiteral("vela");
     QString m_startIconSource;

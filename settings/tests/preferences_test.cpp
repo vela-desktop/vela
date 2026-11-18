@@ -392,6 +392,46 @@ private slots:
         QCOMPARE(desktop.count(), 1);
     }
 
+    // Personalization > Context menu: menus/hidden holds the hidden keys; a
+    // group hides and shows at once; "Show all" empties it.
+    void hiddenMenuEntries()
+    {
+        write("[appearance]\nappTheme=dark\n[menus]\nhidden=file.copy\n");
+        Preferences prefs;
+        QCOMPARE(prefs.hiddenMenuEntries(), QStringList { QStringLiteral("file.copy") });
+        prefs.setMenuEntriesHidden({ QStringLiteral("taskbar.recent"), QStringLiteral("taskbar.recentHeader") }, true);
+        const QStringList three { QStringLiteral("file.copy"), QStringLiteral("taskbar.recent"),
+            QStringLiteral("taskbar.recentHeader") };
+        QCOMPARE(prefs.hiddenMenuEntries(), three);
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), three);
+        prefs.setMenuEntriesHidden({ QStringLiteral("file.copy") }, false);
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), three.mid(1));
+        prefs.showAllMenuEntries();
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        QVERIFY(!saved(QStringLiteral("menus/hidden")).isValid());
+        Preferences again;
+        QVERIFY(again.hiddenMenuEntries().isEmpty());
+    }
+
+    // Another writer hid Cut after Settings read the file: hiding Copy keeps
+    // Cut hidden, and "Show all" brings back every key, the other writer's too.
+    void hiddenMenuEntriesKeepOtherWritersKeys()
+    {
+        write("[appearance]\nappTheme=dark\n");
+        Preferences prefs;
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        write("[appearance]\nappTheme=dark\n[menus]\nhidden=file.cut\n");
+        prefs.setMenuEntriesHidden({ QStringLiteral("file.copy") }, true);
+        const QStringList both { QStringLiteral("file.cut"), QStringLiteral("file.copy") };
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), both);
+        QCOMPARE(prefs.hiddenMenuEntries(), both);
+        write("[appearance]\nappTheme=dark\n[menus]\nhidden=file.cut, file.copy, file.rename\n");
+        prefs.showAllMenuEntries();
+        QVERIFY(!saved(QStringLiteral("menus/hidden")).isValid());
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        QCOMPARE(saved(QStringLiteral("appearance/appTheme")).toString(), QStringLiteral("dark"));
+    }
+
     void findsTheLogoOnceTheIconThemeIsSet()
     {
         // Vela.Controls sets the icon theme after Preferences starts

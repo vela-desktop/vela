@@ -50,6 +50,7 @@ Window {
         "themes": { title: qsTr("Themes"), parent: "personalization", file: "ThemesPage.qml", icon: "preferences-desktop-theme" },
         "taskbar": { title: qsTr("Taskbar"), parent: "personalization", file: "TaskbarPage.qml", icon: "preferences-system-windows" },
         "start": { title: qsTr("Start"), parent: "personalization", file: "StartPage.qml", icon: "start-here" },
+        "context-menu": { title: qsTr("Context menu"), parent: "personalization", file: "ContextMenuPage.qml", icon: "application-menu" },
         "apps": { title: qsTr("Apps"), parent: "", file: "AppsPage.qml", icon: "preferences-desktop-default-applications" },
         "installed-apps": { title: qsTr("Installed apps"), parent: "apps", file: "InstalledAppsPage.qml", icon: "view-list-details" },
         "default-apps": { title: qsTr("Default apps"), parent: "apps", file: "DefaultAppsPage.qml", icon: "preferences-desktop-default-applications" },
@@ -67,8 +68,8 @@ Window {
     // The names the shell uses (systemactions.cpp) for the menu entries.
     readonly property var aliases: ({
         "settings": "home", "personalize": "personalization", "taskbar-settings": "taskbar",
-        "notification-settings": "notifications", "sound-settings": "sound", "devices": "bluetooth",
-        "mobility": "power", "computer": "about", "installed-apps": "installed-apps",
+        "notification-settings": "notifications", "sound-settings": "sound",
+        "mobility": "power", "installed-apps": "installed-apps",
         "bluetooth-settings": "bluetooth", "night-light-settings": "night-light", "accessibility-settings": "accessibility",
         "colors-settings": "colors"
     })
@@ -242,6 +243,7 @@ Window {
         { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
         { page: "start", text: qsTr("Start button icon"), keys: qsTr("start button icon logo distribution picture image sail") },
         { page: "start", text: qsTr("Show pinned apps"), keys: qsTr("start menu pinned apps pins show hide") },
+        { page: "context-menu", text: qsTr("Context menu"), keys: qsTr("right click right-click menu entries items hide show service menus") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
         { page: "default-apps", text: qsTr("Default apps"), keys: qsTr("browser mail player open with default") },

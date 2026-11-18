@@ -127,7 +127,6 @@ signals:
     void chooseSourceCancelled();
     // Windows shortcuts arriving from the compositor.
     void winXRequested(); // Win+X
-    void runRequested(); // Win+R
     void showDesktopRequested(); // Win+D
     void quickSettingsRequested(); // Win+A
     void soundOutputRequested(); // Win+Ctrl+V: quick settings' sound page

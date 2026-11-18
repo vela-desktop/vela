@@ -34,7 +34,6 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Clipboard history | <kbd>Super</kbd>+<kbd>V</kbd> | — |
 | Sound output and volume mixer | <kbd>Super</kbd>+<kbd>Ctrl</kbd>+<kbd>V</kbd> | — |
 | Snipping tool | <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> or <kbd>PrtSc</kbd> | <kbd>PrtSc</kbd> |
-| Run | <kbd>Super</kbd>+<kbd>R</kbd> | <kbd>Alt</kbd>+<kbd>R</kbd> |
 | Power-user menu | <kbd>Super</kbd>+<kbd>X</kbd> | <kbd>Alt</kbd>+<kbd>X</kbd> |
 | Terminal | <kbd>Super</kbd>+<kbd>Enter</kbd> | <kbd>Alt</kbd>+<kbd>Enter</kbd> |
 | Lock | <kbd>Super</kbd>+<kbd>L</kbd> | <kbd>Alt</kbd>+<kbd>L</kbd> |
