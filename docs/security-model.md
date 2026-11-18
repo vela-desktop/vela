@@ -1,5 +1,9 @@
 # Compositor security model
 
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** no unfinished implementation work is identified in this document; continue security regression testing and review as the compositor evolves.
+
 This page describes the trust boundaries of `vela-compositor`: who may talk
 to it, which Wayland protocols each client may use, how the screen lock
 survives crashes, and what the renderer refuses from clients. To report a
@@ -75,6 +79,24 @@ sandboxed, so the shell can't use the command socket.
 The same rule applies to the command socket. The global filter hides the
 globals from the registry and libwayland refuses to bind them, so a client
 cannot reach them by guessing names.
+
+## System prompts
+
+Credential prompts (KWallet and ksecretd, KDE's polkit agent, pinentry,
+GNOME's keyring prompt) stay above full-screen windows and take the keyboard
+back when another window is activated. A window gets that place only if both
+of these hold (`security_policy.c`):
+
+- its app id names one of those prompts; this is what the window claims to be;
+- at map, its process is unsandboxed and runs one of those programs from
+  under `/usr`, read from `/proc/<pid>/exe` with the pid tied to the connection
+  as above; this is what the window is.
+
+An app that only calls itself `pinentry` is an ordinary window. X11 windows
+never get the place: their client is Xwayland, and `_NET_WM_PID` is whatever
+the app writes. The functional tests trust a private directory instead of
+`/usr` (`VELA_TEST_PROMPT_DIR`), honoured only with `VELA_TEST_COMMANDS` on
+the headless backend.
 
 ## Screen lock across crashes
 

@@ -363,6 +363,8 @@ installPackage() {
 # when given: never its -debug split package (makepkg.conf's "debug" option)
 # or a detached .sig signature (SIGNPKG), which share the name's prefix.
 archPackages() {
+    # ls -t: newest first by modification time, which a glob can't sort.
+    # shellcheck disable=SC2010 # package file names are ours, no newlines
     ls -t "$1"/vela-git-[0-9]*${2:+".g$2"}-*.pkg.tar.* 2> /dev/null | grep -v '\.sig$' || true
 }
 packageLabel() {
@@ -530,7 +532,7 @@ fi
 # would make the mirror shallow too, so its history is downloaded instead.
 bootstrap=""
 if [ "$source" = "$DEFAULT_SOURCE" ] && [ ! -d "$MIRROR" ]; then
-    candidate=$(CDPATH= cd "$(dirname "$0")/.." 2> /dev/null && pwd) || candidate=""
+    candidate=$(CDPATH='' cd "$(dirname "$0")/.." 2> /dev/null && pwd) || candidate=""
     if [ -n "$candidate" ] && [ -d "$candidate/.git" ] \
         && [ "$(git -C "$candidate" rev-parse --show-toplevel 2> /dev/null || true)" = "$candidate" ]; then
         origin=$(git -C "$candidate" remote get-url origin 2> /dev/null || true)
@@ -837,7 +839,7 @@ verifyProvenance() {
         echo "vela-update: missing installed Sigstore verifier; refusing downloaded binary." >&2
         return 1
     fi
-    helper="$(CDPATH= cd -P -- "$(dirname "$helper")" && pwd)/$(basename "$helper")"
+    helper="$(CDPATH='' cd -P -- "$(dirname "$helper")" && pwd)/$(basename "$helper")"
     if ! (cd "$(dirname "$artifact_path")" && python3 -I "$helper" --repository "$repo" --commit "$latestFull" \
         --kind "$source_kind" "./$(basename "$artifact_path")"); then
         echo "vela-update: package provenance verification failed for $latestFull; refusing binary." >&2
@@ -956,6 +958,7 @@ prune() {
         # vela-git and its -debug split package each keep their newest
         # files; a package goes together with its detached signature.
         for kind in vela-git-[0-9] vela-git-debug-; do
+            # shellcheck disable=SC2010 # newest first by time, as in archPackages
             ls -t "$PACKAGES"/$kind*.pkg.tar.* 2> /dev/null | grep -v '\.sig$' |
                 tail -n +$((KEEP + 1)) | while read -r old; do
                 rm -f -- "$old" "$old.sig"
@@ -1012,7 +1015,7 @@ showRecipeContent() {
 showRecipe() {
     if [ -t 0 ] && [ -t 1 ] && command -v less >/dev/null 2>&1; then
         printf '\n%s\n' ":: Reviewing the package recipe (read-only). Scroll with arrows/PageUp/PageDown; press q to close and continue."
-        showRecipeContent | LESS= LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
+        showRecipeContent | LESS='' LESSSECURE=1 less -R -X -P 'Vela Update | arrows/PgUp/PgDn: scroll | q: close and continue'
         printf '%s\n' ":: Recipe preview closed; continuing update."
     else
         showRecipeContent
@@ -1071,7 +1074,7 @@ if [ -n "$ciRun" ]; then
         if [ "$backend" = arch ]; then
             package=$(archPackages "$DOWNLOAD" "$latest" | head -n 1)
         else
-            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*."g$latest".fc"$fedora_release".x86_64.rpm 2> /dev/null | head -n 1)
+            package=$(ls "$DOWNLOAD"/vela-git-[0-9]*".g$latest.fc$fedora_release.x86_64.rpm" 2> /dev/null | head -n 1)
         fi
     else
         package=""

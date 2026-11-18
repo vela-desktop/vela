@@ -4,8 +4,6 @@
 
 """Offline Fedora updater contracts using real Git and simulated dnf/rpmbuild."""
 
-from pathlib import Path
-
 from test_update import ROOT, STUB, UpdateFixture
 
 

@@ -1,5 +1,9 @@
 # Deferred SHM capture readback (#132)
 
+> **Status:** Implemented in #156 and #173, merged 29 and 31 October 2026; the [roadmap](roadmap.md) records #132 as fixed for 0.1. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing for #132. The cost of capture on Intel is in [Lower-cost screen capture](capture-cost.md).
+
 This change replaces presentation-thread waits and full-frame CPU copies for
 `ext-image-copy-capture-v1` output and window SHM captures. Real AMD and NVIDIA
 GPU suites must validate the exact candidate before it is considered fixed.

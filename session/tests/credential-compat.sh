@@ -49,6 +49,7 @@ check()
         XDG_CURRENT_DESKTOP=Other
         KDE_SESSION_VERSION=8
         export XDG_CURRENT_DESKTOP KDE_SESSION_VERSION
+        # shellcheck source=session/credential-compat/select-backend
         . "$compat"
         [ "$VELA_SECRET_BACKEND" = "$wanted" ]
         [ "$XDG_CURRENT_DESKTOP" = "$desktop" ]
@@ -81,6 +82,7 @@ fi
 
 # A controlled, real POSIX-shell check of the D-Bus ownership policy. No
 # user keyring or systemd service is ever started by this test.
+# shellcheck source=session/credential-compat/ensure-backend
 . "$ensure"
 unset PAM_KWALLET5_LOGIN
 # Exercise the real read-only metadata probe without inspecting host daemons.
@@ -436,6 +438,7 @@ fi
 # An old provider checker must not start or stop units, or overwrite the
 # status marker, after the same display belongs to a different login.
 VELA_CREDENTIAL_SESSION_STATE="$tmp/provider-session"
+# shellcheck disable=SC2034 # read by vela_credential_session_current (ensure-backend)
 VELA_CREDENTIAL_SESSION_TOKEN=old-login
 printf '%s\n' new-login > "$VELA_CREDENTIAL_SESSION_STATE"
 : > "$calls"

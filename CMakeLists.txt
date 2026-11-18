@@ -30,7 +30,7 @@ option(VELA_BUILD_SHELL "Build the shell, Files and Settings (needs Qt 6 and Lay
 option(VELA_BUILD_TOOLS "Build the test tools (vela-screen-dump, vela-windows, vela-input...) and the tests (ctest)" ON)
 if(VELA_BUILD_TOOLS)
     enable_testing()
-    find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
+    find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
     set_tests_properties(packaging-update PROPERTIES TIMEOUT 120 LABELS distro-packaging)
@@ -49,7 +49,7 @@ if(VELA_BUILD_TOOLS)
         ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/tests/functional")
 endif()
 
-option(VELA_BUILD_REPORT "Build the standalone diagnostic reporter (needs Python 3)" ON)
+option(VELA_BUILD_REPORT "Build the standalone diagnostic reporter (needs Python 3.13+)" ON)
 if(VELA_BUILD_REPORT)
     add_subdirectory(report)
 endif()
@@ -178,7 +178,7 @@ if(VELA_PACKAGE_DEB)
     # even when not linked as ELF libraries (shlibdeps handles the rest).
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "git, curl, apt, dpkg, sudo, util-linux, xdg-utils, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+        "git, curl, apt, dpkg, sudo, util-linux, xdg-utils, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3 (>= 3.13), python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
     # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
     # Recommends and Arch's optional dependency. Settings > Updates runs
     # vela-update in a terminal (docs/updates.md §6.3): xdg-terminal-exec

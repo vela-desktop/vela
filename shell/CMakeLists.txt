@@ -413,6 +413,25 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-notification-silence COMMAND vela-notification-silence-test)
     set_tests_properties(shell-notification-silence PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # What a client on the bus can make the shell show and keep.
+    qt_add_executable(vela-notification-limits-test tests/notification_limits.cpp src/notifications.cpp
+        src/notifications.h)
+    target_include_directories(vela-notification-limits-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src)
+    target_compile_options(vela-notification-limits-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-notification-limits-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Qml Qt6::Quick Qt6::Test)
+    add_test(NAME shell-notification-limits COMMAND vela-notification-limits-test)
+    set_tests_properties(shell-notification-limits PROPERTIES
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_BACKEND=software")
+
+    # "image-data" from the bus: refused when it doesn't hold its own rows.
+    qt_add_executable(vela-notification-image-test tests/notification_image.cpp src/notifications.cpp
+        src/notifications.h)
+    target_include_directories(vela-notification-image-test PRIVATE src)
+    target_compile_options(vela-notification-image-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-notification-image-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
+    add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    set_tests_properties(shell-notification-image PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).
     qt_add_executable(vela-screen-sharing-test tests/screensharing.cpp src/screensharing.cpp src/screensharing.h)
     target_include_directories(vela-screen-sharing-test PRIVATE src)
