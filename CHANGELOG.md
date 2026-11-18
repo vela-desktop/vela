@@ -12,7 +12,7 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 - Context menus: the entries apps add (KDE service menus) are in the menu
   itself, with no "Show more options"; Settings > Personalization > Context
-  menu hides any entry. Start shows one menu for every app, the window menu
+  menu hides the entries it lists, menu by menu. Start shows one menu for every app, the window menu
   can move a window to another desktop, and commands have monochrome icons.
 - Run (Win+R) is gone, with three Win+X entries that opened often-missing KDE
   tools and the network icon's always-disabled troubleshooter.

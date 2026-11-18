@@ -25,7 +25,7 @@ see the [roadmap](roadmap.md).
 <table>
 <tr>
 <td width="34%" valign="top"><img src="screenshots/snap-layouts.webp" alt="Snap layouts flyout over the maximize button"><br><sub><b>Snap layouts</b>: hover the maximize button or press Super+Z.</sub></td>
-<td width="33%" valign="top"><img src="screenshots/context-menu.webp" alt="Vela desktop context menu"><br><sub><b>Context menus</b> with KDE service menus right in the menu, and every entry can be hidden in Settings.</sub></td>
+<td width="33%" valign="top"><img src="screenshots/context-menu.webp" alt="Vela desktop context menu"><br><sub><b>Context menus</b> with KDE service menus right in the menu, and the entries you don't use hidden from Settings.</sub></td>
 <td width="33%" valign="top"><img src="screenshots/panels.webp" alt="Quick settings and the notification center"><br><sub><b>Quick settings</b> (Super+A) and the <b>notification center</b> (Super+N).</sub></td>
 </tr>
 </table>

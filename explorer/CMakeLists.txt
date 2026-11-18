@@ -32,6 +32,7 @@ add_library(vela-files-core OBJECT
     src/peek.h
     src/places.cpp
     src/places.h
+    ${PROJECT_SOURCE_DIR}/common/filetransferrequest.h # its notification's title is translated here
     ${SHELL_SRC}/appmodel.cpp
     ${SHELL_SRC}/appmodel.h
     ${SHELL_SRC}/filethumbnails.cpp

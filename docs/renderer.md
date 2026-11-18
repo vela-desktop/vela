@@ -1298,7 +1298,7 @@ never received the release).
   Delete), then "Open", "Open with" ›, "Pin to Start", "Add to Favorites",
   "Compress to" › ("ZIP file", "7z file", "TAR file"), "Copy as path", "Open in
   Terminal" (folders), "Create shortcut"; the entries apps add; "Properties",
-  always last.
+  always last when shown.
 - **The entries apps add** are KDE's *service menus* (`kio/servicemenus`), a
   group of their own before Properties; those with an `X-KDE-Submenu` stay in
   that submenu. Windows 11 puts them behind "Show more options", a second,
@@ -1363,6 +1363,14 @@ left when everything else fails, and the tray's belong to each app.
   when the file changes, so the shell and Files follow at once.
 - `MenuPanel` shows `visibleEntries`, its entries without the hidden ones
   (`shell/qml/menufilter.js`): a submenu or icon row left empty goes, and so do
-  separators and group titles left with nothing to separate or title.
+  separators and group titles left with nothing to separate or title. A menu
+  left with nothing doesn't open. When the entries change while a menu is
+  open, its submenus close and the keyboard selection stays on its entry or
+  goes.
+- Opened from the keyboard (Menu key, Shift+F10), the icon row's buttons are
+  ordinary rows, so the arrows and letters reach Cut, Copy, Rename, Share and
+  Delete.
+- A menu taller than the output (8 from its edges) scrolls, with the wheel,
+  and with the keyboard keeping the current row in view.
 - `scripts/check-menu-keys.py` (ctest `context-menu-keys`) fails when a menu
   gives a key Settings doesn't list, or the other way round.

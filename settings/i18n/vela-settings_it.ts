@@ -2203,10 +2203,6 @@ Specifiche sistema
         <translation>taskbar allineamento sinistra centro termina attività</translation>
     </message>
     <message>
-        <source>right click menu entries items hide show service menus</source>
-        <translation>clic destro tasto destro menù voci nascondi mostra service menu</translation>
-    </message>
-    <message>
         <source>Time format</source>
         <translation>Formato dell&apos;ora</translation>
     </message>
@@ -2301,6 +2297,10 @@ Specifiche sistema
     <message>
         <source>start menu pinned apps pins show hide</source>
         <translation>start menu app aggiunte fissate mostra nascondi</translation>
+    </message>
+    <message>
+        <source>right click right-click menu entries items hide show service menus</source>
+        <translation>clic destro tasto destro right-click menù menu contestuale voci nascondi mostra service menu</translation>
     </message>
     <message>
         <source>programs applications</source>
