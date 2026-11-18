@@ -392,6 +392,27 @@ private slots:
         QCOMPARE(desktop.count(), 1);
     }
 
+    // Personalization > Context menu: menus/hidden holds the hidden keys; a
+    // group hides and shows at once; "Show all" empties it.
+    void hiddenMenuEntries()
+    {
+        write("[menus]\nhidden=file.copy\n");
+        Preferences prefs;
+        QCOMPARE(prefs.hiddenMenuEntries(), QStringList { QStringLiteral("file.copy") });
+        prefs.setMenuEntriesHidden({ QStringLiteral("taskbar.recent"), QStringLiteral("taskbar.recentHeader") }, true);
+        const QStringList three { QStringLiteral("file.copy"), QStringLiteral("taskbar.recent"),
+            QStringLiteral("taskbar.recentHeader") };
+        QCOMPARE(prefs.hiddenMenuEntries(), three);
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), three);
+        prefs.setMenuEntriesHidden({ QStringLiteral("file.copy") }, false);
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), three.mid(1));
+        prefs.showAllMenuEntries();
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        QVERIFY(saved(QStringLiteral("menus/hidden")).toStringList().join(QString()).isEmpty());
+        Preferences again;
+        QVERIFY(again.hiddenMenuEntries().isEmpty());
+    }
+
     void findsTheLogoOnceTheIconThemeIsSet()
     {
         // Vela.Controls sets the icon theme after Preferences starts

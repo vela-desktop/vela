@@ -4,7 +4,7 @@
 # File Explorer (vela-files): Qt Quick without Qt Quick Controls, to start
 # fast. It reuses shell pieces: installed apps ("Open with"), thumbnails, KDE
 # service menus, system actions and the right-click menu component
-# (MenuPanel.qml).
+# (MenuPanel.qml, with menufilter.js).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Gui GuiPrivate Network Qml Quick QuickControls2 Svg)
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -92,7 +92,8 @@ set(FILES_QML_FILES
     qml/QuickPeek.qml
     ${PEEK_PDF_QML}
     ${PEEK_MEDIA_QML}
-    ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml)
+    ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml
+    ${PROJECT_SOURCE_DIR}/shell/qml/menufilter.js)
 
 foreach(file IN LISTS FILES_QML_FILES)
     get_filename_component(name ${file} NAME)

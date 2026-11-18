@@ -133,6 +133,7 @@ set(VELA_QML_FILES
     qml/NotificationPopups.qml
     qml/NotificationToast.qml
     qml/Menus.qml
+    qml/menufilter.js
     qml/Styles.qml
     qml/ContextMenu.qml
     qml/MenuPanel.qml

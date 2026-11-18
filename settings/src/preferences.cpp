@@ -181,6 +181,12 @@ void Preferences::loadShell(const QSettings& settings)
     emit taskbarChanged();
     m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
     emit desktopChanged();
+    QStringList hidden = settings.value(QStringLiteral("menus/hidden")).toStringList();
+    hidden.removeAll(QString());
+    if (hidden != m_hiddenMenuEntries) {
+        m_hiddenMenuEntries = hidden;
+        emit menusChanged();
+    }
     m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
     const vela::start::Icon startIcon = vela::start::icon(settings);
     m_startIcon = startIcon.kind;
@@ -685,6 +691,29 @@ void Preferences::setDesktopIcons(bool on)
         }
         emit desktopChanged();
     }
+}
+
+void Preferences::setMenuEntriesHidden(const QStringList& keys, bool hidden)
+{
+    QStringList list = m_hiddenMenuEntries;
+    for (const QString& key : keys) {
+        if (key.isEmpty()) {
+            continue;
+        }
+        list.removeAll(key);
+        if (hidden) {
+            list.append(key);
+        }
+    }
+    if (list != m_hiddenMenuEntries && setShell(QStringLiteral("menus/hidden"), list)) {
+        m_hiddenMenuEntries = list;
+    }
+    emit menusChanged(); // a switch the write refused goes back
+}
+
+void Preferences::showAllMenuEntries()
+{
+    setMenuEntriesHidden(m_hiddenMenuEntries, false);
 }
 
 void Preferences::setStartPinned(bool on)

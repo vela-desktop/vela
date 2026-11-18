@@ -141,6 +141,13 @@ void Appearance::reload()
 {
     QSettings shell(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
     shell.sync();
+    // Apart from the look: it changes nothing else.
+    QStringList hidden = shell.value(QStringLiteral("menus/hidden")).toStringList();
+    hidden.removeAll(QString());
+    if (hidden != m_hiddenMenuEntries) {
+        m_hiddenMenuEntries = hidden;
+        emit hiddenMenuEntriesChanged();
+    }
     const QString key = m_mode == Mode::Shell ? QStringLiteral("appearance/shellTheme") : QStringLiteral("appearance/appTheme");
     const bool light = shell.value(key).toString() == QLatin1String("light");
     QColor chosen(shell.value(QStringLiteral("appearance/accent")).toString());

@@ -44,11 +44,14 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shared-values COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-shared-values.py)
     # Direct libc allocations outside common/alloc (docs/memory-allocation-policy.md, "Enforcement").
     add_test(NAME allocation-sites COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-allocations.py)
+    # The context menu entries' keys: the menus' and Settings' (docs/renderer.md §14.12).
+    add_test(NAME context-menu-keys COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-menu-keys.py)
     # Reports only until the private controls are replaced (docs/visual-coherence.md §8).
     add_test(NAME qml-motion COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-qml-motion.py)
     add_test(NAME functional-harness COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/tests/harness -v)
-    set_tests_properties(script-tests documentation shared-values allocation-sites qml-motion functional-harness PROPERTIES TIMEOUT 30)
+    set_tests_properties(script-tests documentation shared-values allocation-sites context-menu-keys qml-motion
+        functional-harness PROPERTIES TIMEOUT 30)
     set_tests_properties(functional-harness PROPERTIES
         ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/tests/functional")
 endif()

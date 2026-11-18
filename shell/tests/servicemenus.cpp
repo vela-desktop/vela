@@ -75,6 +75,26 @@ private slots:
         QVERIFY(!QFile::exists(qEnvironmentVariable("VELA_SERVICE_MENU_PROBE")));
     }
 
+    /** Each entry has a key made of its file and action, the same in actionsFor() and all(). */
+    void keysNameTheFileAndTheAction()
+    {
+        ServiceMenus menus;
+        QStringList forFile;
+        for (const QVariant& action : menus.actionsFor({ selected })) {
+            forFile << action.toMap().value(QStringLiteral("key")).toString();
+        }
+        QStringList everyEntry;
+        for (const QVariant& action : menus.all()) {
+            everyEntry << action.toMap().value(QStringLiteral("key")).toString();
+        }
+        const QStringList expected { QStringLiteral("service/fixture/missing"),
+            QStringLiteral("service/fixture/deprecated"), QStringLiteral("service/fixture/blank"),
+            QStringLiteral("service/fixture/record") };
+        QCOMPARE(forFile, expected);
+        QCOMPARE(everyEntry, expected);
+        QCOMPARE(menus.all().first().toMap().value(QStringLiteral("text")).toString(), QStringLiteral("Missing"));
+    }
+
     /** Valid expansions keep the selected path and its directory intact. */
     void validCommandStillLaunches()
     {

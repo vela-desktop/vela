@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Effects
 import QtQuick.Shapes
 import Vela.Controls
+import "menufilter.js" as MenuFilter
 
 // One level of a menu (the menu or one of its submenus), like Windows 11
 // menus: rounded corners, 32-high rows with the icon on the left and the
@@ -23,7 +24,11 @@ Item {
         return Qt.rgba(Theme.surfaceText.r, Theme.surfaceText.g, Theme.surfaceText.b, amount)
     }
 
+    // The menu's entries (Menus.qml); it shows those the user didn't hide
+    // in Settings (menufilter.js), and every index it gives out (hovered,
+    // submenuRequested...) counts in visibleEntries.
     property var entries: []
+    readonly property var visibleEntries: MenuFilter.visible(entries, Style.hiddenMenuEntries)
     property int level: 0
     // Where it starts: point (anchorX, anchorY); if there's no room on the
     // right it goes to altX (submenus then open to the left of the parent).
@@ -58,7 +63,7 @@ Item {
     readonly property int separatorHeight: 9
     readonly property int headerHeight: 30
     readonly property int iconRowHeight: 44
-    readonly property bool hasIcons: entries.some(e => !e.separator && !e.header && !e.iconRow && (e.icon || e.checked !== undefined))
+    readonly property bool hasIcons: visibleEntries.some(e => !e.separator && !e.header && !e.iconRow && (e.icon || e.checked !== undefined))
     readonly property real textLeft: hasIcons ? 44 : 16
 
     FontMetrics {
@@ -101,7 +106,7 @@ Item {
         let widest = 0
         let shortcut = 0
         let extra = 0
-        for (const e of entries) {
+        for (const e of visibleEntries) {
             if (e.separator || e.iconRow) {
                 continue
             }
@@ -117,7 +122,7 @@ Item {
     }
     readonly property real contentHeight: {
         let h = 2 * padding
-        for (const e of entries) {
+        for (const e of visibleEntries) {
             h += rowHeightOf(e)
         }
         return h
@@ -148,11 +153,11 @@ Item {
 
     // --- keyboard ---
     function move(step) {
-        const count = entries.length
+        const count = visibleEntries.length
         const start = currentIndex >= 0 ? currentIndex : (step > 0 ? -1 : count)
         for (let i = 1; i <= count; ++i) {
             const next = ((start + step * i) % count + count) % count
-            if (selectable(entries[next])) {
+            if (selectable(visibleEntries[next])) {
                 currentIndex = next
                 return
             }
@@ -161,12 +166,12 @@ Item {
     function rowY(index) {
         let y = padding
         for (let i = 0; i < index; ++i) {
-            y += rowHeightOf(entries[i])
+            y += rowHeightOf(visibleEntries[i])
         }
         return y
     }
     function trigger(index, fromKeyboard) {
-        const entry = entries[index]
+        const entry = visibleEntries[index]
         if (!selectable(entry)) {
             return
         }
@@ -185,7 +190,7 @@ Item {
         case Qt.Key_Home: currentIndex = -1; move(1); break
         case Qt.Key_End: currentIndex = 0; move(-1); break
         case Qt.Key_Right:
-            if (currentIndex >= 0 && entries[currentIndex].children) {
+            if (currentIndex >= 0 && visibleEntries[currentIndex].children) {
                 trigger(currentIndex, true)
             }
             break
@@ -209,7 +214,7 @@ Item {
                 return
             }
             const matches = []
-            entries.forEach((e, i) => { if (selectable(e) && accessKey(e) === letter) matches.push(i) })
+            visibleEntries.forEach((e, i) => { if (selectable(e) && accessKey(e) === letter) matches.push(i) })
             if (matches.length === 0) {
                 return
             }
@@ -260,7 +265,7 @@ Item {
             width: panel.width
 
             Repeater {
-                model: panel.entries
+                model: panel.visibleEntries
 
                 delegate: Item {
                     id: row

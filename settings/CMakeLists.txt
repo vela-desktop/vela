@@ -55,6 +55,9 @@ qt_add_executable(vela-settings
     ${SHELL_SRC}/mica.h
     ${SHELL_SRC}/network.cpp
     ${SHELL_SRC}/network.h
+    ${SHELL_SRC}/desktopexec.h
+    ${SHELL_SRC}/servicemenus.cpp # Personalization > Context menu lists them
+    ${SHELL_SRC}/servicemenus.h
     ${SHELL_SRC}/systemactions.cpp
     ${SHELL_SRC}/systemactions.h
     ${SHELL_SRC}/systemstatus.cpp
@@ -87,6 +90,7 @@ set(SETTINGS_QML_FILES
     qml/ThemeGallery.qml
     qml/StyleGallery.qml
     qml/StyleChooser.qml
+    qml/MenuEntriesCard.qml
     qml/StartIconCard.qml
     qml/AccentPicker.qml
     qml/TaskbarAlignmentCard.qml
@@ -110,6 +114,7 @@ set(SETTINGS_QML_FILES
     qml/pages/PersonalizationPage.qml
     qml/pages/BackgroundPage.qml
     qml/pages/ColorsPage.qml
+    qml/pages/ContextMenuPage.qml
     qml/pages/ThemesPage.qml
     qml/pages/TaskbarPage.qml
     qml/pages/StartPage.qml

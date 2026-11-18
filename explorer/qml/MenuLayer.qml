@@ -71,7 +71,7 @@ Item {
         if (child && child.parentIndex === index) {
             return
         }
-        const panel = openLevel(parentPanel.level + 1, parentPanel.entries[index].children, {
+        const panel = openLevel(parentPanel.level + 1, parentPanel.visibleEntries[index].children, {
             anchorX: parentPanel.x + parentPanel.width - 4,
             altX: parentPanel.x + 4,
             anchorY: parentPanel.y + rowY - 4,
@@ -83,7 +83,7 @@ Item {
 
     // Like Windows: submenus open (and close) after a short pause.
     function onHovered(panel, index, rowY) {
-        const entry = panel.entries[index]
+        const entry = panel.visibleEntries[index]
         const child = panels[panel.level + 1]
         if (child && child.parentIndex === index) {
             pending = null

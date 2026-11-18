@@ -156,6 +156,7 @@ Window {
         const entries = []
         if (id !== "") {
             const fileEntry = (file, pinned) => ({
+                key: pinned ? "taskbar.pinned" : "taskbar.recent",
                 text: file.name.replace(/&/g, "&&"),
                 icon: file.icon,
                 action: () => Apps.launchWithFile(id, file.url),
@@ -170,32 +171,33 @@ Window {
             })
             const pinned = Jumps.pinned(id)
             if (pinned.length > 0) {
-                entries.push({ header: qsTr("Pinned") })
+                entries.push({ key: "taskbar.pinned", header: qsTr("Pinned") })
                 pinned.forEach(f => entries.push(fileEntry(f, true)))
             }
             const recent = Jumps.recent(id, 10)
             if (recent.length > 0) {
-                entries.push({ header: qsTr("Recent") })
+                entries.push({ key: "taskbar.recent", header: qsTr("Recent") })
                 recent.forEach(f => entries.push(fileEntry(f, false)))
             }
             const actions = Apps.actions(id)
             if (actions.length > 0) {
-                entries.push({ header: qsTr("Tasks") })
-                actions.forEach(a => entries.push({ text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => Apps.launchAction(id, a.id) }))
+                entries.push({ key: "taskbar.tasks", header: qsTr("Tasks") })
+                actions.forEach(a => entries.push({ key: "taskbar.tasks", text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => Apps.launchAction(id, a.id) }))
             }
             if (entries.length > 0) {
                 entries.push({ separator: true })
             }
-            entries.push({ text: task.name.replace(/&/g, "&&"), icon: task.iconName, action: () => Apps.launchId(id) })
+            entries.push({ key: "taskbar.launch", text: task.name.replace(/&/g, "&&"), icon: task.iconName, action: () => Apps.launchId(id) })
             entries.push(Tasks.isPinned(id)
-                ? { text: qsTr("Unpin from taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
-                : { text: qsTr("Pin to taskbar"), icon: "window-pin", action: () => Tasks.pin(id) })
+                ? { key: "taskbar.pin", text: qsTr("Unpin from taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
+                : { key: "taskbar.pin", text: qsTr("Pin to taskbar"), icon: "window-pin", action: () => Tasks.pin(id) })
         }
         if (task.windowCount > 0 && Config.endTask) {
             entries.push({ text: qsTr("End task"), icon: "process-stop", action: () => Tasks.endTask(task.index) })
         }
         if (task.windowCount > 0) {
             entries.push({
+                key: "taskbar.close",
                 text: task.windowCount > 1 ? qsTr("Close all windows") : qsTr("Close window"),
                 icon: "window-close",
                 action: () => Tasks.closeWindows(task.index)
@@ -206,32 +208,32 @@ Window {
 
     // Win+X: the Start button menu.
     function winXEntries() {
-        const item = (text, icon, name) => ({ text: text, icon: icon, enabled: System.available(name), action: () => System.trigger(name) })
-        const entries = [item(qsTr("Insta&lled apps"), "view-app-grid-symbolic", "installed-apps")]
+        const item = (key, text, icon, name) => ({ key: key, text: text, icon: icon, enabled: System.available(name), action: () => System.trigger(name) })
+        const entries = [item("winx.installedApps", qsTr("Insta&lled apps"), "view-app-grid-symbolic", "installed-apps")]
         if (System.isLaptop()) {
-            entries.push(item(qsTr("Mobility &Center"), "computer-laptop-symbolic", "mobility"))
+            entries.push(item("winx.mobility", qsTr("Mobility &Center"), "computer-laptop-symbolic", "mobility"))
         }
         entries.push(
-            item(qsTr("P&ower options"), "battery-profile-powersave-symbolic", "power"),
-            item(qsTr("E&vent viewer"), "view-list-text-symbolic", "events"),
-            item(qsTr("S&ystem"), "computer-symbolic", "system"),
-            item(qsTr("Net&work connections"), "preferences-system-network-symbolic", "network"),
+            item("winx.power", qsTr("P&ower options"), "battery-profile-powersave-symbolic", "power"),
+            item("winx.events", qsTr("E&vent viewer"), "view-list-text-symbolic", "events"),
+            item("winx.system", qsTr("S&ystem"), "computer-symbolic", "system"),
+            item("winx.network", qsTr("Net&work connections"), "preferences-system-network-symbolic", "network"),
             { separator: true },
-            item(qsTr("&Terminal"), "utilities-terminal-symbolic", "terminal"),
-            item(qsTr("Terminal (&Admin)"), "utilities-terminal-symbolic", "terminal-admin"),
+            item("winx.terminal", qsTr("&Terminal"), "utilities-terminal-symbolic", "terminal"),
+            item("winx.terminalAdmin", qsTr("Terminal (&Admin)"), "utilities-terminal-symbolic", "terminal-admin"),
             { separator: true },
-            item(qsTr("Task manage&r"), "office-chart-area", "task-manager"),
-            item(qsTr("Setti&ngs"), "preferences-system-symbolic", "settings"),
-            item(qsTr("File &Explorer"), "system-file-manager-symbolic", "files"),
-            { text: qsTr("&Search"), icon: "search", action: () => { root.fromHere(); if (!Shell.startMenuOpen) Shell.toggleStartMenu() } },
+            item("winx.taskManager", qsTr("Task manage&r"), "office-chart-area", "task-manager"),
+            item("winx.settings", qsTr("Setti&ngs"), "preferences-system-symbolic", "settings"),
+            item("winx.files", qsTr("File &Explorer"), "system-file-manager-symbolic", "files"),
+            { key: "winx.search", text: qsTr("&Search"), icon: "search", action: () => { root.fromHere(); if (!Shell.startMenuOpen) Shell.toggleStartMenu() } },
             { separator: true },
-            { text: qsTr("Sh&ut down or sign out"), icon: "system-shutdown", children: [
+            { key: "winx.shutdown", text: qsTr("Sh&ut down or sign out"), icon: "system-shutdown", children: [
                 { text: qsTr("Sign &out"), icon: "system-log-out", action: () => Shell.logout() },
                 { text: qsTr("S&leep"), icon: "system-suspend", enabled: Shell.canSuspend(), action: () => Shell.suspend() },
                 { text: qsTr("Sh&ut down"), icon: "system-shutdown", action: () => Shell.powerOff() },
                 { text: qsTr("&Restart"), icon: "system-reboot", action: () => Shell.reboot() }
             ] },
-            { text: qsTr("&Desktop"), icon: "user-desktop-symbolic", action: () => Tasks.toggleDesktop() }
+            { key: "winx.desktop", text: qsTr("&Desktop"), icon: "user-desktop-symbolic", action: () => Tasks.toggleDesktop() }
         )
         return entries
     }

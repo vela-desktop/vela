@@ -136,6 +136,7 @@ void ServiceMenus::load()
                 }
                 const Group group = groups.value(QStringLiteral("Desktop Action ") + id);
                 Action action = base;
+                action.key = QStringLiteral("service/") + info.completeBaseName() + u'/' + id;
                 action.name = localized(group, QStringLiteral("Name"));
                 action.icon = group.value(QStringLiteral("Icon"));
                 action.exec = group.value(QStringLiteral("Exec"));
@@ -176,9 +177,23 @@ QVariantList ServiceMenus::actionsFor(const QStringList& paths)
                 [&](const QString& pattern) { return matches(pattern, t.first, t.second); });
         });
         if (fits) {
-            out.append(QVariantMap { { QStringLiteral("id"), int(i) }, { QStringLiteral("text"), a.name },
-                { QStringLiteral("icon"), a.icon }, { QStringLiteral("submenu"), a.submenu } });
+            out.append(QVariantMap { { QStringLiteral("id"), int(i) }, { QStringLiteral("key"), a.key },
+                { QStringLiteral("text"), a.name }, { QStringLiteral("icon"), a.icon },
+                { QStringLiteral("submenu"), a.submenu } });
         }
+    }
+    return out;
+}
+
+QVariantList ServiceMenus::all()
+{
+    if (!m_loaded) {
+        load();
+    }
+    QVariantList out;
+    for (const Action& a : std::as_const(m_actions)) {
+        out.append(QVariantMap { { QStringLiteral("key"), a.key }, { QStringLiteral("text"), a.name },
+            { QStringLiteral("icon"), a.icon }, { QStringLiteral("submenu"), a.submenu } });
     }
     return out;
 }
