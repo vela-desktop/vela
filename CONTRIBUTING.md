@@ -8,7 +8,7 @@ Vela is a beta Linux desktop environment with a C17 Wayland compositor, Vulkan r
 - Keep pull requests focused. Prefer fixing a regression to adding unrelated features in the same change.
 - Open pull requests against `main`, fixes included: maintainers port fixes to the current `release/0.x` branch. Only a fix for code that `main` has since changed targets `release/0.x` directly ([release branches](docs/release-channels.md#release-branches)).
 - Describe how the change affects AMD/RADV, NVIDIA, Intel, headless and nested sessions when relevant. A CPU-only CI pass does **not** prove a GPU/driver-specific fix.
-- Use English for code, new comments, commit messages and UI text. Some existing comments are in Italian; translations to English are welcome. Follow the surrounding style.
+- Use English for code, comments, log messages, commit messages and UI text (UI text is translated through Qt Linguist; see `*/i18n/`). Follow the surrounding style.
 
 ## Build and test
 

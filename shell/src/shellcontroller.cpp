@@ -379,7 +379,7 @@ void ShellController::handleCommand(const QByteArray& command)
         emit windowMenuRequested(QString::fromLatin1(parts.at(1)), QString::fromUtf8(parts.at(2)), parts.at(3).toInt(),
             parts.at(4).toInt(), parts.at(5) == "1", parts.at(6) == "1", parts.at(7) == "1");
     } else if (!command.isEmpty() && command != "ping") {
-        qWarning("vela-shell: comando sconosciuto '%s'", command.constData());
+        qWarning("vela-shell: unknown command '%s'", command.constData());
     }
 }
 

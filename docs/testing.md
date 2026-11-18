@@ -46,11 +46,12 @@ xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ctest --test-dir build -L '^rhi$' --outp
 | **Polkit agent / GoogleTest** (`polkit.*`) | The agent's queue, cancellations by polkit and by the user, a crashed dialog counting as "No", retries after a wrong password, sessions that fail by themselves, identity order and choice, the dialog protocol. | No |
 | **Sharpness** (`sharpness`) | Pixel-level checks that windows reach the expected physical pixels across fractional scales and common window states. | Yes |
 
-The compositor currently contains 83 GoogleTest cases and the polkit agent 23;
-the functional harness runs 103 end-to-end scenarios when the Qt shell is built.
-A complete build registers 143 CTest entries; some entries contain multiple
-scenarios. Every scenario requires the expected compositor exit status, normally
-0, even if it exited before cleanup. The deliberate three-crash supervisor test
+`ctest --test-dir build -N` lists the CTest entries of a build.
+`ctest --test-dir build -N -R '^compositor\.'` lists the compositor entries,
+including the individual GoogleTest cases. Each functional test module is
+registered as a `functional-*` entry and can contain multiple scenarios.
+Every scenario requires the expected compositor exit status, normally 0,
+even if it exited before cleanup. The deliberate three-crash supervisor test
 explicitly requires status 1. Unexpected crashes cannot become passing tests.
 
 CPU tests of the harness and scripts are included in CTest even on GPU-less CI.
