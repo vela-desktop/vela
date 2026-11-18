@@ -20,7 +20,14 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-C and C++ follow `.clang-format` (C directories write `type *name`, C++ `Type& name`). CI checks only the lines a pull request changes; format yours before pushing with `git clang-format origin/main`. Never reformat code you don't otherwise touch. The build job also reports `qmllint` warnings for every QML module (report only for now).
+C and C++ follow `.clang-format` (C directories write `type *name`, C++ `Type& name`). Format your changed lines before pushing. Install clang-format and git-clang-format (CI uses version 18), then run the formatter script from the repository root.
+
+```sh
+git fetch origin main
+bash scripts/format-changed.sh origin/main
+```
+
+For a PR targeting a release branch, fetch that branch and pass its remote-tracking ref (for example, `origin/release/0.x`). The script uses the same exclusions as CI. Add `--diff` to preview the changes. The build job publishes a report of `qmllint` warnings without blocking on lint findings.
 
 The functional and sharpness suites need a usable Vulkan 1.4 GPU and render node. On GitHub-hosted CI they can be marked **skipped**, which is not equivalent to a successful hardware test. For renderer or shell changes, run the relevant suites on real hardware if possible and report the GPU and driver used.
 

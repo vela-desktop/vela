@@ -98,17 +98,9 @@ jobs:
       - name: Check the changed lines
         shell: bash
         run: |
-          set -euo pipefail
           # HEAD is the PR merged into its base; HEAD^1 is the base.
-          mapfile -t skip < <(grep -vE '^\s*(#|$)' .clang-format-ignore | sed 's/^/:(exclude,glob)/')
-          out=$(git clang-format-18 --binary clang-format-18 --diff 'HEAD^1' -- \
-              '*.c' '*.h' '*.cpp' '*.hpp' "${skip[@]}")
-          case "$out" in
-            ''|'no modified files to format'|'clang-format did not modify any files') echo "$out"; exit 0 ;;
-          esac
-          printf '%s\n' "$out"
-          echo "::error::Changed lines differ from .clang-format. Locally: git clang-format origin/main"
-          exit 1
+          # Stream the patch to the log and propagate the formatter's status.
+          bash scripts/format-changed.sh 'HEAD^1' --diff
 
   static-analysis:
     needs: changes

@@ -156,21 +156,27 @@ jobs:
         shell: bash
         run: |
           set +e
-          cmake --build build --target all_qmllint > qmllint.log 2>&1
+          LC_ALL=C cmake --build build --target all_qmllint > qmllint.log 2>&1
           status=$?
           warnings=$(grep -c '^Warning:' qmllint.log)
-          echo "qmllint exit status $status, $warnings warnings"
           {
             echo '### qmllint'
-            echo "$warnings warnings (report only; full log in the qmllint artifact)"
+            if (( status == 0 )); then
+              echo "Lint completed with $warnings warnings (exit status 0)."
+            elif grep -Eq "(unknown target|No rule to make target).*all_qmllint" qmllint.log; then
+              echo "Lint not run: the all_qmllint target is unavailable (exit status $status)."
+            else
+              echo "Lint failed (exit status $status). Warnings observed: $warnings."
+            fi
+            echo "Report only. See qmllint.log in the qmllint artifact."
             echo
             grep -oE '\[[a-z-]+\]$' qmllint.log | sort | uniq -c | sort -rn | head -20 | sed 's/^/    /'
           } >> "$GITHUB_STEP_SUMMARY"
-          grep -q 'unknown target' qmllint.log && echo '::warning::all_qmllint target not available'
           exit 0
 
       - name: Upload qmllint log
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: qmllint
