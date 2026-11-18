@@ -143,16 +143,37 @@ QtObject {
     }
 
     // The window menu (title bar, Alt+Space, Shift+right click on the taskbar
-    // button). act(action) runs it.
-    function windowEntries(maximized, minimized, resizable, act) {
-        return [
+    // button). act(action) runs it. With the window's id, also the virtual
+    // desktops: where to move it, and whether it shows on all of them.
+    function windowEntries(maximized, minimized, resizable, act, window) {
+        const entries = [
             { text: qsTr("&Restore"), icon: "window-restore", enabled: maximized || minimized, action: () => act("restore") },
-            { text: qsTr("&Move"), enabled: !maximized && !minimized, action: () => act("move") },
-            { text: qsTr("&Size"), enabled: !maximized && !minimized && resizable, action: () => act("resize") },
+            { text: qsTr("&Move"), icon: "transform-move", enabled: !maximized && !minimized, action: () => act("move") },
+            { text: qsTr("&Size"), icon: "transform-scale", enabled: !maximized && !minimized && resizable, action: () => act("resize") },
             { text: qsTr("Mi&nimize"), icon: "window-minimize", enabled: !minimized, action: () => act("minimize") },
-            { text: qsTr("Ma&ximize"), icon: "window-maximize", enabled: !maximized && resizable, action: () => act("maximize") },
-            { separator: true },
-            { text: qsTr("&Close"), icon: "window-close", shortcut: "Alt+F4", action: () => act("close") }
+            { text: qsTr("Ma&ximize"), icon: "window-maximize", enabled: !maximized && resizable, action: () => act("maximize") }
         ]
+        const desktop = window ? Desktops.workspaceOf(window) : -2 // -1: on all of them; -2: unknown
+        if (desktop !== -2) {
+            const moveTo = []
+            for (let i = 0; i < Desktops.count; ++i) {
+                if (i !== desktop) {
+                    const index = i
+                    moveTo.push({ text: Desktops.names[i].replace(/&/g, "&&"), action: () => Desktops.moveWindow(window, index) })
+                }
+            }
+            if (moveTo.length > 0) {
+                moveTo.push({ separator: true })
+            }
+            moveTo.push({ text: qsTr("&New desktop"), icon: "list-add", action: () => Desktops.moveWindowToNew(window) })
+            entries.push(
+                { separator: true },
+                { text: qsTr("Move to &desktop"), icon: "virtual-desktops", enabled: desktop !== -1, children: moveTo },
+                { text: qsTr("Show on &all desktops"), checked: desktop === -1, action: () => Desktops.setWindowSticky(window, desktop !== -1) })
+        }
+        entries.push(
+            { separator: true },
+            { text: qsTr("&Close"), icon: "window-close", shortcut: "Alt+F4", action: () => act("close") })
+        return entries
     }
 }

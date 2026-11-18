@@ -118,19 +118,15 @@ Window {
         const desktop = { text: qsTr("Add to &desktop"), icon: "user-desktop", action: () => root.addToDesktop(id) }
         const folder = { text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
         const uninstall = { text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
+        // The same flat menu for a pinned tile and for all apps; a pinned
+        // tile can also move to the front.
+        entries.push(inStart
+            ? { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
+            : { text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) })
         if (pinnedTile) {
-            entries.push(
-                { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) },
-                { text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) },
-                taskbar, desktop, folder, uninstall)
-        } else {
-            entries.push(
-                inStart
-                    ? { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
-                    : { text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) },
-                { text: qsTr("&More"), children: [taskbar, desktop, folder] },
-                uninstall)
+            entries.push({ text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) })
         }
+        entries.push(taskbar, desktop, { separator: true }, folder, uninstall)
         return entries
     }
 

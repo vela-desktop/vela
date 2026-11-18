@@ -56,7 +56,7 @@ Window {
     Connections {
         target: Shell
         function onWindowMenuRequested(window, output, x, y, maximized, resizable, keyboard) {
-            Menus.open(Menus.windowEntries(maximized, false, resizable, action => Shell.windowAction(window, action)),
+            Menus.open(Menus.windowEntries(maximized, false, resizable, action => Shell.windowAction(window, action), window),
                 x, y, { screen: output, keyboard: keyboard })
         }
     }
