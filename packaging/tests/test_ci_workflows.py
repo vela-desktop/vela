@@ -33,6 +33,11 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         self.assertIn("SHA256SUMS-fedora-45", build)
         self.assertIn("fedora-package-smoke", build)
         self.assertIn("fedora-tests, fedora-package, fedora-package-smoke", build)
+        self.assertIn("updater_fixtures: true", build)
+        for fixture in ("ci-updater-local-build.sh", "ci-dnf-transactions.sh"):
+            with self.subTest(fixture=fixture):
+                self.assertIn(fixture, fedora)
+                self.assertNotIn(fixture, build)
 
     def test_package_builds_start_early_but_beta_waits_for_contracts(self):
         build = (ROOT / ".github/workflows/build.yml").read_text()

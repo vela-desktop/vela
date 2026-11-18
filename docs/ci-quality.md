@@ -18,6 +18,10 @@ failure handling. It uses real Git with isolated configuration and rejects
 unexpected transports; package tools are simulated. See [testing.md](testing.md)
 for the local command and test isolation details.
 
+Fedora's test jobs exercise real DNF transactions with fixture RPMs alongside
+the native package builds. The Fedora smoke jobs install the generated RPM in
+a fresh container and check its runtime dependencies and files.
+
 ## Static analysis
 
 [Static Analysis](../.github/workflows/static-analysis.yml) builds Vela's C
