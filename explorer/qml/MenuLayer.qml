@@ -3,6 +3,7 @@
 
 import QtQuick
 import Vela.Controls
+import "menufilter.js" as MenuFilter
 
 // The right-click menus inside Explorer's window, with the same panel as the
 // desktop (MenuPanel.qml, docs/renderer.md §14): it covers the window, menus
@@ -24,6 +25,15 @@ Item {
 
     function open(entries, x, y, opts) {
         closeAll(false, true)
+        // Every entry hidden in Settings: no menu, and no layer taking the
+        // next click.
+        if (MenuFilter.visible(entries, Style.hiddenMenuEntries).length === 0) {
+            closeAll(false)
+            if (opts && opts.onClosed) {
+                opts.onClosed()
+            }
+            return
+        }
         options = opts || {}
         visible = true
         openLevel(0, entries, {
@@ -57,6 +67,17 @@ Item {
             }
         })
         panel.closeAllRequested.connect(() => root.closeAll(true))
+        // Its rows changed while open (an entry hidden or shown again): a
+        // submenu or a pending hover may point at a row that moved.
+        panel.layoutChanged.connect(() => {
+            if (root.pending && root.pending.panel === panel) {
+                root.pending = null
+            }
+            if (root.panels.length > panel.level + 1) {
+                root.closeFrom(panel.level + 1)
+                panel.forceActiveFocus()
+            }
+        })
         if (selectFirst) {
             panel.move(1)
         }

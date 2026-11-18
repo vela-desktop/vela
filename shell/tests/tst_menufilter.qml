@@ -76,4 +76,12 @@ TestCase {
         verify(MenuFilter.visible(entries, [])[0] === row)
         compare(texts(MenuFilter.visible(entries, ["cut", "copy"])), ["Open"], "an empty row goes")
     }
+
+    function test_icon_rows_become_rows() {
+        const cut = { key: "cut", icon: "edit-cut", text: "Cut", action: () => {} }
+        const rows = MenuFilter.iconRowsAsRows([{ iconRow: [cut, { key: "copy", text: "Copy" }] }, { text: "Open" }])
+        compare(texts(rows), ["Cut", "Copy", "|", "Open"])
+        verify(rows[0].action === cut.action)
+        compare(texts(MenuFilter.iconRowsAsRows([{ iconRow: [cut] }])), ["Cut"], "no separator at the end")
+    }
 }

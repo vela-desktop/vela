@@ -26,9 +26,24 @@ Item {
 
     // The menu's entries (Menus.qml); it shows those the user didn't hide
     // in Settings (menufilter.js), and every index it gives out (hovered,
-    // submenuRequested...) counts in visibleEntries.
+    // submenuRequested...) counts in visibleEntries. Opened from the
+    // keyboard, an icon row's buttons are rows the arrows reach.
     property var entries: []
-    readonly property var visibleEntries: MenuFilter.visible(entries, Style.hiddenMenuEntries)
+    readonly property var visibleEntries: {
+        const shown = MenuFilter.visible(entries, Style.hiddenMenuEntries)
+        return keyboardMode ? MenuFilter.iconRowsAsRows(shown) : shown
+    }
+    // The entries changed while open (Settings hid or showed one): the
+    // keyboard selection stays on the same entry, or goes; the host closes
+    // the submenus, whose parent row may have moved.
+    signal layoutChanged()
+    property var shownBefore: []
+    onVisibleEntriesChanged: {
+        const was = shownBefore[currentIndex]
+        shownBefore = visibleEntries
+        currentIndex = was ? visibleEntries.findIndex(e => selectable(e) && e.text === was.text && e.key === was.key) : -1
+        layoutChanged()
+    }
     property int level: 0
     // Where it starts: point (anchorX, anchorY); if there's no room on the
     // right it goes to altX (submenus then open to the left of the parent).
@@ -106,7 +121,11 @@ Item {
         let widest = 0
         let shortcut = 0
         let extra = 0
+        let buttons = 0
         for (const e of visibleEntries) {
+            if (e.iconRow) {
+                buttons = Math.max(buttons, 8 + e.iconRow.length * 36 + (e.iconRow.length - 1) * 4 + 8)
+            }
             if (e.separator || e.iconRow) {
                 continue
             }
@@ -118,7 +137,7 @@ Item {
                 extra = 28
             }
         }
-        return textLeft + widest + shortcut + extra + 20
+        return Math.max(buttons, textLeft + widest + shortcut + extra + 20)
     }
     readonly property real contentHeight: {
         let h = 2 * padding
@@ -129,7 +148,8 @@ Item {
     }
 
     width: Math.max(minWidth, Math.min(480, Math.ceil(contentWidth)))
-    height: contentHeight
+    // No taller than the output (8 from its edges): the rows scroll.
+    height: Math.min(contentHeight, Math.max(2 * padding + rowHeight, areaHeight - 16))
     x: {
         const margin = 8
         let left = centered ? anchorX - width / 2 : anchorX
@@ -152,6 +172,19 @@ Item {
     readonly property rect area: Qt.rect(x + motion.area.x, y + motion.area.y, motion.area.width, motion.area.height)
 
     // --- keyboard ---
+    // The current row scrolled into view, when the rows scroll.
+    onCurrentIndexChanged: {
+        if (currentIndex < 0 || !scroller.interactive) {
+            return
+        }
+        const top = rowY(currentIndex)
+        const bottom = top + rowHeightOf(visibleEntries[currentIndex])
+        if (top - padding < scroller.contentY) {
+            scroller.contentY = Math.max(0, top - padding)
+        } else if (bottom + padding > scroller.contentY + scroller.height) {
+            scroller.contentY = Math.min(scroller.contentHeight - scroller.height, bottom + padding - scroller.height)
+        }
+    }
     function move(step) {
         const count = visibleEntries.length
         const start = currentIndex >= 0 ? currentIndex : (step > 0 ? -1 : count)
@@ -176,7 +209,7 @@ Item {
             return
         }
         if (entry.children) {
-            submenuRequested(index, rowY(index), fromKeyboard)
+            submenuRequested(index, rowY(index) - scroller.contentY, fromKeyboard)
         } else {
             activated(entry, index)
         }
@@ -190,7 +223,7 @@ Item {
         case Qt.Key_Home: currentIndex = -1; move(1); break
         case Qt.Key_End: currentIndex = 0; move(-1); break
         case Qt.Key_Right:
-            if (currentIndex >= 0 && visibleEntries[currentIndex].children) {
+            if (currentIndex >= 0 && visibleEntries[currentIndex] && visibleEntries[currentIndex].children) {
                 trigger(currentIndex, true)
             }
             break
@@ -258,6 +291,16 @@ Item {
             anchors.fill: parent
             acceptedButtons: Qt.AllButtons
         }
+
+        Flickable {
+            id: scroller
+            objectName: "menuRows"
+            anchors.fill: parent
+            contentWidth: width
+            contentHeight: panel.contentHeight
+            interactive: contentHeight > height
+            boundsBehavior: Flickable.StopAtBounds
+            clip: interactive
 
         Column {
             x: 0
@@ -453,7 +496,7 @@ Item {
                         acceptedButtons: Qt.LeftButton | Qt.RightButton
                         onEntered: {
                             panel.currentIndex = row.usable ? row.index : -1
-                            panel.hovered(row.index, row.y + panel.padding)
+                            panel.hovered(row.index, row.y + panel.padding - scroller.contentY)
                         }
                         onExited: {
                             if (panel.currentIndex === row.index && !row.entry.children) {
@@ -524,6 +567,7 @@ Item {
                     }
                 }
             }
+        }
         }
     }
 }

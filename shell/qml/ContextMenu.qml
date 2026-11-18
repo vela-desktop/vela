@@ -3,6 +3,7 @@
 
 import QtQuick
 import Vela.Controls
+import "menufilter.js" as MenuFilter
 
 // The right-click menu window (docs/renderer.md §14): it covers the output and
 // is transparent; menus and submenus are panels inside it, and a click outside
@@ -26,6 +27,15 @@ Window {
         target: Menus
         function onOpenRequested(entries, x, y, options) {
             root.closeAll(false, true)
+            // Every entry hidden in Settings: no menu, and no window taking
+            // the next click.
+            if (MenuFilter.visible(entries, Style.hiddenMenuEntries).length === 0) {
+                root.closeAll(false)
+                if (options.onClosed) {
+                    options.onClosed()
+                }
+                return
+            }
             root.options = options
             // The requested output, or the main one (the output stays the last
             // one until changed).
@@ -86,6 +96,17 @@ Window {
             }
         })
         panel.closeAllRequested.connect(() => root.closeAll(true))
+        // Its rows changed while open (an entry hidden or shown again): a
+        // submenu or a pending hover may point at a row that moved.
+        panel.layoutChanged.connect(() => {
+            if (root.pending && root.pending.panel === panel) {
+                root.pending = null
+            }
+            if (root.panels.length > panel.level + 1) {
+                root.closeFrom(panel.level + 1)
+                panel.forceActiveFocus()
+            }
+        })
         panel.pinToggled.connect(() => {
             if (root.options.rebuild && root.panels.length > 0) {
                 root.closeFrom(1)

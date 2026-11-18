@@ -63,3 +63,20 @@ function tidy(entries) {
     }
     return out
 }
+
+// Opened from the keyboard, an icon row (Cut, Copy, Rename...) becomes rows:
+// the arrows and the letters reach them, as any other entry.
+function iconRowsAsRows(entries) {
+    const out = []
+    for (const entry of entries) {
+        if (!entry.iconRow) {
+            out.push(entry)
+            continue
+        }
+        for (const button of entry.iconRow) {
+            out.push(Object.assign({}, button))
+        }
+        out.push({ separator: true })
+    }
+    return tidy(out)
+}
