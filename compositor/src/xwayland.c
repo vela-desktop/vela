@@ -895,7 +895,7 @@ static void handle_request_skip_taskbar(struct wl_listener *listener, void *data
 {
     struct vela_view *view = wl_container_of(listener, view, request_skip_taskbar);
     // wlroots has already updated the flag: show or hide the taskbar entry.
-    vela_view_show_in_taskbar(view, !view->x11->skip_taskbar && vela_view_on_current_workspace(view));
+    vela_view_show_in_taskbar(view, !view->x11->skip_taskbar);
 }
 
 static void handle_set_override_redirect(struct wl_listener *listener, void *data)

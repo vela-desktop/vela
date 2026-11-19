@@ -15,6 +15,13 @@ Window {
     readonly property var entries: info && info.bar ? info.bar.hiddenTrayIcons : []
     property int selected: 0
     property int left: 0
+    // The rows that fit above the taskbar; the others scroll.
+    readonly property int gridRoom: Math.max(36, Screen.height - (info && info.bar ? info.bar.height : 0) - shadow.reach - 24)
+    onSelectedChanged: {
+        const top = Math.floor(selected / grid.columns) * 36
+        if (top < viewport.contentY) viewport.contentY = top
+        else if (top + 36 > viewport.contentY + viewport.height) viewport.contentY = top + 36 - viewport.height
+    }
     onEntriesChanged: {
         if (entries.length === 0 && info) Menus.trayOverflow = null
         selected = Math.max(0, Math.min(selected, entries.length - 1))
@@ -47,7 +54,7 @@ Window {
         x: shadow.reach
         y: shadow.reach
         width: 172
-        height: grid.height + 12
+        height: viewport.height + 12
         offset: Qt.point(0, 8)
         duration: Theme.normal
         instantExit: true
@@ -85,32 +92,42 @@ Window {
                 event.accepted = true
             }
 
-            Grid {
-                id: grid
+            Flickable {
+                id: viewport
                 x: 6
                 y: 6
-                columns: 4
-                Repeater {
-                    id: icons
-                    model: root.entries
-                    delegate: TrayIcon {
-                        id: icon
-                        required property int index
-                        required property var modelData
-                        objectName: "trayOverflowIcon-" + index
-                        entry: modelData
-                        width: 40
-                        height: 36
-                        highlighted: root.active && index === root.selected
-                        onInvoked: button => {
-                            root.selected = index
-                            const anchor = root.left + icon.mapToItem(null, icon.width / 2, 0).x
-                            if (button === Qt.RightButton) {
-                                Tray.requestMenu(entry.row, anchor)
-                            } else {
-                                if (button === Qt.MiddleButton) Tray.secondaryActivate(entry.row)
-                                else Tray.activate(entry.row, anchor)
-                                Menus.trayOverflow = null
+                width: grid.width
+                height: Math.min(grid.height, root.gridRoom)
+                contentHeight: grid.height
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                clip: true
+
+                Grid {
+                    id: grid
+                    columns: 4
+                    Repeater {
+                        id: icons
+                        model: root.entries
+                        delegate: TrayIcon {
+                            id: icon
+                            required property int index
+                            required property var modelData
+                            objectName: "trayOverflowIcon-" + index
+                            entry: modelData
+                            width: 40
+                            height: 36
+                            highlighted: root.active && index === root.selected
+                            onInvoked: button => {
+                                root.selected = index
+                                const anchor = root.left + icon.mapToItem(null, icon.width / 2, 0).x
+                                if (button === Qt.RightButton) {
+                                    Tray.requestMenu(entry.row, anchor)
+                                } else {
+                                    if (button === Qt.MiddleButton) Tray.secondaryActivate(entry.row)
+                                    else Tray.activate(entry.row, anchor)
+                                    Menus.trayOverflow = null
+                                }
                             }
                         }
                     }

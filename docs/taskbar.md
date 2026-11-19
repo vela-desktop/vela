@@ -333,9 +333,10 @@ Thunderbird and Steam for counts, Firefox and KDE apps for progress.
 | `urgent` | bool | attention (§5.1) |
 
 `quicklist` is ignored. An entry is dropped when its sender leaves the bus.
-An app is matched by desktop id. When that fails, the last dotted part of
-the id is compared with the app's (`discord` and
-`com.discordapp.discord`), as in #68.
+An app is matched by desktop id. When that fails, and one of the two ids is
+a shorthand without dots, the last dotted part of the other is compared with
+it (`discord` and `com.discordapp.discord`), as in #68. Two different
+qualified ids (`org.example.Mail`, `org.other.Mail`) never match.
 
 To verify with real apps before the work is merged: whether some only send
 when `com.canonical.Unity` is owned on the bus, or when

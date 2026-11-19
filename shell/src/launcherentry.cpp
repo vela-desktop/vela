@@ -121,9 +121,12 @@ LauncherEntry::Badge LauncherEntry::badge(const QString& desktopId) const
     if (auto exact = m_entries.constFind(id); exact != m_entries.cend()) {
         entry = &*newest(exact.value());
     } else {
+        // The short-name fallback joins a shorthand ("mail") with a qualified
+        // id ("com.example.mail"), never two different qualified ids.
         const QString shortId = shortKey(id);
+        const bool qualified = id.contains(u'.');
         for (auto app = m_entries.cbegin(); app != m_entries.cend(); ++app) {
-            if (shortKey(app.key()) == shortId) {
+            if (shortKey(app.key()) == shortId && (!qualified || !app.key().contains(u'.'))) {
                 const auto candidate = newest(app.value());
                 if (!entry || candidate->updated > entry->updated) {
                     entry = &*candidate;

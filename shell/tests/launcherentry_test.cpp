@@ -45,6 +45,9 @@ private slots:
             QTRY_COMPARE(changes.count(), 3);
             QCOMPARE(entry.badge(QStringLiteral("mail.desktop")).count, 142);
             QCOMPARE(entry.badge(QStringLiteral("unrelated.desktop")).count, 0);
+            // Another publisher's app with the same last part is another app.
+            QCOMPARE(entry.badge(QStringLiteral("org.other.Mail.desktop")).count, 0);
+            QCOMPARE(entry.badge(QStringLiteral("org.other.Mail.desktop")).progress, -1.0);
         }
         QDBusConnection::disconnectFromBus(connectionName);
         QTRY_COMPARE(changes.count(), 4);

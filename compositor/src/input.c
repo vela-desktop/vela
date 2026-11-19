@@ -20,6 +20,7 @@
 #include "shell.h"
 #include "util.h"
 
+#include <linux/input-event-codes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -667,8 +668,25 @@ void vela_input_keyboard_enter(struct vela_input *input, struct wlr_surface *sur
     struct wlr_seat *seat = input->server->seat;
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
     if (keyboard) {
-        wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes,
-            &keyboard->modifiers);
+        // The number keys Super took (keyboard.c) stay out: their release is
+        // the compositor's too, the app would keep them pressed.
+        uint16_t handled = 0;
+        struct vela_keyboard *own;
+        wl_list_for_each(own, &input->keyboards, link)
+        {
+            if (own->wlr == keyboard) {
+                handled = own->handled_numbers;
+            }
+        }
+        uint32_t keycodes[WLR_KEYBOARD_KEYS_CAP];
+        size_t count = 0;
+        for (size_t i = 0; i < keyboard->num_keycodes; ++i) {
+            const uint32_t code = keyboard->keycodes[i];
+            if (code < KEY_1 || code > KEY_0 || !(handled & (1u << (code - KEY_1)))) {
+                keycodes[count++] = code;
+            }
+        }
+        wlr_seat_keyboard_notify_enter(seat, surface, keycodes, count, &keyboard->modifiers);
     } else {
         wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
     }

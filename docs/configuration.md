@@ -125,6 +125,7 @@ Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 | `card`, `cardHover`, `cardPressed`, `cardStroke`, `flyout`, `dialog`, `dialogFooter`, `field` | color |
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
+| `attention` (the taskbar's highlight for an app asking for attention; the mode's caution color if unset). A theme token only: a taskbar style can't set it | color |
 | `primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`, `secondary`, `onSecondary`, `secondaryContainer`, `onSecondaryContainer`, `tertiary`, `onTertiary`, `tertiaryContainer`, `onTertiaryContainer`, `error`, `onError`, `errorContainer`, `onErrorContainer` | color: Material's tonal roles ([Expressive look](#expressive-look)) |
 | `surfaceBase` (Material's `surface`), `surfaceContainerLowest`, `surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest`, `onSurface`, `onSurfaceVariant`, `outline`, `outlineVariant`, `inverseSurface`, `inverseOnSurface`, `inversePrimary` | color: Material's surface roles |
 | `radius` (controls) | pixels, 0–24 |
@@ -140,7 +141,6 @@ Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that su
 | `taskbar-fit`, `taskbar-split-gap`, `taskbar-split-radius`, `taskbar-edge` (1 apps centered, 2 at the left), `taskbar-flush` | A pill that shrinks to the apps and the tray; the tray a pill of its own; the tray at the screen's edge; the apps' pill on the bottom edge. |
 | `taskbar-spacing` | The gap between buttons. |
 | `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size` | The buttons. |
-| `attention` | Taskbar highlight for an app asking for attention. Defaults to the theme mode’s caution color. |
 | `taskbar-stroke` | The bar's hairline (none under the expressive controls). |
 | `startmenu-width`, `startmenu-height` (with the margins: 660 × 732 is Vela's), `startmenu-radius`, `startmenu-surface`, `startmenu-cell-height` | The Start menu's size, corners, tint and rows. |
 | `quicksettings-radius`, `quicksettings-tile-radius`, `quicksettings-surface` | Quick settings' corners and tint. |

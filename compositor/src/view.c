@@ -787,9 +787,8 @@ static void create_handles(struct vela_view *view)
     } else {
         wlr_log(WLR_ERROR, "No ext-foreign-toplevel handle for \"%s\"", state.app_id ? state.app_id : "");
     }
-    if (vela_view_on_current_workspace(view)) {
-        create_taskbar_handle(view);
-    }
+    // Every desktop's windows: the shell filters them (docs/taskbar.md §4.2).
+    create_taskbar_handle(view);
 }
 
 static void destroy_handles(struct vela_view *view)

@@ -80,6 +80,8 @@ public:
     Q_INVOKABLE bool launchWithFile(const QString& id, const QString& url);
     Q_INVOKABLE QUrl desktopUrl(const QString& id) const;
     static bool isLauncherUrl(const QUrl& url);
+    // A launcher dropped on the taskbar and kept as a copy (vela-taskbar-*).
+    static bool isImportedLauncher(const QString& id);
     QString importTaskbarLauncher(const QUrl& url);
     Q_INVOKABLE QString desktopFile(const QString& id) const;
     Q_INVOKABLE QString name(const QString& id) const;

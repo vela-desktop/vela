@@ -96,7 +96,7 @@ struct vela_view {
     } taskbar_buttons[VELA_TASKBAR_BUTTONS];
 
     // How the taskbar sees and commands this window (foreign-toplevel). It
-    // exists only while the window is mapped and on the current desktop.
+    // exists only while the window is mapped, on any desktop.
     struct wlr_foreign_toplevel_handle_v1 *handle;
     // The same window in the ext-foreign-toplevel-list protocol: it has a
     // unique identifier and is used to capture its image (Alt+Tab). It exists
@@ -241,7 +241,7 @@ void vela_view_update_shape(struct vela_view *view);
 // window.
 void vela_view_update_decoration(struct vela_view *view);
 void vela_view_refresh_decoration(struct vela_view *view);
-// The taskbar shows only the current desktop's windows.
+// Off for windows that skip the taskbar (_NET_WM_STATE_SKIP_TASKBAR).
 void vela_view_show_in_taskbar(struct vela_view *view, bool on);
 
 // ------------------------------------------------------------ to the app --

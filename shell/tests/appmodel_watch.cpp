@@ -234,6 +234,37 @@ private slots:
             QStringLiteral("Flatpak Example"), 5000);
     }
 
+    void droppedLaunchersKeepTheirIdentity()
+    {
+        QVERIFY(writeDesktop(
+            userApplications() + QStringLiteral("/org.other.CustomEditor.desktop"), entry("Other Editor")));
+        QVERIFY(writeDesktop(userApplications() + QStringLiteral("/copyable.desktop"), entry("Copyable")));
+        AppModel apps;
+        apps.reload();
+        QCOMPARE(apps.name(QStringLiteral("copyable.desktop")), QStringLiteral("Copyable"));
+
+        QTemporaryDir drops;
+        QVERIFY(drops.isValid());
+        const auto drop = [&](const QString& file, const QByteArray& text) {
+            const QString path = drops.filePath(file);
+            return writeDesktop(path, text) ? apps.importTaskbarLauncher(QUrl::fromLocalFile(path)) : QString();
+        };
+
+        // An unchanged copy moves the installed app's pin; one with actions
+        // of its own is a launcher of its own.
+        QCOMPARE(drop(QStringLiteral("copyable.desktop"), entry("Copyable")), QStringLiteral("copyable.desktop"));
+        const QString withAction = drop(QStringLiteral("copyable.desktop"),
+            entry("Copyable", "Actions=private;\n\n[Desktop Action private]\nName=Private\nExec=true --private\n"));
+        QVERIFY(AppModel::isImportedLauncher(withAction));
+
+        // An imported launcher's StartupWMClass beats an installed app whose
+        // id only ends the same way.
+        const QString custom =
+            drop(QStringLiteral("custom.desktop"), entry("Custom Editor", "StartupWMClass=CustomEditor\n"));
+        QVERIFY(AppModel::isImportedLauncher(custom));
+        QCOMPARE(apps.findDesktopId(QStringLiteral("CustomEditor")), custom);
+    }
+
     void symlinkedRootReplacementReattachesNestedWatches()
     {
         const QString link = userApplications();

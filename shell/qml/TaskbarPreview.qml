@@ -123,7 +123,10 @@ Window {
             })) })
         }
         groups = found
-        selected = Math.max(0, Math.min(selected, windows.length + groups.length - 1))
+        // Cycling with Super held picks only windows: on release, a group
+        // card would activate nothing.
+        const choices = info.cycling ? windows.length : windows.length + groups.length
+        selected = Math.max(0, Math.min(selected, choices - 1))
         if (windows.length === 0) {
             Menus.preview = null
         }

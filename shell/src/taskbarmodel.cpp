@@ -146,15 +146,17 @@ QList<TaskbarModel::Item> TaskbarModel::buildItems()
     };
 
     // Pinned apps. Those not installed are skipped, and the same app can exist
-    // both as a package and as a Flatpak: we keep one.
+    // both as a package and as a Flatpak: we keep one. A launcher dropped on
+    // the taskbar is its own (its command may differ), whatever its name.
     for (const QString& id : std::as_const(m_pinnedIds)) {
         const QVariantMap entry = m_apps->entry(id);
         const QString name = entry.value(QStringLiteral("name")).toString();
         if (name.isEmpty()) {
             continue;
         }
-        const bool duplicate = std::any_of(items.cbegin(), items.cend(),
-            [&](const Item& item) { return item.name == name; });
+        const bool duplicate = !AppModel::isImportedLauncher(id)
+            && std::any_of(items.cbegin(), items.cend(),
+                [&](const Item& item) { return item.name == name && !AppModel::isImportedLauncher(item.desktopId); });
         if (!duplicate) {
             items.append({ id, id, name, entry.value(QStringLiteral("iconName")).toString(), true, {} });
         }

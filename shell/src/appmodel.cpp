@@ -510,14 +510,14 @@ QString AppModel::findDesktopId(const QString& appId) const
         },
         [&](const Entry& e) { return program(e).compare(appId, Qt::CaseInsensitive) == 0; },
     };
+    // Rule by rule over both sets: an imported launcher's exact rule wins over
+    // an installed app's rougher one; on the same rule, the installed app.
     for (const auto& matches : rules) {
         for (const Entry& e : m_all) {
             if (matches(e)) {
                 return e.id;
             }
         }
-    }
-    for (const auto& matches : rules) {
         for (const Entry& e : m_taskbarLaunchers) {
             if (matches(e)) {
                 return e.id;
@@ -658,6 +658,11 @@ bool AppModel::isLauncherUrl(const QUrl& url)
         && url.toLocalFile().endsWith(QLatin1String(".desktop"));
 }
 
+bool AppModel::isImportedLauncher(const QString& id)
+{
+    return id.startsWith(QLatin1String("vela-taskbar-"));
+}
+
 void AppModel::loadTaskbarLaunchers()
 {
     m_taskbarLaunchers.clear();
@@ -721,10 +726,16 @@ QString AppModel::importTaskbarLauncher(const QUrl& url)
         return {};
     }
     // A launcher copied from an installed application should move the
-    // installed app's pin. A launcher with custom arguments keeps its own.
+    // installed app's pin. A launcher with custom arguments or actions keeps
+    // its own.
+    const auto sameActions = [](const QList<Action>& a, const QList<Action>& b) {
+        return std::equal(a.cbegin(), a.cend(), b.cbegin(), b.cend(), [](const Action& x, const Action& y) {
+            return x.id == y.id && x.name == y.name && x.icon == y.icon && x.exec == y.exec;
+        });
+    };
     if (const Entry* installed = find(fileInfo.fileName()); installed && installed->rawExec == entry.rawExec
-        && installed->workDir == entry.workDir && installed->terminal == entry.terminal
-        && installed->name == entry.name) {
+        && installed->workDir == entry.workDir && installed->terminal == entry.terminal && installed->name == entry.name
+        && sameActions(installed->actions, entry.actions)) {
         return installed->id;
     }
     if (!QDir().mkpath(directory.path())) {

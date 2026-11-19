@@ -177,7 +177,10 @@ void vela_workspaces_json(struct vela_server *server, struct vela_buffer *out)
         if (!view->mapped || !view_id(view)) {
             continue;
         }
+        // What the shell gets is what vela_view_update_taskbar_output()
+        // compares with: a later return to the old output is a change too.
         struct vela_output *output = vela_view_output(view);
+        view->taskbar_output = output;
         if (output) {
             vela_buffer_append(out, first ? "" : ",");
             vela_buffer_append_json(out, view_id(view));
@@ -257,34 +260,6 @@ void vela_workspaces_announce(struct vela_server *server)
 }
 
 // ---------------------------------------------------------------- windows --
-
-static int compare_map_serial(const void *a, const void *b)
-{
-    uint64_t x = (*(struct vela_view *const *)a)->map_serial;
-    uint64_t y = (*(struct vela_view *const *)b)->map_serial;
-    return x < y ? -1 : x > y;
-}
-
-// The taskbar handles: only the windows of the current desktop, in opening
-// order.
-static void sync_taskbar(struct vela_server *server)
-{
-    // In opening order: the taskbar shows them in that order.
-    int count = wl_list_length(&server->views);
-    struct vela_view **ordered = VELA_NEW_N(struct vela_view *, count);
-    int n = 0;
-    struct vela_view *view;
-    wl_list_for_each (view, &server->views, link) {
-        ordered[n++] = view;
-    }
-    qsort(ordered, (size_t)n, sizeof(*ordered), compare_map_serial);
-    for (int i = 0; i < n; ++i) {
-        if (ordered[i]->mapped) {
-            vela_view_show_in_taskbar(ordered[i], vela_view_on_current_workspace(ordered[i]));
-        }
-    }
-    free(ordered);
-}
 
 static bool is_sticky_app(const struct vela_workspaces *ws, const char *app_id)
 {
@@ -376,7 +351,6 @@ void vela_workspaces_switch(struct vela_server *server, int index, bool refocus_
     vela_node_set_opacity(&server->layers.windows->node, 0.0f);
     vela_server_schedule_frames(server);
 
-    sync_taskbar(server);
     // The new desktop may expose a different foreground fullscreen even if
     // this switch deliberately defers keyboard focus.
     vela_fullscreen_restack(server);
@@ -505,7 +479,6 @@ void vela_workspaces_remove(struct vela_server *server, int index)
             vela_node_set_enabled(&view->tree->node, vela_view_on_current_workspace(view));
         }
     }
-    sync_taskbar(server);
     if (was_current) {
         vela_focus_refocus(server);
     }
@@ -591,7 +564,6 @@ void vela_workspaces_move_view(struct vela_server *server, struct vela_view *vie
     if (view->mapped && !view->minimized) {
         vela_node_set_enabled(&view->tree->node, vela_view_on_current_workspace(view));
     }
-    sync_taskbar(server);
     if (was_focused && !vela_view_on_current_workspace(view)) {
         vela_view_set_activated(view, false);
         wl_list_remove(&view->link);
@@ -610,7 +582,6 @@ void vela_workspaces_set_sticky(struct vela_server *server, struct vela_view *vi
     view->sticky = on;
     // Taken off "all desktops", it stays on the current one.
     view->workspace = server->workspaces->current;
-    sync_taskbar(server);
     vela_fullscreen_restack(server);
     vela_workspaces_announce(server);
 }
@@ -643,7 +614,6 @@ void vela_workspaces_set_app_sticky(struct vela_server *server, const char *app_
             }
         }
     }
-    sync_taskbar(server);
     save(ws);
     vela_workspaces_announce(server);
 }

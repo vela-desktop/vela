@@ -772,16 +772,22 @@ Window {
             let insertBefore = -1
             let marker = x
             let lastPinnedEdge = -1
+            let lastPinnedRow = -1
             let firstAppEdge = -1
+            let firstAppRow = -1
             for (let i = 0; i < taskRepeater.count; ++i) {
                 const task = taskRepeater.itemAt(i)
                 if (!task || !appStrip.fullyVisible(task)) continue
                 const left = task.mapToItem(root.contentItem, 0, 0).x
                 const right = left + task.width
-                if (firstAppEdge < 0) firstAppEdge = left
+                if (firstAppEdge < 0) {
+                    firstAppEdge = left
+                    firstAppRow = i
+                }
                 if (position >= left && position < right) hit = task
                 if (task.pinned) {
                     lastPinnedEdge = right
+                    lastPinnedRow = i
                     if (insertBefore < 0 && position < (left + right) / 2) {
                         insertBefore = i
                         marker = left
@@ -790,6 +796,17 @@ Window {
             }
             if (insertBefore < 0 && lastPinnedEdge >= 0) marker = lastPinnedEdge
             else if (insertBefore < 0 && firstAppEdge >= 0) marker = firstAppEdge
+            // After the last shown pinned app, the drop still goes before the
+            // pinned apps paged out after it: -1 (append) only past them all.
+            if (insertBefore < 0) {
+                for (let j = lastPinnedRow >= 0 ? lastPinnedRow + 1 : Math.max(0, firstAppRow); j < taskRepeater.count; ++j) {
+                    const next = taskRepeater.itemAt(j)
+                    if (next && next.pinned) {
+                        insertBefore = j
+                        break
+                    }
+                }
+            }
             insertRow = insertBefore
             markerX = Math.max(0, Math.min(width - 2, marker - x))
             if (hoveredButton !== hit) {

@@ -189,6 +189,19 @@ class TaskbarShortcuts(RealShell):
         self.assertFalse(self.mapped(self.vela.state(), "vela-taskbar-preview"))
         self.assertNotEqual(first, second)
 
+class TaskbarAllDesktops(RealShell):
+    shell_settings = "[taskbar]\npinned=\nwindowsFrom=all\n"
+
+    def test_taskbar_number_reaches_a_window_on_another_desktop(self):
+        first = self.vela.open_window(app_id="taskbar-all-first")
+        self.vela.command("workspace new switch")
+        self.vela.open_window(app_id="taskbar-all-second")
+        # The first app's button is still the first one: Super+1 goes back to
+        # its desktop.
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: s["focused"] == first and s["workspace"] == 0,
+                           what="the window on the other desktop activated")
+
 class TaskbarDrag(RealShell):
     shell_settings = "[taskbar]\npinned=\nalignment=left\n"
 
