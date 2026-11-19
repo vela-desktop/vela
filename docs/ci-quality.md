@@ -174,8 +174,24 @@ driver, Vulkan ICD and DRM render nodes are provided by the rental host;
 build and test dependencies come from the
 [NVIDIA CI image](../.github/images/nvidia-ci/Dockerfile). The
 [image publishing workflow](../.github/workflows/nvidia-ci-image.yml)
-must first publish the image matching the selected revision's image tree;
-the rental step verifies its availability before incurring costs.
+must first publish the image matching the selected revision's image tree.
+Before renting, the orchestration job resolves that tag to an immutable OCI
+SHA256 manifest digest; the rented host pulls that exact image. Tree tags
+identify source configuration, not dependency versions: a scheduled weekly
+rebuild intentionally refreshes Arch packages even if the Dockerfile has not
+changed. Each publication also receives a unique run tag, and `latest` is
+updated only from `main`. The publish job saves package versions, an SPDX
+SBOM and a Trivy vulnerability report as artifacts, and blocks publication
+when fixable high/critical vulnerabilities are detected.
+
+The image qualification step checks both the mandatory Vulkan/CTest tools
+and optional promo recording prerequisites before publication. In particular,
+Arch's `pipewire-audio` package supplies `pw-cat` (not the base `pipewire`
+package); this was missing in NVIDIA GPU run #131 on 16 November 2026, where
+the full GPU CTest suite succeeded but optional promo smoke failed. The
+container runner uses `runuser` without a passwordless-sudo rule and checks
+the runner archive against the SHA256 published with its GitHub release before
+extracting it. These checks do not replace a real NVIDIA hardware run.
 
 The NVIDIA test job sizes Ninja parallelism from the offered effective CPU
 allocation, container CPU affinity/quota and available host/cgroup memory,
