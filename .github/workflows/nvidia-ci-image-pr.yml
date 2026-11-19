@@ -31,7 +31,9 @@ jobs:
         with:
           python-version: '3.13'
       - name: Unit-test rental and digest checks
-        run: python3 -m unittest discover -s scripts/tests -p 'test_nvidia_gpu_ci.py' -v
+        run: |
+          python3 -m unittest discover -s scripts/tests -p 'test_nvidia_gpu_ci.py' -v
+          python3 -m unittest discover -s scripts/tests -p 'test_vast_runner.py' -v
       - name: Build rolling Arch image
         run: docker build --pull --no-cache -t vela-nvidia-ci-preflight .github/images/nvidia-ci
       - name: Check GPU and promo dependencies
