@@ -523,7 +523,7 @@ void TrayModel::requestMenu(int row, int anchorX, bool always)
     if (item->menuPath.isEmpty() || item->menuPath == QLatin1String("/")) {
         // No menu of the app's: a right click still gets the shell's entries.
         if (always) {
-            Q_EMIT menuReady(row, anchorX, { });
+            Q_EMIT menuReady(row, anchorX, {});
         }
         return;
     }
