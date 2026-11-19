@@ -174,11 +174,13 @@ QList<TaskbarModel::Item> TaskbarModel::buildItems()
         const QString key = desktopId.isEmpty() ? QStringLiteral("app:") + window->appId : desktopId;
 
         Item* item = findItem(key);
-        if (!item && !desktopId.isEmpty()) {
+        if (!item && !desktopId.isEmpty() && !AppModel::isImportedLauncher(desktopId)) {
             // The pinned version of the same app (such as Flatpak vs package).
+            // A launcher dropped on the taskbar runs its own command: it is
+            // never another app's by name, nor another app its.
             const QString name = m_apps->entry(desktopId).value(QStringLiteral("name")).toString();
             for (qsizetype i = 0; i < pinnedCount && !item; ++i) {
-                if (items[i].name == name) {
+                if (items[i].name == name && !AppModel::isImportedLauncher(items[i].desktopId)) {
                     item = &items[i];
                 }
             }
