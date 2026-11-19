@@ -10,8 +10,7 @@ among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 > **Status:** Implemented in PR #299. **Checked:** 19 November 2026.
 >
 > **Remaining:** real-session checks with LauncherEntry publishers and multiple
-> physical displays (§15); the drawer chosen icon by icon (§8) and the taskbar
-> on any edge (§11) are in progress.
+> physical displays (§15); the taskbar on any edge (§11) is in progress.
 
 ## 1. Goals
 

@@ -84,7 +84,9 @@ public:
     Q_INVOKABLE void secondaryActivate(int row); // middle click
     Q_INVOKABLE void scroll(int row, int delta);
     // Asks for the icon's menu: it arrives with menuReady.
-    Q_INVOKABLE void requestMenu(int row, int anchorX);
+    // With `always`, menuReady comes even when the app has no menu (empty):
+    // a right click shows the shell's own entries.
+    Q_INVOKABLE void requestMenu(int row, int anchorX, bool always = false);
     // An entry of the shown menu was chosen.
     Q_INVOKABLE void activateMenuEntry(int row, int entryId);
 

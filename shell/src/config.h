@@ -26,7 +26,10 @@ class Config : public QObject {
     Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive NOTIFY taskbarChanged)
-    Q_PROPERTY(int taskbarTrayIcons READ taskbarTrayIcons NOTIFY taskbarChanged)
+    // The notification area's icons on the taskbar, in order, by their
+    // StatusNotifierItem key (Tray's `key`); the others are in the drawer
+    // (docs/taskbar.md §8).
+    Q_PROPERTY(QStringList taskbarTrayShown READ taskbarTrayShown NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAttention READ taskbarAttention NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarBadges READ taskbarBadges NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarProgress READ taskbarProgress NOTIFY taskbarChanged)
@@ -71,7 +74,9 @@ public:
     QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
     QString taskbarAppsOn() const { return m_taskbarAppsOn; }
     QString taskbarClickActive() const { return m_taskbarClickActive; }
-    int taskbarTrayIcons() const { return m_taskbarTrayIcons; }
+    QStringList taskbarTrayShown() const { return m_taskbarTrayShown; }
+    // Saves taskbar/trayShown; taskbarChanged follows once written.
+    Q_INVOKABLE bool setTaskbarTrayShown(const QStringList& keys);
     bool taskbarAttention() const { return m_taskbarAttention; }
     bool taskbarBadges() const { return m_taskbarBadges; }
     bool taskbarProgress() const { return m_taskbarProgress; }
@@ -136,7 +141,7 @@ private:
     QString m_taskbarWindowsFrom = QStringLiteral("desktop");
     QString m_taskbarAppsOn = QStringLiteral("all");
     QString m_taskbarClickActive = QStringLiteral("previews");
-    int m_taskbarTrayIcons = 5;
+    QStringList m_taskbarTrayShown;
     bool m_taskbarAttention = true;
     bool m_taskbarBadges = true;
     bool m_taskbarProgress = true;

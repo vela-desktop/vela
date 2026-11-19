@@ -84,6 +84,27 @@ void Config::watchPicture()
     }
 }
 
+bool Config::setTaskbarTrayShown(const QStringList& keys)
+{
+    QStringList cleaned = keys;
+    cleaned.removeAll(QString());
+    cleaned.removeDuplicates();
+    if (cleaned == m_taskbarTrayShown) {
+        return true;
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("taskbar/trayShown"), cleaned);
+    settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        return false;
+    }
+    // At once, not after the file watcher's debounce: a dragged icon lands
+    // where it was dropped.
+    m_taskbarTrayShown = cleaned;
+    emit taskbarChanged();
+    return true;
+}
+
 void Config::reload()
 {
     QSettings settings;
@@ -109,8 +130,6 @@ void Config::reload()
     const bool taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     const bool allScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     const bool showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
-    bool trayIconsOk = false;
-    const int trayIcons = settings.value(QStringLiteral("taskbar/trayIcons")).toInt(&trayIconsOk);
     const QString taskbarWindowsFrom =
         settings.value(QStringLiteral("taskbar/windowsFrom")).toString() == QLatin1String("all")
         ? QStringLiteral("all")
@@ -122,7 +141,12 @@ void Config::reload()
         settings.value(QStringLiteral("taskbar/clickActive")).toString() == QLatin1String("next")
         ? QStringLiteral("next")
         : QStringLiteral("previews");
-    const int taskbarTrayIcons = trayIconsOk && trayIcons >= -1 && trayIcons <= 10 ? trayIcons : 5;
+    QStringList taskbarTrayShown = settings.value(QStringLiteral("taskbar/trayShown")).toStringList();
+    for (QString& key : taskbarTrayShown) {
+        key = key.trimmed();
+    }
+    taskbarTrayShown.removeAll(QString());
+    taskbarTrayShown.removeDuplicates();
     const bool taskbarAttention = vela::taskbar::enabled(settings, QStringLiteral("taskbar/attention"));
     const bool taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
     const bool taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
@@ -130,7 +154,7 @@ void Config::reload()
     if (alignment != m_taskbarAlignment || endTask != m_endTask || taskView != m_taskView
         || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner
         || taskbarWindowsFrom != m_taskbarWindowsFrom || taskbarAppsOn != m_taskbarAppsOn
-        || taskbarClickActive != m_taskbarClickActive || taskbarTrayIcons != m_taskbarTrayIcons
+        || taskbarClickActive != m_taskbarClickActive || taskbarTrayShown != m_taskbarTrayShown
         || taskbarAttention != m_taskbarAttention || taskbarBadges != m_taskbarBadges
         || taskbarProgress != m_taskbarProgress || taskbarNumberHints != m_taskbarNumberHints) {
         m_taskbarAlignment = alignment;
@@ -141,7 +165,7 @@ void Config::reload()
         m_taskbarWindowsFrom = taskbarWindowsFrom;
         m_taskbarAppsOn = taskbarAppsOn;
         m_taskbarClickActive = taskbarClickActive;
-        m_taskbarTrayIcons = taskbarTrayIcons;
+        m_taskbarTrayShown = taskbarTrayShown;
         m_taskbarAttention = taskbarAttention;
         m_taskbarBadges = taskbarBadges;
         m_taskbarProgress = taskbarProgress;

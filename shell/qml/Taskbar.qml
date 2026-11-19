@@ -73,22 +73,91 @@ Window {
     readonly property int traySlotWidth: 32
     readonly property real trayEssentialWidth: Math.max(0, width - minimumLeft - minimumRightInset - groupGap
         - fixedButtonsWidth - (taskRepeater.count > 0 ? style.spacing + appStrip.minimumWidth : 0) - fixedTrayWidth - 4)
+    // Each icon is on the taskbar or in the drawer, as the user chose
+    // (Config.taskbarTrayShown, docs/taskbar.md §8): the chosen ones in their
+    // order, then those asking for attention; a passive one waits in the
+    // drawer. Short of room, the last chosen ones go in the drawer first.
+    property string draggedTrayKey: "" // an icon being dragged: "^" shows
     readonly property var trayIcons: {
         const entries = root.primary ? Tray.entries : []
-        const urgent = entries.filter(item => item.attention)
-        const normal = entries.filter(item => !item.attention && !item.passive)
-        const passive = entries.filter(item => item.passive)
-        const limit = Config.taskbarTrayIcons < 0 ? normal.length : Config.taskbarTrayIcons
+        const picked = []
+        for (const key of Config.taskbarTrayShown) {
+            const item = entries.find(entry => entry.key === key)
+            if (item && !item.passive && picked.indexOf(item) < 0) picked.push(item)
+        }
+        const urgent = entries.filter(item => item.attention && picked.indexOf(item) < 0)
         const capacity = Math.floor(root.trayMaximumWidth / root.traySlotWidth)
         const essential = Math.floor(root.trayEssentialWidth / root.traySlotWidth)
-        const overflow = passive.length > 0 || normal.length > limit || urgent.length + normal.length > capacity
-        const reserved = overflow ? 1 : 0
+        // Not on draggedTrayKey: a new list would recreate the icon being
+        // dragged, and lose the drag.
+        const drawer = entries.length > picked.length + urgent.length || picked.length + urgent.length > capacity
+        const reserved = drawer ? 1 : 0
         const shownUrgent = Math.min(Math.max(0, essential - reserved), urgent.length)
-        const shownNormal = Math.min(limit, Math.max(0, capacity - reserved - shownUrgent))
-        const shown = urgent.slice(0, shownUrgent).concat(normal.slice(0, shownNormal))
+        const shownPicked = Math.min(picked.length, Math.max(0, capacity - reserved - shownUrgent))
+        const shown = picked.slice(0, shownPicked).concat(urgent.slice(0, shownUrgent))
         return { shown: shown, hidden: entries.filter(item => !shown.some(icon => icon.row === item.row)) }
     }
     readonly property var hiddenTrayIcons: trayIcons.hidden
+
+    function trayKeyShown(key) {
+        return Config.taskbarTrayShown.indexOf(key) >= 0
+    }
+    // Puts an icon on the taskbar before the shown icon `before` (by key; ""
+    // after the last), or in the drawer with `shown` false. The keys of apps
+    // not running now keep their place in the list.
+    function placeTrayIcon(key, shown, before) {
+        if (key === "") return
+        const list = Config.taskbarTrayShown.filter(k => k !== key)
+        if (shown) {
+            let at = before ? list.indexOf(before) : -1
+            if (at < 0) {
+                const last = root.trayIcons.shown.filter(item => item.key !== key && list.indexOf(item.key) >= 0).pop()
+                at = last ? list.indexOf(last.key) + 1 : list.length
+            }
+            list.splice(at, 0, key)
+        }
+        Config.setTaskbarTrayShown(list)
+    }
+    // Where a dragged icon would land, from a point in the taskbar's
+    // coordinates: "drawer", or { before: key } among the shown icons. "^"
+    // is the drawer only for an icon coming from the taskbar: one coming
+    // from the drawer lands wherever it is let go on the bar.
+    function trayDropTarget(x, y, fromDrawer) {
+        if (y < 0) return "drawer" // dragged up, towards the drawer
+        const over = overflowButton.mapFromItem(root.contentItem, x, y)
+        if (!fromDrawer && overflowButton.visible && overflowButton.contains(over)) return "drawer"
+        let before = ""
+        let marker = -1
+        for (let i = 0; i < trayRepeater.count; ++i) {
+            const icon = trayRepeater.itemAt(i)
+            if (!icon || icon.entry.key === root.draggedTrayKey) continue
+            const left = icon.mapToItem(root.contentItem, 0, 0).x
+            if (x < left + icon.width / 2) {
+                before = icon.entry.key
+                marker = left
+                break
+            }
+            marker = left + icon.width
+        }
+        return { before: before, marker: marker }
+    }
+    property real trayMarkerX: -1
+    function trayDragMoved(key, x, y, fromDrawer) {
+        root.draggedTrayKey = key
+        const target = trayDropTarget(x, y, fromDrawer)
+        root.trayMarkerX = target === "drawer" || target.marker < 0 ? -1 : target.marker
+    }
+    function trayDropped(key, x, y, fromDrawer) {
+        const target = trayDropTarget(x, y, fromDrawer)
+        trayDragCanceled()
+        // Later: the dragged icon's own delegate may go away with the change.
+        if (target === "drawer") Qt.callLater(placeTrayIcon, key, false)
+        else if (y < root.height) Qt.callLater(placeTrayIcon, key, true, target.before)
+    }
+    function trayDragCanceled() {
+        root.draggedTrayKey = ""
+        root.trayMarkerX = -1
+    }
 
     // The apps pinned at first start (.desktop ids; those not installed are
     // skipped). Afterwards the user's choices apply: pinned and unpinned from
@@ -335,6 +404,7 @@ Window {
         enabled: root.primary
         function onMenuReady(row, anchorX, entries) {
             const fromOverflow = !!Menus.trayOverflow
+            const icon = Tray.entries.find(item => item.row === row)
             const convert = list => list.map(e => e.separator ? { separator: true } : {
                 text: e.label,
                 icon: e.icon,
@@ -348,7 +418,17 @@ Window {
                 }
             })
             const bottom = fromOverflow ? root.menuBottom - 40 : root.menuBottom
-            root.openMenu(convert(entries), anchorX, bottom, {
+            const all = convert(entries)
+            // The shell's own entry, after the app's (docs/taskbar.md §8.2).
+            if (icon && icon.key !== "") {
+                const shown = root.trayIcons.shown.some(item => item.row === row)
+                if (all.length > 0) all.push({ separator: true })
+                all.push(shown
+                    ? { key: "tray.drawer", text: qsTr("&Hide in the drawer"), icon: "go-up", action: () => { Menus.trayOverflow = null; root.placeTrayIcon(icon.key, false) } }
+                    : { key: "tray.drawer", text: qsTr("&Show on the taskbar"), icon: "go-down", action: () => { Menus.trayOverflow = null; root.placeTrayIcon(icon.key, true) } })
+            }
+            if (all.length === 0) return
+            root.openMenu(all, anchorX, bottom, {
                 above: true, centered: true, onClosed: () => { Menus.trayOverflow = null }
             })
         }
@@ -871,10 +951,10 @@ Window {
         TaskbarButton {
             id: overflowButton
             objectName: "trayOverflowButton"
-            visible: root.hiddenTrayIcons.length > 0
+            visible: root.hiddenTrayIcons.length > 0 || root.draggedTrayKey !== ""
             width: visible ? root.traySlotWidth : 0
             anchors.verticalCenter: parent.verticalCenter
-            active: !!Menus.trayOverflow
+            active: !!Menus.trayOverflow || (root.draggedTrayKey !== "" && root.trayMarkerX < 0)
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Show hidden icons")
             Accessible.onPressAction: clicked()
@@ -896,22 +976,39 @@ Window {
         }
 
         Repeater {
+            id: trayRepeater
             model: root.trayIcons.shown
             delegate: TrayIcon {
                 id: trayItem
                 required property var modelData
+                required property int index
+                objectName: "trayIcon-" + index
                 entry: modelData
                 width: root.traySlotWidth
                 height: tray.height
                 inset: 8 + root.inset
+                draggable: entry.key !== ""
+                onDragMoved: p => root.trayDragMoved(entry.key, p.x, p.y)
+                onDropped: p => root.trayDropped(entry.key, p.x, p.y)
+                onDragCanceled: root.trayDragCanceled()
                 onInvoked: button => {
                     const center = mapToItem(null, width / 2, 0).x
-                    if (button === Qt.RightButton) Tray.requestMenu(entry.row, center)
+                    if (button === Qt.RightButton) Tray.requestMenu(entry.row, center, true)
                     else if (button === Qt.MiddleButton) Tray.secondaryActivate(entry.row)
                     else Tray.activate(entry.row, center)
                 }
             }
         }
+    }
+    // Where a dragged icon would land among the shown ones.
+    Rectangle {
+        visible: root.draggedTrayKey !== "" && root.trayMarkerX >= 0
+        x: root.trayMarkerX - 1
+        y: tray.y + 8 + root.inset
+        width: 2
+        height: tray.height - 2 * (8 + root.inset)
+        radius: 1
+        color: Theme.accent
     }
 
     // The screen being shared or recorded (docs/screen-sharing.md §6): a

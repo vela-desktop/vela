@@ -44,6 +44,8 @@ qt_add_executable(vela-settings
     src/keyboardlayouts.h
     src/preferences.cpp
     src/preferences.h
+    src/trayicons.cpp
+    src/trayicons.h
     ${PROJECT_SOURCE_DIR}/compositor/src/color.c # night light's temperature, read as the compositor does
     ${PROJECT_SOURCE_DIR}/compositor/src/color.h
     ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c

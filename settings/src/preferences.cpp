@@ -180,8 +180,6 @@ void Preferences::loadShell(const QSettings& settings)
     m_taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
-    bool trayIconsOk = false;
-    const int trayIcons = settings.value(QStringLiteral("taskbar/trayIcons")).toInt(&trayIconsOk);
     m_taskbarWindowsFrom = settings.value(QStringLiteral("taskbar/windowsFrom")).toString() == QLatin1String("all")
         ? QStringLiteral("all")
         : QStringLiteral("desktop");
@@ -191,7 +189,12 @@ void Preferences::loadShell(const QSettings& settings)
     m_taskbarClickActive = settings.value(QStringLiteral("taskbar/clickActive")).toString() == QLatin1String("next")
         ? QStringLiteral("next")
         : QStringLiteral("previews");
-    m_taskbarTrayIcons = trayIconsOk && trayIcons >= -1 && trayIcons <= 10 ? trayIcons : 5;
+    m_taskbarTrayShown = settings.value(QStringLiteral("taskbar/trayShown")).toStringList();
+    for (QString& key : m_taskbarTrayShown) {
+        key = key.trimmed();
+    }
+    m_taskbarTrayShown.removeAll(QString());
+    m_taskbarTrayShown.removeDuplicates();
     m_taskbarAttention = vela::taskbar::enabled(settings, QStringLiteral("taskbar/attention"));
     m_taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
     m_taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
@@ -723,14 +726,21 @@ void Preferences::setTaskbarClickActive(const QString& value)
     }
 }
 
-void Preferences::setTaskbarTrayIcons(int value)
+void Preferences::setTrayIconShown(const QString& key, bool shown)
 {
-    if ((value >= -1 && value <= 10) && value != m_taskbarTrayIcons) {
-        if (setShell(QStringLiteral("taskbar/trayIcons"), value)) {
-            m_taskbarTrayIcons = value;
-        }
-        emit taskbarChanged();
+    if (key.isEmpty() || m_taskbarTrayShown.contains(key) == shown) {
+        return;
     }
+    QStringList keys = m_taskbarTrayShown;
+    if (shown) {
+        keys.append(key);
+    } else {
+        keys.removeAll(key);
+    }
+    if (setShell(QStringLiteral("taskbar/trayShown"), keys)) {
+        m_taskbarTrayShown = keys;
+    }
+    emit taskbarChanged();
 }
 
 void Preferences::setTaskbarAttention(bool value)

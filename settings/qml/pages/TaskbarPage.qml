@@ -24,12 +24,31 @@ Page {
                 onToggled: Prefs.taskView = checked
             }
         }
+    }
+
+    // Each icon on the taskbar or in the drawer behind "^" (docs/taskbar.md
+    // §8.2): the running apps' icons, read from the shell's registry.
+    CardGroup {
+        title: qsTr("Notification area")
         Card {
-            title: qsTr("Icons shown on the taskbar")
-            trailing: Choice {
-                model: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", qsTr("All")]
-                currentIndex: Prefs.taskbarTrayIcons === -1 ? 11 : Prefs.taskbarTrayIcons
-                onChosen: index => Prefs.taskbarTrayIcons = index === 11 ? -1 : index
+            icon: "go-up"
+            title: qsTr("Icons on the taskbar")
+            description: TrayIcons.items.length > 0
+                ? qsTr("The others wait in the drawer behind ^. New icons start there; the icons of apps that aren't running show here once they start.")
+                : qsTr("No app shows an icon in the notification area right now. Icons show here once their apps start.")
+        }
+        Repeater {
+            model: TrayIcons.items
+            Card {
+                required property var modelData
+                objectName: "trayIconCard-" + modelData.key
+                icon: modelData.icon
+                title: modelData.title
+                trailing: Switch {
+                    checked: Prefs.taskbarTrayShown.indexOf(modelData.key) >= 0
+                    Accessible.name: qsTr("Show %1 on the taskbar").arg(modelData.title)
+                    onToggled: Prefs.setTrayIconShown(modelData.key, checked)
+                }
             }
         }
     }

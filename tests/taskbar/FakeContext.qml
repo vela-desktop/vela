@@ -9,7 +9,8 @@ import QtQml.Models
 QtObject {
     property QtObject config: QtObject {
         property bool taskView: true
-        property int taskbarTrayIcons: 5
+        property var taskbarTrayShown: []
+        function setTaskbarTrayShown(keys) { taskbarTrayShown = keys; return true }
         property bool taskbarAllScreens: true
         property bool taskbarNumberHints: true
         property string taskbarClickActive: "previews"
@@ -45,7 +46,9 @@ QtObject {
             return rows
         }
         property int activatedRow: -1
+        property var menuRequest: null
         function activate(row, point) { activatedRow = row }
+        function requestMenu(row, anchorX, always) { menuRequest = { row: row, always: !!always } }
         signal menuReady(int row, real anchorX, var entries)
     }
     property QtObject shell: QtObject {

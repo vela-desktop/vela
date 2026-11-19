@@ -16,11 +16,13 @@ import shutil
 import socket
 import subprocess
 import time
+import sys
 import unittest
 
 from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
+HERE = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
                 ("270", 1.5, "left"), ("flipped", 1, "below"), ("flipped-90", 1.25, "right"),
                 ("flipped-180", 1.5, "left"), ("flipped-270", 1, "below"))
@@ -201,6 +203,69 @@ class TaskbarAllDesktops(RealShell):
         self.vela.keys("super+1")
         self.vela.wait_for(lambda s: s["focused"] == first and s["workspace"] == 0,
                            what="the window on the other desktop activated")
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TrayDrawer(RealShell):
+    shell_settings = "[taskbar]\npinned=\ntrayShown=vela-fake\n"
+
+    def fake_item(self):
+        item = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_tray_item.py"), "vela-fake", "ff00ff"],
+                                env=dict(self.vela.client_env, DBUS_SESSION_BUS_ADDRESS=self.bus.address),
+                                stdout=subprocess.PIPE, stderr=self.vela.log, text=True)
+        self.addCleanup(item.wait)
+        self.addCleanup(item.kill)
+        self.assertEqual(item.stdout.readline().strip(), "ready")
+
+    def magenta(self, top, bottom):
+        """The center of the fake icon's pixels between two rows, or None."""
+        image = self.vela.pixels()
+        found = [(x, y) for y in range(top, bottom) for x in range(0, image.width, 2)
+                 if image.at(x, y) == (255, 0, 255)]
+        if not found:
+            return None
+        return (sum(x for x, _ in found) // len(found), sum(y for _, y in found) // len(found))
+
+    def wait_magenta(self, top, bottom, what):
+        """The icon's center once it stays put: the bar settles its layout
+        (the tray, the clock) after the icon appears."""
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        last = None
+        while time.monotonic() < deadline:
+            found = self.magenta(top, bottom)
+            if found and found == last:
+                return found
+            last = found
+            time.sleep(0.25)
+        self.fail(f"timed out waiting for {what}")
+
+    def shown_keys(self):
+        path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(path) as file:
+            line = next((line for line in file if line.startswith("trayShown=")), "trayShown=")
+        return [key.strip() for key in line.strip()[len("trayShown="):].split(",") if key.strip()]
+
+    def test_an_icon_dragged_into_the_drawer_and_back(self):
+        self.fake_item()
+        bar = 1080 - 48
+        x, y = self.wait_magenta(bar, 1080, "the chosen icon on the taskbar")
+        # One virtual keyboard for the whole scene: a new one would take the
+        # keyboard from the drawer, which then closes.
+        with self.input_session() as send:
+            # Up, off the taskbar: into the drawer.
+            send("move", x, y, "sleep", "100", "down", "move", x, y - 20, "sleep", "50", "move", x, y - 120,
+                 "sleep", "100", "up")
+            self.vela.wait_for(lambda s: "vela-fake" not in self.shown_keys(), what="the icon saved in the drawer")
+            self.vela.wait_for(lambda s: self.magenta(bar, 1080) is None, what="the icon off the taskbar")
+            # "^" took its place; the drawer opens above it, with the icon.
+            send("move", x, y, "sleep", "100", "click")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-tray-overflow"), what="the drawer")
+            dx, dy = self.wait_magenta(bar - 300, bar, "the icon in the drawer")
+            # Down onto the taskbar: out of the drawer.
+            send("move", dx, dy, "sleep", "100", "down", "move", dx, dy + 20, "sleep", "50", "move", x, y,
+                 "sleep", "100", "up")
+            self.vela.wait_for(lambda s: self.shown_keys() == ["vela-fake"], what="the icon saved on the taskbar")
+            self.wait_magenta(bar, 1080, "the icon back on the taskbar")
+
 
 class TaskbarDrag(RealShell):
     shell_settings = "[taskbar]\npinned=\nalignment=left\n"

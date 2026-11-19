@@ -49,7 +49,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom WRITE setTaskbarWindowsFrom NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn WRITE setTaskbarAppsOn NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive WRITE setTaskbarClickActive NOTIFY taskbarChanged)
-    Q_PROPERTY(int taskbarTrayIcons READ taskbarTrayIcons WRITE setTaskbarTrayIcons NOTIFY taskbarChanged)
+    // The notification area icons on the taskbar, by key (docs/taskbar.md §8).
+    Q_PROPERTY(QStringList taskbarTrayShown READ taskbarTrayShown NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAttention READ taskbarAttention WRITE setTaskbarAttention NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarBadges READ taskbarBadges WRITE setTaskbarBadges NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarProgress READ taskbarProgress WRITE setTaskbarProgress NOTIFY taskbarChanged)
@@ -203,8 +204,9 @@ public:
     void setTaskbarAppsOn(const QString& value);
     QString taskbarClickActive() const { return m_taskbarClickActive; }
     void setTaskbarClickActive(const QString& value);
-    int taskbarTrayIcons() const { return m_taskbarTrayIcons; }
-    void setTaskbarTrayIcons(int value);
+    QStringList taskbarTrayShown() const { return m_taskbarTrayShown; }
+    // On the taskbar (at its end) or in the drawer.
+    Q_INVOKABLE void setTrayIconShown(const QString& key, bool shown);
     bool taskbarAttention() const { return m_taskbarAttention; }
     void setTaskbarAttention(bool value);
     bool taskbarBadges() const { return m_taskbarBadges; }
@@ -458,7 +460,7 @@ private:
     QString m_taskbarWindowsFrom = QStringLiteral("desktop");
     QString m_taskbarAppsOn = QStringLiteral("all");
     QString m_taskbarClickActive = QStringLiteral("previews");
-    int m_taskbarTrayIcons = 5;
+    QStringList m_taskbarTrayShown;
     bool m_taskbarAttention = true;
     bool m_taskbarBadges = true;
     bool m_taskbarProgress = true;

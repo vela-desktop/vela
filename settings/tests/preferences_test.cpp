@@ -147,18 +147,21 @@ class PreferencesTest : public QObject {
 private slots:
     void taskbarSettings()
     {
-        write("[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayIcons=11\nattention=unknown\n");
+        write("[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayShown=discord,,"
+              "discord\nattention=unknown\n");
         Preferences prefs;
         QCOMPARE(prefs.taskbarWindowsFrom(), QStringLiteral("desktop"));
         QCOMPARE(prefs.taskbarAppsOn(), QStringLiteral("all"));
         QCOMPARE(prefs.taskbarClickActive(), QStringLiteral("previews"));
-        QCOMPARE(prefs.taskbarTrayIcons(), 5);
+        QCOMPARE(prefs.taskbarTrayShown(), QStringList { QStringLiteral("discord") });
         QVERIFY(prefs.taskbarAttention());
 
         prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
         prefs.setTaskbarAppsOn(QStringLiteral("window"));
         prefs.setTaskbarClickActive(QStringLiteral("next"));
-        prefs.setTaskbarTrayIcons(-1);
+        prefs.setTrayIconShown(QStringLiteral("steam"), true);
+        prefs.setTrayIconShown(QStringLiteral("discord"), false);
+        prefs.setTrayIconShown(QStringLiteral("telegram"), true);
         prefs.setTaskbarAttention(false);
         prefs.setTaskbarBadges(false);
         prefs.setTaskbarProgress(false);
@@ -167,7 +170,7 @@ private slots:
             { "taskbar/windowsFrom", "all" },
             { "taskbar/appsOn", "window" },
             { "taskbar/clickActive", "next" },
-            { "taskbar/trayIcons", "-1" },
+            { "taskbar/trayShown", QStringList { QStringLiteral("steam"), QStringLiteral("telegram") } },
             { "taskbar/attention", false },
             { "taskbar/badges", false },
             { "taskbar/progress", false },
@@ -179,8 +182,8 @@ private slots:
 
         BlockedDirectory blocker;
         QVERIFY(blocker.block());
-        prefs.setTaskbarTrayIcons(2);
-        QCOMPARE(prefs.taskbarTrayIcons(), -1);
+        prefs.setTrayIconShown(QStringLiteral("steam"), false);
+        QCOMPARE(prefs.taskbarTrayShown(), (QStringList { QStringLiteral("steam"), QStringLiteral("telegram") }));
         QVERIFY(blocker.restore());
     }
 

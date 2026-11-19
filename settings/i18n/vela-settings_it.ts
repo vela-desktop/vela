@@ -3620,14 +3620,6 @@ Specifiche sistema
 <context>
     <name>TaskbarPage</name>
     <message>
-        <source>Icons shown on the taskbar</source>
-        <translation>Icone visibili sulla barra delle applicazioni</translation>
-    </message>
-    <message>
-        <source>All</source>
-        <translation>Tutte</translation>
-    </message>
-    <message>
         <source>Show windows from</source>
         <translation>Mostra le finestre di</translation>
     </message>
@@ -3742,6 +3734,26 @@ Specifiche sistema
     <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Notification area</source>
+        <translation>Area di notifica</translation>
+    </message>
+    <message>
+        <source>Icons on the taskbar</source>
+        <translation>Icone sulla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>The others wait in the drawer behind ^. New icons start there; the icons of apps that aren&apos;t running show here once they start.</source>
+        <translation>Le altre aspettano nel cassetto dietro ^. Le icone nuove partono da lì; quelle delle app non aperte compaiono qui quando le app si avviano.</translation>
+    </message>
+    <message>
+        <source>No app shows an icon in the notification area right now. Icons show here once their apps start.</source>
+        <translation>Nessuna app mostra un&apos;icona nell&apos;area di notifica in questo momento. Le icone compaiono qui quando le loro app si avviano.</translation>
+    </message>
+    <message>
+        <source>Show %1 on the taskbar</source>
+        <translation>Mostra %1 sulla barra delle applicazioni</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>

@@ -220,7 +220,7 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `taskbar/appsOn` | `all` | `window` limits windows to their display's taskbar when taskbars are on all displays. |
 | `taskbar/clickActive` | `previews` | On an active app with several windows, show `previews` or cycle to the `next` window. |
 | `taskbar/attention` | `true` | Highlight apps asking for attention. |
-| `taskbar/trayIcons` | `5` | Visible tray icons, from 0 to 10. Use `-1` for all. |
+| `taskbar/trayShown` | empty | The notification area icons on the taskbar, in order, by their StatusNotifierItem `Id` (the title when there is none); the others are in the drawer behind "^". New icons start in the drawer. |
 | `taskbar/badges` | `true` | Count badges on app buttons. |
 | `taskbar/progress` | `true` | Progress indicators on app buttons. |
 | `taskbar/numberHints` | `true` | Show shortcut numbers while holding Super in the `apps` mode. |

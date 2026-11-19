@@ -12,7 +12,8 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 - The taskbar filters windows by desktop and display, opens keyboard-accessible
   previews on click, and adds Super+number shortcuts, attention indicators,
-  app badges and progress, a tray overflow, and drag-to-pin and drag-to-raise.
+  app badges and progress, a tray drawer chosen icon by icon (drag an icon in
+  or out of "^", its menu, or Settings), and drag-to-pin and drag-to-raise.
 
 - Context menus: the entries apps add (KDE service menus) are in the menu
   itself, with no "Show more options"; Settings > Personalization > Context

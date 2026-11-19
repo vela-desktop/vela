@@ -1495,6 +1495,14 @@
         <translation>Des&amp;ktop</translation>
     </message>
     <message>
+        <source>&amp;Hide in the drawer</source>
+        <translation>&amp;Nascondi nel cassetto</translation>
+    </message>
+    <message>
+        <source>&amp;Show on the taskbar</source>
+        <translation>Mo&amp;stra sulla barra delle applicazioni</translation>
+    </message>
+    <message>
         <source>Task &amp;manager</source>
         <translation>Gestione &amp;attività</translation>
     </message>

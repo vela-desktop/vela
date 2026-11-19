@@ -52,9 +52,9 @@ see the [roadmap](roadmap.md).
 ## Shell
 - **[Taskbar](taskbar.md)**: per-desktop and per-monitor window filters, jump
   lists, keyboard-accessible previews, Super+number shortcuts, attention
-  indicators, badges and progress, and a tray with hidden icons. Drag a
-  launcher to pin it, or hover a dragged file over an app to bring its
-  window forward.
+  indicators, badges and progress, and a tray whose icons go on the bar or
+  into a drawer, one by one. Drag a launcher to pin it, or hover a dragged
+  file over an app to bring its window forward.
 - **App launcher**: instant search, pinned apps, keyboard navigation, and a Super+X power-user menu.
 - **Quick settings** (Super+A): Wi-Fi network picker, Bluetooth, airplane mode, power
   mode, Night light, accessibility, brightness, volume and battery, and a sound page

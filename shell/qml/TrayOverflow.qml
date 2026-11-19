@@ -35,6 +35,10 @@ Window {
         Shell.placeOnScreen(root, info.screen)
         Qt.callLater(root.place)
     }
+    // From this window's coordinates to the taskbar's, the bar right below.
+    function toBar(p) {
+        return Qt.point(p.x + root.left, p.y - root.height)
+    }
     function place() {
         if (!info || entries.length === 0) return
         left = Math.round(Math.max(0, Math.min(Screen.width - width, info.center - width / 2)))
@@ -118,11 +122,22 @@ Window {
                             width: 40
                             height: 36
                             highlighted: root.active && index === root.selected
+                            // Out onto the taskbar (docs/taskbar.md §8.2).
+                            draggable: entry.key !== ""
+                            onDragMoved: p => {
+                                const q = root.toBar(p)
+                                root.info.bar.trayDragMoved(entry.key, q.x, q.y, true)
+                            }
+                            onDropped: p => {
+                                const q = root.toBar(p)
+                                root.info.bar.trayDropped(entry.key, q.x, q.y, true)
+                            }
+                            onDragCanceled: root.info.bar.trayDragCanceled()
                             onInvoked: button => {
                                 root.selected = index
                                 const anchor = root.left + icon.mapToItem(null, icon.width / 2, 0).x
                                 if (button === Qt.RightButton) {
-                                    Tray.requestMenu(entry.row, anchor)
+                                    Tray.requestMenu(entry.row, anchor, true)
                                 } else {
                                     if (button === Qt.MiddleButton) Tray.secondaryActivate(entry.row)
                                     else Tray.activate(entry.row, anchor)

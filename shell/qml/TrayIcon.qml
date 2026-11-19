@@ -9,7 +9,18 @@ Item {
     required property var entry
     property int inset: 0
     property bool highlighted: false
+    // Dragged 8 pixels or more, it follows the mouse; where it is let go
+    // decides between the taskbar and the drawer (docs/taskbar.md §8.2).
+    // The points are in its window's coordinates, also outside it.
+    property bool draggable: false
+    readonly property bool dragging: mouse.dragging
     signal invoked(int button)
+    signal dragMoved(point position)
+    signal dropped(point position)
+    signal dragCanceled()
+
+    z: mouse.dragging ? 10 : 0
+    transform: Translate { x: mouse.dragging ? mouse.dragX : 0; y: mouse.dragging ? mouse.dragY : 0 }
 
     Accessible.role: Accessible.Button
     Accessible.name: entry.title
@@ -43,7 +54,47 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-        onClicked: event => root.invoked(event.button)
+        property point pressPoint
+        property real dragX: 0
+        property real dragY: 0
+        property bool dragging: false
+        property bool dragged: false // releasing a drag isn't a click
+        onPressed: event => {
+            pressPoint = mapToItem(null, event.x, event.y)
+            dragX = 0
+            dragY = 0
+            dragged = false
+        }
+        onPositionChanged: event => {
+            if (!pressed || !root.draggable || !(pressedButtons & Qt.LeftButton)) return
+            const p = mapToItem(null, event.x, event.y)
+            dragX = p.x - pressPoint.x
+            dragY = p.y - pressPoint.y
+            if (!dragging && Math.hypot(dragX, dragY) > 8) {
+                dragging = true
+                root.clearTooltip()
+            }
+            if (dragging) root.dragMoved(p)
+        }
+        onReleased: event => {
+            if (!dragging) return
+            // While it still follows the mouse: the point is where it is.
+            const p = mapToItem(null, event.x, event.y)
+            dragging = false
+            dragged = true
+            root.dropped(p)
+        }
+        onCanceled: {
+            if (dragging) root.dragCanceled()
+            dragging = false
+        }
+        onClicked: event => {
+            if (dragged) {
+                dragged = false
+                return
+            }
+            root.invoked(event.button)
+        }
         onWheel: event => Tray.scroll(root.entry.row, event.angleDelta.y)
         onContainsMouseChanged: {
             if (containsMouse && root.entry.title !== "") delay.restart()

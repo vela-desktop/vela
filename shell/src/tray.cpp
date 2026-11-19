@@ -246,6 +246,7 @@ struct TrayModel::Item {
     QString service;
     QString path;
     QString title;
+    QString key; // what the user's choice is saved by: Id, or the title
     QString status;
     QString icon; // source for Image
     QString menuPath;
@@ -272,6 +273,7 @@ QVariantList TrayModel::entries() const
                 { QStringLiteral("row"), row },
                 { QStringLiteral("icon"), item->icon },
                 { QStringLiteral("title"), item->title },
+                { QStringLiteral("key"), item->key },
                 { QStringLiteral("attention"), item->status == QLatin1String("NeedsAttention") },
                 { QStringLiteral("passive"), item->status == QLatin1String("Passive") },
             });
@@ -383,6 +385,15 @@ void TrayModel::refresh(Item* item)
         item->title = tooltipTitle(properties.value(QStringLiteral("ToolTip")));
         if (item->title.isEmpty()) {
             item->title = properties.value(QStringLiteral("Title")).toString();
+        }
+        // Id is stable across runs ("discord", "steam"); a few apps leave it
+        // empty, their title is the next best thing.
+        item->key = properties.value(QStringLiteral("Id")).toString();
+        if (item->key.isEmpty()) {
+            item->key = properties.value(QStringLiteral("Title")).toString();
+        }
+        if (item->key.isEmpty()) {
+            item->key = item->title;
         }
         item->itemIsMenu = properties.value(QStringLiteral("ItemIsMenu")).toBool();
         item->menuPath = properties.value(QStringLiteral("Menu")).value<QDBusObjectPath>().path();
@@ -503,10 +514,17 @@ void TrayModel::scroll(int row, int delta)
     }
 }
 
-void TrayModel::requestMenu(int row, int anchorX)
+void TrayModel::requestMenu(int row, int anchorX, bool always)
 {
     Item* item = itemAt(row);
-    if (!item || item->menuPath.isEmpty() || item->menuPath == QLatin1String("/")) {
+    if (!item) {
+        return;
+    }
+    if (item->menuPath.isEmpty() || item->menuPath == QLatin1String("/")) {
+        // No menu of the app's: a right click still gets the shell's entries.
+        if (always) {
+            Q_EMIT menuReady(row, anchorX, { });
+        }
         return;
     }
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -520,18 +538,19 @@ void TrayModel::requestMenu(int row, int anchorX)
         QStringLiteral("GetLayout"));
     layout << 0 << -1 << QStringList();
     auto* pending = new QDBusPendingCallWatcher(bus.asyncCall(layout), this);
-    connect(pending, &QDBusPendingCallWatcher::finished, this, [this, row, anchorX](QDBusPendingCallWatcher* p) {
-        p->deleteLater();
-        const QDBusMessage reply = p->reply();
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().size() < 2) {
-            return;
-        }
-        const QVariantMap root = parseMenuEntry(reply.arguments().at(1).value<QDBusArgument>());
-        const QVariantList entries = root.value(QStringLiteral("children")).toList();
-        if (!entries.isEmpty()) {
-            Q_EMIT menuReady(row, anchorX, entries);
-        }
-    });
+    connect(
+        pending, &QDBusPendingCallWatcher::finished, this, [this, row, anchorX, always](QDBusPendingCallWatcher* p) {
+            p->deleteLater();
+            const QDBusMessage reply = p->reply();
+            QVariantList entries;
+            if (reply.type() == QDBusMessage::ReplyMessage && reply.arguments().size() >= 2) {
+                const QVariantMap root = parseMenuEntry(reply.arguments().at(1).value<QDBusArgument>());
+                entries = root.value(QStringLiteral("children")).toList();
+            }
+            if (!entries.isEmpty() || always) {
+                Q_EMIT menuReady(row, anchorX, entries);
+            }
+        });
 }
 
 void TrayModel::activateMenuEntry(int row, int entryId)

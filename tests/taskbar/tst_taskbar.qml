@@ -45,7 +45,8 @@ Item {
             Menus.entries = []
             Menus.preview = null
             Menus.trayOverflow = null
-            Config.taskbarTrayIcons = 5
+            Config.taskbarTrayShown = []
+            Tray.menuRequest = null
             Config.taskbarClickActive = "previews"
         }
 
@@ -57,7 +58,12 @@ Item {
         }
         function addTray(count) {
             for (let i = Tray.count; i < count; ++i)
-                Tray.append({ icon: Qt.resolvedUrl("../../images/vela_splash_169.svg").toString(), title: "Tray " + i, attention: false, passive: false })
+                Tray.append({ icon: Qt.resolvedUrl("../../images/vela_splash_169.svg").toString(), title: "Tray " + i, key: "tray-" + i, attention: false, passive: false })
+        }
+        function showTray(count) {
+            const keys = []
+            for (let i = 0; i < count; ++i) keys.push("tray-" + i)
+            Config.taskbarTrayShown = keys
         }
         function bar(width, primary) {
             const b = createTemporaryObject(barComponent, null, { width: width, primary: primary !== false })
@@ -285,7 +291,7 @@ Item {
         function test_oversized_tray_keeps_room_for_an_app() {
             addApps(24)
             addTray(40)
-            Config.taskbarTrayIcons = -1
+            showTray(40)
             const b = bar(800)
             const apps = child(b, "taskbarApps")
             verify(apps.viewportWidth >= Styles.taskbar.buttonWidth)
@@ -298,7 +304,6 @@ Item {
 
         function test_hidden_tray_icon_activates_before_the_panel_closes() {
             addTray(1)
-            Config.taskbarTrayIcons = 0
             const b = bar(1000)
             const overflow = createTemporaryObject(overflowComponent, null)
             mouseClick(child(b, "trayOverflowButton"))
@@ -308,17 +313,91 @@ Item {
             tryCompare(overflow, "visible", false)
         }
 
-        function test_tray_status_and_limit() {
+        function test_tray_icons_chosen_one_by_one() {
             addTray(7)
             Tray.setProperty(1, "passive", true)
             Tray.setProperty(6, "attention", true)
-            Config.taskbarTrayIcons = 2
+            // Chosen in their own order; a passive one waits in the drawer,
+            // one asking for attention comes out after them; an app not
+            // running keeps its key.
+            Config.taskbarTrayShown = ["tray-2", "gone", "tray-1", "tray-0"]
             const b = bar(1000)
-            compare(b.trayIcons.shown.map(item => item.row), [6, 0, 2])
+            compare(b.trayIcons.shown.map(item => item.row), [2, 0, 6])
             compare(b.hiddenTrayIcons.map(item => item.row), [1, 3, 4, 5])
-            Config.taskbarTrayIcons = 0
+            Config.taskbarTrayShown = []
             tryCompare(b.hiddenTrayIcons, "length", 6)
             compare(b.trayIcons.shown.map(item => item.row), [6])
+            // New icons go in the drawer.
+            addTray(8)
+            tryCompare(b.hiddenTrayIcons, "length", 7)
+        }
+
+        function test_tray_icon_dragged_into_and_out_of_the_drawer() {
+            addTray(3)
+            Config.taskbarTrayShown = ["gone", "tray-0", "tray-1"]
+            const b = bar(1000)
+            tryCompare(b.trayIcons.shown, "length", 2)
+            const first = child(b, "trayIcon-0")
+            const button = child(b, "trayOverflowButton")
+            const from = first.mapToItem(b.contentItem, first.width / 2, first.height / 2)
+            mousePress(b.contentItem, from.x, from.y)
+            mouseMove(b.contentItem, from.x - 10, from.y, -1, Qt.LeftButton)
+            waitForRendering(b.contentItem)
+            const to = button.mapToItem(b.contentItem, button.width / 2, button.height / 2)
+            mouseMove(b.contentItem, to.x, to.y, -1, Qt.LeftButton)
+            compare(b.draggedTrayKey, "tray-0")
+            mouseRelease(b.contentItem, to.x, to.y)
+            tryCompare(Config, "taskbarTrayShown", ["gone", "tray-1"])
+            compare(b.draggedTrayKey, "")
+            // From the drawer onto the taskbar, before the shown icon.
+            tryCompare(b.trayIcons.shown, "length", 1)
+            waitForRendering(b.contentItem)
+            const shown = child(b, "trayIcon-0")
+            compare(shown.entry.key, "tray-1")
+            const at = shown.mapToItem(b.contentItem, 2, shown.height / 2)
+            b.trayDropped("tray-2", at.x, at.y, true)
+            tryCompare(Config, "taskbarTrayShown", ["gone", "tray-2", "tray-1"])
+            // Dragged up, towards the drawer.
+            b.trayDropped("tray-1", at.x, -20, true)
+            tryCompare(Config, "taskbarTrayShown", ["gone", "tray-2"])
+        }
+
+        function test_tray_icon_dragged_out_of_the_drawer() {
+            addTray(2)
+            showTray(1)
+            const b = bar(1000)
+            const overflow = createTemporaryObject(overflowComponent, null)
+            mouseClick(child(b, "trayOverflowButton"))
+            tryVerify(() => overflow.visible)
+            const icon = child(overflow, "trayOverflowIcon-0")
+            compare(icon.entry.key, "tray-1")
+            mousePress(icon, 10, 10)
+            mouseMove(icon, 10, 20, -1, Qt.LeftButton)
+            mouseMove(icon, 10, 40, -1, Qt.LeftButton)
+            verify(icon.dragging)
+            compare(b.draggedTrayKey, "tray-1")
+            mouseRelease(icon, 10, 40)
+            compare(b.draggedTrayKey, "")
+        }
+
+        function test_tray_menu_moves_an_icon() {
+            addTray(2)
+            showTray(1)
+            const b = bar(1000)
+            mouseClick(child(b, "trayIcon-0"), 5, 5, Qt.RightButton)
+            compare(Tray.menuRequest.row, 0)
+            verify(Tray.menuRequest.always)
+            Tray.menuReady(0, 100, [])
+            tryVerify(() => Menus.entries.length > 0)
+            const entry = Menus.entries.find(e => e.key === "tray.drawer")
+            verify(entry)
+            entry.action()
+            compare(Config.taskbarTrayShown, [])
+            Tray.menuReady(1, 100, [])
+            const show = Menus.entries.find(e => e.key === "tray.drawer")
+            verify(show)
+            show.action()
+            compare(Config.taskbarTrayShown, ["tray-1"])
         }
 
         function test_removing_apps_clamps_scroll_and_restores_the_unclipped_row() {
