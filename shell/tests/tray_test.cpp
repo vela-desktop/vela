@@ -218,8 +218,11 @@ private slots:
         QCOMPARE(entryFor(tray, QStringLiteral("Discord")).value(QStringLiteral("title")).toString(),
             QStringLiteral("Discord: 3 unread"));
         // A passive icon is listed, for the drawer to leave out.
-        QVERIFY(entryFor(tray, QStringLiteral("updates")).value(QStringLiteral("passive")).toBool());
-        QCOMPARE(tray.data(tray.index(2), TrayModel::IconRole).toString(), QString());
+        const QVariantMap passive = entryFor(tray, QStringLiteral("updates"));
+        QVERIFY(passive.value(QStringLiteral("passive")).toBool());
+        // The apps register from their own connections, in no set order.
+        const int passiveRow = passive.value(QStringLiteral("row")).toInt();
+        QCOMPARE(tray.data(tray.index(passiveRow), TrayModel::IconRole).toString(), QString());
 
         // Its state follows the app.
         steam.set(QStringLiteral("Status"), QStringLiteral("NeedsAttention"));
@@ -328,6 +331,28 @@ private slots:
         item.registerWith(QStringLiteral("/StatusNotifierItem"));
         QTRY_COMPARE_WITH_TIMEOUT(tray.entries().size(), 1, 3000);
         QCOMPARE(tray.entries().at(0).toMap().value(QStringLiteral("key")).toString(), QStringLiteral("Backups"));
+    }
+
+    // The key is trimmed, as the saved list is; one taken from a title
+    // stays while the title counts messages; an Id, once there, wins.
+    void keysStayWhatTheChoiceWasSavedBy()
+    {
+        TrayModel& tray = *m_tray;
+        FakeItem padded(QStringLiteral("padded"), properties(QStringLiteral("  steam  "), QStringLiteral("Steam")));
+        FakeItem inbox(QStringLiteral("inbox"), properties(QString(), QStringLiteral(" Inbox (3) ")));
+        padded.registerWith(QStringLiteral("/StatusNotifierItem"));
+        inbox.registerWith(QStringLiteral("/StatusNotifierItem"));
+        QTRY_COMPARE_WITH_TIMEOUT(tray.entries().size(), 2, 3000);
+        QVERIFY(!entryFor(tray, QStringLiteral("steam")).isEmpty());
+        QVERIFY(!entryFor(tray, QStringLiteral("Inbox (3)")).isEmpty());
+
+        inbox.set(QStringLiteral("Title"), QStringLiteral("Inbox (4)"));
+        QTRY_COMPARE_WITH_TIMEOUT(entryFor(tray, QStringLiteral("Inbox (3)")).value(QStringLiteral("title")).toString(),
+            QStringLiteral("Inbox (4)"), 3000);
+        QVERIFY(entryFor(tray, QStringLiteral("Inbox (4)")).isEmpty());
+
+        inbox.set(QStringLiteral("Id"), QStringLiteral("mail"));
+        QTRY_VERIFY_WITH_TIMEOUT(!entryFor(tray, QStringLiteral("mail")).isEmpty(), 3000);
     }
 };
 

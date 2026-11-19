@@ -7,13 +7,55 @@
 
 #include "trayicons.h"
 
+#include <QDBusArgument>
 #include <QDBusConnection>
+#include <QDBusMetaType>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #include <QDBusVariant>
 #include <QDBusVirtualObject>
 #include <QSignalSpy>
 #include <QTest>
+
+// The ToolTip property: (icon name, pictures, title, text).
+struct Picture {
+    int width = 0;
+    int height = 0;
+    QByteArray bytes;
+};
+Q_DECLARE_METATYPE(Picture)
+
+QDBusArgument& operator<<(QDBusArgument& argument, const Picture& picture)
+{
+    argument.beginStructure();
+    argument << picture.width << picture.height << picture.bytes;
+    argument.endStructure();
+    return argument;
+}
+const QDBusArgument& operator>>(const QDBusArgument& argument, Picture&)
+{
+    return argument;
+}
+
+struct ToolTip {
+    QString title;
+};
+Q_DECLARE_METATYPE(ToolTip)
+
+QDBusArgument& operator<<(QDBusArgument& argument, const ToolTip& tip)
+{
+    argument.beginStructure();
+    argument << QString();
+    argument.beginArray(QMetaType::fromType<Picture>());
+    argument.endArray();
+    argument << tip.title << QString();
+    argument.endStructure();
+    return argument;
+}
+const QDBusArgument& operator>>(const QDBusArgument& argument, ToolTip&)
+{
+    return argument;
+}
 
 namespace {
 
@@ -91,6 +133,12 @@ class TrayIconsTest : public QObject {
     Q_OBJECT
 
 private slots:
+    void initTestCase()
+    {
+        qDBusRegisterMetaType<Picture>();
+        qDBusRegisterMetaType<ToolTip>();
+    }
+
     void emptyWithoutAWatcher()
     {
         TrayIcons icons;
@@ -160,6 +208,34 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(changed.count(), 3, 3000);
         QCOMPARE(icons.items(), QVariantList());
         watcher.connection.interface()->unregisterService(watcherService);
+    }
+
+    // The shell's keys: trimmed, and the tooltip's title when there is no
+    // Id nor Title. The shell going away empties the list.
+    void sameKeysAsTheShell()
+    {
+        const QString itemPath = QStringLiteral("/StatusNotifierItem");
+        Peer padded(QStringLiteral("padded"), itemPath,
+            item(QStringLiteral(" steam "), QStringLiteral("Steam"), QStringLiteral("steam")));
+        QVariantMap bare = item(QString(), QString(), QStringLiteral("backup"));
+        bare.insert(QStringLiteral("ToolTip"), QVariant::fromValue(ToolTip { QStringLiteral("Backups") }));
+        Peer backups(QStringLiteral("backups"), itemPath, bare);
+        Peer watcher(QStringLiteral("watcher3"), watcherPath, {});
+        QVERIFY(watcher.connection.interface()->registerService(watcherService).isValid());
+        watcher.object.properties.insert(QStringLiteral("RegisteredStatusNotifierItems"),
+            QStringList { padded.unique() + itemPath, backups.unique() + itemPath });
+
+        TrayIcons icons;
+        QSignalSpy changed(&icons, &TrayIcons::itemsChanged);
+        QVERIFY(changed.wait(3000));
+        const QVariantList expected {
+            entry(QStringLiteral("steam"), QStringLiteral("Steam"), QStringLiteral("steam")),
+            entry(QStringLiteral("Backups"), QStringLiteral("Backups"), QStringLiteral("backup")),
+        };
+        QCOMPARE(icons.items(), expected);
+
+        watcher.connection.interface()->unregisterService(watcherService);
+        QTRY_COMPARE_WITH_TIMEOUT(icons.items(), QVariantList(), 3000);
     }
 
     void aNewerRefreshWins()

@@ -3,10 +3,13 @@
 
 #include "trayicons.h"
 
+#include "../../common/trayitem.h"
+
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QDBusServiceWatcher>
 #include <QDBusVariant>
 
 #include <memory>
@@ -28,6 +31,10 @@ TrayIcons::TrayIcons(QObject* parent)
         SLOT(onRegistered(QString)));
     bus.connect(watcherService, watcherPath, watcherService, QStringLiteral("StatusNotifierItemUnregistered"), this,
         SLOT(onRegistered(QString)));
+    // The shell restarting: its new watcher knows only the apps still
+    // running, and none while it is away.
+    auto* owner = new QDBusServiceWatcher(watcherService, bus, QDBusServiceWatcher::WatchForOwnerChange, this);
+    connect(owner, &QDBusServiceWatcher::serviceOwnerChanged, this, &TrayIcons::refresh);
     refresh();
 }
 
@@ -93,14 +100,10 @@ void TrayIcons::refresh()
                     const QDBusPendingReply<QVariantMap> reply = *item;
                     if (!reply.isError()) {
                         const QVariantMap properties = reply.value();
-                        const QString id = properties.value(QStringLiteral("Id")).toString();
-                        const QString title = properties.value(QStringLiteral("Title")).toString();
-                        // The shell's key (shell/src/tray.cpp): Id, else the title.
-                        const QString key = id.isEmpty() ? title : id;
                         const QString icon = properties.value(QStringLiteral("IconName")).toString();
                         (*found)[i] = QVariantMap {
-                            { QStringLiteral("key"), key },
-                            { QStringLiteral("title"), title.isEmpty() ? id : title },
+                            { QStringLiteral("key"), vela::tray::key(properties) },
+                            { QStringLiteral("title"), vela::tray::title(properties) },
                             { QStringLiteral("icon"),
                                 icon.isEmpty() ? QStringLiteral("application-x-executable") : icon },
                         };

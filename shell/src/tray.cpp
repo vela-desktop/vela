@@ -3,6 +3,8 @@
 
 #include "tray.h"
 
+#include "../../common/trayitem.h"
+
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -65,33 +67,6 @@ QImage decodePixmaps(const QVariant& value)
     }
     argument.endArray();
     return best;
-}
-
-// The ToolTip title: (sa(iiay)ss).
-QString tooltipTitle(const QVariant& value)
-{
-    if (!value.canConvert<QDBusArgument>()) {
-        return {};
-    }
-    const QDBusArgument argument = value.value<QDBusArgument>();
-    QString iconName;
-    QString title;
-    QString description;
-    argument.beginStructure();
-    argument >> iconName;
-    argument.beginArray();
-    while (!argument.atEnd()) {
-        int width = 0;
-        int height = 0;
-        QByteArray bytes;
-        argument.beginStructure();
-        argument >> width >> height >> bytes;
-        argument.endStructure();
-    }
-    argument.endArray();
-    argument >> title >> description;
-    argument.endStructure();
-    return title;
 }
 
 // An icon by name, looked up first in the directory the app gives
@@ -382,18 +357,12 @@ void TrayModel::refresh(Item* item)
         }
         const QVariantMap properties = reply.value();
         item->status = properties.value(QStringLiteral("Status")).toString();
-        item->title = tooltipTitle(properties.value(QStringLiteral("ToolTip")));
+        item->title = vela::tray::tooltipTitle(properties.value(QStringLiteral("ToolTip")));
         if (item->title.isEmpty()) {
             item->title = properties.value(QStringLiteral("Title")).toString();
         }
-        // Id is stable across runs ("discord", "steam"); a few apps leave it
-        // empty, their title is the next best thing.
-        item->key = properties.value(QStringLiteral("Id")).toString();
-        if (item->key.isEmpty()) {
-            item->key = properties.value(QStringLiteral("Title")).toString();
-        }
-        if (item->key.isEmpty()) {
-            item->key = item->title;
+        if (item->key.isEmpty() || vela::tray::hasId(properties)) {
+            item->key = vela::tray::key(properties);
         }
         item->itemIsMenu = properties.value(QStringLiteral("ItemIsMenu")).toBool();
         item->menuPath = properties.value(QStringLiteral("Menu")).value<QDBusObjectPath>().path();
