@@ -7,10 +7,10 @@ the taskbar, and app badges. Like the context menus' pass
 ([renderer.md §14](renderer.md#14-context-menus)), Windows is one reference
 among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 
-> **Status:** Design, nothing implemented. **Checked:** 19 November 2026,
-> `b91d9e74`.
+> **Status:** Implemented in PR #299. **Checked:** 19 November 2026.
 >
-> **Remaining:** everything; the order of the work is in §12.
+> **Remaining:** real-session checks with LauncherEntry publishers and multiple
+> physical displays (§14).
 
 ## 1. Goals
 
@@ -96,9 +96,8 @@ A taskbar **shows** a window when it passes both filters:
 - desktop: the window is on the current desktop, or on all of them
   (`workspaceOf` is -1), or the filter is "All desktops";
 - display: the filter is "All taskbars", or the window's display is this
-  taskbar's. A window's display is the one `vela_view_output()` gives (most
-  of its area), the same one snapping and fullscreen use, not every display
-  it touches.
+  taskbar's. A window's display is the one `vela_view_output()` gives,
+  the same one snapping and fullscreen use.
 
 Then, on each taskbar:
 
@@ -429,8 +428,10 @@ One PR, from `origin/main`, one commit per point:
 
 ## 14. Tests
 
-Every behavior is tested from each of its real triggers, and each new test
-is mutation-checked: it fails when the code it guards is broken on purpose.
+The scenarios below are the validation plan. Automated checks cover refused
+Wayland activation, X11 urgency and focus, settings, tray layout, D-Bus
+publisher cleanup, and headless taskbar shortcuts and drag and drop. The
+real-session checks at the end use the listed apps and physical displays.
 
 - **TaskbarView** (C++): the filters, pinned and unpinned apps, sticky
   windows, a window moving desktop and display, attention overriding the

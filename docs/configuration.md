@@ -56,6 +56,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `color-filters-shortcut` | `no` | Allow Super+Ctrl+C to toggle color filters. |
 | `magnifier-step` | `100` | Magnifier step in percent. |
 | `sticky-keys` | `no` | Sticky modifier keys. |
+| `super-number-keys` | `apps` | `apps` opens taskbar apps, `desktops` switches desktops, `off` releases the digit shortcuts. Settings > Personalization > Taskbar. |
 | `animation-effects` | `yes` | Windows and the shell's panels move as they open, close and change. `no`: nothing moves (no rise, slide, scale, flight to the taskbar or magnifier zoom) and what fades takes at most 120 ms ([visual coherence](visual-coherence.md#65-animation-effects-one-switch-d11)). Settings > Accessibility > Visual effects. |
 | `animation-duration` | `100` | How long animations take, in percent of Vela's durations: 50–300 (Settings' slider, in steps of 25). With `animation-effects=no` fades stay at 120 ms. |
 | `tearing` | `yes` | Allow fullscreen apps that explicitly request tearing. |
@@ -139,6 +140,7 @@ Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that su
 | `taskbar-fit`, `taskbar-split-gap`, `taskbar-split-radius`, `taskbar-edge` (1 apps centered, 2 at the left), `taskbar-flush` | A pill that shrinks to the apps and the tray; the tray a pill of its own; the tray at the screen's edge; the apps' pill on the bottom edge. |
 | `taskbar-spacing` | The gap between buttons. |
 | `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size` | The buttons. |
+| `attention` | Taskbar highlight for an app asking for attention. Defaults to the theme mode’s caution color. |
 | `taskbar-stroke` | The bar's hairline (none under the expressive controls). |
 | `startmenu-width`, `startmenu-height` (with the margins: 660 × 732 is Vela's), `startmenu-radius`, `startmenu-surface`, `startmenu-cell-height` | The Start menu's size, corners, tint and rows. |
 | `quicksettings-radius`, `quicksettings-tile-radius`, `quicksettings-surface` | Quick settings' corners and tint. |
@@ -214,6 +216,14 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | Key | Default | Meaning |
 |---|---|---|
 | `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/windowsFrom` | `desktop` | `desktop` shows windows on the current desktop, `all` shows windows on every desktop. |
+| `taskbar/appsOn` | `all` | `window` limits windows to their display's taskbar when taskbars are on all displays. |
+| `taskbar/clickActive` | `previews` | On an active app with several windows, show `previews` or cycle to the `next` window. |
+| `taskbar/attention` | `true` | Highlight apps asking for attention. |
+| `taskbar/trayIcons` | `5` | Visible tray icons, from 0 to 10. Use `-1` for all. |
+| `taskbar/badges` | `true` | Count badges on app buttons. |
+| `taskbar/progress` | `true` | Progress indicators on app buttons. |
+| `taskbar/numberHints` | `true` | Show shortcut numbers while holding Super in the `apps` mode. |
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
