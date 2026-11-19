@@ -1063,33 +1063,54 @@ Window {
         columns: root.vertical ? 1 : -1
         anchors { right: screenSharing.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
-        TaskbarButton {
-            id: overflowButton
-            objectName: "trayOverflowButton"
+        // A slot as long as an icon's, as deep as the tray: the Grid places
+        // its children, so the button centers in the slot.
+        Item {
             visible: root.hiddenTrayIcons.length > 0 || root.draggedTrayKey !== ""
-            width: !visible ? 0 : root.vertical ? root.style.buttonWidth : root.traySlotWidth
-            height: !visible ? 0 : root.vertical ? root.traySlotWidth : root.style.buttonHeight
-            y: root.vertical ? 0 : Math.round((tray.height - height) / 2)
-            active: !!Menus.trayOverflow || (root.draggedTrayKey !== "" && root.trayMarkerX < 0)
-            Accessible.role: Accessible.Button
-            Accessible.name: qsTr("Show hidden icons")
-            Accessible.onPressAction: clicked()
-            onClicked: {
-                if (Menus.trayOverflow) {
-                    Menus.trayOverflow = null
-                } else {
-                    Menus.trayOverflow = { bar: root, center: root.centerOnScreen(overflowButton), screen: root.screenName }
-                }
-            }
-            // Pointing to where the drawer opens, back when it is open.
-            Text {
+            width: !visible ? 0 : root.vertical ? root.width - 2 * root.inset : root.traySlotWidth
+            height: !visible ? 0 : root.vertical ? root.traySlotWidth : tray.height
+
+            TaskbarButton {
+                id: overflowButton
+                objectName: "trayOverflowButton"
                 anchors.centerIn: parent
-                readonly property real towards: root.atTop ? 90 : root.position === "left" ? 0
-                    : root.position === "right" ? 180 : -90
-                rotation: overflowButton.active ? towards + 180 : towards
-                text: "›"
-                color: Theme.text
-                font.pixelSize: 19
+                width: root.vertical ? root.style.buttonWidth : root.traySlotWidth
+                height: root.vertical ? root.traySlotWidth : root.style.buttonHeight
+                active: !!Menus.trayOverflow || (root.draggedTrayKey !== "" && root.trayMarkerX < 0)
+                Accessible.role: Accessible.Button
+                Accessible.name: qsTr("Show hidden icons")
+                Accessible.onPressAction: clicked()
+                onClicked: {
+                    if (Menus.trayOverflow) {
+                        Menus.trayOverflow = null
+                    } else {
+                        Menus.trayOverflow = { bar: root, center: root.centerOnScreen(overflowButton), screen: root.screenName }
+                    }
+                }
+                // Pointing to where the drawer opens, back when it is open.
+                // Turned about its ink, not its line box, so it stays in the
+                // middle whichever way it points.
+                Item {
+                    anchors.centerIn: parent
+                    width: chevronInk.tightBoundingRect.width
+                    height: chevronInk.tightBoundingRect.height
+                    readonly property real towards: root.atTop ? 90 : root.position === "left" ? 0
+                        : root.position === "right" ? 180 : -90
+                    rotation: overflowButton.active ? towards + 180 : towards
+                    TextMetrics {
+                        id: chevronInk
+                        text: chevron.text
+                        font: chevron.font
+                    }
+                    Text {
+                        id: chevron
+                        x: -chevronInk.tightBoundingRect.x
+                        y: -chevronInk.tightBoundingRect.y - baselineOffset
+                        text: "›"
+                        color: Theme.text
+                        font.pixelSize: 19
+                    }
+                }
             }
         }
 
@@ -1474,7 +1495,9 @@ Window {
             : parent.width - width - 12 - (root.floating ? root.sideMargin : 0)
         anchors { top: parent.top; bottom: parent.bottom }
         width: clockColumn.implicitWidth + 16 + (badge.visible ? 22 : 0)
-        height: clockColumn.implicitHeight + 16 // on a vertical bar; a row's spans it
+        // On a vertical bar, with room for the badge above the time; a row's
+        // spans the bar.
+        height: clockColumn.implicitHeight + 16 + (root.vertical && badge.visible ? badge.height + 2 : 0)
 
         property date now: Shell.now()
 
@@ -1505,10 +1528,12 @@ Window {
         // state, not a count, and stays).
         Rectangle {
             id: badge
+            objectName: "clockBadge"
             visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.silenced
-            // Beside the time; at the column's top corner on a vertical bar.
-            x: root.vertical ? parent.width - width + 2 : parent.width - width + 2
-            y: root.vertical ? -2 : Math.round((parent.height - height) / 2)
+            // Beside the time; above it on a vertical bar, whose column has
+            // no room beside.
+            x: root.vertical ? Math.round((parent.width - width) / 2) : parent.width - width + 2
+            y: root.vertical ? 6 : Math.round((parent.height - height) / 2)
             z: 1
             width: 18
             height: 18
@@ -1542,11 +1567,14 @@ Window {
             id: clockColumn
             x: root.vertical ? Math.round((parent.width - width) / 2) : 8
             anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenterOffset: root.vertical && badge.visible ? (badge.height + 2) / 2 : 0
             spacing: 1
 
             Text {
-                anchors.right: root.vertical ? undefined : parent.right
-                anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
+                // To the right on a row, centered on a column: not by
+                // anchors, which do not come back when the bar returns to a
+                // row.
+                x: root.vertical ? Math.round((clockColumn.width - width) / 2) : clockColumn.width - width
                 // 24-hour or 12-hour, with or without the seconds (Settings >
                 // Taskbar). Digits all as wide, so the clock doesn't twitch
                 // every second.
@@ -1562,7 +1590,7 @@ Window {
                 font.features: { "tnum": 1 }
             }
             Text {
-                anchors.horizontalCenter: parent.horizontalCenter
+                x: Math.round((clockColumn.width - width) / 2)
                 visible: root.vertical && clock.hasMeridiem
                 text: visible ? clock.meridiem : ""
                 color: Theme.text
@@ -1570,8 +1598,7 @@ Window {
             }
             Text {
                 objectName: "taskbarDate"
-                anchors.right: root.vertical ? undefined : parent.right
-                anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
+                x: root.vertical ? Math.round((clockColumn.width - width) / 2) : clockColumn.width - width
                 visible: Config.clockDate
                 text: Qt.formatDate(clock.now, root.vertical ? "dd/MM" : "dd/MM/yyyy")
                 color: Theme.text

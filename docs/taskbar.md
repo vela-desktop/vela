@@ -253,8 +253,8 @@ buttons.
 ### 7.4 Numbers on the buttons
 
 While Super is held for 500 ms with no other key, the first ten buttons
-show their number in a small pill at their lower left, like the clock's
-notification count. They go when Super is released or another key is
+show their number in a small pill in a corner away from the screen's
+edge, clear of the open-app indicator and of the app's count. They go when Super is released or another key is
 pressed. A Super tap still opens Start on release, held or not. The
 compositor sends `super-held` and `super-released` to the shell (only with
 `apps`, and only while the taskbar is visible).

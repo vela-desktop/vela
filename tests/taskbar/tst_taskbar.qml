@@ -35,6 +35,7 @@ Item {
             Sharing.active = false
             Audio.microphoneUsers = []
             Notifications.history.count = 0
+            Shell.superHintsHidden()
             Styles.taskbar.floating = false
             Styles.taskbar.fit = false
             Styles.taskbar.edge = 0
@@ -127,6 +128,43 @@ Item {
             Styles.taskbar.margin = data.floating ? 10 : 0
             Styles.taskbar.sideMargin = data.floating ? 100 : 0
             Styles.taskbar.height = data.floating ? 68 : 48
+        }
+
+        // Super's numbers never cover the open-app indicator, on any edge;
+        // a vertical clock's badge sits above the time, inside the bar.
+        function test_numbers_and_badge_stay_clear_data() {
+            return [{ tag: "bottom" }, { tag: "top" }, { tag: "left" }, { tag: "right" }]
+        }
+        function test_numbers_and_badge_stay_clear(data) {
+            addApps(1)
+            Tasks.setProperty(0, "windowActive", true)
+            Notifications.history.count = 3
+            Styles.taskbar.position = data.tag
+            const vertical = Styles.taskbar.vertical
+            const b = createTemporaryObject(barComponent, null, { width: vertical ? 56 : 1200, height: vertical ? 700 : 48 })
+            verify(b)
+            tryVerify(() => b.visible)
+            const button = child(b, "taskButton-0")
+            Shell.primaryScreen = b.screenName
+            Shell.superHeld()
+            const number = findChild(button, "shortcutNumber")
+            const indicator = findChild(button, "indicator")
+            tryCompare(indicator, "opacity", 1)
+            const overlap = (a, c) => a.x < c.x + c.width && c.x < a.x + a.width && a.y < c.y + c.height && c.y < a.y + a.height
+            verify(number.visible)
+            verify(!overlap(number, indicator), JSON.stringify([number.x, number.y, indicator.x, indicator.y, indicator.width, indicator.height]))
+            Shell.superHintsHidden()
+            if (vertical) {
+                const time = child(b, "taskbarTime")
+                const clockItem = child(b, "taskbarClock")
+                const badge = child(b, "clockBadge")
+                tryVerify(() => clockItem.width > 0)
+                verify(badge && badge.visible)
+                verify(badge.x >= 0 && badge.x + badge.width <= clockItem.width,
+                       JSON.stringify(["the badge inside the column", badge.x, badge.width, clockItem.width]))
+                const t = time.mapToItem(clockItem, 0, 0)
+                verify(badge.y + badge.height <= t.y, "the badge above the time")
+            }
         }
 
         // A vertical bar gives AM/PM a line of its own, still on a 12-hour
@@ -288,6 +326,32 @@ Item {
             compare(first.shortcutNumber, "")
             Shell.taskbarAppRequested(9, "new", b.screenName)
             compare(Tasks.launchedRows, [9])
+        }
+
+        // After a round of edges the row is laid out as before: the time to
+        // the right, the drawer's button in the bar's middle (the real
+        // shell's round trip is TaskbarEdges in test_shell.py).
+        function test_back_on_a_row_after_other_edges() {
+            Config.clockDate = true
+            addTray(2)
+            showTray(1)
+            const b = bar(1200)
+            const time = child(b, "taskbarTime")
+            const button = child(b, "trayOverflowButton")
+            const check = () => {
+                compare(time.x + time.width, time.parent.width)
+                const middle = button.mapToItem(b.contentItem, 0, button.height / 2).y
+                compare(middle, b.height / 2)
+            }
+            check()
+            for (const edge of ["left", "right", "top", "bottom"]) {
+                Styles.taskbar.position = edge
+                b.height = Styles.taskbar.vertical ? 700 : 48
+                b.width = Styles.taskbar.vertical ? 56 : 1200
+                verify(waitForRendering(b.contentItem))
+            }
+            tryCompare(time.parent, "width", time.parent.implicitWidth)
+            check()
         }
 
         // Super+N on the app in front with one window: minimized, as a click

@@ -319,6 +319,47 @@ class TrayDrawerOnTheLeft(TrayDrawer):
         self.assertEqual((bar["x"], bar["y"], bar["w"], bar["h"]), (0, 0, 56, 1080))
 
 
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TaskbarEdges(RealShell):
+    """The bar moved to every edge and back to the bottom is laid out as at
+    first (docs/taskbar.md §11): the clock's lines still end on the right."""
+    shell_settings = "[taskbar]\npinned=\nshowDate=true\n"
+
+    def move_to(self, position):
+        path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(path) as file:
+            lines = [line for line in file.read().splitlines() if not line.startswith("position=")]
+        lines.insert(lines.index("[taskbar]") + 1, f"position={position}")
+        with open(path + ".new", "w") as file:
+            file.write("\n".join(lines) + "\n")
+        os.replace(path + ".new", path)
+        vertical = position in ("left", "right")
+        self.vela.wait_for(lambda s: (self.layer(s, "vela-taskbar") or {}).get("w") == (56 if vertical else 1920),
+                           what=f"the taskbar on the {position}")
+        time.sleep(0.5)
+
+    def line_ends(self):
+        """Where the time's and the date's text ends, in the clock's corner."""
+        image = self.vela.pixels()
+        ends = []
+        for top, bottom in ((1080 - 40, 1080 - 26), (1080 - 22, 1080 - 6)):
+            xs = [x for y in range(top, bottom) for x in range(1700, 1915)
+                  if sum(image.at(x, y)) > 600]
+            ends.append(max(xs) if xs else None)
+        return ends
+
+    def test_back_at_the_bottom_after_every_edge(self):
+        self.vela.wait_for(lambda s: self.layer(s, "vela-taskbar"), what="the taskbar")
+        time.sleep(1)
+        time_end, date_end = self.line_ends()
+        self.assertIsNotNone(time_end)
+        self.assertLessEqual(abs(time_end - date_end), 2, "the time ends with the date at first")
+        for position in ("left", "right", "top", "bottom"):
+            self.move_to(position)
+        time_end, date_end = self.line_ends()
+        self.assertLessEqual(abs(time_end - date_end), 2, "the time still ends with the date")
+
+
 class TaskbarDrag(RealShell):
     shell_settings = "[taskbar]\npinned=\nalignment=left\n"
 

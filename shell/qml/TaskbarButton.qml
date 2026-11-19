@@ -148,10 +148,13 @@ Item {
         }
     }
 
+    // Super's number (docs/taskbar.md §7.4): the other corner away from the
+    // screen's edge, clear of the open-app indicator and of the count.
     Rectangle {
+        objectName: "shortcutNumber"
         visible: root.shortcutNumber !== ""
-        x: root.edge === "right" ? parent.width - width - 3 : 3
-        y: root.edge === "top" ? 3 : parent.height - height - 3
+        x: root.edge === "left" ? parent.width - width - 3 : 3
+        y: root.vertical || root.edge === "top" ? parent.height - height - 3 : 3
         width: 16
         height: 16
         radius: height / 2
