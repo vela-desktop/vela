@@ -17,6 +17,7 @@ import argparse
 import itertools
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -207,7 +208,12 @@ def wait_online(org, runner_id, instance_id):
         time.sleep(POLL_INTERVAL)
 
 
-def start(org, label, image, runner_version, max_price, gpu):
+def start(org, label, image, runner_version, runner_sha256, max_price, gpu):
+    # Fail on malformed checksums before allocating paid hardware.
+    if not re.fullmatch(r"[0-9a-f]{64}", runner_sha256):
+        raise ValueError("runner SHA256 must be 64 lowercase hexadecimal digits")
+    if not re.fullmatch(r"ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@sha256:[0-9a-f]{64}", image):
+        raise ValueError("NVIDIA CI image must be pinned to a sha256 digest")
     tried = set()
     for attempt in range(1, ATTEMPTS + 1):
         # Offers come and go: search again for every attempt.
@@ -232,7 +238,8 @@ def start(org, label, image, runner_version, max_price, gpu):
                 "runtype": "args",
                 "args": ["/usr/local/bin/vela-ci-runner"],
                 "env": {"VELA_RUNNER_JITCONFIG": jit["encoded_jit_config"],
-                        "VELA_RUNNER_VERSION": runner_version},
+                        "VELA_RUNNER_VERSION": runner_version,
+                        "VELA_RUNNER_SHA256": runner_sha256},
             })
         except RuntimeError as error:
             print(f"Offer {offer['id']} not rented: {error}")
@@ -264,6 +271,7 @@ def main():
     parser.add_argument("--label", required=True)
     parser.add_argument("--image")
     parser.add_argument("--runner-version")
+    parser.add_argument("--runner-sha256")
     parser.add_argument("--max-price", type=float, default=0.12)
     parser.add_argument("--gpu", default="", help="Restrict the rental to one RTX GPU model instead of automatic ranking")
     args = parser.parse_args()
@@ -271,10 +279,11 @@ def main():
         parser.error(f"--gpu must be one of: {', '.join(GPUS)}")
     if args.command == "stop":
         stop(args.org, args.label)
-    elif not args.image or not args.runner_version:
-        parser.error("start needs --image and --runner-version")
+    elif not args.image or not args.runner_version or not args.runner_sha256:
+        parser.error("start needs --image, --runner-version and --runner-sha256")
     else:
-        start(args.org, args.label, args.image, args.runner_version, args.max_price, args.gpu or None)
+        start(args.org, args.label, args.image, args.runner_version,
+              args.runner_sha256, args.max_price, args.gpu or None)
 
 
 if __name__ == "__main__":
