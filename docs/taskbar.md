@@ -2,15 +2,16 @@
 
 Design of the second pass on Vela's taskbar: which windows a button counts,
 how an app asks for attention, what a click does on an app with several
-windows, Super+1…9, the notification area's overflow, drag and drop onto
-the taskbar, and app badges. Like the context menus' pass
+windows, Super+1…9, the notification area's drawer, drag and drop onto
+the taskbar, app badges, and the taskbar on any edge of the screen. Like the context menus' pass
 ([renderer.md §14](renderer.md#14-context-menus)), Windows is one reference
 among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Implemented in PR #299. **Checked:** 19 November 2026.
 >
 > **Remaining:** real-session checks with LauncherEntry publishers and multiple
-> physical displays (§14).
+> physical displays (§15); the drawer chosen icon by icon (§8) and the taskbar
+> on any edge (§11) are in progress.
 
 ## 1. Goals
 
@@ -22,8 +23,8 @@ among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 3. **The keyboard reaches every app.** Super+1…9 and Super+0, as asked in
    [#214](https://github.com/vela-desktop/vela/issues/214) and in a comment
    on [#174](https://github.com/vela-desktop/vela/issues/174).
-4. **The tray has an end.** A busy notification area folds behind a button
-   instead of scrolling.
+4. **The tray has an end.** A busy notification area folds into a drawer
+   behind a button instead of scrolling, and the user picks what stays out.
 5. **The user decides.** Every behavior added here has its setting, with a
    default that suits most people.
 
@@ -35,11 +36,12 @@ among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 | 2 | A window whose activation is refused, or that asks for attention, highlights its button. On by default, can be turned off. |
 | 3 | Caffeine stays as it is: an icon of its own, always there (#83 put it there on purpose). |
 | 4 | A click on the app in front, when it has several windows, opens its previews instead of switching blindly to the next window. The old behavior stays as a choice. |
-| 5 | Settings > Personalization > Taskbar is reorganized around these settings (§11). |
+| 5 | Settings > Personalization > Taskbar is reorganized around these settings (§12). |
 | 6 | Super+1…9 and Super+0 open the apps on the taskbar, with Shift and Alt variants; they can instead switch virtual desktops, or be turned off; numbers show on the buttons while Super is held. |
-| 7 | The notification area shows N icons (a setting, 0 to 10 or all), the others behind a "^" button. There is no choice icon by icon. |
+| 7 | Each notification area icon is either on the taskbar or in a drawer behind a "^" button, chosen icon by icon: by dragging it, from its menu or in Settings. New icons go in the drawer. |
 | 8 | A file dragged over an app's button brings its window forward, to drop the file into it; an app dragged onto the taskbar is pinned there. |
 | 9 | Counts and progress that apps publish over `com.canonical.Unity.LauncherEntry` show on their buttons; each can be turned off. |
+| 10 | The taskbar can sit on any edge of the screen: bottom (the default), top, left or right. One setting for every display. |
 
 Prior work reused: Lowell137's [#67](https://github.com/vela-desktop/vela/pull/67)
 (tray overflow, icons asking for attention stay out of it) and
@@ -260,31 +262,57 @@ compositor sends `super-held` and `super-released` to the shell (only with
 "Show numbers while holding Super" (`taskbar/numberHints`), on by default,
 only with `apps`.
 
-## 8. The notification area's overflow
+## 8. The notification area's drawer
 
 ### 8.1 Rules
 
-- "Icons shown on the taskbar": 0 to 10, or All (`taskbar/trayIcons`,
-  -1 for all; default 5).
-- The icons keep the tray's order, the order the apps registered in. The
-  first N stay on the taskbar, the others go behind "^".
-- An icon whose StatusNotifierItem status is `NeedsAttention` is on the
-  taskbar while it asks, before the others, without counting towards N.
-  `Passive` icons (the app says they may hide) are always behind "^", and
-  don't count either. KDE does both.
-- "^" sits left of the tray icons, only when something is behind it.
-- When the bar is short of room, fewer icons stay out, before the app
-  buttons start paging. This **replaces the tray's scrolling** from #266.
-  App buttons keep their paging.
+- Each icon is **on the taskbar** or **in the drawer**, behind "^". The
+  choice is the user's, icon by icon, and lasts across sessions:
+  `taskbar/trayShown` lists the icons on the taskbar, in their order, by
+  their StatusNotifierItem `Id` (the `Title` when an app has none). It
+  replaces the count of icons (`taskbar/trayIcons`) of the first pass.
+- An icon not in the list is in the drawer. That includes every **new**
+  icon: an app that starts for the first time doesn't take room on the
+  taskbar until the user puts it there. The drawer keeps the tray's order,
+  the order the apps registered in.
+- An icon whose status is `NeedsAttention` is on the taskbar while it asks,
+  after the chosen ones, wherever it is set to be. A `Passive` icon (the app
+  says it has nothing to show) is in the drawer while passive, even if
+  chosen: "on the taskbar" means "on the taskbar when relevant", as KDE's
+  "Shown when relevant".
+- "^" sits before the tray icons, only when the drawer has something or
+  while an icon is being dragged.
+- When the bar is short of room, the last chosen icons go in the drawer for
+  as long as it lasts, before the app buttons start paging. This **replaces
+  the tray's scrolling** from #266. App buttons keep their paging.
 - Only the main display's taskbar has the notification area, as now.
 
-### 8.2 The flyout
+### 8.2 Moving an icon
 
-A panel above "^", like the previews (visual coherence's `flyout`,
-[§6.9](visual-coherence.md)). It holds a grid of icons, four columns. Each
-icon behaves as on the taskbar: click, middle click, right click for the
-app's menu, tooltip. Choosing an entry or activating an icon closes it, as
-do a click outside and Esc. Arrows and Enter work in it.
+- **Dragging.** An icon dragged from the taskbar onto "^" (or onto the open
+  drawer) goes in the drawer. One dragged from the drawer onto the taskbar
+  comes out, where it is dropped: a marker shows the place. Dragged along
+  the taskbar, it changes place among the chosen icons. A drag needs the
+  same 8 pixels as a button's; a short press is still a click.
+- **The icon's menu.** After the app's own entries, the shell adds a
+  separator and **Hide in the drawer** or **Show on the taskbar**. An app
+  without a menu of its own gets a menu with only that entry on right
+  click.
+- **Settings.** Settings > Personalization > Taskbar > Notification area
+  lists the icons of the apps running now, with a switch each (on: on the
+  taskbar). It reads them from the StatusNotifierWatcher the shell owns,
+  over D-Bus, and says that the icons of apps not running show once they
+  start. Settings and the shell write the same key; the shell follows its
+  changes at once.
+
+### 8.3 The drawer
+
+A panel next to "^", like the previews (visual coherence's `flyout`,
+[§6.9](visual-coherence.md)). It holds a grid of icons, four columns, as
+tall as the screen allows and scrolling past it. Each icon behaves as on
+the taskbar: click, middle click, right click for the app's menu, tooltip.
+Choosing an entry or activating an icon closes it, as do a click outside
+and Esc. Arrows and Enter work in it, and the selected icon stays in view.
 
 ## 9. Drag and drop onto the taskbar
 
@@ -361,12 +389,66 @@ behavior decides.
 (`taskbar/progress`), both on by default. There is no choice app by app
 (Windows has none; macOS's is in its notifications).
 
-## 11. Settings > Personalization > Taskbar
+## 11. Position on the screen
+
+### 11.1 The setting
+
+"Taskbar position": Bottom, Top, Left or Right (`taskbar/position`,
+default `bottom`), in Taskbar behaviors. It applies to the taskbar of every
+display. KDE and COSMIC let each panel pick its edge, macOS' Dock has
+three; one choice for every display keeps a single picture of where things
+are, and a taskbar per display is already a choice of its own.
+
+### 11.2 Layout
+
+- **Top** mirrors bottom: the same row, the hairline on the edge facing the
+  windows, panels opening downwards.
+- **Left and right**: a column as wide as the taskbar is tall (48, a style's
+  `taskbar-height`), never less than 56 so the clock fits. From the top:
+  Start, Task View, the app buttons (paged up and down when they don't
+  fit); at the bottom: file transfers, the notification area (one icon per
+  row, "^" above them), screen sharing, microphone, Caffeine, the system
+  icons (one under the other), the clock, the show-desktop strip (8 high,
+  at the bottom end).
+- "Alignment" keeps its two values: Center centers the apps along the bar;
+  Left puts them at its start, which is the top on a vertical bar. Settings
+  names it **Top** there.
+- The clock on a vertical bar: the time on one line (hours and minutes; the
+  seconds or AM/PM on a second line when shown), the date as day and month
+  under it.
+- A button's dash, its progress track and the attention highlight sit on
+  the side of the screen's edge: under the icon at the bottom, above it at
+  the top, left of it on a left bar, right of it on a right bar. The count
+  badge stays at the icon's corner away from the edge.
+- Floating styles keep their margins and radius on every edge. On the left
+  and right, a pill that fits its apps (`taskbar-fit`), a split tray
+  (`taskbar-split-gap`) or the tray at the screen's edge (`taskbar-edge`)
+  becomes one pill along the whole edge: those layouts are drawn for a row.
+
+### 11.3 What opens from it
+
+Every panel opens from the taskbar's edge, towards the middle of the
+screen:
+
+| Panel | Bottom | Top | Left | Right |
+|---|---|---|---|---|
+| Start | above Start (centered or at the left, as now) | below Start | right of the bar, at the top | left of the bar, at the top |
+| Quick settings, notification center, clipboard history | bottom right | top right | bottom left | bottom right |
+| Notification popups | bottom right | top right | bottom left | bottom right |
+| Previews, tooltips, the drawer, jump lists and the taskbar's menus | above the button | below it | right of it | left of it |
+| Volume indicator | above the bar, centered | below it | bottom center | bottom center |
+
+They slide in from the bar's side. The desktop icons and Task View keep out
+of the bar's space as now; the compositor already reserves an exclusive
+zone on any edge, so maximized and snapped windows follow.
+
+## 12. Settings > Personalization > Taskbar
 
 | Card | Settings |
 |---|---|
-| Taskbar items | Task view; **Icons shown on the taskbar** (0–10, All) |
-| Taskbar behaviors | Alignment; **Show windows from**; Show the taskbar on all displays, with **Show apps on** under it (disabled while off); **When I click the app in front with several windows** (Show its windows / Switch to the next one); Show desktop from taskbar corner; End task |
+| Taskbar items | Task view |
+| Notification area | **The icons of the running apps**, a switch each (§8.2) |
+| Taskbar behaviors | **Taskbar position** (Bottom, Top, Left, Right); Alignment (Center, Left or Top); **Show windows from**; Show the taskbar on all displays, with **Show apps on** under it (disabled while off); **When I click the app in front with several windows** (Show its windows / Switch to the next one); Show desktop from taskbar corner; End task |
 | Badges and attention | **Flash apps that need attention**; **Show badges on apps**; **Show progress on apps** |
 | Keyboard | **Super+1…9** (Taskbar apps / Virtual desktops / Off); **Show numbers while holding Super** (disabled unless Taskbar apps) |
 | Clock | Show the date; Show seconds |
@@ -381,7 +463,8 @@ New keys (`vela-shell.conf`, unless said):
 | `taskbar/appsOn` | `all` | `all` or `window` (§4) |
 | `taskbar/clickActive` | `previews` | `previews` or `next` (§6) |
 | `taskbar/attention` | `true` | Highlight apps asking for attention (§5) |
-| `taskbar/trayIcons` | `5` | Icons shown on the taskbar, 0–10; `-1` all (§8) |
+| `taskbar/trayShown` | empty | The tray icons on the taskbar, in order (§8) |
+| `taskbar/position` | `bottom` | `bottom`, `top`, `left` or `right` (§11) |
 | `taskbar/badges` | `true` | Counts on buttons (§10) |
 | `taskbar/progress` | `true` | Progress on buttons (§10) |
 | `taskbar/numberHints` | `true` | Numbers while holding Super (§7.4) |
@@ -390,7 +473,7 @@ New keys (`vela-shell.conf`, unless said):
 Unknown values fall back to the default. Settings writes them at once, and
 keeps the saved value shown when a write fails (#218).
 
-## 12. Stages
+## 13. Stages
 
 One PR, from `origin/main`, one commit per point:
 
@@ -415,19 +498,23 @@ One PR, from `origin/main`, one commit per point:
     (the tray's scrolling, links here), [features.md](features.md),
     [shortcuts.md](shortcuts.md), [configuration.md](configuration.md),
     `CHANGELOG.md`.
+11. The drawer chosen icon by icon: `trayShown`, dragging, the menu entry,
+    the Settings list (point 7, second pass).
+12. The taskbar on any edge: the setting, the bar's layout, the panels
+    (point 10).
 
-## 13. Not in scope
+## 14. Not in scope
 
-- Auto-hide, a vertical or top taskbar, labeled or uncombined buttons:
-  the [roadmap](roadmap.md)'s later work.
+- Auto-hide, labeled or uncombined buttons: the [roadmap](roadmap.md)'s
+  later work.
+- A different edge on each display (§11.1).
 - Super+T and Super+B to reach the taskbar or the tray with the keyboard.
-- Choosing tray icons one by one, or dragging them in and out of "^".
 - Badges app by app.
 - Opening a dropped file with the app it is dropped on, or pinning it to
   the app's jump list.
 - Caffeine (§2, decision 3), Task View, Alt+Tab.
 
-## 14. Tests
+## 15. Tests
 
 The scenarios below are the validation plan. Automated checks cover refused
 Wayland activation, X11 urgency and focus, settings, tray layout, D-Bus
@@ -444,8 +531,9 @@ real-session checks at the end use the listed apps and physical displays.
   and not after a Super tap.
 - **QML** (`tst_*`): the attention pulse and its stillness without
   animation or with Do not disturb; previews kept open after a click and
-  their keyboard; number hints; the tray's split by N, `Passive` and
-  `NeedsAttention`, and shrinking for room; the badge's "99+" and the
+  their keyboard; number hints; the tray's split by `trayShown`, `Passive`
+  and `NeedsAttention`, and shrinking for room; an icon dragged into and out
+  of the drawer; the bar's layout and the panels' sides on each edge; the badge's "99+" and the
   progress track.
 - **LauncherEntry** (C++): payload parsing, an app's sender leaving the
   bus, the short-name match.
@@ -454,7 +542,8 @@ real-session checks at the end use the listed apps and physical displays.
 - **Functional, headless** (`functional-shell`): Super+N on a pinned app,
   a running one and one with several windows; Super+Shift+N; a drag from
   Files over a button to the window; an app dragged from Start to the bar;
-  a fake LauncherEntry sender; an X11 client asking for attention.
+  a fake LauncherEntry sender; an X11 client asking for attention; the
+  reserved space and a maximized window with the bar on each edge.
 - **By hand, in a real session**: Telegram, Discord, Thunderbird, Steam and
   Firefox badges (§10.1); a chat app asking for attention over a
   fullscreen game; two displays.
