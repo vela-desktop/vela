@@ -87,6 +87,9 @@ void Config::watchPicture()
 bool Config::setTaskbarTrayShown(const QStringList& keys)
 {
     QStringList cleaned = keys;
+    for (QString& key : cleaned) {
+        key = key.trimmed();
+    }
     cleaned.removeAll(QString());
     cleaned.removeDuplicates();
     if (cleaned == m_taskbarTrayShown) {
