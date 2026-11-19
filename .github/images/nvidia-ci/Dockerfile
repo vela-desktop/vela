@@ -8,27 +8,25 @@
 FROM docker.io/library/archlinux:base-devel
 
 RUN pacman -Syu --noconfirm --needed \
-        git curl sudo \
+        git curl \
     # Build dependencies, as in docs/development.md.
         cmake ninja pkgconf wlroots0.20 wayland wayland-protocols \
         libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
         vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
         pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
-        pipewire wireplumber systemd-libs \
+        pipewire pipewire-audio wireplumber systemd-libs \
     # What the GPU suites run against (docs/ci-quality.md).
         breeze-icons noto-fonts python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop \
     # NVIDIA's Vulkan ICD needs libXext and libglvnd, and its EGL the external
     # platforms nvidia-utils depends on (Qt's Wayland windows need egl-wayland2
     # on recent drivers); the driver itself comes from the host.
         vulkan-tools vulkan-validation-layers libxext libglvnd egl-wayland egl-wayland2 egl-gbm egl-x11 \
-    # The workflow's options: coverage and the promo smoke test.
+    # pipewire-audio (not pipewire) supplies pw-cat/pw-record on Arch.\n    # The workflow's options: coverage and the promo smoke test.
         gcovr ffmpeg util-linux \
     # The GitHub Actions runner (.NET): its install script doesn't know pacman.
         icu krb5 openssl lttng-ust \
     && pacman -Scc --noconfirm
 
-RUN useradd --create-home --shell /bin/bash runner \
-    && echo 'runner ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/runner \
-    && chmod 440 /etc/sudoers.d/runner
+RUN useradd --create-home --shell /bin/bash runner
 COPY --chmod=755 vela-ci-runner /usr/local/bin/vela-ci-runner
 CMD ["/usr/local/bin/vela-ci-runner"]
