@@ -7,10 +7,11 @@ the taskbar, app badges, and the taskbar on any edge of the screen. Like the con
 ([renderer.md §14](renderer.md#14-context-menus)), Windows is one reference
 among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 
-> **Status:** Implemented in PR #299. **Checked:** 19 November 2026.
+> **Status:** In progress in PR #299: implemented, and the automated checks of
+> §15 pass (19 November 2026).
 >
-> **Remaining:** real-session checks with LauncherEntry publishers and multiple
-> physical displays (§15).
+> **Remaining:** the real-session checks of §15, with LauncherEntry publishers
+> and multiple physical displays.
 
 ## 1. Goals
 

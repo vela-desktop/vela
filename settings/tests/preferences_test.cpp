@@ -147,8 +147,9 @@ class PreferencesTest : public QObject {
 private slots:
     void taskbarSettings()
     {
-        write("[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayShown=discord,,"
-              "discord\nattention=unknown\n");
+        write("[appearance]\nappTheme=dark\n"
+              "[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayShown=discord,,discord\n"
+              "attention=unknown\n");
         Preferences prefs;
         QCOMPARE(prefs.taskbarWindowsFrom(), QStringLiteral("desktop"));
         QCOMPARE(prefs.taskbarPosition(), QStringLiteral("bottom"));

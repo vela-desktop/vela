@@ -174,8 +174,14 @@ class TaskbarShortcuts(RealShell):
                         "move", tx, ty, "sleep", "150", "up", "keyup", "super")
         self.vela.wait_for(lambda s: s.window(second)["output"] == "HEADLESS-2",
                            what="the second app moved to the second display")
+        # A third app focused on the second display: Super+1 is that
+        # display's first button, the second app, not the first display's.
+        third = self.vela.open_window(app_id="taskbar-third-display")
+        self.vela.wait_for(lambda s: s["focused"] == third and s.window(third)["output"] == "HEADLESS-2",
+                           what="the third app focused on the second display")
         self.vela.keys("super+1")
-        self.assertEqual(self.vela.state()["focused"], second)
+        self.vela.wait_for(lambda s: s["focused"] == second,
+                           what="the second display's first app activated")
         self.vela.command(f"window {first} activate")
         self.vela.wait_for(lambda s: s["focused"] == first, what="the first display focused")
         self.shell_command("taskbar-app 1 activate HEADLESS-2")
@@ -186,9 +192,15 @@ class TaskbarShortcuts(RealShell):
         first = self.vela.open_window(app_id="taskbar-desktops")
         self.vela.command("workspace new switch")
         second = self.vela.open_window(app_id="taskbar-desktops")
+        # Another app in front: the first button has two windows, one of them
+        # on this desktop, which Super+1 brings back without a chooser.
+        other = self.vela.open_window(app_id="taskbar-desktops-other")
+        self.vela.wait_for(lambda s: s["focused"] == other, what="the other app focused")
         self.vela.keys("super+1")
-        self.assertEqual(self.vela.state()["focused"], second)
-        self.assertFalse(self.mapped(self.vela.state(), "vela-taskbar-preview"))
+        self.vela.wait_for(lambda s: s["focused"] == second, what="the window on this desktop activated")
+        for _ in range(5):
+            time.sleep(0.1)
+            self.assertFalse(self.mapped(self.vela.state(), "vela-taskbar-preview"))
         self.assertNotEqual(first, second)
 
 class TaskbarAllDesktops(RealShell):
