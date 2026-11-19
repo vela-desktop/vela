@@ -1,65 +1,65 @@
 {
-  "collected_at": "2026-11-18T11:42:42+00:00",
+  "collected_at": "2026-11-19T11:38:28+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 503,
+      "count": 437,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 242
+      "uniques": 197
     },
     {
-      "count": 111,
+      "count": 107,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 24
+      "uniques": 20
     },
     {
-      "count": 53,
+      "count": 46,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 10
+      "uniques": 7
     },
     {
-      "count": 35,
+      "count": 32,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 10
+      "uniques": 8
     },
     {
-      "count": 17,
+      "count": 14,
       "path": "/vela-desktop/vela/releases",
       "title": "/releases",
-      "uniques": 13
+      "uniques": 11
     },
     {
-      "count": 16,
+      "count": 12,
       "path": "/vela-desktop/vela/blob/main/docs/installation.md",
       "title": "/blob/main/docs/installation.md",
-      "uniques": 13
+      "uniques": 9
     },
     {
-      "count": 15,
+      "count": 11,
       "path": "/vela-desktop/vela/tree/main",
       "title": "/tree/main",
       "uniques": 7
     },
     {
-      "count": 14,
-      "path": "/vela-desktop/vela/issues/50",
-      "title": "/issues/50",
+      "count": 8,
+      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
+      "title": "/releases/tag/v0.1.2",
       "uniques": 7
     },
     {
-      "count": 12,
+      "count": 8,
+      "path": "/vela-desktop/vela/blob/main/docs/hardware.md",
+      "title": "/blob/main/docs/hardware.md",
+      "uniques": 6
+    },
+    {
+      "count": 8,
       "path": "/vela-desktop/vela/blob/main/docs/development.md",
       "title": "/blob/main/docs/development.md",
-      "uniques": 7
-    },
-    {
-      "count": 12,
-      "path": "/vela-desktop/vela/tree/main/compositor",
-      "title": "/tree/main/compositor",
       "uniques": 5
     }
   ],
