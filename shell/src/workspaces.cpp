@@ -49,6 +49,11 @@ void Workspaces::update(const QByteArray& json)
         m_names << name.toString();
     }
     m_windows = state[QStringLiteral("windows")].toObject().toVariantMap();
+    m_outputs = state[QStringLiteral("outputs")].toObject().toVariantMap();
+    m_attention.clear();
+    for (const QJsonValue& id : state[QStringLiteral("attention")].toArray()) {
+        m_attention.insert(id.toString());
+    }
     m_stickyApps.clear();
     for (const QJsonValue& app : state[QStringLiteral("stickyApps")].toArray()) {
         m_stickyApps << app.toString();

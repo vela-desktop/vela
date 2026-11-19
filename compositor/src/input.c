@@ -182,6 +182,26 @@ static void load_pointer_settings(struct vela_input *input)
     vela_config_finish(&settings);
 }
 
+static void load_super_numbers(struct vela_input *input, const struct vela_config *settings)
+{
+    const char *mode = vela_config_get(settings, "super-number-keys", "apps");
+    input->super_numbers = strcmp(mode, "desktops") == 0 ? VELA_SUPER_NUMBERS_DESKTOPS
+        : strcmp(mode, "off") == 0                       ? VELA_SUPER_NUMBERS_OFF
+                                                         : VELA_SUPER_NUMBERS_APPS;
+    vela_input_hide_super_hints(input);
+}
+
+void vela_input_hide_super_hints(struct vela_input *input)
+{
+    if (input->super_timer) {
+        wl_event_source_timer_update(input->super_timer, 0);
+    }
+    if (input->super_hints_visible) {
+        vela_shell_send(input->server, "super-hints-hidden");
+        input->super_hints_visible = false;
+    }
+}
+
 void vela_input_reload(struct vela_input *input)
 {
     struct vela_config settings;
@@ -190,6 +210,7 @@ void vela_input_reload(struct vela_input *input)
     wl_list_for_each (keyboard, &input->keyboards, link) {
         vela_keyboard_apply_settings(keyboard, &settings);
     }
+    load_super_numbers(input, &settings);
     vela_config_finish(&settings);
     struct wlr_seat *seat = input->server->seat;
     if (seat->keyboard_state.keyboard) {
@@ -839,6 +860,10 @@ struct vela_input *vela_input_create(struct vela_server *server)
         struct wlr_virtual_keyboard_manager_v1 *keyboards = VELA_MUST(wlr_virtual_keyboard_manager_v1_create(display));
         vela_listen(&keyboards->events.new_virtual_keyboard, &input->new_virtual_keyboard, handle_new_virtual_keyboard);
     }
+    struct vela_config settings;
+    vela_config_read(&settings);
+    load_super_numbers(input, &settings);
+    vela_config_finish(&settings);
     return input;
 }
 
@@ -858,6 +883,9 @@ void vela_input_destroy(struct vela_input *input)
         pointer_destroy(pointer);
     }
     drag_icon_destroy(input->drag_icon);
+    if (input->super_timer) {
+        wl_event_source_remove(input->super_timer);
+    }
     if (input->paste_timer) {
         wl_event_source_remove(input->paste_timer);
     }

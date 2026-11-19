@@ -70,6 +70,8 @@ qt_add_executable(vela-shell
     src/brightness.h
     src/transfermonitor.cpp
     src/transfermonitor.h
+    src/launcherentry.cpp
+    src/launcherentry.h
     src/taskbarmodel.cpp
     src/tray.cpp
     src/taskbarmodel.h
@@ -93,7 +95,8 @@ qt_add_resources(vela-shell "images"
 
 # The list of open windows, published by the compositor.
 qt_generate_wayland_protocol_client_sources(vela-shell
-    FILES ${PROJECT_SOURCE_DIR}/protocols/wlr-foreign-toplevel-management-unstable-v1.xml)
+    FILES ${PROJECT_SOURCE_DIR}/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
+          ${PROJECT_SOURCE_DIR}/protocols/vela-toplevel-identifier-v1.xml)
 
 # Window previews (Alt+Tab): ext-* protocols, used through libwayland directly
 # (see windowcapture.cpp).
@@ -158,6 +161,8 @@ set(VELA_QML_FILES
     qml/SnapLayouts.qml
     qml/SnapAssist.qml
     qml/TaskbarPreview.qml
+    qml/TrayIcon.qml
+    qml/TrayOverflow.qml
     qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
@@ -214,6 +219,14 @@ if(VELA_BUILD_TOOLS)
             COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-transfer-monitor-test>)
     else()
         add_test(NAME shell-transfers COMMAND vela-transfer-monitor-test)
+    endif()
+
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        qt_add_executable(vela-launcherentry-test tests/launcherentry_test.cpp src/launcherentry.cpp src/launcherentry.h)
+        target_include_directories(vela-launcherentry-test PRIVATE src)
+        target_compile_options(vela-launcherentry-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-launcherentry-test PRIVATE Qt6::DBus Qt6::Test)
+        add_test(NAME shell-launcherentry COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-launcherentry-test>)
     endif()
 
     # Battery notifications (docs/battery-notifications.md §9): the policy
@@ -317,7 +330,7 @@ if(VELA_BUILD_TOOLS)
         set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name} QT_QML_SINGLETON_TYPE TRUE)
     endforeach()
     qt_add_qml_module(vela-taskbar-test URI Vela.Taskbar.Test VERSION 1.0
-        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml
+        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml qml/TrayIcon.qml qml/TrayOverflow.qml
         qml/NotificationCenter.qml qml/NotificationList.qml qml/SmallButton.qml qml/ShadowRoom.qml ${taskbar_fakes})
     add_test(NAME shell-taskbar COMMAND vela-taskbar-test)
     add_test(NAME shell-taskbar-no-effects COMMAND vela-taskbar-test)

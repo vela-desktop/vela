@@ -39,6 +39,10 @@ class RealShell(unittest.TestCase):
     wallpaper = GRADIENT
     compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
     shell_env = {} # more for the shell (a stopped clock, test_personalization.py)
+    shell_settings = ""
+
+    def prepare_shell(self):
+        pass
 
     def setUp(self):
         # Nothing it would activate may reach the session these tests run in.
@@ -57,7 +61,12 @@ class RealShell(unittest.TestCase):
         os.makedirs(desktop)
         os.makedirs(self.vela.env["XDG_CONFIG_HOME"], exist_ok=True)
         # Config watches this directory for atomic preference updates.
-        os.makedirs(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela"), exist_ok=True)
+        shell_config_dir = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela")
+        os.makedirs(shell_config_dir, exist_ok=True)
+        if self.shell_settings:
+            with open(os.path.join(shell_config_dir, "vela-shell.conf"), "w") as file:
+                file.write(self.shell_settings)
+        self.prepare_shell()
         with open(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "user-dirs.dirs"), "w") as file:
             file.write(f'XDG_PICTURES_DIR="{pictures}"\nXDG_DESKTOP_DIR="{desktop}"\n')
         wallpaper = os.path.join(self.vela.directory, "wallpaper.svg")
@@ -124,6 +133,119 @@ class RealShell(unittest.TestCase):
         with socket.socket(socket.AF_UNIX) as connection:
             connection.connect(path)
             connection.sendall(line.encode() + b"\n")
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TaskbarShortcuts(RealShell):
+    shell_settings = "[taskbar]\npinned=\nappsOn=window\n"
+
+    def test_taskbar_number_activates_and_cycles_app_windows(self):
+        first = self.vela.open_window(app_id="taskbar-shortcuts")
+        second = self.vela.open_window(app_id="taskbar-shortcuts")
+        self.assertEqual(self.vela.state()["focused"], second)
+        with self.input_session() as send:
+            send("keydown", "super", "key", "1")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                               what="the taskbar window chooser")
+            send("keyup", "super")
+            self.vela.wait_for(lambda s: s["focused"] == first,
+                               what="the chosen taskbar window")
+            send("keydown", "super", "key", "1")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                               what="the reopened taskbar window chooser")
+            send("key", "1", "keyup", "super")
+            self.vela.wait_for(lambda s: s["focused"] == first and not self.mapped(s, "vela-taskbar-preview"),
+                               what="the next taskbar result")
+
+    def test_taskbar_number_uses_the_focused_windows_display(self):
+        first = self.vela.open_window(app_id="taskbar-first-display")
+        second = self.vela.open_window(app_id="taskbar-second-display")
+        self.vela.command("test-output add 1280x800")
+        state = self.vela.wait_for(
+            lambda s: sum(layer["namespace"] == "vela-taskbar" and layer["mapped"] for layer in s["layers"]) == 2,
+            what="both taskbars mapped")
+        extra = next(output for output in state["outputs"] if output["name"] == "HEADLESS-2")
+        window = state.window(second)
+        x, y = window["x"] + 50, window["y"] + 50
+        tx, ty = extra["x"] + extra["w"] // 2, extra["y"] + 250
+        self.vela.input("move", x, y, "keydown", "super", "down", "sleep", "50",
+                        "move", tx, ty, "sleep", "150", "up", "keyup", "super")
+        self.vela.wait_for(lambda s: s.window(second)["output"] == "HEADLESS-2",
+                           what="the second app moved to the second display")
+        self.vela.keys("super+1")
+        self.assertEqual(self.vela.state()["focused"], second)
+        self.vela.command(f"window {first} activate")
+        self.vela.wait_for(lambda s: s["focused"] == first, what="the first display focused")
+        self.shell_command("taskbar-app 1 activate HEADLESS-2")
+        self.vela.wait_for(lambda s: s["focused"] == second,
+                           what="the only app on the second taskbar activated")
+
+    def test_taskbar_number_falls_back_to_the_only_shown_window(self):
+        first = self.vela.open_window(app_id="taskbar-desktops")
+        self.vela.command("workspace new switch")
+        second = self.vela.open_window(app_id="taskbar-desktops")
+        self.vela.keys("super+1")
+        self.assertEqual(self.vela.state()["focused"], second)
+        self.assertFalse(self.mapped(self.vela.state(), "vela-taskbar-preview"))
+        self.assertNotEqual(first, second)
+
+class TaskbarDrag(RealShell):
+    shell_settings = "[taskbar]\npinned=\nalignment=left\n"
+
+    def prepare_shell(self):
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications)
+        with open(os.path.join(applications, "vela-test-taskbar.desktop"), "w") as file:
+            file.write("[Desktop Entry]\nType=Application\nName=TaskbarDragFixture\n"
+                       f"Exec={tool('vela-pattern')} --app-id vela-test-taskbar 400 300\n"
+                       "Icon=application-x-executable\n")
+
+    def test_taskbar_drag_raises_a_window_and_rejects_the_file_drop(self):
+        source = os.path.join(self.vela.directory, "Desktop", "drag-source.txt")
+        with open(source, "w") as file:
+            file.write("Keep this file on the desktop.")
+        target = self.vela.open_window(app_id="taskbar-drop-target")
+        other = self.vela.open_window(app_id="taskbar-drop-other")
+        self.assertEqual(self.vela.state().windows[0]["id"], other)
+        self.vela.wait_still(target)
+        # The recycle bin is the first desktop cell; the file is the second.
+        taskbar = self.layer(self.vela.state(), "vela-taskbar")
+        mark = len(self.vela.log_text())
+        with self.input_session() as send:
+            send("move", 45, 127, "down", "sleep", "100", "move", 74, 134, "sleep", "200",
+                 "move", taskbar["x"] + 120, taskbar["y"] + 24)
+            # The Wayland drag keeps the keyboard grab. Test stacking while
+            # the button is held, so releasing it cannot explain the raise.
+            self.vela.wait_for(lambda s: s.windows[0]["id"] == target,
+                               what="the dragged file raises its hovered app")
+            send("up")
+        self.vela.wait_for(lambda _: re.search(r"wl_data_source#\d+\.destroy", self.vela.log_text()[mark:]),
+                           read_state=False, what="the source drag ended")
+        self.assertNotRegex(self.vela.log_text()[mark:], r"wl_data_offer#\d+\.finish")
+        self.assertTrue(os.path.isfile(source))
+
+    def test_taskbar_drag_pins_a_start_tile(self):
+        with self.input_session() as send:
+            send("key", "super")
+            state = self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-start-menu",
+                                       what="focused Start menu")
+            start = self.layer(state, "vela-start-menu")
+            taskbar = self.layer(state, "vela-taskbar")
+            x, y = start["x"] + 86, start["y"] + 165
+            send("type", "TaskbarDragFixture", "sleep", "400",
+                 "move", x, y, "down", "sleep", "100",
+                 "move", x + 30, y + 10, "sleep", "200",
+                 "move", taskbar["x"] + 160, taskbar["y"] + 24, "sleep", "300", "up")
+            path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+
+            def pinned(_):
+                with open(path) as file:
+                    return "pinned=vela-test-taskbar.desktop" in file.read()
+
+            self.vela.wait_for(pinned, read_state=False, what="Start tile pinned to the taskbar")
+            send("key", "super+1")
+            self.vela.wait_for(lambda s: any(w["app"] == "vela-test-taskbar" for w in s.windows),
+                               what="the pinned launcher started through Super+1")
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")

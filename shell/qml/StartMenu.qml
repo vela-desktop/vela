@@ -427,6 +427,8 @@ Window {
                     height: grid.cellHeight
                     current: root.selectionShown && root.pinnedSelection < 0 && index === grid.currentIndex
                     expressive: root.style.expressive
+                    launcherUrl: Apps.desktopUrl(tile.appId)
+                    onLauncherDropped: root.close()
                     onActivated: root.launch(index)
                     onContextRequested: (x, y) => root.openAppMenu(tile, x, y, tile.appId, false)
                 }
@@ -471,6 +473,8 @@ Window {
                                 current: root.selectionShown && root.pinnedSelection === index
                                 containerRadius: root.style.expressive ? Theme.shapeExtraLarge : 0
                                 expressive: root.style.expressive
+                                launcherUrl: Apps.desktopUrl(modelData.id)
+                                onLauncherDropped: root.close()
                                 onActivated: {
                                     if (Apps.launchId(modelData.id)) {
                                         root.close()

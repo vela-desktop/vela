@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QRect>
 #include <QString>
 #include <QtWaylandClient/QWaylandClientExtensionTemplate>
 
+#include "qwayland-vela-toplevel-identifier-v1.h"
 #include "qwayland-wlr-foreign-toplevel-management-unstable-v1.h"
 
 class QWindow;
@@ -27,6 +29,7 @@ public:
     // Applied state: everything changes together at the "done" event.
     QString title;
     QString appId;
+    QString identifier;
     bool activated = false;
     bool minimized = false;
     bool maximized = false;
@@ -63,7 +66,22 @@ private:
         bool fullscreen = false;
         ForeignToplevel* parentWindow = nullptr;
     } m_pending;
-    QRect m_buttonRect;
+    QHash<QWindow*, QRect> m_buttonRects;
+};
+
+class ToplevelIdentifier : public QWaylandClientExtensionTemplate<ToplevelIdentifier>,
+                           public QtWayland::vela_toplevel_identifier_v1 {
+    Q_OBJECT
+
+public:
+    ToplevelIdentifier();
+    ~ToplevelIdentifier() override;
+
+signals:
+    void identified(uint32_t handleId, const QString& identifier);
+
+protected:
+    void vela_toplevel_identifier_v1_identified(uint32_t handleId, const QString& identifier) override;
 };
 
 class ForeignToplevelManager : public QWaylandClientExtensionTemplate<ForeignToplevelManager>,
@@ -84,4 +102,6 @@ protected:
 
 private:
     QList<ForeignToplevel*> m_windows;
+    ToplevelIdentifier m_identifier;
+    QHash<uint32_t, ForeignToplevel*> m_handles;
 };

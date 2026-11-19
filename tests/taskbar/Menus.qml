@@ -7,6 +7,8 @@ import QtQuick
 
 QtObject {
     property var preview: null
+    property var trayOverflow: null
+    signal advancePreview()
     property bool previewButtonHovered: false
     property var tooltip: null
     property string panelScreen: ""

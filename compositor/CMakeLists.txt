@@ -70,6 +70,7 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-toplevel-identifier-v1.xml vela-toplevel-identifier-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
     ext-image-capture-source-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml

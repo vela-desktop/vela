@@ -12,6 +12,8 @@ Window {
     // One per output (ScreenWindows): the main one also has the notification
     // area and system icons, the others the clock, like Windows.
     property bool primary: false
+    property var taskModel: Tasks
+    property bool showNumberHints: false
     readonly property string screenName: screen ? screen.name : ""
 
     // It stays invisible until main.cpp has turned it into a layer-shell
@@ -58,16 +60,35 @@ Window {
     readonly property real minimumRightInset: edge ? edgeGap + 12 : fit ? style.margin + fitPadding
         : 12 + (floating ? style.margin : 0)
     readonly property real groupGap: edge ? 28 : fit ? fitGap : 8
-    // A large tray must scroll as well, leaving room for an app and both
-    // navigation buttons. This budget uses minimum margins to avoid feeding
-    // the tray's constrained width back into the floating bar's side margin.
+    // Reserve room for app paging before choosing how many tray icons fit.
+    // Minimum margins keep this independent of the actual tray width.
     readonly property real trayMaximumWidth: Math.max(0, width - minimumLeft - minimumRightInset - groupGap
-        - fixedButtonsWidth - (taskRepeater.count > 0 ? style.spacing + appStrip.minimumWidth : 0) - fixedTrayWidth - 4)
+        - fixedButtonsWidth - (taskRepeater.count > 0 ? style.spacing + appStrip.implicitWidth : 0) - fixedTrayWidth - 4)
     readonly property real buttonsLeft: fit ? minimumLeft : 12 + (floating ? sideMargin : 0)
     readonly property real buttonsRight: width - (fit ? minimumRightInset : 12 + (floating ? sideMargin : 0))
         - trayGroupWidth - groupGap
     readonly property real buttonsAreaWidth: Math.max(0, buttonsRight - buttonsLeft)
     readonly property real buttonsX: buttonClip.x + buttons.x
+
+    readonly property int traySlotWidth: 32
+    readonly property real trayEssentialWidth: Math.max(0, width - minimumLeft - minimumRightInset - groupGap
+        - fixedButtonsWidth - (taskRepeater.count > 0 ? style.spacing + appStrip.minimumWidth : 0) - fixedTrayWidth - 4)
+    readonly property var trayIcons: {
+        const entries = root.primary ? Tray.entries : []
+        const urgent = entries.filter(item => item.attention)
+        const normal = entries.filter(item => !item.attention && !item.passive)
+        const passive = entries.filter(item => item.passive)
+        const limit = Config.taskbarTrayIcons < 0 ? normal.length : Config.taskbarTrayIcons
+        const capacity = Math.floor(root.trayMaximumWidth / root.traySlotWidth)
+        const essential = Math.floor(root.trayEssentialWidth / root.traySlotWidth)
+        const overflow = passive.length > 0 || normal.length > limit || urgent.length + normal.length > capacity
+        const reserved = overflow ? 1 : 0
+        const shownUrgent = Math.min(Math.max(0, essential - reserved), urgent.length)
+        const shownNormal = Math.min(limit, Math.max(0, capacity - reserved - shownUrgent))
+        const shown = urgent.slice(0, shownUrgent).concat(normal.slice(0, shownNormal))
+        return { shown: shown, hidden: entries.filter(item => !shown.some(icon => icon.row === item.row)) }
+    }
+    readonly property var hiddenTrayIcons: trayIcons.hidden
 
     // The apps pinned at first start (.desktop ids; those not installed are
     // skipped). Afterwards the user's choices apply: pinned and unpinned from
@@ -111,9 +132,64 @@ Window {
         property var task: null
         interval: 450
         onTriggered: {
-            if (!task || !task.hovered || !appStrip.fullyVisible(task) || task.windowCount === 0) return
-            const p = task.mapToItem(null, task.width / 2, 0)
-            Menus.preview = { key: task.key, appIds: Tasks.appIds(task.index), center: p.x, screen: root.screenName }
+            if (!task || !task.hovered || !appStrip.fullyVisible(task)) return
+            if (task.windowCount > 0) {
+                root.openPreviews(task, false)
+            } else {
+                const p = task.mapToItem(null, task.width / 2, 0)
+                Menus.tooltip = { owner: task, text: task.tooltip, center: p.x, screen: root.screenName }
+            }
+        }
+    }
+
+    function openPreviews(task, latched, cycling, spring) {
+        const p = task.mapToItem(null, task.width / 2, 0)
+        Menus.preview = { button: task, center: p.x, screen: root.screenName, latched: latched,
+                          cycling: !!cycling, startingWindow: cycling ? task.activeWindowId : "", spring: !!spring }
+    }
+
+    function activateButton(task) {
+        previewDelay.stop()
+        if (Menus.tooltip && Menus.tooltip.owner === task) Menus.tooltip = null
+        if (Menus.preview && Menus.preview.latched && Menus.preview.button === task) {
+            Menus.preview = null
+        } else if (task.windowActive && task.windowCount > 1 && !task.attention
+                   && Config.taskbarClickActive !== "next") {
+            openPreviews(task, true)
+        } else {
+            Menus.preview = null
+            root.taskModel.activate(task.index)
+        }
+    }
+
+    Connections {
+        target: Shell
+        function onSuperHeld() { root.showNumberHints = true }
+        function onSuperHintsHidden() { root.showNumberHints = false }
+        function onSuperReleased() { root.showNumberHints = false }
+        function onTaskbarAppRequested(index, action, output) {
+            const target = Config.taskbarAllScreens && Qt.application.screens.some(s => s.name === output)
+                ? output : Shell.primaryScreen
+            if (root.screenName !== target) return
+            const task = taskRepeater.itemAt(index)
+            if (!task) return
+            previewDelay.stop()
+            appStrip.reveal(task)
+            if (action === "new") {
+                Menus.preview = null
+                root.taskModel.launchNew(index)
+            } else if (action === "jump") {
+                Menus.preview = null
+                root.openAbove(root.jumpList(task), task, true, { keyboard: true, minWidth: 256, rebuild: () => root.jumpList(task) })
+            } else if (Menus.preview && Menus.preview.cycling && Menus.preview.button === task) {
+                Menus.advancePreview()
+            } else if (task.windowActive && task.windowCount > 1 && !task.attention &&
+                       Config.taskbarClickActive !== "next") {
+                root.openPreviews(task, true, true)
+            } else if (!task.windowActive || task.windowCount > 1 || task.attention) {
+                Menus.preview = null
+                root.taskModel.activate(index)
+            }
         }
     }
 
@@ -192,15 +268,15 @@ Window {
                 ? { key: "taskbar.pin", text: qsTr("Unpin from taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
                 : { key: "taskbar.pin", text: qsTr("Pin to taskbar"), icon: "window-pin", action: () => Tasks.pin(id) })
         }
-        if (task.windowCount > 0 && Config.endTask) {
-            entries.push({ text: qsTr("End task"), icon: "process-stop", action: () => Tasks.endTask(task.index) })
+        if (task.hasWindows && Config.endTask) {
+            entries.push({ text: qsTr("End task"), icon: "process-stop", action: () => root.taskModel.endTask(task.index) })
         }
         if (task.windowCount > 0) {
             entries.push({
                 key: "taskbar.close",
                 text: task.windowCount > 1 ? qsTr("Close all windows") : qsTr("Close window"),
                 icon: "window-close",
-                action: () => Tasks.closeWindows(task.index)
+                action: () => root.taskModel.closeWindows(task.index)
             })
         }
         return entries
@@ -258,6 +334,7 @@ Window {
         target: Tray
         enabled: root.primary
         function onMenuReady(row, anchorX, entries) {
+            const fromOverflow = !!Menus.trayOverflow
             const convert = list => list.map(e => e.separator ? { separator: true } : {
                 text: e.label,
                 icon: e.icon,
@@ -265,9 +342,15 @@ Window {
                 checked: e.checkable ? e.checked : undefined,
                 radio: e.radio,
                 children: e.children.length > 0 ? convert(e.children) : undefined,
-                action: () => Tray.activateMenuEntry(row, e.id)
+                action: () => {
+                    Menus.trayOverflow = null
+                    Tray.activateMenuEntry(row, e.id)
+                }
             })
-            root.openMenu(convert(entries), anchorX, root.menuBottom, { above: true, centered: true })
+            const bottom = fromOverflow ? root.menuBottom - 40 : root.menuBottom
+            root.openMenu(convert(entries), anchorX, bottom, {
+                above: true, centered: true, onClosed: () => { Menus.trayOverflow = null }
+            })
         }
     }
 
@@ -336,6 +419,21 @@ Window {
             anchors { left: parent.left; right: parent.right; top: parent.top }
             height: 1
             color: root.style.stroke
+        }
+    }
+
+    TapHandler {
+        gesturePolicy: TapHandler.DragThreshold
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+        function hits(item) {
+            if (!item || item.Window.window !== root) return false
+            const p = item.mapFromItem(root.contentItem, point.position.x, point.position.y)
+            return item.contains(p)
+        }
+        onPressedChanged: {
+            if (!pressed) return
+            if (Menus.preview && Menus.preview.latched && !hits(Menus.preview.button)) Menus.preview = null
+            if (Menus.trayOverflow && !hits(overflowButton)) Menus.trayOverflow = null
         }
     }
 
@@ -431,7 +529,7 @@ Window {
 
                 Repeater {
                     id: taskRepeater
-                    model: Tasks
+                    model: root.taskModel
 
                     TaskbarButton {
                         id: task
@@ -441,7 +539,7 @@ Window {
                         // it passed.
                         onDropped: dx => {
                             const to = Math.max(0, Math.min(taskRepeater.count - 1, index + Math.round(dx / (width + buttons.spacing))))
-                            if (to !== index) Tasks.move(index, to)
+                            if (to !== index) root.taskModel.move(index, to)
                         }
                         onDraggingChanged: if (dragging) Menus.preview = null
                         required property int index
@@ -451,15 +549,29 @@ Window {
                         required property int windowCount
                         required property bool windowActive
                         required property string desktopId
+                        required property var windowIds
+                        required property bool attention
+                        required property string activeWindowId
+                        required property bool pinned
+                        required property bool hasWindows
+                        dropHighlighted: appDrop.containsDrag && appDrop.hoveredButton === task && !appDrop.pinning
+                        required property string badgeCount
+                        required property real progress
+                        countBadge: badgeCount
+                        progressValue: progress
+                        shortcutNumber: root.showNumberHints && Config.taskbarNumberHints && index < 10
+                            ? ((index + 1) % 10).toString() : ""
 
-                        tooltip: name
+                        tooltip: attention ? qsTr("%1 needs attention").arg(name) : name
+                        Accessible.role: Accessible.Button
+                        Accessible.name: tooltip
+                        Accessible.onPressAction: root.activateButton(task)
+                        needsAttention: attention
+                        flashAttention: Theme.animationEffects && !Notifications.silenced
                         running: windowCount > 0
                         active: windowActive
-                        onClicked: {
-                            Menus.preview = null
-                            Tasks.activate(index)
-                        }
-                        onMiddleClicked: Tasks.launchNew(index)
+                        onClicked: root.activateButton(task)
+                        onMiddleClicked: root.taskModel.launchNew(index)
                         // The wheel: the volume of this app only, if it's playing
                         // sound, with the indicator. A step every notch (120),
                         // touchpads add up their small ones.
@@ -479,23 +591,25 @@ Window {
                         // button (at once, if another button's are already open).
                         onHoveredChanged: {
                             Menus.previewButtonHovered = hovered
-                            if (hovered && appStrip.fullyVisible(task) && windowCount > 0) {
+                            if (Menus.preview && Menus.preview.latched) return
+                            if (hovered && appStrip.fullyVisible(task)) {
                                 previewDelay.task = task
                                 if (Menus.preview) {
                                     previewDelay.triggered()
                                 } else {
                                     previewDelay.restart()
                                 }
-                            } else if (previewDelay.task === task) {
-                                previewDelay.stop()
+                            } else {
+                                if (previewDelay.task === task) previewDelay.stop()
+                                if (Menus.tooltip && Menus.tooltip.owner === task) Menus.tooltip = null
                             }
                         }
                         onRightClicked: shift => {
                             Menus.preview = null
                             if ((shift || Shell.shiftHeld()) && windowCount > 0) {
-                                const state = Tasks.windowState(index)
+                                const state = root.taskModel.windowState(index)
                                 root.openAbove(Menus.windowEntries(state.maximized, state.minimized, true,
-                                    action => Tasks.windowAction(task.index, action)), task, true)
+                                    action => root.taskModel.windowAction(task.index, action)), task, true)
                             } else {
                                 root.openAbove(root.jumpList(task), task, true, { minWidth: 256, rebuild: () => root.jumpList(task) })
                             }
@@ -504,13 +618,17 @@ Window {
                         // The compositor flies minimized windows here.
                         function reportGeometry() {
                             if (windowCount > 0) {
-                                Tasks.setButtonGeometry(index, root, appStrip.buttonGeometry(task, root.contentItem))
+                                root.taskModel.setButtonGeometry(index, root, appStrip.buttonGeometry(task, root.contentItem))
                             }
                         }
                         onXChanged: reportGeometry()
                         onWindowCountChanged: reportGeometry()
                         onActiveChanged: if (active) Qt.callLater(() => appStrip.reveal(task))
                         Component.onCompleted: if (active) Qt.callLater(() => appStrip.reveal(task))
+                        Component.onDestruction: {
+                            if (Menus.preview && Menus.preview.button === task) Menus.preview = null
+                            if (Menus.tooltip && Menus.tooltip.owner === task) Menus.tooltip = null
+                        }
                         Connections {
                             target: appStrip
                             function onGeometryChanged() { task.reportGeometry() }
@@ -635,72 +753,145 @@ Window {
         }
     }
 
-    // Notification area: the apps' icons (Telegram, Discord, Steam...), left
-    // of the clock like on Windows.
-    TaskbarApps {
+    // This area asks for drag motion so hovering can raise a window, but
+    // accepts a drop only when a single launcher is pinned as a copy.
+    DropArea {
+        id: appDrop
+        x: root.buttonsX + root.fixedButtonsWidth
+        y: buttons.mapToItem(root.contentItem, 0, 0).y
+        width: Math.max(0, root.buttonsRight - x)
+        height: buttons.height
+        property bool pinning: false
+        property var hoveredButton: null
+        property int insertRow: -1
+        property real markerX: 0
+
+        function updatePosition(px) {
+            const position = px + x
+            let hit = null
+            let insertBefore = -1
+            let marker = x
+            let lastPinnedEdge = -1
+            let firstAppEdge = -1
+            for (let i = 0; i < taskRepeater.count; ++i) {
+                const task = taskRepeater.itemAt(i)
+                if (!task || !appStrip.fullyVisible(task)) continue
+                const left = task.mapToItem(root.contentItem, 0, 0).x
+                const right = left + task.width
+                if (firstAppEdge < 0) firstAppEdge = left
+                if (position >= left && position < right) hit = task
+                if (task.pinned) {
+                    lastPinnedEdge = right
+                    if (insertBefore < 0 && position < (left + right) / 2) {
+                        insertBefore = i
+                        marker = left
+                    }
+                }
+            }
+            if (insertBefore < 0 && lastPinnedEdge >= 0) marker = lastPinnedEdge
+            else if (insertBefore < 0 && firstAppEdge >= 0) marker = firstAppEdge
+            insertRow = insertBefore
+            markerX = Math.max(0, Math.min(width - 2, marker - x))
+            if (hoveredButton !== hit) {
+                springTimer.stop()
+                if (Menus.preview && Menus.preview.spring) Menus.preview = null
+                hoveredButton = hit
+                if (!pinning && hit && hit.windowCount > 0) springTimer.start()
+            }
+        }
+        onEntered: drag => {
+            pinning = drag.hasUrls && drag.urls.length === 1 && !!(drag.supportedActions & Qt.CopyAction)
+                && root.taskModel.isLauncherDrop(drag.urls[0])
+            hoveredButton = null
+            updatePosition(drag.x)
+        }
+        onPositionChanged: drag => updatePosition(drag.x)
+        onExited: {
+            if (Menus.preview && Menus.preview.spring) Menus.previewButtonHovered = false
+            hoveredButton = null
+            springTimer.stop()
+        }
+        onDropped: drop => {
+            springTimer.stop()
+            hoveredButton = null
+            if (Menus.preview && Menus.preview.spring) Menus.preview = null
+            if (pinning && root.taskModel.pinDropped(drop.urls[0], insertRow)) {
+                drop.accept(Qt.CopyAction)
+            } else {
+                drop.accepted = false
+            }
+        }
+        Timer {
+            id: springTimer
+            interval: 600
+            onTriggered: {
+                const task = appDrop.hoveredButton
+                if (!task || !appDrop.containsDrag) return
+                if (task.windowCount === 1) root.taskModel.raiseWindow(task.index)
+                else if (task.windowCount > 1) {
+                    Menus.previewButtonHovered = true
+                    root.openPreviews(task, false, false, true)
+                }
+            }
+        }
+        Rectangle {
+            visible: appDrop.containsDrag && appDrop.pinning
+            x: appDrop.markerX
+            anchors { top: parent.top; bottom: parent.bottom; margins: 3 }
+            width: 2
+            radius: 1
+            color: Theme.accent
+        }
+    }
+
+    // The main taskbar's notification area, left of the system icons.
+    Row {
         id: tray
         objectName: "taskbarTray"
-        style: root.style
-        previousLabel: qsTr("Previous tray icons")
-        nextLabel: qsTr("Next tray icons")
-        spacing: 0
-        visible: root.primary
-        width: Math.min(implicitWidth, root.trayMaximumWidth)
+        visible: root.primary && (root.trayIcons.shown.length > 0 || root.hiddenTrayIcons.length > 0)
         anchors { right: screenSharing.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
+        TaskbarButton {
+            id: overflowButton
+            objectName: "trayOverflowButton"
+            visible: root.hiddenTrayIcons.length > 0
+            width: visible ? root.traySlotWidth : 0
+            anchors.verticalCenter: parent.verticalCenter
+            active: !!Menus.trayOverflow
+            Accessible.role: Accessible.Button
+            Accessible.name: qsTr("Show hidden icons")
+            Accessible.onPressAction: clicked()
+            onClicked: {
+                if (Menus.trayOverflow) {
+                    Menus.trayOverflow = null
+                } else {
+                    const center = mapToItem(null, width / 2, 0).x
+                    Menus.trayOverflow = { bar: root, center: center, screen: root.screenName }
+                }
+            }
+            Text {
+                anchors.centerIn: parent
+                rotation: overflowButton.active ? 90 : -90
+                text: "›"
+                color: Theme.text
+                font.pixelSize: 19
+            }
+        }
+
         Repeater {
-            model: Tray
-
-            delegate: Item {
+            model: root.trayIcons.shown
+            delegate: TrayIcon {
                 id: trayItem
-                required property int index
-                required property string icon
-                required property string title
-                required property bool attention
-                width: icon !== "" ? 32 : 0
+                required property var modelData
+                entry: modelData
+                width: root.traySlotWidth
                 height: tray.height
-                visible: icon !== ""
-
-                Fill {
-                    anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
-                    radius: root.style.corner(8, Theme.radius)
-                    color: trayMouse.pressed ? Theme.subtlePressed : trayMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
-                }
-                Image {
-                    anchors.centerIn: parent
-                    width: 18
-                    height: 18
-                    source: trayItem.icon
-                    sourceSize: Qt.size(width, height)
-                    smooth: true
-                    mipmap: true
-                }
-                // Asks for attention (unread messages): a dot.
-                Rectangle {
-                    visible: trayItem.attention
-                    width: 6
-                    height: 6
-                    radius: 3
-                    color: Theme.accent
-                    anchors { right: parent.right; top: parent.top; rightMargin: 6; topMargin: 12 }
-                }
-
-                MouseArea {
-                    id: trayMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
-                    onClicked: mouse => {
-                        const center = trayItem.mapToItem(null, trayItem.width / 2, 0).x
-                        if (mouse.button === Qt.RightButton) {
-                            Tray.requestMenu(trayItem.index, center)
-                        } else if (mouse.button === Qt.MiddleButton) {
-                            Tray.secondaryActivate(trayItem.index)
-                        } else {
-                            Tray.activate(trayItem.index, center)
-                        }
-                    }
-                    onWheel: wheel => Tray.scroll(trayItem.index, wheel.angleDelta.y)
+                inset: 8 + root.inset
+                onInvoked: button => {
+                    const center = mapToItem(null, width / 2, 0).x
+                    if (button === Qt.RightButton) Tray.requestMenu(entry.row, center)
+                    else if (button === Qt.MiddleButton) Tray.secondaryActivate(entry.row)
+                    else Tray.activate(entry.row, center)
                 }
             }
         }

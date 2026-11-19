@@ -5,6 +5,8 @@
 virtual desktops, close. Every test starts from a new session; states are
 read from the compositor ("state" request)."""
 
+import os
+import subprocess
 import time
 import unittest
 
@@ -150,6 +152,29 @@ class Windows(unittest.TestCase):
         self.vela.wait_for(lambda s: s["focused"] == first, what="Alt+Tab: the previous window")
         self.vela.input("keydown", "alt", "key", "tab", "sleep", "100", "keyup", "alt")
         self.vela.wait_for(lambda s: s["focused"] == second, what="Alt+Tab again: back again")
+
+    def test_number_shortcuts_switch_and_move_in_desktop_mode(self):
+        path = self.vela.config_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as conf:
+            conf.write("super-number-keys=desktops\n")
+        self.vela.command("reload-config")
+        window = self.vela.open_window()
+        self.vela.command("workspace new")
+        self.vela.keys("super+shift+2")
+        self.vela.wait_for(lambda s: s.window(window)["workspace"] == 1,
+                           what="the focused window moved by Super+Shift+2")
+        # On AZERTY the physical 2 key produces é without Shift.
+        subprocess.run([tool("vela-input"), "key", "super+eacute"],
+                       env=dict(self.vela.client_env, VELA_TEST_XKB_LAYOUT="fr"), check=True)
+        self.vela.wait_for(lambda s: s["workspace"] == 1, what="the desktop selected by the physical 2 key")
+        self.vela.keys("super+0")
+        self.assertEqual(self.vela.state()["workspaces"], 2)
+        with open(path, "w") as conf:
+            conf.write("super-number-keys=off\n")
+        self.vela.command("reload-config")
+        self.vela.keys("super+1")
+        self.assertEqual(self.vela.state()["workspace"], 1)
 
     def test_virtual_desktops(self):
         window = self.vela.open_window()

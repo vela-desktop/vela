@@ -7,8 +7,10 @@
 #include "mimeapps.h"
 #include "velatool.h"
 
+#include <QBuffer>
 #include <QCollator>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
@@ -19,6 +21,7 @@
 #include <QMimeDatabase>
 #include <QProcess>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSet>
 #include <QStandardPaths>
 #include <QTextStream>
@@ -77,14 +80,9 @@ bool listContains(const QString& list, const QString& item)
     });
 }
 
-// Reads a .desktop file. Returns false if it must not show in the menu.
-bool parseDesktopFile(const QString& path, const QStringList& localeKeys, AppModel::Entry& entry)
+bool parseDesktopEntry(QIODevice& file, const QString& path, const QStringList& localeKeys, AppModel::Entry& entry,
+    bool taskbarOnly = false)
 {
-    QFile file(path);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return false;
-    }
-
     // Each group ([Desktop Entry], [Desktop Action new-window], ...) with its
     // keys.
     QHash<QString, QHash<QString, QString>> groups;
@@ -113,7 +111,7 @@ bool parseDesktopFile(const QString& path, const QStringList& localeKeys, AppMod
     const auto isTrue = [&](const char* key) {
         return values.value(QLatin1String(key)).compare(QLatin1String("true"), Qt::CaseInsensitive) == 0;
     };
-    if (isTrue("NoDisplay") || isTrue("Hidden")) {
+    if ((!taskbarOnly && isTrue("NoDisplay")) || isTrue("Hidden")) {
         return false;
     }
     const QString onlyShowIn = values.value(QStringLiteral("OnlyShowIn"));
@@ -169,6 +167,24 @@ bool parseDesktopFile(const QString& path, const QStringList& localeKeys, AppMod
     entry.mimeTypes = values.value(QStringLiteral("MimeType")).split(u';', Qt::SkipEmptyParts);
     entry.terminal = isTrue("Terminal");
     return !entry.name.isEmpty() && !entry.exec.isEmpty();
+}
+
+bool parseDesktopFile(const QString& path, const QStringList& localeKeys, AppModel::Entry& entry)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly | QIODevice::Text) && parseDesktopEntry(file, path, localeKeys, entry);
+}
+
+QString taskbarLauncherDirectory()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/taskbar-launchers");
+}
+
+bool parseTaskbarLauncher(QIODevice& file, const QString& path, AppModel::Entry& entry)
+{
+    const QString locale = QLocale().name();
+    return parseDesktopEntry(file, path, { locale, locale.section(u'_', 0, 0) }, entry, true)
+        && !entry.program.isEmpty();
 }
 
 } // namespace
@@ -342,6 +358,7 @@ void AppModel::reload()
     const int previousCount = count();
     beginResetModel();
     m_all = std::move(entries);
+    loadTaskbarLaunchers();
     m_visible = filteredIndices();
     endResetModel();
     if (previousCount != count()) {
@@ -464,20 +481,14 @@ bool AppModel::launch(int row)
 
 bool AppModel::launchId(const QString& id)
 {
-    for (const Entry& e : std::as_const(m_all)) {
-        if (e.id == id) {
-            return launchEntry(e);
-        }
-    }
-    return false;
+    const Entry* e = find(id);
+    return e && launchEntry(*e);
 }
 
 QVariantMap AppModel::entry(const QString& id) const
 {
-    for (const Entry& e : m_all) {
-        if (e.id == id) {
-            return { { QStringLiteral("name"), e.name }, { QStringLiteral("iconName"), e.icon } };
-        }
+    if (const Entry* e = find(id)) {
+        return { { QStringLiteral("name"), e->name }, { QStringLiteral("iconName"), e->icon } };
     }
     return {};
 }
@@ -506,6 +517,13 @@ QString AppModel::findDesktopId(const QString& appId) const
             }
         }
     }
+    for (const auto& matches : rules) {
+        for (const Entry& e : m_taskbarLaunchers) {
+            if (matches(e)) {
+                return e.id;
+            }
+        }
+    }
     return {};
 }
 
@@ -523,7 +541,8 @@ const AppModel::Entry* AppModel::find(const QString& id) const
             return &e;
         }
     }
-    return nullptr;
+    const auto launcher = m_taskbarLaunchers.constFind(id);
+    return launcher == m_taskbarLaunchers.cend() ? nullptr : &launcher.value();
 }
 
 QVariantList AppModel::actions(const QString& id) const
@@ -625,6 +644,99 @@ QString AppModel::idForDesktopFile(const QString& path) const
 {
     const QString id = QFileInfo(path).fileName();
     return find(id) ? id : QString();
+}
+
+QUrl AppModel::desktopUrl(const QString& id) const
+{
+    const QString path = desktopFile(id);
+    return path.isEmpty() ? QUrl() : QUrl::fromLocalFile(path);
+}
+
+bool AppModel::isLauncherUrl(const QUrl& url)
+{
+    return url.isLocalFile() && url.host().isEmpty() && !url.hasQuery() && !url.hasFragment()
+        && url.toLocalFile().endsWith(QLatin1String(".desktop"));
+}
+
+void AppModel::loadTaskbarLaunchers()
+{
+    m_taskbarLaunchers.clear();
+    const QDir directory(taskbarLauncherDirectory());
+    for (const QString& id :
+        directory.entryList({ QStringLiteral("vela-taskbar-*.desktop") }, QDir::Files | QDir::NoSymLinks)) {
+        const QString path = directory.filePath(id);
+        QFile file(path);
+        Entry entry;
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text) && parseTaskbarLauncher(file, path, entry)) {
+            entry.id = id;
+            m_taskbarLaunchers.insert(id, std::move(entry));
+        }
+    }
+}
+
+QString AppModel::importTaskbarLauncher(const QUrl& url)
+{
+    if (!isLauncherUrl(url)) {
+        return { };
+    }
+    const QFileInfo fileInfo(url.toLocalFile());
+    if (!fileInfo.isAbsolute() || !fileInfo.isFile()) {
+        return { };
+    }
+    const QString canonical = fileInfo.canonicalFilePath();
+    for (const Entry& entry : std::as_const(m_all)) {
+        if (QFileInfo(entry.path).canonicalFilePath() == canonical) {
+            return entry.id;
+        }
+    }
+    for (const Entry& entry : std::as_const(m_taskbarLaunchers)) {
+        if (QFileInfo(entry.path).canonicalFilePath() == canonical) {
+            return entry.id;
+        }
+    }
+
+    // Keep a copy of the launcher selected by the user. Replacing the source
+    // file later must not change what clicking the pinned icon runs.
+    QFile source(canonical);
+    constexpr qint64 maxSize = 1024 * 1024;
+    if (!source.open(QIODevice::ReadOnly)) {
+        return { };
+    }
+    const QByteArray contents = source.read(maxSize + 1);
+    if (source.error() != QFileDevice::NoError || contents.size() > maxSize) {
+        return { };
+    }
+    const QString hash = QString::fromLatin1(QCryptographicHash::hash(contents, QCryptographicHash::Sha256).toHex());
+    const QString id = QStringLiteral("vela-taskbar-") + hash + QStringLiteral(".desktop");
+    if (m_taskbarLaunchers.contains(id)) {
+        return id;
+    }
+    const QDir directory(taskbarLauncherDirectory());
+    Entry entry;
+    entry.id = id;
+    QBuffer input;
+    input.setData(contents);
+    input.open(QIODevice::ReadOnly | QIODevice::Text);
+    if (!parseTaskbarLauncher(input, directory.filePath(id), entry)) {
+        return { };
+    }
+    // A launcher copied from an installed application should move the
+    // installed app's pin. A launcher with custom arguments keeps its own.
+    if (const Entry* installed = find(fileInfo.fileName()); installed && installed->rawExec == entry.rawExec
+        && installed->workDir == entry.workDir && installed->terminal == entry.terminal
+        && installed->name == entry.name) {
+        return installed->id;
+    }
+    if (!QDir().mkpath(directory.path())) {
+        return { };
+    }
+    QSaveFile copy(entry.path);
+    if (!copy.open(QIODevice::WriteOnly) || !copy.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)
+        || copy.write(contents) != contents.size() || !copy.commit()) {
+        return { };
+    }
+    m_taskbarLaunchers.insert(id, std::move(entry));
+    return id;
 }
 
 QString AppModel::desktopFile(const QString& id) const

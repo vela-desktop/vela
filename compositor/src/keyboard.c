@@ -7,6 +7,11 @@
 #include "listen.h"
 #include "switcher.h"
 #include "lock.h"
+#include "layer.h"
+#include "output.h"
+#include "scene/scene.h"
+#include "view.h"
+#include "workspace.h"
 #include "interact.h"
 #include "bindings.h"
 #include "a11y.h"
@@ -17,11 +22,14 @@
 #include "shell.h"
 #include "util.h"
 
+#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/types/wlr_keyboard.h>
+#include <wlr/types/wlr_layer_shell_v1.h>
+#include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/util/log.h>
@@ -295,6 +303,59 @@ static void start_repeat(struct vela_keyboard *keyboard, uint32_t keycode, xkb_k
     wl_event_source_timer_update(keyboard->repeat, keyboard->wlr->repeat_info.delay);
 }
 
+static int show_super_hints(void *data)
+{
+    struct vela_input *input = data;
+    struct vela_server *server = input->server;
+    struct vela_view *active = vela_views_focused(server);
+    if (input->super_tap && !server->locked && !vela_focus_modal_layer(server) && !vela_input_shortcuts_inhibited(input)
+        && (!active || !active->fullscreen || active->tree->node.parent != server->layers.fullscreen)) {
+        input->super_hints_visible = vela_shell_send(server, "super-held");
+    }
+    return 0;
+}
+
+static bool handle_super_number(struct vela_input *input, unsigned index, uint32_t mods)
+{
+    struct vela_server *server = input->server;
+    const uint32_t relevant = mods & (WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT | WLR_MODIFIER_SHIFT);
+    if (input->super_numbers == VELA_SUPER_NUMBERS_OFF || !(relevant & WLR_MODIFIER_LOGO)
+        || (relevant & WLR_MODIFIER_CTRL) || ((relevant & WLR_MODIFIER_ALT) && (relevant & WLR_MODIFIER_SHIFT))) {
+        return false;
+    }
+    struct vela_view *active = vela_views_focused(server);
+    if (input->super_numbers == VELA_SUPER_NUMBERS_DESKTOPS) {
+        if (relevant & WLR_MODIFIER_ALT) {
+            return false;
+        }
+        if ((int)index < server->workspaces->count) {
+            if (relevant & WLR_MODIFIER_SHIFT) {
+                if (active) {
+                    vela_workspaces_move_view(server, active, (int)index);
+                }
+            } else {
+                vela_workspaces_switch(server, (int)index, true);
+            }
+        }
+        return true;
+    }
+
+    struct vela_output *output = active ? vela_view_output(active) : NULL;
+    struct vela_layer_surface *layer = server->focused_layer;
+    if (!output && layer && strcmp(layer->wlr->namespace, "vela-taskbar-preview") == 0) {
+        output = vela_layer_surface_output(layer);
+    }
+    if (!output) {
+        output = vela_output_under_cursor(server);
+    }
+    const char *action = (relevant & WLR_MODIFIER_SHIFT) ? "new" : (relevant & WLR_MODIFIER_ALT) ? "jump" : "activate";
+    char line[256];
+    if (vela_format(line, sizeof(line), "taskbar-app %u %s %s", index + 1, action, output ? output->wlr->name : "")) {
+        vela_shell_send(server, line);
+    }
+    return true;
+}
+
 static void handle_key(struct wl_listener *listener, void *data)
 {
     struct vela_keyboard *keyboard = wl_container_of(listener, keyboard, key);
@@ -327,13 +388,53 @@ static void handle_key(struct wl_listener *listener, void *data)
     // Sticky keys: a modifier pressed and released applies to the next key
     // (this key's modifiers, `mods`, already include it); they are let go when
     // that key is released.
-    if (vela_a11y_sticky_key(server->a11y, keyboard->wlr, syms, count, pressed)) {
+    const bool sticky = vela_a11y_sticky_key(server->a11y, keyboard->wlr, syms, count, pressed);
+    if (sticky) {
         input->super_tap = false;
+        vela_input_hide_super_hints(input);
+    }
+    bool super = false;
+    for (int i = 0; i < count; ++i) {
+        super = super || is_super(syms[i]);
+    }
+    if (pressed && !super) {
+        vela_input_hide_super_hints(input);
+    }
+    if (super && !pressed) {
+        vela_input_hide_super_hints(input);
+        if (input->super_keyboard == keyboard) {
+            input->super_keyboard = NULL;
+            if (!inhibited) {
+                vela_shell_send(server, "super-released");
+            }
+        }
+    }
+    if (event->keycode >= KEY_1 && event->keycode <= KEY_0) {
+        const unsigned index = event->keycode - KEY_1;
+        const uint16_t bit = (uint16_t)(1u << index);
+        if (pressed && !inhibited && handle_super_number(input, index, mods)) {
+            keyboard->handled_numbers |= bit;
+            handled = true;
+        } else if (!pressed && (keyboard->handled_numbers & bit)) {
+            keyboard->handled_numbers &= (uint16_t)~bit;
+            handled = true;
+        }
     }
     for (int i = 0; i < count; ++i) {
         if (pressed) {
             if (is_super(syms[i]) && !inhibited) {
-                input->super_tap = (mods & ~WLR_MODIFIER_LOGO) == 0;
+                input->super_tap = !sticky && (mods & ~WLR_MODIFIER_LOGO) == 0;
+                if (input->super_numbers == VELA_SUPER_NUMBERS_APPS) {
+                    input->super_keyboard = keyboard;
+                    if (input->super_tap) {
+                        if (!input->super_timer) {
+                            input->super_timer = wl_event_loop_add_timer(server->loop, show_super_hints, input);
+                        }
+                        if (input->super_timer) {
+                            wl_event_source_timer_update(input->super_timer, 500);
+                        }
+                    }
+                }
                 continue;
             }
             input->super_tap = false;
@@ -392,6 +493,11 @@ struct vela_keyboard *vela_keyboard_create(struct vela_input *input, struct wlr_
 
 void vela_keyboard_destroy(struct vela_keyboard *keyboard)
 {
+    if (keyboard->input->super_keyboard == keyboard) {
+        keyboard->input->super_keyboard = NULL;
+        keyboard->input->super_tap = false;
+        vela_input_hide_super_hints(keyboard->input);
+    }
     wl_list_remove(&keyboard->modifiers.link);
     wl_list_remove(&keyboard->key.link);
     wl_list_remove(&keyboard->destroy.link);

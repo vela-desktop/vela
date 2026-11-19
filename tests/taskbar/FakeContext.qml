@@ -9,6 +9,10 @@ import QtQml.Models
 QtObject {
     property QtObject config: QtObject {
         property bool taskView: true
+        property int taskbarTrayIcons: 5
+        property bool taskbarAllScreens: true
+        property bool taskbarNumberHints: true
+        property string taskbarClickActive: "previews"
         property string taskbarAlignment: "center"
         property bool endTask: true
         property bool showDesktopCorner: true
@@ -32,17 +36,32 @@ QtObject {
         function toggleDesktop() {}
     }
     property ListModel tray: ListModel {
+        property int revision: 0
+        onDataChanged: ++revision
+        readonly property var entries: {
+            revision
+            const rows = []
+            for (let i = 0; i < count; ++i) rows.push(Object.assign({ row: i }, get(i)))
+            return rows
+        }
         property int activatedRow: -1
         function activate(row, point) { activatedRow = row }
         signal menuReady(int row, real anchorX, var entries)
     }
     property QtObject shell: QtObject {
+        property string primaryScreen: ""
         property bool startMenuOpen: false
         signal winXRequested()
         signal showDesktopRequested()
+        signal taskbarAppRequested(int index, string action, string output)
+        signal superHeld()
+        signal superHintsHidden()
+        signal superReleased()
         signal notificationCenterRequested()
         signal quickSettingsRequested()
         function now() { return new Date(2026, 10, 15, 23, 59, 59) }
+        function placeOnScreen(window, screen) {}
+        function placeAtLeft(window, left) {}
         function shiftHeld() { return false }
         function toggleStartMenu() { startMenuOpen = !startMenuOpen }
     }

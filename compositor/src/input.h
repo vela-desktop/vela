@@ -40,6 +40,12 @@ struct wlr_relative_pointer_manager_v1;
 struct wlr_keyboard_shortcuts_inhibit_manager_v1;
 struct wlr_surface;
 
+enum vela_super_numbers {
+    VELA_SUPER_NUMBERS_APPS,
+    VELA_SUPER_NUMBERS_DESKTOPS,
+    VELA_SUPER_NUMBERS_OFF,
+};
+
 enum vela_swipe_action {
     VELA_SWIPE_NONE,
     VELA_SWIPE_APP, // sideways: switch app (Alt+Tab)
@@ -81,6 +87,10 @@ struct vela_input {
 
     // Super pressed and released alone: opens the Start menu.
     bool super_tap;
+    enum vela_super_numbers super_numbers;
+    struct wl_event_source *super_timer;
+    struct vela_keyboard *super_keyboard;
+    bool super_hints_visible;
     // The layout written to the log last time (keyboard.c): only changes are
     // logged.
     char keymap_logged[1024];
@@ -139,6 +149,7 @@ void vela_input_destroy(struct vela_input *input);
 // touchpads.
 void vela_input_reload(struct vela_input *input);
 
+void vela_input_hide_super_hints(struct vela_input *input);
 bool vela_input_has_touchpad(const struct vela_input *input);
 // The focused app keeps the shortcuts to itself.
 bool vela_input_shortcuts_inhibited(const struct vela_input *input);

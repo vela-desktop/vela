@@ -36,10 +36,10 @@ QtObject {
     // The snap layout just chosen ({window, zones: [[x0,y0,x1,y1]...]}): Snap
     // Assist offers the windows for its other zones.
     property var snapLayout: null
-    // The window previews of a taskbar button (TaskbarPreview.qml): {key,
-    // appIds, center (x on the output)}, or null. They stay while the mouse is
-    // on the button or the previews.
+    // TaskbarPreview.qml uses the button, its center, and the opening mode.
     property var preview: null
+    property var trayOverflow: null
+    signal advancePreview()
     // A tooltip above the taskbar (TaskbarTooltip.qml): {text, center (x on
     // the output), screen}, or null.
     property var tooltip: null

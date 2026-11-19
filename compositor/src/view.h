@@ -66,6 +66,9 @@ struct vela_view {
     // Its process is a system prompt program, unsandboxed (set at map,
     // vela_view_is_system_prompt): the name alone gives no special place.
     bool prompt_program;
+    bool attention;
+    bool x11_urgent;
+    struct vela_output *taskbar_output;
     bool activated; // the active window (keyboard)
     bool maximized;
     bool fullscreen;
@@ -162,6 +165,7 @@ struct vela_view {
     struct wl_listener dissociate;
     struct wl_listener request_configure;
     struct wl_listener request_activate;
+    struct wl_listener set_hints;
     struct wl_listener set_decorations;
     struct wl_listener set_override_redirect;
     struct wl_listener request_below;
@@ -197,6 +201,8 @@ struct wlr_box vela_view_geometry(const struct vela_view *view);
 struct wlr_box vela_view_frame_box(struct vela_view *view);
 // The output under the window's center, or the cursor's.
 struct vela_output *vela_view_output(struct vela_view *view);
+void vela_view_update_taskbar_output(struct vela_view *view);
+void vela_view_set_attention(struct vela_view *view, bool on);
 // Where it "goes" when minimized: its taskbar button.
 struct wlr_box vela_view_minimize_target(struct vela_view *view);
 // Where it returns when leaving maximized or fullscreen.

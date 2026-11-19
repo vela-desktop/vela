@@ -23,6 +23,14 @@ class Config : public QObject {
     // The Task View button on the taskbar.
     Q_PROPERTY(bool taskView READ taskView NOTIFY taskbarChanged)
     // The taskbar on all outputs (like Windows) or only on the main one.
+    Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive NOTIFY taskbarChanged)
+    Q_PROPERTY(int taskbarTrayIcons READ taskbarTrayIcons NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarAttention READ taskbarAttention NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarBadges READ taskbarBadges NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarProgress READ taskbarProgress NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarNumberHints READ taskbarNumberHints NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(QString primaryOutput READ primaryOutput NOTIFY primaryOutputChanged)
     // Clickable right-hand taskbar corner that toggles the desktop.
@@ -60,6 +68,14 @@ public:
     QString taskbarAlignment() const { return m_taskbarAlignment; }
     bool endTask() const { return m_endTask; }
     bool taskView() const { return m_taskView; }
+    QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
+    QString taskbarAppsOn() const { return m_taskbarAppsOn; }
+    QString taskbarClickActive() const { return m_taskbarClickActive; }
+    int taskbarTrayIcons() const { return m_taskbarTrayIcons; }
+    bool taskbarAttention() const { return m_taskbarAttention; }
+    bool taskbarBadges() const { return m_taskbarBadges; }
+    bool taskbarProgress() const { return m_taskbarProgress; }
+    bool taskbarNumberHints() const { return m_taskbarNumberHints; }
     bool taskbarAllScreens() const { return m_taskbarAllScreens; }
     QString primaryOutput() const { return m_primaryOutput; }
     bool showDesktopCorner() const { return m_showDesktopCorner; }
@@ -117,6 +133,14 @@ private:
     QString m_primaryOutput;
     bool m_endTask = true;
     bool m_taskView = true;
+    QString m_taskbarWindowsFrom = QStringLiteral("desktop");
+    QString m_taskbarAppsOn = QStringLiteral("all");
+    QString m_taskbarClickActive = QStringLiteral("previews");
+    int m_taskbarTrayIcons = 5;
+    bool m_taskbarAttention = true;
+    bool m_taskbarBadges = true;
+    bool m_taskbarProgress = true;
+    bool m_taskbarNumberHints = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_clipboardHistory = false;

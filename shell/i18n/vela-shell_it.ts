@@ -1299,12 +1299,12 @@
 <context>
     <name>Taskbar</name>
     <message>
-        <source>Previous tray icons</source>
-        <translation>Icone precedenti dell’area di notifica</translation>
+        <source>%1 needs attention</source>
+        <translation>%1 richiede attenzione</translation>
     </message>
     <message>
-        <source>Next tray icons</source>
-        <translation>Icone successive dell’area di notifica</translation>
+        <source>Show hidden icons</source>
+        <translation>Mostra le icone nascoste</translation>
     </message>
     <message>
         <source>1 minute remaining</source>

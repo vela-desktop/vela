@@ -14,6 +14,30 @@ Item {
     property string tooltip: ""
     readonly property bool hovered: mouse.containsMouse
     property bool active: false
+    property string shortcutNumber: ""
+    property string countBadge: ""
+    property real progressValue: -1
+    property bool dropHighlighted: false
+    property bool needsAttention: false
+    property bool flashAttention: false
+    property bool attentionLit: true
+
+    function updateAttentionPulse() {
+        attentionPulse.stop()
+        attentionLit = true
+        if (needsAttention && flashAttention) attentionPulse.start()
+    }
+    onNeedsAttentionChanged: updateAttentionPulse()
+    onFlashAttentionChanged: updateAttentionPulse()
+
+    SequentialAnimation {
+        id: attentionPulse
+        loops: 3
+        PauseAnimation { duration: 400 }
+        PropertyAction { target: root; property: "attentionLit"; value: false }
+        PauseAnimation { duration: 400 }
+        PropertyAction { target: root; property: "attentionLit"; value: true }
+    }
     property bool running: false
     property bool draggable: false
     readonly property bool dragging: mouse.dragging
@@ -36,7 +60,7 @@ Item {
     Fill {
         anchors.fill: parent
         radius: root.style.buttonRadius
-        color: mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.active ? Theme.subtleHover : Theme.subtleRest
+        color: root.needsAttention && root.attentionLit ? Theme.attention : mouse.pressed ? Theme.subtlePressed : mouse.containsMouse || root.active || root.dropHighlighted ? Theme.subtleHover : Theme.subtleRest
     }
 
     Item {
@@ -63,7 +87,7 @@ Item {
         radius: height / 2
         width: root.active ? (expressive ? 24 : 16) : root.running ? (expressive ? 8 : 6) : 0
         color: root.active ? (expressive ? Theme.primary : Theme.accent) : (expressive ? Theme.outline : Theme.textSecondary)
-        opacity: root.active || root.running ? 1 : 0
+        opacity: root.progressValue < 0 && (root.active || root.running) ? 1 : 0
 
         Behavior on width {
             enabled: Theme.motion > 0
@@ -72,6 +96,51 @@ Item {
         Behavior on color { ColorFade {} }
         Behavior on opacity {
             NumberAnimation { duration: Theme.fast }
+        }
+    }
+
+    Rectangle {
+        visible: root.progressValue >= 0
+        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 4; bottomMargin: 2 }
+        height: Theme.expressive ? 4 : 3
+        radius: height / 2
+        color: Theme.stroke
+        Rectangle {
+            width: parent.width * Math.max(0, root.progressValue)
+            height: parent.height
+            radius: parent.radius
+            color: Theme.accent
+        }
+    }
+
+    Rectangle {
+        visible: root.countBadge !== ""
+        anchors { right: parent.right; top: parent.top; margins: 2 }
+        width: Math.max(16, countLabel.implicitWidth + 6)
+        height: 16
+        radius: height / 2
+        color: Theme.accentFill
+        Text {
+            id: countLabel
+            anchors.centerIn: parent
+            text: root.countBadge
+            color: Theme.accentText
+            font.pixelSize: 10
+        }
+    }
+
+    Rectangle {
+        visible: root.shortcutNumber !== ""
+        anchors { left: parent.left; bottom: parent.bottom; margins: 3 }
+        width: 16
+        height: 16
+        radius: height / 2
+        color: Theme.accentFill
+        Text {
+            anchors.centerIn: parent
+            color: Theme.accentText
+            font.pixelSize: 10
+            text: root.shortcutNumber
         }
     }
 

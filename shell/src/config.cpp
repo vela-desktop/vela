@@ -3,6 +3,8 @@
 
 #include "config.h"
 
+#include "../../common/taskbarsettings.h"
+
 #include "batterysettings.h"
 #include "clockformat.h"
 #include "defaults.h"
@@ -107,13 +109,43 @@ void Config::reload()
     const bool taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     const bool allScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     const bool showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
+    bool trayIconsOk = false;
+    const int trayIcons = settings.value(QStringLiteral("taskbar/trayIcons")).toInt(&trayIconsOk);
+    const QString taskbarWindowsFrom =
+        settings.value(QStringLiteral("taskbar/windowsFrom")).toString() == QLatin1String("all")
+        ? QStringLiteral("all")
+        : QStringLiteral("desktop");
+    const QString taskbarAppsOn = settings.value(QStringLiteral("taskbar/appsOn")).toString() == QLatin1String("window")
+        ? QStringLiteral("window")
+        : QStringLiteral("all");
+    const QString taskbarClickActive =
+        settings.value(QStringLiteral("taskbar/clickActive")).toString() == QLatin1String("next")
+        ? QStringLiteral("next")
+        : QStringLiteral("previews");
+    const int taskbarTrayIcons = trayIconsOk && trayIcons >= -1 && trayIcons <= 10 ? trayIcons : 5;
+    const bool taskbarAttention = vela::taskbar::enabled(settings, QStringLiteral("taskbar/attention"));
+    const bool taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
+    const bool taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
+    const bool taskbarNumberHints = vela::taskbar::enabled(settings, QStringLiteral("taskbar/numberHints"));
     if (alignment != m_taskbarAlignment || endTask != m_endTask || taskView != m_taskView
-        || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner) {
+        || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner
+        || taskbarWindowsFrom != m_taskbarWindowsFrom || taskbarAppsOn != m_taskbarAppsOn
+        || taskbarClickActive != m_taskbarClickActive || taskbarTrayIcons != m_taskbarTrayIcons
+        || taskbarAttention != m_taskbarAttention || taskbarBadges != m_taskbarBadges
+        || taskbarProgress != m_taskbarProgress || taskbarNumberHints != m_taskbarNumberHints) {
         m_taskbarAlignment = alignment;
         m_endTask = endTask;
         m_taskView = taskView;
         m_taskbarAllScreens = allScreens;
         m_showDesktopCorner = showDesktopCorner;
+        m_taskbarWindowsFrom = taskbarWindowsFrom;
+        m_taskbarAppsOn = taskbarAppsOn;
+        m_taskbarClickActive = taskbarClickActive;
+        m_taskbarTrayIcons = taskbarTrayIcons;
+        m_taskbarAttention = taskbarAttention;
+        m_taskbarBadges = taskbarBadges;
+        m_taskbarProgress = taskbarProgress;
+        m_taskbarNumberHints = taskbarNumberHints;
         emit taskbarChanged();
     }
 

@@ -170,7 +170,33 @@ void vela_workspaces_json(struct vela_server *server, struct vela_buffer *out)
         vela_buffer_appendf(out, ":%d", view->sticky ? -1 : view->workspace);
         first = false;
     }
-    vela_buffer_append(out, "},\"stickyApps\":[");
+    vela_buffer_append(out, "},\"outputs\":{");
+    first = true;
+    wl_list_for_each(view, &server->views, link)
+    {
+        if (!view->mapped || !view_id(view)) {
+            continue;
+        }
+        struct vela_output *output = vela_view_output(view);
+        if (output) {
+            vela_buffer_append(out, first ? "" : ",");
+            vela_buffer_append_json(out, view_id(view));
+            vela_buffer_append(out, ":");
+            vela_buffer_append_json(out, output->wlr->name);
+            first = false;
+        }
+    }
+    vela_buffer_append(out, "},\"attention\":[");
+    first = true;
+    wl_list_for_each(view, &server->views, link)
+    {
+        if (view->mapped && view->attention && view_id(view)) {
+            vela_buffer_append(out, first ? "" : ",");
+            vela_buffer_append_json(out, view_id(view));
+            first = false;
+        }
+    }
+    vela_buffer_append(out, "],\"stickyApps\":[");
     for (int i = 0; i < ws->sticky_count; ++i) {
         vela_buffer_append(out, i ? "," : "");
         vela_buffer_append_json(out, ws->sticky_apps[i]);
@@ -220,6 +246,9 @@ void vela_workspaces_json(struct vela_server *server, struct vela_buffer *out)
 
 void vela_workspaces_announce(struct vela_server *server)
 {
+    if (!server->workspaces) {
+        return;
+    }
     struct vela_buffer line = { 0 };
     vela_buffer_append(&line, "workspaces ");
     vela_workspaces_json(server, &line);

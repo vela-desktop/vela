@@ -9,6 +9,7 @@
 //                 [--clicks PATH] [--ask-size] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --activate XID
+//        vela-x11 --urgency XID on|off
 //        vela-x11 --state XID below|skip-taskbar on|off
 //        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
@@ -149,11 +150,12 @@ int main(int argc, char** argv)
     int askSize = 0;
     const char* clicksFile = NULL;
     int control = (argc == 4
-        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
-            || !strcmp(argv[1], "--override-redirect")))
+                      && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
+                          || !strcmp(argv[1], "--override-redirect") || !strcmp(argv[1], "--urgency")))
         || (argc == 5 && !strcmp(argv[1], "--state"))
-        || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
-            || !strcmp(argv[1], "--geometry") || !strcmp(argv[1], "--activate")))
+        || (argc == 3
+            && (!strcmp(argv[1], "--delete-wine-style") || !strcmp(argv[1], "--geometry")
+                || !strcmp(argv[1], "--activate")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
     if (!control) {
@@ -263,6 +265,16 @@ int main(int argc, char** argv)
             cookie = xcb_send_event_checked(connection, 0, screen->root,
                 XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
                 (const char*)&event);
+        } else if (!strcmp(argv[1], "--urgency")) {
+            if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
+                fprintf(stderr, "vela-x11: expected on or off\n");
+                xcb_disconnect(connection);
+                return 2;
+            }
+            // WM_HINTS is nine 32-bit fields. XUrgencyHint is bit 8 of flags.
+            const uint32_t hints[9] = { !strcmp(argv[3], "on") ? 1u << 8 : 0 };
+            cookie = xcb_change_property_checked(
+                connection, XCB_PROP_MODE_REPLACE, target, XCB_ATOM_WM_HINTS, XCB_ATOM_WM_HINTS, 32, 9, hints);
         } else if (!strcmp(argv[1], "--override-redirect")) {
             if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
                 fprintf(stderr, "vela-x11: expected on or off\n");

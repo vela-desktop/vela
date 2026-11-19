@@ -65,6 +65,7 @@ public:
     Q_INVOKABLE void placeAbove(QWindow* window, int left);
     // A (hidden) shell panel on output `name`: it appears there the next time
     // it opens.
+    Q_INVOKABLE void setPanelKeyboard(QWindow* window, bool on);
     Q_INVOKABLE void placeOnScreen(QWindow* window, const QString& name);
     // Alt+Tab: a click on preview `index` (the compositor switches).
     Q_INVOKABLE void pickSwitcher(int index) { sendToCompositor("switcher-pick " + QByteArray::number(index)); }
@@ -127,6 +128,10 @@ signals:
     void chooseSourceCancelled();
     // Windows shortcuts arriving from the compositor.
     void winXRequested(); // Win+X
+    void taskbarAppRequested(int index, const QString& action, const QString& output);
+    void superHeld();
+    void superHintsHidden();
+    void superReleased();
     void showDesktopRequested(); // Win+D
     void quickSettingsRequested(); // Win+A
     void soundOutputRequested(); // Win+Ctrl+V: quick settings' sound page

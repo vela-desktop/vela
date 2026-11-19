@@ -12,6 +12,7 @@ Item {
     height: 160
 
     Component { id: barComponent; Taskbar { visible: true; primary: true } }
+    Component { id: overflowComponent; TrayOverflow {} }
 
     TestCase {
         name: "TaskbarOverflow"
@@ -43,17 +44,20 @@ Item {
             Styles.taskbar.height = 48
             Menus.entries = []
             Menus.preview = null
+            Menus.trayOverflow = null
+            Config.taskbarTrayIcons = 5
+            Config.taskbarClickActive = "previews"
         }
 
         function addApps(count) {
             for (let i = Tasks.count; i < count; ++i) {
                 Tasks.append({ key: "app-" + i, name: "App " + i, iconName: "application-x-executable",
-                    windowCount: 1, windowActive: false, desktopId: "app-" + i + ".desktop" })
+                    windowIds: [], attention: false, activeWindowId: "", badgeCount: "", progress: -1, windowCount: 1, windowActive: false, pinned: false, hasWindows: true, desktopId: "app-" + i + ".desktop" })
             }
         }
         function addTray(count) {
             for (let i = Tray.count; i < count; ++i)
-                Tray.append({ icon: Qt.resolvedUrl("../../images/vela_splash_169.svg").toString(), title: "Tray " + i, attention: false })
+                Tray.append({ icon: Qt.resolvedUrl("../../images/vela_splash_169.svg").toString(), title: "Tray " + i, attention: false, passive: false })
         }
         function bar(width, primary) {
             const b = createTemporaryObject(barComponent, null, { width: width, primary: primary !== false })
@@ -233,25 +237,88 @@ Item {
             verify(Shell.startMenuOpen)
         }
 
-        function test_oversized_tray_scrolls_without_taking_the_last_app_slot() {
+        function test_multiwindow_click_and_shortcuts() {
+            addApps(16)
+            Tasks.setProperty(0, "windowCount", 2)
+            Tasks.setProperty(0, "windowActive", true)
+            const b = bar(800)
+            const first = child(b, "taskButton-0")
+            mouseClick(first)
+            verify(Menus.preview.latched)
+            compare(Menus.preview.button, first)
+            mouseClick(first)
+            compare(Menus.preview, null)
+            compare(Tasks.activatedRows.length, 0)
+            Config.taskbarClickActive = "next"
+            mouseClick(first)
+            compare(Tasks.activatedRows, [0])
+
+            Shell.primaryScreen = b.screenName
+            Shell.superHeld()
+            compare(first.shortcutNumber, "1")
+            compare(child(b, "taskButton-9").shortcutNumber, "0")
+            compare(child(b, "taskButton-10").shortcutNumber, "")
+            Shell.superHintsHidden()
+            compare(first.shortcutNumber, "")
+            Shell.taskbarAppRequested(9, "new", b.screenName)
+            compare(Tasks.launchedRows, [9])
+        }
+
+        function test_attention_and_badge_roles() {
+            addApps(1)
+            Tasks.setProperty(0, "attention", true)
+            Tasks.setProperty(0, "badgeCount", "99+")
+            Tasks.setProperty(0, "progress", 0.4)
+            Notifications.silenced = true
+            const b = bar(1000)
+            const task = child(b, "taskButton-0")
+            verify(task.needsAttention)
+            verify(task.attentionLit)
+            verify(!task.flashAttention)
+            compare(task.countBadge, "99+")
+            compare(task.progressValue, 0.4)
+            Tasks.setProperty(0, "attention", false)
+            tryCompare(task, "needsAttention", false)
+            Notifications.silenced = false
+        }
+
+        function test_oversized_tray_keeps_room_for_an_app() {
             addApps(24)
             addTray(40)
+            Config.taskbarTrayIcons = -1
             const b = bar(800)
             const apps = child(b, "taskbarApps")
-            const tray = child(b, "taskbarTray")
-            tryVerify(() => tray.overflowing)
             verify(apps.viewportWidth >= Styles.taskbar.buttonWidth)
+            verify(b.hiddenTrayIcons.length > 0)
             separated(b)
             reachLast(b)
-            const next = findChild(tray, "nextApps")
-            for (let i = 0; i < Tray.count && next.enabled; ++i)
-                mouseClick(next)
-            compare(tray.contentX, tray.maximumX)
-            // The last icon is fully visible at the end of the tray viewport.
-            const viewport = findChild(tray, "appViewport")
-            mouseClick(viewport, viewport.width - 16, viewport.height / 2)
-            compare(Tray.activatedRow, 39)
-            separated(b)
+            mouseClick(child(b, "trayOverflowButton"))
+            compare(Menus.trayOverflow.bar, b)
+        }
+
+        function test_hidden_tray_icon_activates_before_the_panel_closes() {
+            addTray(1)
+            Config.taskbarTrayIcons = 0
+            const b = bar(1000)
+            const overflow = createTemporaryObject(overflowComponent, null)
+            mouseClick(child(b, "trayOverflowButton"))
+            tryVerify(() => overflow.visible)
+            mouseClick(child(overflow, "trayOverflowIcon-0"))
+            compare(Tray.activatedRow, 0)
+            tryCompare(overflow, "visible", false)
+        }
+
+        function test_tray_status_and_limit() {
+            addTray(7)
+            Tray.setProperty(1, "passive", true)
+            Tray.setProperty(6, "attention", true)
+            Config.taskbarTrayIcons = 2
+            const b = bar(1000)
+            compare(b.trayIcons.shown.map(item => item.row), [6, 0, 2])
+            compare(b.hiddenTrayIcons.map(item => item.row), [1, 3, 4, 5])
+            Config.taskbarTrayIcons = 0
+            tryCompare(b.hiddenTrayIcons, "length", 6)
+            compare(b.trayIcons.shown.map(item => item.row), [6])
         }
 
         function test_removing_apps_clamps_scroll_and_restores_the_unclipped_row() {

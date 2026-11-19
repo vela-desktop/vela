@@ -242,6 +242,25 @@ class X11Native(unittest.TestCase):
         self.vela.wait_for(lambda s: s.window(view)["fullscreen"], what="fullscreen at 125%")
         self.wait_geometry(xid, (0, 1350, 2560, 1440))
 
+    def test_urgency_marks_the_background_window_until_focus_or_clear(self):
+        view, xid, _ = self.open_x11(400, 300)
+        foreground = self.vela.open_window()
+        self.x11("--urgency", xid, "on")
+        self.vela.wait_for(lambda _: view in self.vela.query("workspaces")["attention"],
+                           what="X11 urgency in taskbar state")
+        self.assertEqual(self.vela.state()["focused"], foreground)
+        self.x11("--urgency", xid, "off")
+        self.vela.wait_for(lambda _: view not in self.vela.query("workspaces")["attention"],
+                           what="withdrawn X11 urgency")
+        self.x11("--activate", xid)
+        self.vela.wait_for(lambda _: view in self.vela.query("workspaces")["attention"],
+                           what="refused X11 activation marks attention")
+        self.assertEqual(self.vela.state()["focused"], foreground)
+        self.vela.command(f"window {view} activate")
+        self.vela.wait_for(lambda s: s["focused"] == view
+                           and view not in self.vela.query("workspaces")["attention"],
+                           what="explicit focus clears X11 attention")
+
     def test_initial_size_restores_in_the_pixels_it_was_asked_in(self):
         # A game opening fullscreen on the 100% output, rescued onto the
         # 125% one when that is unplugged: back to a window, it gets the

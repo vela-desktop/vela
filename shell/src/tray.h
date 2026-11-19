@@ -58,6 +58,7 @@ private:
 
 class TrayModel : public QAbstractListModel {
     Q_OBJECT
+    Q_PROPERTY(QVariantList entries READ entries NOTIFY entriesChanged)
 
 public:
     enum Role {
@@ -76,6 +77,8 @@ public:
     QVariant data(const QModelIndex& index, int role) const override;
     QHash<int, QByteArray> roleNames() const override;
 
+    QVariantList entries() const;
+
     // From QML. anchorX: the icon's center on screen, where to open the menu.
     Q_INVOKABLE void activate(int row, int anchorX); // left click (or menu, if the icon is only a menu)
     Q_INVOKABLE void secondaryActivate(int row); // middle click
@@ -88,6 +91,7 @@ public:
     QImage pixmap(const QString& key) const { return m_pixmaps.value(key); }
 
 Q_SIGNALS:
+    void entriesChanged();
     // entries: [{ id, label, enabled, separator, checkable, checked, radio,
     // icon, children }]
     void menuReady(int row, int anchorX, const QVariantList& entries);

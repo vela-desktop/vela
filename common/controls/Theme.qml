@@ -138,6 +138,7 @@ QtObject {
     readonly property color textSecondary: themed("textSecondary", expressive ? surfaceVariantText : light ? Qt.rgba(0, 0, 0, 0.62) : Qt.rgba(1, 1, 1, 0.786))
     readonly property color textTertiary: themed("textTertiary", expressive ? outline : light ? Qt.rgba(0, 0, 0, 0.447) : Qt.rgba(1, 1, 1, 0.545))
     readonly property color critical: expressive ? error : light ? "#c42b1c" : "#ff99a4"
+    readonly property color attention: themed("attention", caution)
     readonly property color caution: light ? "#9d5d00" : "#fce100"
 
     // --- accent: in dark mode the light tint with black text, in light mode

@@ -43,6 +43,7 @@
 #include "systemactions.h"
 #include "systemstatus.h"
 #include "taskbarmodel.h"
+#include "launcherentry.h"
 #include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
@@ -209,7 +210,7 @@ const Panel panels[] = {
     // like in Windows.
     { "TaskView", "vela-task-view", layerTop, fill, 0, keysExclusive },
     // The desktop's name in the center of the output.
-    { "DesktopOsd", "vela-desktop-osd", layerOverlay, centered, -1, keysNone, {}, true },
+    { "DesktopOsd", "vela-desktop-osd", layerOverlay, centered, -1, keysNone, { }, true },
     // The volume: above fullscreen windows too, like Windows 11. It takes the
     // mouse (drag, mute, wheel). The window touches the taskbar, the pill
     // rests 12 units above it.
@@ -221,9 +222,10 @@ const Panel panels[] = {
     { "SnapAssist", "vela-snap-assist", layerTop, fill, 0, keysExclusive },
     // The distance from the left edge is decided by the button
     // (ShellController::placeAtLeft).
+    { "TrayOverflow", "vela-tray-overflow", layerTop, bottomLeft, 0, keysOnDemand },
     { "TaskbarPreview", "vela-taskbar-preview", layerTop, bottomLeft, 0, keysNone },
     // Above the taskbar too, placed the same way; the mouse goes through.
-    { "TaskbarTooltip", "vela-taskbar-tooltip", layerTop, bottomLeft, 0, keysNone, {}, true },
+    { "TaskbarTooltip", "vela-taskbar-tooltip", layerTop, bottomLeft, 0, keysNone, { }, true },
     { "FileDialogs", "vela-file-dialogs", layerTop, centered, 0, keysOnDemand },
     { "ClipboardPanel", "vela-clipboard", layerTop, bottomRight, 0, keysOnDemand },
 };
@@ -392,6 +394,7 @@ int main(int argc, char* argv[])
 
     ForeignToplevelManager windows;
     TaskbarModel tasks(&apps, &windows);
+    LauncherEntry launcherEntry;
     WindowCapture capture;
     NotificationServer notifications;
     notifications.registerService();
@@ -635,7 +638,12 @@ int main(int argc, char* argv[])
     // Wallpapers on every output; the taskbar too, like in Windows (or only on
     // the main one, if the user wants that).
     ScreenWindows wallpapers(&engine, "Wallpaper", setupWallpaper);
-    ScreenWindows taskbars(&engine, "Taskbar", setupTaskbar);
+    ScreenWindows taskbars(&engine, "Taskbar", [&](QQuickWindow* window, QScreen* screen) {
+        setupTaskbar(window, screen);
+        window->setProperty("taskModel",
+            QVariant::fromValue(static_cast<QObject*>(
+                new TaskbarModel(&tasks, &config, &workspaces, &launcherEntry, screen->name(), window))));
+    });
     wallpapers.setPreferredPrimary(config.primaryOutput());
     taskbars.setPreferredPrimary(config.primaryOutput());
     QObject::connect(&config, &Config::primaryOutputChanged, &wallpapers,

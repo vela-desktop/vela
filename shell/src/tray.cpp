@@ -257,6 +257,27 @@ struct TrayModel::Item {
 TrayModel::TrayModel(QObject* parent)
     : QAbstractListModel(parent)
 {
+    connect(this, &QAbstractItemModel::rowsInserted, this, &TrayModel::entriesChanged);
+    connect(this, &QAbstractItemModel::rowsRemoved, this, &TrayModel::entriesChanged);
+    connect(this, &QAbstractItemModel::dataChanged, this, &TrayModel::entriesChanged);
+}
+
+QVariantList TrayModel::entries() const
+{
+    QVariantList result;
+    for (int row = 0; row < rowCount(); ++row) {
+        const Item* item = itemAt(row);
+        if (item->loaded && !item->icon.isEmpty()) {
+            result.append(QVariantMap {
+                { QStringLiteral("row"), row },
+                { QStringLiteral("icon"), item->icon },
+                { QStringLiteral("title"), item->title },
+                { QStringLiteral("attention"), item->status == QLatin1String("NeedsAttention") },
+                { QStringLiteral("passive"), item->status == QLatin1String("Passive") },
+            });
+        }
+    }
+    return result;
 }
 
 TrayModel::~TrayModel() = default;

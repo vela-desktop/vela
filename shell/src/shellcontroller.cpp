@@ -300,6 +300,18 @@ void ShellController::handleCommand(const QByteArray& command)
         emit switcherHidden();
     } else if (command == "winx") {
         emit winXRequested();
+    } else if (parts.first() == "taskbar-app" && parts.size() >= 3) {
+        const int number = parts.at(1).toInt();
+        if (number >= 1 && number <= 10) {
+            emit taskbarAppRequested(
+                number - 1, QString::fromLatin1(parts.at(2)), QString::fromUtf8(parts.mid(3).join(' ')));
+        }
+    } else if (command == "super-held") {
+        emit superHeld();
+    } else if (command == "super-hints-hidden") {
+        emit superHintsHidden();
+    } else if (command == "super-released") {
+        emit superReleased();
     } else if (command == "show-desktop") {
         emit showDesktopRequested();
     } else if (command == "quick-settings") {
@@ -406,6 +418,14 @@ void ShellController::placeAbove(QWindow* window, int left)
     }
     if (margins != wanted) {
         layer->setMargins(wanted);
+    }
+}
+
+void ShellController::setPanelKeyboard(QWindow* window, bool on)
+{
+    if (window) {
+        LayerShellQt::Window::get(window)->setKeyboardInteractivity(
+            on ? LayerShellQt::Window::KeyboardInteractivityOnDemand : LayerShellQt::Window::KeyboardInteractivityNone);
     }
 }
 
