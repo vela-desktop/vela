@@ -66,6 +66,9 @@ Window {
         panel.forceActiveFocus()
         motion.open()
     }
+    // More icons hidden while it is open: it grows along a vertical bar, and
+    // moves up to stay on the screen.
+    onHeightChanged: if (visible && info && bar.vertical) left = Menus.placeBesideBar(root, info.center, root.screen)
     onActiveChanged: if (!active && info && !Menus.isOpen) Menus.trayOverflow = null
 
     ShadowRoom {

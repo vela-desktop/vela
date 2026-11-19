@@ -1531,6 +1531,11 @@ Window {
         // On a vertical bar the lines are centered, AM/PM has a line of its
         // own and the date is the day and the month: the column is narrow.
         readonly property bool hasMeridiem: /a/i.test(Config.clockFormat)
+        // The format's own AM/PM marker ("AP" or "ap"), formatted alone.
+        readonly property string meridiem: {
+            const marker = Config.clockFormat.match(/a+p*/i)
+            return marker ? Qt.formatTime(now, marker[0]) : ""
+        }
         Column {
             id: clockColumn
             x: root.vertical ? Math.round((parent.width - width) / 2) : 8
@@ -1544,7 +1549,12 @@ Window {
                 // Taskbar). Digits all as wide, so the clock doesn't twitch
                 // every second.
                 objectName: "taskbarTime"
-                text: Qt.formatTime(clock.now, root.vertical ? Config.clockFormat.replace(/\s*a+p*\s*/i, "") : Config.clockFormat)
+                // On a vertical bar AM/PM has a line of its own: formatted
+                // with it (h is 1-12 only beside AP), then taken out.
+                text: {
+                    const full = Qt.formatTime(clock.now, Config.clockFormat)
+                    return root.vertical && clock.meridiem ? full.replace(clock.meridiem, "").trim() : full
+                }
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
                 font.features: { "tnum": 1 }
@@ -1552,7 +1562,7 @@ Window {
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 visible: root.vertical && clock.hasMeridiem
-                text: visible ? Qt.formatTime(clock.now, "AP") : ""
+                text: visible ? clock.meridiem : ""
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
             }

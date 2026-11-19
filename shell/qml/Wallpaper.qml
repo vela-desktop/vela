@@ -45,8 +45,11 @@ Window {
 
     // --- menus (docs/renderer.md §14.9) ---
 
+    // x, y in the icons' area, which a top or left taskbar moves off the
+    // output's corner: the menu opens on the output.
     function openMenu(entries, x, y, keyboard) {
-        Menus.open(entries, x, y, { screen: root.screen ? root.screen.name : "", keyboard: !!keyboard })
+        const p = icons.mapToItem(null, x, y)
+        Menus.open(entries, p.x, p.y, { screen: root.screen ? root.screen.name : "", keyboard: !!keyboard })
     }
 
     // The entries apps add for these files (KDE service menus), in their

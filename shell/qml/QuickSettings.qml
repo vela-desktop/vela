@@ -146,6 +146,12 @@ Window {
         function onSoundOutputRequested() { root.toggleSound() }
         function onNotificationCenterRequested() { root.close() }
     }
+    // The taskbar moved to another edge: the panel's place, and the origin
+    // its menus open from, belong to the old one. Placed again on reopening.
+    Connections {
+        target: Styles.taskbar
+        function onPositionChanged() { root.close() }
+    }
 
     // Back from a page: Alt+Left, the keyboard's Back key and the mouse's
     // side button (common/navigationbuttons.cpp), like the arrow at the top.

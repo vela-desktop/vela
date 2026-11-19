@@ -42,6 +42,7 @@ Item {
             Styles.taskbar.sideMargin = 0
             Styles.taskbar.splitGap = 0
             Styles.taskbar.height = 48
+            Styles.taskbar.position = "bottom"
             Menus.entries = []
             Menus.preview = null
             Menus.trayOverflow = null
@@ -126,6 +127,25 @@ Item {
             Styles.taskbar.margin = data.floating ? 10 : 0
             Styles.taskbar.sideMargin = data.floating ? 100 : 0
             Styles.taskbar.height = data.floating ? 68 : 48
+        }
+
+        // A vertical bar gives AM/PM a line of its own, still on a 12-hour
+        // clock, in the format's own case (Shell.now(): 23:59:59).
+        function test_vertical_clock_keeps_twelve_hours_data() {
+            return [{ tag: "upper", format: "h:mm AP", time: "11:59", meridiem: "PM" },
+                    { tag: "lower", format: "h:mm ap", time: "11:59", meridiem: "pm" },
+                    { tag: "24-hour", format: "HH:mm", time: "23:59", meridiem: "" }]
+        }
+        function test_vertical_clock_keeps_twelve_hours(data) {
+            Config.clockFormat = data.format
+            Styles.taskbar.position = "left"
+            const b = createTemporaryObject(barComponent, null, { width: 56, height: 700 })
+            verify(b)
+            tryVerify(() => b.visible)
+            const time = child(b, "taskbarTime")
+            compare(time.text, data.time)
+            const lines = time.parent.children.filter(c => c.visible && c.text !== undefined).map(c => c.text)
+            compare(lines.indexOf(data.meridiem) > 0, data.meridiem !== "", JSON.stringify(lines))
         }
 
         function test_crowded_layout_data() { return layouts() }

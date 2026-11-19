@@ -54,6 +54,12 @@ Window {
         function onNotificationCenterRequested() { motion.opened ? root.close() : root.open() }
         function onQuickSettingsRequested() { root.close() }
     }
+    // The taskbar moved to another edge: the panel's place, and the origin
+    // its menus open from, belong to the old one. Placed again on reopening.
+    Connections {
+        target: Styles.taskbar
+        function onPositionChanged() { root.close() }
+    }
 
     onActiveChanged: {
         if (!active && motion.opened && !Menus.isOpen) {
