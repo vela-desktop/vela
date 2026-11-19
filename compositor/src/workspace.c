@@ -177,10 +177,7 @@ void vela_workspaces_json(struct vela_server *server, struct vela_buffer *out)
         if (!view->mapped || !view_id(view)) {
             continue;
         }
-        // What the shell gets is what vela_view_update_taskbar_output()
-        // compares with: a later return to the old output is a change too.
         struct vela_output *output = vela_view_output(view);
-        view->taskbar_output = output;
         if (output) {
             vela_buffer_append(out, first ? "" : ",");
             vela_buffer_append_json(out, view_id(view));
@@ -251,6 +248,16 @@ void vela_workspaces_announce(struct vela_server *server)
 {
     if (!server->workspaces) {
         return;
+    }
+    // What the shell gets is what vela_view_update_taskbar_output() compares
+    // with: a later return to the old output is a change too. Only this
+    // broadcast reaches the shell; a query's reply goes to whoever asked.
+    struct vela_view *view;
+    wl_list_for_each(view, &server->views, link)
+    {
+        if (view->mapped && view_id(view)) {
+            view->taskbar_output = vela_view_output(view);
+        }
     }
     struct vela_buffer line = { 0 };
     vela_buffer_append(&line, "workspaces ");
