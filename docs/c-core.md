@@ -143,7 +143,8 @@ compositor/src/
   output.c/h      struct vela_output: frame cycle, vblank, VRR, power,
                   hotplug; output_config.c, nested.c
   input.c/h       seat, pointers, gestures, constraints, drag icon, paste
-  keyboard.c/h    keyboards, layouts, key handling
+  keyboard.c/h    keyboards, layouts, key handling; super_numbers.c/h
+                  the Super+number rules
   shell.c/h       the supervised shell and one-line messages to it
   polkit.c/h      starting Vela's polkit agent (docs/polkit-agent.md)
   view.c/h        struct vela_view: windows (xdg-shell), handles, animation;

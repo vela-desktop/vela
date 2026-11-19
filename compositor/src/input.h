@@ -30,6 +30,8 @@
 #include <stdint.h>
 #include <wayland-server-core.h>
 
+#include "super_numbers.h"
+
 struct vela_server;
 struct vela_tree;
 struct vela_surface_node;
@@ -39,12 +41,6 @@ struct wlr_pointer_gestures_v1;
 struct wlr_relative_pointer_manager_v1;
 struct wlr_keyboard_shortcuts_inhibit_manager_v1;
 struct wlr_surface;
-
-enum vela_super_numbers {
-    VELA_SUPER_NUMBERS_APPS,
-    VELA_SUPER_NUMBERS_DESKTOPS,
-    VELA_SUPER_NUMBERS_OFF,
-};
 
 enum vela_swipe_action {
     VELA_SWIPE_NONE,

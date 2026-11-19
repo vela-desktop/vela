@@ -18,9 +18,9 @@
 #include "scene/surface.h"
 #include "server.h"
 #include "shell.h"
+#include "super_numbers.h"
 #include "util.h"
 
-#include <linux/input-event-codes.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -186,9 +186,7 @@ static void load_pointer_settings(struct vela_input *input)
 static void load_super_numbers(struct vela_input *input, const struct vela_config *settings)
 {
     const char *mode = vela_config_get(settings, "super-number-keys", "apps");
-    input->super_numbers = strcmp(mode, "desktops") == 0 ? VELA_SUPER_NUMBERS_DESKTOPS
-        : strcmp(mode, "off") == 0                       ? VELA_SUPER_NUMBERS_OFF
-                                                         : VELA_SUPER_NUMBERS_APPS;
+    input->super_numbers = vela_super_numbers_parse(mode);
     vela_input_hide_super_hints(input);
 }
 
@@ -679,13 +677,7 @@ void vela_input_keyboard_enter(struct vela_input *input, struct wlr_surface *sur
             }
         }
         uint32_t keycodes[WLR_KEYBOARD_KEYS_CAP];
-        size_t count = 0;
-        for (size_t i = 0; i < keyboard->num_keycodes; ++i) {
-            const uint32_t code = keyboard->keycodes[i];
-            if (code < KEY_1 || code > KEY_0 || !(handled & (1u << (code - KEY_1)))) {
-                keycodes[count++] = code;
-            }
-        }
+        const size_t count = vela_super_numbers_filter(keyboard->keycodes, keyboard->num_keycodes, handled, keycodes);
         wlr_seat_keyboard_notify_enter(seat, surface, keycodes, count, &keyboard->modifiers);
     } else {
         wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);

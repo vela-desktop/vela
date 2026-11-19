@@ -20,9 +20,9 @@
 #include "input.h"
 #include "server.h"
 #include "shell.h"
+#include "super_numbers.h"
 #include "util.h"
 
-#include <linux/input-event-codes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -318,26 +318,27 @@ static int show_super_hints(void *data)
 static bool handle_super_number(struct vela_input *input, unsigned index, uint32_t mods)
 {
     struct vela_server *server = input->server;
-    const uint32_t relevant = mods & (WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT | WLR_MODIFIER_SHIFT);
-    if (input->super_numbers == VELA_SUPER_NUMBERS_OFF || !(relevant & WLR_MODIFIER_LOGO)
-        || (relevant & WLR_MODIFIER_CTRL) || ((relevant & WLR_MODIFIER_ALT) && (relevant & WLR_MODIFIER_SHIFT))) {
-        return false;
-    }
+    const struct vela_super_modifiers held = {
+        .logo = mods & WLR_MODIFIER_LOGO,
+        .ctrl = mods & WLR_MODIFIER_CTRL,
+        .alt = mods & WLR_MODIFIER_ALT,
+        .shift = mods & WLR_MODIFIER_SHIFT,
+    };
+    const enum vela_super_number_action action = vela_super_number_action(input->super_numbers, held);
     struct vela_view *active = vela_views_focused(server);
-    if (input->super_numbers == VELA_SUPER_NUMBERS_DESKTOPS) {
-        if (relevant & WLR_MODIFIER_ALT) {
-            return false;
-        }
-        if ((int)index < server->workspaces->count) {
-            if (relevant & WLR_MODIFIER_SHIFT) {
-                if (active) {
-                    vela_workspaces_move_view(server, active, (int)index);
-                }
-            } else {
-                vela_workspaces_switch(server, (int)index, true);
-            }
+    switch (action) {
+    case VELA_SUPER_NUMBER_NONE: return false;
+    case VELA_SUPER_NUMBER_MOVE:
+        if ((int)index < server->workspaces->count && active) {
+            vela_workspaces_move_view(server, active, (int)index);
         }
         return true;
+    case VELA_SUPER_NUMBER_SWITCH:
+        if ((int)index < server->workspaces->count) {
+            vela_workspaces_switch(server, (int)index, true);
+        }
+        return true;
+    default: break;
     }
 
     struct vela_output *output = active ? vela_view_output(active) : NULL;
@@ -348,9 +349,9 @@ static bool handle_super_number(struct vela_input *input, unsigned index, uint32
     if (!output) {
         output = vela_output_under_cursor(server);
     }
-    const char *action = (relevant & WLR_MODIFIER_SHIFT) ? "new" : (relevant & WLR_MODIFIER_ALT) ? "jump" : "activate";
     char line[256];
-    if (vela_format(line, sizeof(line), "taskbar-app %u %s %s", index + 1, action, output ? output->wlr->name : "")) {
+    if (vela_format(line, sizeof(line), "taskbar-app %u %s %s", index + 1, vela_super_number_verb(action),
+            output ? output->wlr->name : "")) {
         vela_shell_send(server, line);
     }
     return true;
@@ -409,8 +410,8 @@ static void handle_key(struct wl_listener *listener, void *data)
             }
         }
     }
-    if (event->keycode >= KEY_1 && event->keycode <= KEY_0) {
-        const unsigned index = event->keycode - KEY_1;
+    if (vela_super_number_index(event->keycode) >= 0) {
+        const unsigned index = (unsigned)vela_super_number_index(event->keycode);
         const uint16_t bit = (uint16_t)(1u << index);
         if (pressed && !inhibited && handle_super_number(input, index, mods)) {
             keyboard->handled_numbers |= bit;

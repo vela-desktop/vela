@@ -139,6 +139,7 @@ add_library(vela-pure STATIC
     src/path_security.c
     src/security_policy.c
     src/sun.c
+    src/super_numbers.c
     src/supervisor_child.c
     src/sync.c
     src/util.c
@@ -675,6 +676,7 @@ if(VELA_BUILD_TOOLS)
             tests/lock_state_test.cpp
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
+            tests/super_numbers_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)
