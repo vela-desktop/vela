@@ -299,7 +299,9 @@ Window {
             } else if (task.windowActive && task.windowCount > 1 && !task.attention &&
                        Config.taskbarClickActive !== "next") {
                 root.openPreviews(task, true, true)
-            } else if (!task.windowActive || task.windowCount > 1 || task.attention) {
+            } else {
+                // As a click: in front with one window, it minimizes, so a
+                // second press hides what the first brought.
                 Menus.preview = null
                 root.taskModel.activate(index)
             }

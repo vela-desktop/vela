@@ -159,6 +159,17 @@ class TaskbarShortcuts(RealShell):
             self.vela.wait_for(lambda s: s["focused"] == first and not self.mapped(s, "vela-taskbar-preview"),
                                what="the next taskbar result")
 
+    def test_taskbar_number_toggles_a_single_window(self):
+        window = self.vela.open_window(app_id="taskbar-toggle")
+        self.vela.wait_for(lambda s: s["focused"] == window, what="the app in front")
+        # In front with one window: a press minimizes it, the next brings it
+        # back, as clicking its button does.
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: s.window(window)["minimized"], what="the app minimized")
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: not s.window(window)["minimized"] and s["focused"] == window,
+                           what="the app back in front")
+
     def test_taskbar_number_uses_the_focused_windows_display(self):
         first = self.vela.open_window(app_id="taskbar-first-display")
         second = self.vela.open_window(app_id="taskbar-second-display")

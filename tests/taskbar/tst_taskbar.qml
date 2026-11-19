@@ -290,6 +290,22 @@ Item {
             compare(Tasks.launchedRows, [9])
         }
 
+        // Super+N on the app in front with one window: minimized, as a click
+        // (docs/taskbar.md §7.3); with several, the previews instead.
+        function test_super_number_toggles_the_app_in_front() {
+            addApps(2)
+            Tasks.setProperty(0, "windowActive", true)
+            Tasks.setProperty(1, "windowActive", true)
+            Tasks.setProperty(1, "windowCount", 2)
+            const b = bar(900)
+            Shell.primaryScreen = b.screenName
+            Shell.taskbarAppRequested(0, "activate", b.screenName)
+            compare(Tasks.activatedRows, [0])
+            Shell.taskbarAppRequested(1, "activate", b.screenName)
+            compare(Tasks.activatedRows, [0])
+            verify(Menus.preview && Menus.preview.cycling)
+        }
+
         function test_attention_and_badge_roles() {
             addApps(1)
             Tasks.setProperty(0, "attention", true)

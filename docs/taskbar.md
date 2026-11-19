@@ -243,8 +243,8 @@ buttons.
 
 - No window shown: launch (or the most recent window elsewhere, §4.2).
 - Not in front: its most recent shown window.
-- In front, one window: nothing. Minimizing from the keyboard is
-  Super+↓, and a second press shouldn't hide what the user just asked for.
+- In front, one window: minimize, as a click does. A second press hides
+  what the first brought, so the same key toggles the app.
 - In front, several windows, with `clickActive=previews`: the previews
   open, the next window highlighted. **Pressing N again, with Super still
   held, moves the highlight; releasing Super activates it**, like Alt+Tab.
