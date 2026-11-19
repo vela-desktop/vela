@@ -1,0 +1,52 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Validate container dependencies before merging; never publish PR images.
+name: NVIDIA CI image preflight
+
+on:
+  pull_request:
+    paths:
+      - '.github/images/nvidia-ci/**'
+      - '.github/workflows/nvidia-ci-image.yml'
+      - '.github/workflows/nvidia-ci-image-pr.yml'
+      - '.github/workflows/gpu-nvidia.yml'
+      - 'scripts/vast-runner.py'
+      - 'scripts/tests/test_nvidia_gpu_ci.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    name: Build and verify NVIDIA CI image (no GPU required)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
+      - name: Unit-test rental and digest checks
+        run: python3 -m unittest discover -s scripts/tests -p 'test_nvidia_gpu_ci.py' -v
+      - name: Build rolling Arch image
+        run: docker build --pull --no-cache -t vela-nvidia-ci-preflight .github/images/nvidia-ci
+      - name: Check GPU and promo dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/sh vela-nvidia-ci-preflight -ec '
+            for tool in runuser sha256sum cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus; do
+              command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
+            done
+            for tool in ffmpeg ffprobe pipewire wireplumber pw-cat pw-dump unshare; do
+              command -v "$tool" >/dev/null || { echo "missing promo dependency: $tool"; exit 1; }
+            done
+            python3 -c "import sys, numpy, PIL, dbus; from gi.repository import GLib; sys.exit(sys.version_info < (3, 13))"
+            sh -n /usr/local/bin/vela-ci-runner
+            test ! -e /etc/sudoers.d/runner
+            pkg-config --modversion wlroots-0.20 vulkan
+          '
