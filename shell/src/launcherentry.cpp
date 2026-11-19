@@ -36,7 +36,7 @@ LauncherEntry::LauncherEntry(QObject* parent)
     m_watcher->setConnection(bus);
     m_watcher->setWatchMode(QDBusServiceWatcher::WatchForUnregistration);
     connect(m_watcher, &QDBusServiceWatcher::serviceUnregistered, this, &LauncherEntry::removeSender);
-    bus.connect({ }, { }, QStringLiteral("com.canonical.Unity.LauncherEntry"), QStringLiteral("Update"), this,
+    bus.connect({}, {}, QStringLiteral("com.canonical.Unity.LauncherEntry"), QStringLiteral("Update"), this,
         SLOT(update(QString, QVariantMap, QDBusMessage)));
     // Some publishers only send when a Unity-compatible shell owns this name.
     // On a shared session bus, the existing owner keeps it.
@@ -115,7 +115,7 @@ LauncherEntry::Badge LauncherEntry::badge(const QString& desktopId) const
     };
     const QString id = desktopKey(desktopId);
     if (id.isEmpty()) {
-        return { };
+        return {};
     }
     const Entry* entry = nullptr;
     if (auto exact = m_entries.constFind(id); exact != m_entries.cend()) {
@@ -132,7 +132,7 @@ LauncherEntry::Badge LauncherEntry::badge(const QString& desktopId) const
         }
     }
     if (!entry) {
-        return { };
+        return {};
     }
     return { entry->countVisible ? entry->count : 0, entry->progressVisible ? entry->progress : -1, entry->urgent };
 }

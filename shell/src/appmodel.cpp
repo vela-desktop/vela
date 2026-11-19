@@ -677,11 +677,11 @@ void AppModel::loadTaskbarLaunchers()
 QString AppModel::importTaskbarLauncher(const QUrl& url)
 {
     if (!isLauncherUrl(url)) {
-        return { };
+        return {};
     }
     const QFileInfo fileInfo(url.toLocalFile());
     if (!fileInfo.isAbsolute() || !fileInfo.isFile()) {
-        return { };
+        return {};
     }
     const QString canonical = fileInfo.canonicalFilePath();
     for (const Entry& entry : std::as_const(m_all)) {
@@ -700,11 +700,11 @@ QString AppModel::importTaskbarLauncher(const QUrl& url)
     QFile source(canonical);
     constexpr qint64 maxSize = 1024 * 1024;
     if (!source.open(QIODevice::ReadOnly)) {
-        return { };
+        return {};
     }
     const QByteArray contents = source.read(maxSize + 1);
     if (source.error() != QFileDevice::NoError || contents.size() > maxSize) {
-        return { };
+        return {};
     }
     const QString hash = QString::fromLatin1(QCryptographicHash::hash(contents, QCryptographicHash::Sha256).toHex());
     const QString id = QStringLiteral("vela-taskbar-") + hash + QStringLiteral(".desktop");
@@ -718,7 +718,7 @@ QString AppModel::importTaskbarLauncher(const QUrl& url)
     input.setData(contents);
     input.open(QIODevice::ReadOnly | QIODevice::Text);
     if (!parseTaskbarLauncher(input, directory.filePath(id), entry)) {
-        return { };
+        return {};
     }
     // A launcher copied from an installed application should move the
     // installed app's pin. A launcher with custom arguments keeps its own.
@@ -728,12 +728,12 @@ QString AppModel::importTaskbarLauncher(const QUrl& url)
         return installed->id;
     }
     if (!QDir().mkpath(directory.path())) {
-        return { };
+        return {};
     }
     QSaveFile copy(entry.path);
     if (!copy.open(QIODevice::WriteOnly) || !copy.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner)
         || copy.write(contents) != contents.size() || !copy.commit()) {
-        return { };
+        return {};
     }
     m_taskbarLaunchers.insert(id, std::move(entry));
     return id;

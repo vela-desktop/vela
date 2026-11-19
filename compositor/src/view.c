@@ -79,12 +79,13 @@ struct wlr_box vela_view_geometry(const struct vela_view *view)
 #if WLR_HAS_XWAYLAND
     // X11: no shadow margins; Vela's bar, if any, sits on top. The window is
     // in pixels of its output.
-    double density = view->x11_density > 0.0 ? view->x11_density : 1.0;
-    return (struct wlr_box) { 0, -bar, (int)lround(view->x11->width / density),
-        (int)lround(view->x11->height / density) + bar };
-#else
-    return (struct wlr_box) { 0 };
+    if (view->x11) {
+        double density = view->x11_density > 0.0 ? view->x11_density : 1.0;
+        return (struct wlr_box) { 0, -bar, (int)lround(view->x11->width / density),
+            (int)lround(view->x11->height / density) + bar };
+    }
 #endif
+    return (struct wlr_box) { 0 };
 }
 
 bool vela_view_configurable(const struct vela_view *view)

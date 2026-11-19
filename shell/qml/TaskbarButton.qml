@@ -33,9 +33,9 @@ Item {
     SequentialAnimation {
         id: attentionPulse
         loops: 3
-        PauseAnimation { duration: 400 }
+        PauseAnimation { duration: Theme.attentionPulseInterval }
         PropertyAction { target: root; property: "attentionLit"; value: false }
-        PauseAnimation { duration: 400 }
+        PauseAnimation { duration: Theme.attentionPulseInterval }
         PropertyAction { target: root; property: "attentionLit"; value: true }
     }
     property bool running: false

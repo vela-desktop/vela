@@ -377,7 +377,7 @@ void TaskbarModel::sendButtonRects()
     }
     for (const auto& window : std::as_const(m_windowsWithRect)) {
         if (window && !shown.contains(window) && m_windows->windows().contains(window)) {
-            window->setButtonRect(m_panel, { });
+            window->setButtonRect(m_panel, {});
         }
     }
     m_windowsWithRect = std::move(shown);

@@ -318,6 +318,7 @@ QtObject {
     readonly property int normal: animationEffects ? Math.round(scale.normal * duration) : fast // exits, popups, dialogs, page changes
     readonly property int slow: animationEffects ? Math.round(scale.slow * duration) : fast // panels and windows entering the scene
     readonly property int long: animationEffects ? Math.round(scale.long * duration) : fast // what moves across the whole window
+    readonly property int attentionPulseInterval: 400 // on/off cadence for a taskbar attention request
     // cubic-bezier(0, 0, 0.2, 1): a decisive start, a soft landing. For exits
     // too, which are shorter: one that starts slowly seems to ignore the click.
     readonly property var decelerate: [0.0, 0.0, 0.2, 1.0, 1.0, 1.0]

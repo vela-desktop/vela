@@ -210,7 +210,7 @@ const Panel panels[] = {
     // like in Windows.
     { "TaskView", "vela-task-view", layerTop, fill, 0, keysExclusive },
     // The desktop's name in the center of the output.
-    { "DesktopOsd", "vela-desktop-osd", layerOverlay, centered, -1, keysNone, { }, true },
+    { "DesktopOsd", "vela-desktop-osd", layerOverlay, centered, -1, keysNone, {}, true },
     // The volume: above fullscreen windows too, like Windows 11. It takes the
     // mouse (drag, mute, wheel). The window touches the taskbar, the pill
     // rests 12 units above it.
@@ -225,7 +225,7 @@ const Panel panels[] = {
     { "TrayOverflow", "vela-tray-overflow", layerTop, bottomLeft, 0, keysOnDemand },
     { "TaskbarPreview", "vela-taskbar-preview", layerTop, bottomLeft, 0, keysNone },
     // Above the taskbar too, placed the same way; the mouse goes through.
-    { "TaskbarTooltip", "vela-taskbar-tooltip", layerTop, bottomLeft, 0, keysNone, { }, true },
+    { "TaskbarTooltip", "vela-taskbar-tooltip", layerTop, bottomLeft, 0, keysNone, {}, true },
     { "FileDialogs", "vela-file-dialogs", layerTop, centered, 0, keysOnDemand },
     { "ClipboardPanel", "vela-clipboard", layerTop, bottomRight, 0, keysOnDemand },
 };

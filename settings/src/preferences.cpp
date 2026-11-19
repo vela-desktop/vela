@@ -289,7 +289,7 @@ void Preferences::reloadCompositor()
         const QString v = value(key, fallback ? QStringLiteral("yes") : QStringLiteral("no"));
         return v == QLatin1String("yes") || v == QLatin1String("1") || v == QLatin1String("true");
     };
-    const QString numberKeys = value(QStringLiteral("super-number-keys"), { });
+    const QString numberKeys = value(QStringLiteral("super-number-keys"), {});
     m_superNumberKeys = numberKeys == QLatin1String("desktops") || numberKeys == QLatin1String("off")
         ? numberKeys
         : QStringLiteral("apps");
