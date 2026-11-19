@@ -86,6 +86,18 @@ class ProvisioningTests(unittest.TestCase):
             result = vast_runner.wait_online("vela-desktop", 9, 123)
         return result, clock.now
 
+    def test_rejects_mutable_image_before_renting(self):
+        with self.assertRaisesRegex(ValueError, "sha256 digest"):
+            vast_runner.start("vela-desktop", "probe",
+                              "ghcr.io/vela-desktop/vela-ci-nvidia:latest",
+                              "2.338.2", "a" * 64, 0.12, None)
+
+    def test_rejects_invalid_runner_checksum_before_renting(self):
+        with self.assertRaisesRegex(ValueError, "runner SHA256"):
+            vast_runner.start("vela-desktop", "probe",
+                              "ghcr.io/vela-desktop/vela-ci-nvidia@sha256:" + "b" * 64,
+                              "2.338.2", "bogus", 0.12, None)
+
     def test_runner_already_online(self):
         result, elapsed = self.probe([{"actual_status": "loading", "status_msg": ""}],
                                      github_state="online")
