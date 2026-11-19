@@ -227,6 +227,14 @@ if(VELA_BUILD_TOOLS)
         target_compile_options(vela-launcherentry-test PRIVATE -Wall -Wextra)
         target_link_libraries(vela-launcherentry-test PRIVATE Qt6::DBus Qt6::Test)
         add_test(NAME shell-launcherentry COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-launcherentry-test>)
+
+        # The notification area: the shell's watcher and fake apps' icons.
+        qt_add_executable(vela-tray-test tests/tray_test.cpp src/tray.cpp src/tray.h)
+        target_include_directories(vela-tray-test PRIVATE src)
+        target_compile_options(vela-tray-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-tray-test PRIVATE Qt6::DBus Qt6::Quick Qt6::Test)
+        add_test(NAME shell-tray COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-tray-test>)
+        set_tests_properties(shell-tray PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endif()
 
     # Battery notifications (docs/battery-notifications.md §9): the policy
