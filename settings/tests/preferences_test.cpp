@@ -180,7 +180,27 @@ private slots:
             { "taskbar/progress", false },
             { "taskbar/numberHints", false },
         });
+        // Unknown values, and the values already chosen, write nothing.
+        QSignalSpy taskbar(&prefs, &Preferences::taskbarChanged);
+        prefs.setTaskbarPosition(QStringLiteral("left"));
+        prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarWindowsFrom(QStringLiteral("everywhere"));
+        prefs.setTaskbarAppsOn(QStringLiteral("window"));
+        prefs.setTaskbarAppsOn(QStringLiteral("nowhere"));
+        prefs.setTaskbarClickActive(QStringLiteral("next"));
+        prefs.setTaskbarClickActive(QStringLiteral("twice"));
+        prefs.setTrayIconShown(QStringLiteral("steam"), true);
+        prefs.setTrayIconShown(QStringLiteral("discord"), false);
+        prefs.setTrayIconShown(QString(), true);
+        prefs.setTaskbarAttention(false);
+        prefs.setTaskbarBadges(false);
+        prefs.setTaskbarProgress(false);
+        prefs.setTaskbarNumberHints(false);
+        prefs.setSuperNumberKeys(QStringLiteral("apps"));
+        prefs.setSuperNumberKeys(QStringLiteral("letters"));
+        QCOMPARE(taskbar.count(), 0);
         prefs.setSuperNumberKeys(QStringLiteral("desktops"));
+        QCOMPARE(taskbar.count(), 1);
         Preferences reread;
         QCOMPARE(reread.superNumberKeys(), QStringLiteral("desktops"));
 
@@ -581,6 +601,14 @@ private slots:
             { "taskView", "taskbar/taskView", false },
             { "taskbarAllScreens", "taskbar/allScreens", false },
             { "showDesktopCorner", "taskbar/showDesktopCorner", false },
+            { "taskbarPosition", "taskbar/position", QStringLiteral("top") },
+            { "taskbarWindowsFrom", "taskbar/windowsFrom", QStringLiteral("all") },
+            { "taskbarAppsOn", "taskbar/appsOn", QStringLiteral("window") },
+            { "taskbarClickActive", "taskbar/clickActive", QStringLiteral("next") },
+            { "taskbarAttention", "taskbar/attention", false },
+            { "taskbarBadges", "taskbar/badges", false },
+            { "taskbarProgress", "taskbar/progress", false },
+            { "taskbarNumberHints", "taskbar/numberHints", false },
             { "desktopIcons", "desktop/showIcons", false },
             { "startPinned", "start/showPinned", false },
             { "clockDate", "taskbar/showDate", false },
@@ -592,7 +620,7 @@ private slots:
             { "batteryNotify", "battery/notify", false },
             { "batteryLowLevel", "battery/lowLevel", 10 },
             { "deviceBatteryNotify", "battery/devices", false },
-            { "clipboardHistory", "clipboard/history", true }
+            { "clipboardHistory", "clipboard/history", true },
         };
         for (const auto& choice : choices) {
             for (bool present : { false, true }) {
