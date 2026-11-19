@@ -46,6 +46,15 @@ class Preferences : public QObject {
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom WRITE setTaskbarWindowsFrom NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn WRITE setTaskbarAppsOn NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive WRITE setTaskbarClickActive NOTIFY taskbarChanged)
+    Q_PROPERTY(int taskbarTrayIcons READ taskbarTrayIcons WRITE setTaskbarTrayIcons NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarAttention READ taskbarAttention WRITE setTaskbarAttention NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarBadges READ taskbarBadges WRITE setTaskbarBadges NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarProgress READ taskbarProgress WRITE setTaskbarProgress NOTIFY taskbarChanged)
+    Q_PROPERTY(QString superNumberKeys READ superNumberKeys WRITE setSuperNumberKeys NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarNumberHints READ taskbarNumberHints WRITE setTaskbarNumberHints NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
     // The taskbar clock: its date (taskbar/showDate).
@@ -188,6 +197,24 @@ public:
     void setEndTask(bool on);
     bool taskView() const { return m_taskView; }
     void setTaskView(bool on);
+    QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
+    void setTaskbarWindowsFrom(const QString& value);
+    QString taskbarAppsOn() const { return m_taskbarAppsOn; }
+    void setTaskbarAppsOn(const QString& value);
+    QString taskbarClickActive() const { return m_taskbarClickActive; }
+    void setTaskbarClickActive(const QString& value);
+    int taskbarTrayIcons() const { return m_taskbarTrayIcons; }
+    void setTaskbarTrayIcons(int value);
+    bool taskbarAttention() const { return m_taskbarAttention; }
+    void setTaskbarAttention(bool value);
+    bool taskbarBadges() const { return m_taskbarBadges; }
+    void setTaskbarBadges(bool value);
+    bool taskbarProgress() const { return m_taskbarProgress; }
+    void setTaskbarProgress(bool value);
+    QString superNumberKeys() const { return m_superNumberKeys; }
+    void setSuperNumberKeys(const QString& mode);
+    bool taskbarNumberHints() const { return m_taskbarNumberHints; }
+    void setTaskbarNumberHints(bool value);
     bool taskbarAllScreens() const { return m_taskbarAllScreens; }
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
@@ -428,6 +455,15 @@ private:
     QString m_taskbarAlignment;
     bool m_endTask = true;
     bool m_taskView = true;
+    QString m_taskbarWindowsFrom = QStringLiteral("desktop");
+    QString m_taskbarAppsOn = QStringLiteral("all");
+    QString m_taskbarClickActive = QStringLiteral("previews");
+    int m_taskbarTrayIcons = 5;
+    bool m_taskbarAttention = true;
+    bool m_taskbarBadges = true;
+    bool m_taskbarProgress = true;
+    QString m_superNumberKeys = QStringLiteral("apps");
+    bool m_taskbarNumberHints = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_desktopIcons = true;

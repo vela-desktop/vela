@@ -3,6 +3,8 @@
 
 #include "processlaunch.h"
 #include "preferences.h"
+
+#include "../../common/taskbarsettings.h"
 #include "../../common/privatefile.h"
 
 extern "C" {
@@ -178,6 +180,22 @@ void Preferences::loadShell(const QSettings& settings)
     m_taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
+    bool trayIconsOk = false;
+    const int trayIcons = settings.value(QStringLiteral("taskbar/trayIcons")).toInt(&trayIconsOk);
+    m_taskbarWindowsFrom = settings.value(QStringLiteral("taskbar/windowsFrom")).toString() == QLatin1String("all")
+        ? QStringLiteral("all")
+        : QStringLiteral("desktop");
+    m_taskbarAppsOn = settings.value(QStringLiteral("taskbar/appsOn")).toString() == QLatin1String("window")
+        ? QStringLiteral("window")
+        : QStringLiteral("all");
+    m_taskbarClickActive = settings.value(QStringLiteral("taskbar/clickActive")).toString() == QLatin1String("next")
+        ? QStringLiteral("next")
+        : QStringLiteral("previews");
+    m_taskbarTrayIcons = trayIconsOk && trayIcons >= -1 && trayIcons <= 10 ? trayIcons : 5;
+    m_taskbarAttention = vela::taskbar::enabled(settings, QStringLiteral("taskbar/attention"));
+    m_taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
+    m_taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
+    m_taskbarNumberHints = vela::taskbar::enabled(settings, QStringLiteral("taskbar/numberHints"));
     emit taskbarChanged();
     m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
     emit desktopChanged();
@@ -271,6 +289,11 @@ void Preferences::reloadCompositor()
         const QString v = value(key, fallback ? QStringLiteral("yes") : QStringLiteral("no"));
         return v == QLatin1String("yes") || v == QLatin1String("1") || v == QLatin1String("true");
     };
+    const QString numberKeys = value(QStringLiteral("super-number-keys"), { });
+    m_superNumberKeys = numberKeys == QLatin1String("desktops") || numberKeys == QLatin1String("off")
+        ? numberKeys
+        : QStringLiteral("apps");
+    emit taskbarChanged();
     m_screenOffMinutes = value(QStringLiteral("screen-off"), QStringLiteral("10")).toInt();
     const QString lock = value(QStringLiteral("lock-on-idle"), QStringLiteral("yes"));
     m_lockOnIdle = lock != QLatin1String("0") && lock != QLatin1String("no");
@@ -665,6 +688,97 @@ void Preferences::setEndTask(bool on)
     if (on != m_endTask) {
         if (setShell(QStringLiteral("taskbar/endTask"), on)) {
             m_endTask = on;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarWindowsFrom(const QString& value)
+{
+    if ((value == QLatin1String("desktop") || value == QLatin1String("all")) && value != m_taskbarWindowsFrom) {
+        if (setShell(QStringLiteral("taskbar/windowsFrom"), value)) {
+            m_taskbarWindowsFrom = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarAppsOn(const QString& value)
+{
+    if ((value == QLatin1String("all") || value == QLatin1String("window")) && value != m_taskbarAppsOn) {
+        if (setShell(QStringLiteral("taskbar/appsOn"), value)) {
+            m_taskbarAppsOn = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarClickActive(const QString& value)
+{
+    if ((value == QLatin1String("previews") || value == QLatin1String("next")) && value != m_taskbarClickActive) {
+        if (setShell(QStringLiteral("taskbar/clickActive"), value)) {
+            m_taskbarClickActive = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarTrayIcons(int value)
+{
+    if ((value >= -1 && value <= 10) && value != m_taskbarTrayIcons) {
+        if (setShell(QStringLiteral("taskbar/trayIcons"), value)) {
+            m_taskbarTrayIcons = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarAttention(bool value)
+{
+    if (value != m_taskbarAttention) {
+        if (setShell(QStringLiteral("taskbar/attention"), value)) {
+            m_taskbarAttention = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarBadges(bool value)
+{
+    if (value != m_taskbarBadges) {
+        if (setShell(QStringLiteral("taskbar/badges"), value)) {
+            m_taskbarBadges = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarProgress(bool value)
+{
+    if (value != m_taskbarProgress) {
+        if (setShell(QStringLiteral("taskbar/progress"), value)) {
+            m_taskbarProgress = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setSuperNumberKeys(const QString& mode)
+{
+    if ((mode == QLatin1String("apps") || mode == QLatin1String("desktops") || mode == QLatin1String("off"))
+        && mode != m_superNumberKeys) {
+        const auto previous = m_superNumberKeys;
+        m_superNumberKeys = mode;
+        keepOrRestore(saveCompositor({ { QStringLiteral("super-number-keys"), mode } }), m_superNumberKeys, previous);
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarNumberHints(bool value)
+{
+    if (value != m_taskbarNumberHints) {
+        if (setShell(QStringLiteral("taskbar/numberHints"), value)) {
+            m_taskbarNumberHints = value;
         }
         emit taskbarChanged();
     }

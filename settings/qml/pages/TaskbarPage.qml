@@ -24,6 +24,117 @@ Page {
                 onToggled: Prefs.taskView = checked
             }
         }
+        Card {
+            title: qsTr("Icons shown on the taskbar")
+            trailing: Choice {
+                model: ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", qsTr("All")]
+                currentIndex: Prefs.taskbarTrayIcons === -1 ? 11 : Prefs.taskbarTrayIcons
+                onChosen: index => Prefs.taskbarTrayIcons = index === 11 ? -1 : index
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Taskbar behaviors")
+        // Disabled, with the reason, while a pill places the apps itself.
+        TaskbarAlignmentCard {}
+        Card {
+            title: qsTr("Show windows from")
+            trailing: Choice {
+                model: [qsTr("This desktop"), qsTr("All desktops")]
+                currentIndex: Prefs.taskbarWindowsFrom === "all" ? 1 : 0
+                onChosen: index => Prefs.taskbarWindowsFrom = index === 1 ? "all" : "desktop"
+            }
+        }
+        Card {
+            icon: "video-display"
+            title: qsTr("Show the taskbar on all displays")
+            description: qsTr("With multiple monitors: Start, apps and the clock on each one; notification area on the main one")
+            trailing: Switch {
+                checked: Prefs.taskbarAllScreens
+                onToggled: Prefs.taskbarAllScreens = checked
+            }
+        }
+        Card {
+            title: qsTr("Show apps on")
+            trailing: Choice {
+                usable: Prefs.taskbarAllScreens
+                model: [qsTr("All taskbars"), qsTr("The taskbar where the window is open")]
+                currentIndex: Prefs.taskbarAppsOn === "window" ? 1 : 0
+                onChosen: index => Prefs.taskbarAppsOn = index === 1 ? "window" : "all"
+            }
+        }
+        Card {
+            title: qsTr("When I click the app in front with several windows")
+            trailing: Choice {
+                model: [qsTr("Show its windows"), qsTr("Switch to the next one")]
+                currentIndex: Prefs.taskbarClickActive === "next" ? 1 : 0
+                onChosen: index => Prefs.taskbarClickActive = index === 1 ? "next" : "previews"
+            }
+        }
+        Card {
+            icon: "user-desktop"
+            title: qsTr("Show desktop from taskbar corner")
+            description: qsTr("Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)")
+            trailing: Switch {
+                checked: Prefs.showDesktopCorner
+                onToggled: Prefs.showDesktopCorner = checked
+            }
+        }
+        Card {
+            icon: "process-stop"
+            title: qsTr("End task")
+            description: qsTr("In the taskbar buttons' menu, to close an app that isn't responding right away")
+            trailing: Switch {
+                checked: Prefs.endTask
+                onToggled: Prefs.endTask = checked
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Badges and attention")
+        Card {
+            title: qsTr("Flash apps that need attention")
+            trailing: Switch {
+                checked: Prefs.taskbarAttention
+                onToggled: Prefs.taskbarAttention = checked
+            }
+        }
+        Card {
+            title: qsTr("Show badges on apps")
+            trailing: Switch {
+                checked: Prefs.taskbarBadges
+                onToggled: Prefs.taskbarBadges = checked
+            }
+        }
+        Card {
+            title: qsTr("Show progress on apps")
+            trailing: Switch {
+                checked: Prefs.taskbarProgress
+                onToggled: Prefs.taskbarProgress = checked
+            }
+        }
+    }
+
+    CardGroup {
+        title: qsTr("Keyboard")
+        Card {
+            title: qsTr("Super+1…9, 0")
+            trailing: Choice {
+                model: [qsTr("Taskbar apps"), qsTr("Virtual desktops"), qsTr("Off")]
+                currentIndex: Prefs.superNumberKeys === "desktops" ? 1 : Prefs.superNumberKeys === "off" ? 2 : 0
+                onChosen: index => Prefs.superNumberKeys = ["apps", "desktops", "off"][index]
+            }
+        }
+        Card {
+            title: qsTr("Show numbers while holding Super")
+            trailing: Switch {
+                enabled: Prefs.superNumberKeys === "apps"
+                checked: Prefs.taskbarNumberHints
+                onToggled: Prefs.taskbarNumberHints = checked
+            }
+        }
     }
 
     CardGroup {
@@ -46,39 +157,6 @@ Page {
                 objectName: "clockSeconds"
                 checked: Prefs.clockSeconds
                 onToggled: Prefs.clockSeconds = checked
-            }
-        }
-    }
-
-    CardGroup {
-        title: qsTr("Taskbar behaviors")
-        // Disabled, with the reason, while a pill places the apps itself.
-        TaskbarAlignmentCard {}
-        Card {
-            icon: "video-display"
-            title: qsTr("Show the taskbar on all displays")
-            description: qsTr("With multiple monitors: Start, apps and the clock on each one; notification area on the main one")
-            trailing: Switch {
-                checked: Prefs.taskbarAllScreens
-                onToggled: Prefs.taskbarAllScreens = checked
-            }
-        }
-        Card {
-            icon: "user-desktop"
-            title: qsTr("Show desktop from taskbar corner")
-            description: qsTr("Click the far-right edge of any taskbar to show or restore your windows (also with Super+D)")
-            trailing: Switch {
-                checked: Prefs.showDesktopCorner
-                onToggled: Prefs.showDesktopCorner = checked
-            }
-        }
-        Card {
-            icon: "process-stop"
-            title: qsTr("End task")
-            description: qsTr("In the taskbar buttons' menu, to close an app that isn't responding right away")
-            trailing: Switch {
-                checked: Prefs.endTask
-                onToggled: Prefs.endTask = checked
             }
         }
     }

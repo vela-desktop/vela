@@ -145,6 +145,45 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
+    void taskbarSettings()
+    {
+        write("[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayIcons=11\nattention=unknown\n");
+        Preferences prefs;
+        QCOMPARE(prefs.taskbarWindowsFrom(), QStringLiteral("desktop"));
+        QCOMPARE(prefs.taskbarAppsOn(), QStringLiteral("all"));
+        QCOMPARE(prefs.taskbarClickActive(), QStringLiteral("previews"));
+        QCOMPARE(prefs.taskbarTrayIcons(), 5);
+        QVERIFY(prefs.taskbarAttention());
+
+        prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarAppsOn(QStringLiteral("window"));
+        prefs.setTaskbarClickActive(QStringLiteral("next"));
+        prefs.setTaskbarTrayIcons(-1);
+        prefs.setTaskbarAttention(false);
+        prefs.setTaskbarBadges(false);
+        prefs.setTaskbarProgress(false);
+        prefs.setTaskbarNumberHints(false);
+        expectFreshShell({
+            { "taskbar/windowsFrom", "all" },
+            { "taskbar/appsOn", "window" },
+            { "taskbar/clickActive", "next" },
+            { "taskbar/trayIcons", "-1" },
+            { "taskbar/attention", false },
+            { "taskbar/badges", false },
+            { "taskbar/progress", false },
+            { "taskbar/numberHints", false },
+        });
+        prefs.setSuperNumberKeys(QStringLiteral("desktops"));
+        Preferences reread;
+        QCOMPARE(reread.superNumberKeys(), QStringLiteral("desktops"));
+
+        BlockedDirectory blocker;
+        QVERIFY(blocker.block());
+        prefs.setTaskbarTrayIcons(2);
+        QCOMPARE(prefs.taskbarTrayIcons(), -1);
+        QVERIFY(blocker.restore());
+    }
+
     /** Missing desktop helpers must produce a diagnostic without opening another app. */
     void missingFolderOpener()
     {
