@@ -14,10 +14,11 @@ Window {
     visible: false
     // The panel with room for its shadow around it, cut where the window
     // meets the taskbar (docs/visual-coherence.md §6.9): the panel rests 12
-    // units above it.
+    // units from it, on whichever edge it is.
     readonly property real room: shadow.reach
-    width: room + panel.width + room
-    height: room + panel.height + 12
+    readonly property QtObject bar: Styles.taskbar
+    width: bar.pad("left", 0, 12, room) + panel.width + bar.pad("right", 0, 12, room)
+    height: bar.pad("top", 0, 12, room) + panel.height + bar.pad("bottom", 0, 12, room)
     color: "transparent"
 
     property int selected: 0
@@ -150,10 +151,12 @@ Window {
             visible = false
             Shell.placeOnScreen(root, screen.name)
         }
-        outputWidth = screen ? screen.width : Screen.width
+        // Beside a vertical bar the cards have its width less.
+        outputWidth = (screen ? screen.width : Screen.width) - (bar.vertical ? bar.thickness : 0)
         const count = windows.length + groups.length
         const panelWidth = Math.min(outputWidth, count * cardWidth + (count - 1) * cards.spacing + 12 + 2 * room)
-        Shell.placeAtLeft(root, Math.round(Math.max(0, Math.min(outputWidth - panelWidth, info.center - panelWidth / 2))))
+        // Along a row its width, known before the cards are laid out.
+        Menus.placeBesideBar(root, info.center, screen, bar.vertical ? undefined : panelWidth)
         Shell.setPanelKeyboard(root, info.latched)
         visible = true // again, on another output
         if (info.latched) panel.forceActiveFocus()
@@ -250,11 +253,11 @@ Window {
     // It rises 8 units, and goes at once (docs/visual-coherence.md K5).
     PanelMotion {
         id: motion
-        x: root.room
-        y: root.room
+        x: root.bar.pad("left", 0, 12, root.room)
+        y: root.bar.pad("top", 0, 12, root.room)
         width: Math.min(cards.width + 12, Math.max(12, root.outputWidth - root.room * 2))
         height: root.cardHeight + 12 + (attentionTitle.visible ? attentionTitle.height + 6 : 0)
-        offset: Qt.point(0, 8)
+        offset: root.bar.towards(8)
         duration: Theme.normal
         instantExit: true
         onClosed: root.visible = false

@@ -421,6 +421,22 @@ void ShellController::placeAbove(QWindow* window, int left)
     }
 }
 
+void ShellController::placeAnchored(QWindow* window, int edges, int left, int top)
+{
+    auto* layer = window ? LayerShellQt::Window::get(window) : nullptr;
+    if (!layer) {
+        return;
+    }
+    const auto anchors = LayerShellQt::Window::Anchors::fromInt(edges & 15);
+    const QMargins wanted((edges & 4) ? left : 0, (edges & 1) ? top : 0, 0, 0);
+    if (layer->anchors() != anchors) {
+        layer->setAnchors(anchors);
+    }
+    if (layer->margins() != wanted) {
+        layer->setMargins(wanted);
+    }
+}
+
 void ShellController::setPanelKeyboard(QWindow* window, bool on)
 {
     if (window) {

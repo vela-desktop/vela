@@ -10,7 +10,7 @@ among KDE Plasma, GNOME, macOS and COSMIC, never the rule.
 > **Status:** Implemented in PR #299. **Checked:** 19 November 2026.
 >
 > **Remaining:** real-session checks with LauncherEntry publishers and multiple
-> physical displays (§15); the taskbar on any edge (§11) is in progress.
+> physical displays (§15).
 
 ## 1. Goals
 
@@ -412,9 +412,9 @@ are, and a taskbar per display is already a choice of its own.
 - "Alignment" keeps its two values: Center centers the apps along the bar;
   Left puts them at its start, which is the top on a vertical bar. Settings
   names it **Top** there.
-- The clock on a vertical bar: the time on one line (hours and minutes; the
-  seconds or AM/PM on a second line when shown), the date as day and month
-  under it.
+- The clock on a vertical bar: the time on one line (with the seconds when
+  shown), AM/PM on a line of its own with a 12-hour clock, the date as day
+  and month under it. The notifications' count sits at its top corner.
 - A button's dash, its progress track and the attention highlight sit on
   the side of the screen's edge: under the icon at the bottom, above it at
   the top, left of it on a left bar, right of it on a right bar. The count
@@ -439,7 +439,9 @@ screen:
 
 They slide in from the bar's side. The desktop icons and Task View keep out
 of the bar's space as now; the compositor already reserves an exclusive
-zone on any edge, so maximized and snapped windows follow.
+zone on any edge, so maximized and snapped windows follow. A tray icon is
+dragged off the bar towards the middle of the screen to go in the drawer,
+whichever edge that is.
 
 ## 12. Settings > Personalization > Taskbar
 

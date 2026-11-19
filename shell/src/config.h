@@ -18,6 +18,9 @@ class Config : public QObject {
     Q_PROPERTY(QString wallpaper READ wallpaper NOTIFY wallpaperChanged)
     // "center" or "left", like "Taskbar alignment".
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment NOTIFY taskbarChanged)
+    // The edge it sits on: "bottom", "top", "left" or "right" (§11 of
+    // docs/taskbar.md).
+    Q_PROPERTY(QString taskbarPosition READ taskbarPosition NOTIFY taskbarChanged)
     // "End task" in the taskbar buttons' menu.
     Q_PROPERTY(bool endTask READ endTask NOTIFY taskbarChanged)
     // The Task View button on the taskbar.
@@ -69,6 +72,7 @@ public:
 
     QString wallpaper() const { return m_wallpaper; }
     QString taskbarAlignment() const { return m_taskbarAlignment; }
+    QString taskbarPosition() const { return m_taskbarPosition; }
     bool endTask() const { return m_endTask; }
     bool taskView() const { return m_taskView; }
     QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
@@ -135,6 +139,7 @@ private:
     QString m_path;
     QString m_wallpaper;
     QString m_taskbarAlignment;
+    QString m_taskbarPosition = QStringLiteral("bottom");
     QString m_primaryOutput;
     bool m_endTask = true;
     bool m_taskView = true;

@@ -52,6 +52,7 @@ Item {
     property real altX: NaN
     property bool above: false // the menu rises from anchorY (such as from the taskbar)
     property bool centered: false // anchorX is the center
+    property bool before: false // the menu ends at anchorX (beside a taskbar on the right)
     property real minWidth: 0
     property bool keyboardMode: false
     property int currentIndex: -1
@@ -152,8 +153,8 @@ Item {
     height: Math.min(contentHeight, Math.max(2 * padding + rowHeight, areaHeight - 16))
     x: {
         const margin = 8
-        let left = centered ? anchorX - width / 2 : anchorX
-        if (!centered && left + width > areaWidth - margin) {
+        let left = centered ? anchorX - width / 2 : before ? anchorX - width : anchorX
+        if (!centered && !before && left + width > areaWidth - margin) {
             left = isNaN(altX) ? anchorX - width : altX - width
         }
         return Math.round(Math.max(margin, Math.min(areaWidth - width - margin, left)))

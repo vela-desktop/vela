@@ -18,5 +18,7 @@ QtObject {
     property var entries: []
     function setTrayAnchors(screen, anchors) {}
     function placeTrayPanel(window, anchor, x, width) {}
+    property var placedBeside: null
+    function placeBesideBar(window, center, screen, size) { placedBeside = { window: window, center: center }; return Math.max(0, center - (window.width / 2)) }
     function open(items, x, y, options) { entries = items }
 }

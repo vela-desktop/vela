@@ -55,6 +55,18 @@ Page {
 
     CardGroup {
         title: qsTr("Taskbar behaviors")
+        // The edge of every display it sits on (docs/taskbar.md §11).
+        Card {
+            icon: "view-split-left-right"
+            title: qsTr("Taskbar position")
+            trailing: Choice {
+                objectName: "taskbarPosition"
+                readonly property var values: ["bottom", "top", "left", "right"]
+                model: [qsTr("Bottom"), qsTr("Top"), qsTr("Left"), qsTr("Right")]
+                currentIndex: Math.max(0, values.indexOf(Prefs.taskbarPosition))
+                onChosen: index => Prefs.taskbarPosition = values[index]
+            }
+        }
         // Disabled, with the reason, while a pill places the apps itself.
         TaskbarAlignmentCard {}
         Card {

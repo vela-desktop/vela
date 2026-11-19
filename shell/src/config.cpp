@@ -126,6 +126,7 @@ void Config::reload()
     const QString alignment = settings.value(QStringLiteral("taskbar/alignment")).toString() == QLatin1String("left")
         ? QStringLiteral("left")
         : QStringLiteral("center");
+    const QString position = vela::taskbar::position(settings);
     const bool endTask = settings.value(QStringLiteral("taskbar/endTask"), true).toBool();
     const bool taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     const bool allScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
@@ -151,13 +152,14 @@ void Config::reload()
     const bool taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
     const bool taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
     const bool taskbarNumberHints = vela::taskbar::enabled(settings, QStringLiteral("taskbar/numberHints"));
-    if (alignment != m_taskbarAlignment || endTask != m_endTask || taskView != m_taskView
-        || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner
+    if (alignment != m_taskbarAlignment || position != m_taskbarPosition || endTask != m_endTask
+        || taskView != m_taskView || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner
         || taskbarWindowsFrom != m_taskbarWindowsFrom || taskbarAppsOn != m_taskbarAppsOn
         || taskbarClickActive != m_taskbarClickActive || taskbarTrayShown != m_taskbarTrayShown
         || taskbarAttention != m_taskbarAttention || taskbarBadges != m_taskbarBadges
         || taskbarProgress != m_taskbarProgress || taskbarNumberHints != m_taskbarNumberHints) {
         m_taskbarAlignment = alignment;
+        m_taskbarPosition = position;
         m_endTask = endTask;
         m_taskView = taskView;
         m_taskbarAllScreens = allScreens;

@@ -216,22 +216,23 @@ class TrayDrawer(RealShell):
         self.addCleanup(item.kill)
         self.assertEqual(item.stdout.readline().strip(), "ready")
 
-    def magenta(self, top, bottom):
-        """The center of the fake icon's pixels between two rows, or None."""
+    def magenta(self, region):
+        """The center of the fake icon's pixels in (x0, y0, x1, y1), or None."""
         image = self.vela.pixels()
-        found = [(x, y) for y in range(top, bottom) for x in range(0, image.width, 2)
+        x0, y0, x1, y1 = region
+        found = [(x, y) for y in range(y0, y1) for x in range(x0, x1, 2)
                  if image.at(x, y) == (255, 0, 255)]
         if not found:
             return None
         return (sum(x for x, _ in found) // len(found), sum(y for _, y in found) // len(found))
 
-    def wait_magenta(self, top, bottom, what):
+    def wait_magenta(self, region, what):
         """The icon's center once it stays put: the bar settles its layout
         (the tray, the clock) after the icon appears."""
         deadline = time.monotonic() + 10 * TIME_SCALE
         last = None
         while time.monotonic() < deadline:
-            found = self.magenta(top, bottom)
+            found = self.magenta(region)
             if found and found == last:
                 return found
             last = found
@@ -244,27 +245,55 @@ class TrayDrawer(RealShell):
             line = next((line for line in file if line.startswith("trayShown=")), "trayShown=")
         return [key.strip() for key in line.strip()[len("trayShown="):].split(",") if key.strip()]
 
+    # The bar's region on the 1920x1080 output, the drawer's beside it, and
+    # where "off the bar" is: overridden for a bar on another edge.
+    bar_region = (0, 1080 - 48, 1920, 1080)
+    drawer_region = (0, 1080 - 48 - 300, 1920, 1080 - 48)
+    away = (0, -120)
+    into_bar = (0, 20)
+
     def test_an_icon_dragged_into_the_drawer_and_back(self):
         self.fake_item()
-        bar = 1080 - 48
-        x, y = self.wait_magenta(bar, 1080, "the chosen icon on the taskbar")
+        x, y = self.wait_magenta(self.bar_region, "the chosen icon on the taskbar")
         # One virtual keyboard for the whole scene: a new one would take the
         # keyboard from the drawer, which then closes.
         with self.input_session() as send:
-            # Up, off the taskbar: into the drawer.
-            send("move", x, y, "sleep", "100", "down", "move", x, y - 20, "sleep", "50", "move", x, y - 120,
-                 "sleep", "100", "up")
+            # Off the taskbar, towards the screen: into the drawer.
+            ax, ay = self.away
+            send("move", x, y, "sleep", "100", "down", "move", x + ax // 6, y + ay // 6, "sleep", "50",
+                 "move", x + ax, y + ay, "sleep", "100", "up")
             self.vela.wait_for(lambda s: "vela-fake" not in self.shown_keys(), what="the icon saved in the drawer")
-            self.vela.wait_for(lambda s: self.magenta(bar, 1080) is None, what="the icon off the taskbar")
-            # "^" took its place; the drawer opens above it, with the icon.
+            self.vela.wait_for(lambda s: self.magenta(self.bar_region) is None, what="the icon off the taskbar")
+            # "^" took its place; the drawer opens beside it, with the icon.
             send("move", x, y, "sleep", "100", "click")
             self.vela.wait_for(lambda s: self.mapped(s, "vela-tray-overflow"), what="the drawer")
-            dx, dy = self.wait_magenta(bar - 300, bar, "the icon in the drawer")
-            # Down onto the taskbar: out of the drawer.
-            send("move", dx, dy, "sleep", "100", "down", "move", dx, dy + 20, "sleep", "50", "move", x, y,
+            dx, dy = self.wait_magenta(self.drawer_region, "the icon in the drawer")
+            # Back onto the taskbar: out of the drawer.
+            bx, by = self.into_bar
+            send("move", dx, dy, "sleep", "100", "down", "move", dx + bx, dy + by, "sleep", "50", "move", x, y,
                  "sleep", "100", "up")
             self.vela.wait_for(lambda s: self.shown_keys() == ["vela-fake"], what="the icon saved on the taskbar")
-            self.wait_magenta(bar, 1080, "the icon back on the taskbar")
+            self.wait_magenta(self.bar_region, "the icon back on the taskbar")
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TrayDrawerOnTheLeft(TrayDrawer):
+    """The same with the taskbar on the left (docs/taskbar.md §11): a column
+    56 wide, the drawer to its right."""
+    shell_settings = "[taskbar]\npinned=\ntrayShown=vela-fake\nposition=left\n"
+    bar_region = (0, 0, 56, 1080)
+    drawer_region = (56, 0, 400, 1080)
+    away = (120, 0)
+    into_bar = (-20, 0)
+
+    def test_the_bar_reserves_its_edge(self):
+        window = self.vela.open_window(app_id="taskbar-left")
+        self.vela.command(f"window {window} maximize")
+        self.vela.wait_for(lambda s: (s.window(window)["x"], s.window(window)["w"]) == (56, 1920 - 56),
+                           what="a maximized window right of the bar")
+        state = self.vela.state()
+        bar = self.layer(state, "vela-taskbar")
+        self.assertEqual((bar["x"], bar["y"], bar["w"], bar["h"]), (0, 0, 56, 1080))
 
 
 class TaskbarDrag(RealShell):

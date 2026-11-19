@@ -199,7 +199,14 @@ Window {
 
     Item {
         id: icons
-        anchors { fill: parent; bottomMargin: Styles.taskbar.height }
+        // Out of the taskbar's space, on whichever edge it is.
+        anchors {
+            fill: parent
+            topMargin: Styles.taskbar.position === "top" ? Styles.taskbar.thickness : 0
+            bottomMargin: Styles.taskbar.position === "bottom" ? Styles.taskbar.thickness : 0
+            leftMargin: Styles.taskbar.position === "left" ? Styles.taskbar.thickness : 0
+            rightMargin: Styles.taskbar.position === "right" ? Styles.taskbar.thickness : 0
+        }
         focus: true
 
         // The model uses the sizes to lay out the icons.

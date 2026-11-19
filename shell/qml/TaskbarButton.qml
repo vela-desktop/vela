@@ -6,8 +6,9 @@ import Vela.Controls
 
 // A taskbar button: the background fades on hover and a slight "bounce" when
 // pressed. Under the icon, like on Windows 11, a gray dash if the app is open,
-// longer and colored if it's the active one. With `draggable` it can be
-// dragged sideways to move it (dropped says by how much).
+// longer and colored if it's the active one: on the side of the screen's
+// edge, wherever the taskbar is (docs/taskbar.md §11.2). With `draggable` it
+// can be dragged along the bar to move it (dropped says by how much).
 Item {
     id: root
 
@@ -49,11 +50,17 @@ Item {
     signal dropped(real dx)
     signal wheeled(real delta) // angleDelta.y
 
+    readonly property QtObject style: Styles.taskbar
+    readonly property bool vertical: style.vertical
+    readonly property string edge: style.position
+
     // While dragged it follows the mouse, above the other buttons.
     z: mouse.dragging ? 10 : 0
-    transform: Translate { x: mouse.dragging ? mouse.dragX : 0 }
+    transform: Translate {
+        x: mouse.dragging && !root.vertical ? mouse.dragX : 0
+        y: mouse.dragging && root.vertical ? mouse.dragX : 0
+    }
 
-    readonly property QtObject style: Styles.taskbar
     width: style.buttonWidth
     height: style.buttonHeight
 
@@ -80,17 +87,22 @@ Item {
     Rectangle {
         objectName: "indicator"
         readonly property bool expressive: Theme.expressive
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 2
-        height: expressive ? 4 : 3
-        radius: height / 2
-        width: root.active ? (expressive ? 24 : 16) : root.running ? (expressive ? 8 : 6) : 0
+        readonly property real thick: expressive ? 4 : 3
+        readonly property real long: root.active ? (expressive ? 24 : 16) : root.running ? (expressive ? 8 : 6) : 0
+        x: root.edge === "left" ? 2 : root.edge === "right" ? parent.width - width - 2 : Math.round((parent.width - width) / 2)
+        y: root.edge === "top" ? 2 : root.edge === "bottom" ? parent.height - height - 2 : Math.round((parent.height - height) / 2)
+        width: root.vertical ? thick : long
+        height: root.vertical ? long : thick
+        radius: (root.vertical ? width : height) / 2
         color: root.active ? (expressive ? Theme.primary : Theme.accent) : (expressive ? Theme.outline : Theme.textSecondary)
         opacity: root.progressValue < 0 && (root.active || root.running) ? 1 : 0
 
         Behavior on width {
-            enabled: Theme.motion > 0
+            enabled: Theme.motion > 0 && !root.vertical
+            Spatial { speed: "fast"; rest: Theme.normal }
+        }
+        Behavior on height {
+            enabled: Theme.motion > 0 && root.vertical
             Spatial { speed: "fast"; rest: Theme.normal }
         }
         Behavior on color { ColorFade {} }
@@ -99,23 +111,30 @@ Item {
         }
     }
 
+    // The progress track, where the dash is; filled from the top on a
+    // vertical bar.
     Rectangle {
         visible: root.progressValue >= 0
-        anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 4; bottomMargin: 2 }
-        height: Theme.expressive ? 4 : 3
-        radius: height / 2
+        readonly property real thick: Theme.expressive ? 4 : 3
+        x: root.edge === "left" ? 2 : root.edge === "right" ? parent.width - width - 2 : 4
+        y: root.edge === "top" ? 2 : root.edge === "bottom" ? parent.height - height - 2 : 4
+        width: root.vertical ? thick : parent.width - 8
+        height: root.vertical ? parent.height - 8 : thick
+        radius: (root.vertical ? width : height) / 2
         color: Theme.stroke
         Rectangle {
-            width: parent.width * Math.max(0, root.progressValue)
-            height: parent.height
+            width: root.vertical ? parent.width : parent.width * Math.max(0, root.progressValue)
+            height: root.vertical ? parent.height * Math.max(0, root.progressValue) : parent.height
             radius: parent.radius
             color: Theme.accent
         }
     }
 
+    // The count at the corner away from the screen's edge.
     Rectangle {
         visible: root.countBadge !== ""
-        anchors { right: parent.right; top: parent.top; margins: 2 }
+        x: root.edge === "right" ? 2 : parent.width - width - 2
+        y: root.edge === "top" ? parent.height - height - 2 : 2
         width: Math.max(16, countLabel.implicitWidth + 6)
         height: 16
         radius: height / 2
@@ -131,7 +150,8 @@ Item {
 
     Rectangle {
         visible: root.shortcutNumber !== ""
-        anchors { left: parent.left; bottom: parent.bottom; margins: 3 }
+        x: root.edge === "right" ? parent.width - width - 3 : 3
+        y: root.edge === "top" ? 3 : parent.height - height - 3
         width: 16
         height: 16
         radius: height / 2
@@ -149,19 +169,23 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-        property real pressX: 0
+        property real pressX: 0 // along the bar
         property real dragX: 0
         property bool dragging: false
         property bool dragged: false // releasing a drag isn't a click
         // In window coordinates: the button moves with the mouse, they don't.
+        function alongOf(mouse) {
+            const p = mapToItem(null, mouse.x, mouse.y)
+            return root.vertical ? p.y : p.x
+        }
         onPressed: mouse => {
-            pressX = mapToItem(null, mouse.x, mouse.y).x
+            pressX = alongOf(mouse)
             dragX = 0
             dragged = false
         }
         onPositionChanged: mouse => {
             if (!pressed || !root.draggable || !(pressedButtons & Qt.LeftButton)) return
-            dragX = mapToItem(null, mouse.x, mouse.y).x - pressX
+            dragX = alongOf(mouse) - pressX
             if (!dragging && Math.abs(dragX) > 8) dragging = true
         }
         onReleased: mouse => {

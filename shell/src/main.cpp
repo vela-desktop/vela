@@ -127,20 +127,57 @@ void releaseHiddenPanel(QQuickWindow* window)
     });
 }
 
-void setupTaskbar(QQuickWindow* window, QScreen* screen)
+bool vertical(const QString& position)
+{
+    return position == QLatin1String("left") || position == QLatin1String("right");
+}
+
+// The taskbar's edge (taskbar/position, docs/taskbar.md §11).
+LayerWindow::Anchors barEdge(const QString& position)
+{
+    return position == QLatin1String("top")  ? LayerWindow::AnchorTop
+        : position == QLatin1String("left")  ? LayerWindow::AnchorLeft
+        : position == QLatin1String("right") ? LayerWindow::AnchorRight
+                                             : LayerWindow::AnchorBottom;
+}
+
+// The corner of the clock, where the tray's panels open: the notifications
+// too (Styles.taskbar.trayCorner).
+LayerWindow::Anchors trayCorner(const QString& position)
+{
+    const LayerWindow::Anchors side =
+        position == QLatin1String("top") ? LayerWindow::AnchorTop : LayerWindow::AnchorBottom;
+    return side | (position == QLatin1String("left") ? LayerWindow::AnchorLeft : LayerWindow::AnchorRight);
+}
+
+void setupTaskbar(QQuickWindow* window, QScreen* screen, const Config* config)
 {
     LayerWindow* layer = LayerWindow::get(window);
     layer->setScreen(screen); // one per output (ScreenWindows)
     layer->setScope(QStringLiteral("vela-taskbar"));
     layer->setLayer(LayerWindow::LayerTop);
-    layer->setAnchors(LayerWindow::Anchors(LayerWindow::AnchorBottom) | LayerWindow::AnchorLeft
-        | LayerWindow::AnchorRight);
-    layer->setExclusiveZone(window->height()); // maximized windows don't cover it
     layer->setKeyboardInteractivity(LayerWindow::KeyboardInteractivityNone);
-    // A taskbar style's height (taskbar-height): the reserved space follows.
-    QObject::connect(window, &QWindow::heightChanged, window, [window, layer] {
-        layer->setExclusiveZone(window->height());
-    });
+    // Along its edge, the whole side; it reserves its thickness, so maximized
+    // windows don't cover it. A taskbar style's height (taskbar-height): the
+    // reserved space follows.
+    const auto place = [window, layer, config] {
+        const QString position = config->taskbarPosition();
+        const LayerWindow::Anchors along = vertical(position)
+            ? LayerWindow::Anchors(LayerWindow::AnchorTop) | LayerWindow::AnchorBottom
+            : LayerWindow::Anchors(LayerWindow::AnchorLeft) | LayerWindow::AnchorRight;
+        const LayerWindow::Anchors anchors = barEdge(position) | along;
+        if (layer->anchors() != anchors) {
+            layer->setAnchors(anchors);
+        }
+        const int thickness = vertical(position) ? window->width() : window->height();
+        if (layer->exclusionZone() != thickness) {
+            layer->setExclusiveZone(thickness);
+        }
+    };
+    place();
+    QObject::connect(window, &QWindow::heightChanged, window, place);
+    QObject::connect(window, &QWindow::widthChanged, window, place);
+    QObject::connect(config, &Config::taskbarChanged, window, place);
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -265,12 +302,32 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
 // fitted pill places the apps itself: centered, or at the left with
 // taskbar-edge=2 (Left pill). themefile.h's taskbarLayout() is the rule,
 // the one Styles.qml and Taskbar.qml draw with.
-void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
+// On a top bar the same, below it; on a vertical bar Start opens beside it,
+// at the top (docs/taskbar.md §11.3), where its button is.
+void placeStartMenu(
+    QQuickWindow* window, const QString& alignment, const QString& position, const QVariantMap& theme, bool light)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const bool left = vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
-    layer->setAnchors(left ? bottomLeft : bottom);
+    const bool side = vertical(position);
+    const bool left = !side && vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
+    const LayerWindow::Anchors anchors = side
+        ? barEdge(position) | LayerWindow::AnchorTop
+        : barEdge(position) | (left ? LayerWindow::AnchorLeft : LayerWindow::Anchors());
+    layer->setAnchors(anchors);
     window->setProperty("atLeft", left);
+}
+
+// The panels whose corner follows the bar's edge and stays there: the
+// notifications in the clock's corner, the volume indicator against the bar
+// (or at the bottom, beside a vertical one).
+void placeForPosition(QQuickWindow* window, const char* qml, const QString& position)
+{
+    LayerWindow* layer = LayerWindow::get(window);
+    if (qstrcmp(qml, "NotificationPopups") == 0 || qstrcmp(qml, "ClipboardPanel") == 0) {
+        layer->setAnchors(trayCorner(position));
+    } else if (qstrcmp(qml, "VolumeOsd") == 0) {
+        layer->setAnchors(position == QLatin1String("top") ? LayerWindow::AnchorTop : LayerWindow::AnchorBottom);
+    }
 }
 
 } // namespace
@@ -623,15 +680,18 @@ int main(int argc, char* argv[])
             qCritical("vela-shell: can't load the QML interface (%s)", panel.qml);
             return 1;
         }
+        placeForPosition(window, panel.qml, config.taskbarPosition());
+        QObject::connect(&config, &Config::taskbarChanged, window,
+            [window, qml = panel.qml, &config] { placeForPosition(window, qml, config.taskbarPosition()); });
         if (qstrcmp(panel.qml, "StartMenu") == 0) {
             startMenu = window;
         } else if (qstrcmp(panel.qml, "NotificationPopups") == 0) {
             notificationPopups = window;
         }
     }
-    placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
+    placeStartMenu(startMenu, config.taskbarAlignment(), config.taskbarPosition(), style->theme(), style->light());
     const auto replaceStartMenu = [&config, startMenu, style] {
-        placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
+        placeStartMenu(startMenu, config.taskbarAlignment(), config.taskbarPosition(), style->theme(), style->light());
     };
     QObject::connect(&config, &Config::taskbarChanged, startMenu, replaceStartMenu);
     QObject::connect(style, &Appearance::changed, startMenu, replaceStartMenu);
@@ -639,7 +699,7 @@ int main(int argc, char* argv[])
     // the main one, if the user wants that).
     ScreenWindows wallpapers(&engine, "Wallpaper", setupWallpaper);
     ScreenWindows taskbars(&engine, "Taskbar", [&](QQuickWindow* window, QScreen* screen) {
-        setupTaskbar(window, screen);
+        setupTaskbar(window, screen, &config);
         window->setProperty("taskModel",
             QVariant::fromValue(static_cast<QObject*>(
                 new TaskbarModel(&tasks, &config, &workspaces, &launcherEntry, screen->name(), window))));

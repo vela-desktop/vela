@@ -54,7 +54,8 @@ see the [roadmap](roadmap.md).
   lists, keyboard-accessible previews, Super+number shortcuts, attention
   indicators, badges and progress, and a tray whose icons go on the bar or
   into a drawer, one by one. Drag a launcher to pin it, or hover a dragged
-  file over an app to bring its window forward.
+  file over an app to bring its window forward. The bar sits on any edge
+  of the screen.
 - **App launcher**: instant search, pinned apps, keyboard navigation, and a Super+X power-user menu.
 - **Quick settings** (Super+A): Wi-Fi network picker, Bluetooth, airplane mode, power
   mode, Night light, accessibility, brightness, volume and battery, and a sound page

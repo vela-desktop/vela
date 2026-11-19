@@ -7,7 +7,11 @@ import Vela.Controls
 Item {
     id: root
     required property var entry
-    property int inset: 0
+    property int inset: 0 // above and below; at the sides on a vertical bar
+    property bool vertical: false
+    // Its middle along the taskbar on the output, for the tooltip: the
+    // window's owner knows where it is (a function; unset, its x).
+    property var centerOnScreen: null
     property bool highlighted: false
     // Dragged 8 pixels or more, it follows the mouse; where it is let go
     // decides between the taskbar and the drawer (docs/taskbar.md §8.2).
@@ -27,7 +31,13 @@ Item {
     Accessible.onPressAction: root.invoked(Qt.LeftButton)
 
     Fill {
-        anchors { fill: parent; topMargin: root.inset; bottomMargin: root.inset }
+        anchors {
+            fill: parent
+            topMargin: root.vertical ? 2 : root.inset
+            bottomMargin: root.vertical ? 2 : root.inset
+            leftMargin: root.vertical ? root.inset : 0
+            rightMargin: root.vertical ? root.inset : 0
+        }
         radius: Styles.taskbar.corner(8, Theme.radius)
         color: mouse.pressed ? Theme.subtlePressed
             : mouse.containsMouse || root.highlighted ? Theme.subtleHover : Theme.subtleRest
@@ -47,7 +57,12 @@ Item {
         height: 6
         radius: 3
         color: Theme.accent
-        anchors { right: parent.right; top: parent.top; rightMargin: 6; topMargin: root.inset + 4 }
+        anchors {
+            right: parent.right
+            top: parent.top
+            rightMargin: root.vertical ? root.inset + 4 : 6
+            topMargin: root.vertical ? 4 : root.inset + 4
+        }
     }
     MouseArea {
         id: mouse
@@ -106,7 +121,8 @@ Item {
         interval: 500
         onTriggered: {
             const window = root.Window.window
-            const center = window.x - window.screen.virtualX + root.mapToItem(null, root.width / 2, 0).x
+            const center = root.centerOnScreen ? root.centerOnScreen()
+                : window.x - window.screen.virtualX + root.mapToItem(null, root.width / 2, 0).x
             Menus.tooltip = { owner: root, text: root.entry.title, center: center, screen: window.screen.name }
         }
     }

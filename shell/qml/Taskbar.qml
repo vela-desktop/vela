@@ -17,11 +17,27 @@ Window {
     readonly property string screenName: screen ? screen.name : ""
 
     // It stays invisible until main.cpp has turned it into a layer-shell
-    // panel. The compositor decides the width (anchored to the sides).
+    // panel. The compositor decides its length (anchored to both ends of its
+    // edge); its thickness is the bar's.
     visible: false
-    width: 1280
-    height: Styles.taskbar.height
+    width: vertical ? Styles.taskbar.thickness : 1280
+    height: vertical ? 800 : Styles.taskbar.height
     color: "transparent"
+
+    // The edge it sits on (docs/taskbar.md §11): a row at the bottom or the
+    // top, a column on the left or the right.
+    readonly property string position: style.position
+    readonly property bool vertical: style.vertical
+    readonly property bool atTop: position === "top"
+    // An item's place along the bar and its size there, in the bar's
+    // coordinates.
+    function along(item) {
+        const p = item.mapToItem(root.contentItem, 0, 0)
+        return vertical ? p.y : p.x
+    }
+    function lengthOf(item) {
+        return vertical ? item.height : item.width
+    }
 
     // A taskbar style's layout (Styles.taskbar): floating, it is a pill (or
     // two) inside the window; the window keeps the bar's height, so windows
@@ -30,7 +46,9 @@ Window {
     readonly property bool floating: style.floating
     // fit: apps and tray in one pill that shrinks to them; edge: the tray in
     // a pill of its own at the screen's right edge.
-    readonly property bool fit: floating && style.fit
+    // A pill that fits its apps, a split tray or the tray at the screen's edge
+    // are row layouts: a vertical bar is one pill along the edge (§11.2).
+    readonly property bool fit: floating && style.fit && !vertical
     readonly property bool edge: fit && style.edge > 0
     readonly property bool split: fit && !edge && style.splitGap > 0
     readonly property real fitGap: 8 + style.splitGap
@@ -71,6 +89,24 @@ Window {
     readonly property real buttonsX: buttonClip.x + buttons.x
 
     readonly property int traySlotWidth: 32
+
+    // --- a vertical bar: the same pieces in a column, Start at the top, the
+    // tray and the clock at the bottom (§11.2) ---
+    readonly property real columnStart: 12 + (floating ? style.margin : 0)
+    readonly property real columnEnd: 8 + (floating ? style.margin : 0)
+    readonly property real fixedButtonsHeight: style.buttonHeight * (Config.taskView ? 2 : 1)
+        + (Config.taskView ? style.spacing : 0)
+    readonly property real fixedTrayHeight: (transferIndicator.visible ? transferIndicator.height + 4 : 0)
+        + screenSharing.height + microphone.height + caffeine.height
+        + (systemIcons.visible ? systemIcons.height + 2 : 0) + clock.height + (showDesktop.visible ? showDesktop.height : 0)
+    readonly property real trayGroupHeight: fixedTrayHeight + (tray.visible ? tray.height + 4 : 0)
+    readonly property real buttonsTop: columnStart
+    readonly property real buttonsBottom: height - columnEnd - trayGroupHeight - 8
+    // What the tray may take, after Start, Task View and room for one app.
+    readonly property real trayMaximumHeight: Math.max(0, height - columnStart - columnEnd - 8 - fixedButtonsHeight
+        - (taskRepeater.count > 0 ? style.spacing + appStrip.implicitHeight : 0) - fixedTrayHeight - 4)
+    readonly property real trayEssentialHeight: Math.max(0, height - columnStart - columnEnd - 8 - fixedButtonsHeight
+        - (taskRepeater.count > 0 ? style.spacing + appStrip.minimumHeight : 0) - fixedTrayHeight - 4)
     readonly property real trayEssentialWidth: Math.max(0, width - minimumLeft - minimumRightInset - groupGap
         - fixedButtonsWidth - (taskRepeater.count > 0 ? style.spacing + appStrip.minimumWidth : 0) - fixedTrayWidth - 4)
     // Each icon is on the taskbar or in the drawer, as the user chose
@@ -86,8 +122,8 @@ Window {
             if (item && !item.passive && picked.indexOf(item) < 0) picked.push(item)
         }
         const urgent = entries.filter(item => item.attention && picked.indexOf(item) < 0)
-        const capacity = Math.floor(root.trayMaximumWidth / root.traySlotWidth)
-        const essential = Math.floor(root.trayEssentialWidth / root.traySlotWidth)
+        const capacity = Math.floor((root.vertical ? root.trayMaximumHeight : root.trayMaximumWidth) / root.traySlotWidth)
+        const essential = Math.floor((root.vertical ? root.trayEssentialHeight : root.trayEssentialWidth) / root.traySlotWidth)
         // Not on draggedTrayKey: a new list would recreate the icon being
         // dragged, and lose the drag.
         const drawer = entries.length > picked.length + urgent.length || picked.length + urgent.length > capacity
@@ -123,23 +159,33 @@ Window {
     // is the drawer only for an icon coming from the taskbar: one coming
     // from the drawer lands wherever it is let go on the bar.
     function trayDropTarget(x, y, fromDrawer) {
-        if (y < 0) return "drawer" // dragged up, towards the drawer
+        if (offBar(x, y)) return "drawer" // dragged off the bar, towards the drawer
         const over = overflowButton.mapFromItem(root.contentItem, x, y)
         if (!fromDrawer && overflowButton.visible && overflowButton.contains(over)) return "drawer"
+        const position = vertical ? y : x
         let before = ""
         let marker = -1
         for (let i = 0; i < trayRepeater.count; ++i) {
             const icon = trayRepeater.itemAt(i)
             if (!icon || icon.entry.key === root.draggedTrayKey) continue
-            const left = icon.mapToItem(root.contentItem, 0, 0).x
-            if (x < left + icon.width / 2) {
+            const start = along(icon)
+            if (position < start + lengthOf(icon) / 2) {
                 before = icon.entry.key
-                marker = left
+                marker = start
                 break
             }
-            marker = left + icon.width
+            marker = start + lengthOf(icon)
         }
         return { before: before, marker: marker }
+    }
+    // A point in the bar's coordinates past its inner edge, towards the
+    // middle of the screen (and the drawer); and one on the bar itself.
+    function offBar(x, y) {
+        return position === "top" ? y >= height : position === "left" ? x >= width
+            : position === "right" ? x < 0 : y < 0
+    }
+    function onBar(x, y) {
+        return x >= 0 && x < width && y >= 0 && y < height
     }
     property real trayMarkerX: -1
     function trayDragMoved(key, x, y, fromDrawer) {
@@ -152,7 +198,7 @@ Window {
         trayDragCanceled()
         // Later: the dragged icon's own delegate may go away with the change.
         if (target === "drawer") Qt.callLater(placeTrayIcon, key, false)
-        else if (y < root.height) Qt.callLater(placeTrayIcon, key, true, target.before)
+        else if (onBar(x, y)) Qt.callLater(placeTrayIcon, key, true, target.before)
     }
     function trayDragCanceled() {
         root.draggedTrayKey = ""
@@ -205,15 +251,13 @@ Window {
             if (task.windowCount > 0) {
                 root.openPreviews(task, false)
             } else {
-                const p = task.mapToItem(null, task.width / 2, 0)
-                Menus.tooltip = { owner: task, text: task.tooltip, center: p.x, screen: root.screenName }
+                Menus.tooltip = { owner: task, text: task.tooltip, center: root.centerOnScreen(task), screen: root.screenName }
             }
         }
     }
 
     function openPreviews(task, latched, cycling, spring) {
-        const p = task.mapToItem(null, task.width / 2, 0)
-        Menus.preview = { button: task, center: p.x, screen: root.screenName, latched: latched,
+        Menus.preview = { button: task, center: root.centerOnScreen(task), screen: root.screenName, latched: latched,
                           cycling: !!cycling, startingWindow: cycling ? task.activeWindowId : "", spring: !!spring }
     }
 
@@ -264,18 +308,49 @@ Window {
 
     // --- right-click menus (docs/renderer.md §14.4-14.6) ---
 
-    // The taskbar is at the bottom of the output: from its coordinates to the
+    // The bar's top-left on its output, and from its coordinates to the
     // output's.
+    function barOrigin() {
+        return Qt.point(position === "right" ? Screen.width - root.width : 0,
+                        position === "bottom" ? Screen.height - root.height : 0)
+    }
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point(p.x, Screen.height - root.height + p.y)
+        const o = barOrigin()
+        return Qt.point(o.x + p.x, o.y + p.y)
     }
-    // Taskbar menus rise from its top edge.
-    readonly property real menuBottom: Screen.height - root.height - 4
+    // An item's middle along the bar, on the output: where its previews,
+    // tooltip and drawer are centered.
+    function centerOnScreen(item) {
+        const p = screenPoint(item, item.width / 2, item.height / 2)
+        return vertical ? p.y : p.x
+    }
 
+    // A menu from the bar's inner edge, at `item`'s point (x, y): rising
+    // above a bottom bar, hanging below a top one, beside a vertical one;
+    // `further` units into the screen (a menu over the drawer).
+    function openFromBar(entries, item, x, y, options, further) {
+        const p = screenPoint(item, x, y)
+        openAtBar(entries, vertical ? p.y : p.x, options, further)
+    }
+    function openAtBar(entries, at, options, further) {
+        const o = Object.assign({}, options || {})
+        const d = 4 + (further || 0)
+        if (position === "top") {
+            root.openMenu(entries, at, root.height + d, o)
+        } else if (position === "left") {
+            delete o.centered
+            root.openMenu(entries, root.width + d, at, o)
+        } else if (position === "right") {
+            delete o.centered
+            root.openMenu(entries, Screen.width - root.width - d, at, Object.assign(o, { before: true }))
+        } else {
+            root.openMenu(entries, at, Screen.height - root.height - d, Object.assign(o, { above: true }))
+        }
+    }
     function openAbove(entries, item, centered, options) {
-        const p = screenPoint(item, centered ? item.width / 2 : 0, 0)
-        root.openMenu(entries, p.x, menuBottom, Object.assign({ above: true, centered: centered }, options || {}))
+        openFromBar(entries, item, centered && !vertical ? item.width / 2 : 0, 0,
+            Object.assign({ centered: centered }, options || {}))
     }
     // Taskbar menus open on its output; the panels it opens (Start, quick
     // settings...) go there too.
@@ -394,8 +469,7 @@ Window {
         }
     }
     function openWinX(keyboard) {
-        const p = screenPoint(startButton, 0, 0)
-        root.openMenu(winXEntries(), p.x, menuBottom, { above: true, keyboard: keyboard })
+        root.openFromBar(winXEntries(), startButton, 0, 0, { keyboard: keyboard })
     }
 
     // The menu of a notification area icon (the app decides it).
@@ -417,7 +491,6 @@ Window {
                     Tray.activateMenuEntry(row, e.id)
                 }
             })
-            const bottom = fromOverflow ? root.menuBottom - 40 : root.menuBottom
             const all = convert(entries)
             // The shell's own entry, after the app's (docs/taskbar.md §8.2).
             if (icon && icon.key !== "") {
@@ -428,9 +501,8 @@ Window {
                     : { key: "tray.drawer", text: qsTr("&Show on the taskbar"), icon: "go-down", action: () => { Menus.trayOverflow = null; root.placeTrayIcon(icon.key, true) } })
             }
             if (all.length === 0) return
-            root.openMenu(all, anchorX, bottom, {
-                above: true, centered: true, onClosed: () => { Menus.trayOverflow = null }
-            })
+            root.openAtBar(all, anchorX, { centered: true, onClosed: () => { Menus.trayOverflow = null } },
+                fromOverflow ? 40 : 0)
         }
     }
 
@@ -442,18 +514,22 @@ Window {
         Rectangle {
             id: floatingSurface
             visible: root.floating
+            // On the screen's edge: the bottom one, or the top on a top bar.
             readonly property bool flush: root.edge && root.style.flush
-            x: root.fit ? root.buttonsX - root.fitPadding : root.sideMargin
-            y: root.style.margin
-            width: root.split ? buttons.width + 14
+            x: root.vertical ? root.style.margin : root.fit ? root.buttonsX - root.fitPadding : root.sideMargin
+            y: root.vertical ? root.style.margin : flush && root.atTop ? 0 : root.style.margin
+            width: root.vertical ? parent.width - 2 * root.style.margin
+                : root.split ? buttons.width + 14
                 : root.edge ? buttons.width + 20
                 : root.fit ? buttons.width + root.fitGap + root.trayGroupWidth + 2 * root.fitPadding
                 : parent.width - 2 * root.sideMargin
-            height: parent.height - (flush ? 1 : 2) * root.style.margin
+            height: root.vertical ? parent.height - 2 * root.style.margin
+                : parent.height - (flush ? 1 : 2) * root.style.margin
             radius: root.style.radius
-            topRightRadius: root.split ? root.style.splitRadius : radius
-            bottomRightRadius: flush ? 0 : topRightRadius
-            bottomLeftRadius: flush ? 0 : radius
+            topLeftRadius: flush && root.atTop ? 0 : radius
+            topRightRadius: flush && root.atTop ? 0 : root.split ? root.style.splitRadius : radius
+            bottomRightRadius: flush && !root.atTop ? 0 : root.split ? root.style.splitRadius : radius
+            bottomLeftRadius: flush && !root.atTop ? 0 : radius
             color: Theme.taskbar
             border.width: 1
             border.color: root.style.stroke
@@ -485,19 +561,20 @@ Window {
             anchors.fill: parent
             acceptedButtons: Qt.RightButton
             onClicked: mouse => {
-                const p = root.screenPoint(emptyArea, mouse.x, 0)
-                root.openMenu([
+                root.openFromBar([
                     { text: qsTr("Task &manager"), icon: "office-chart-area", enabled: System.available("task-manager"), action: () => System.trigger("task-manager") },
                     { text: qsTr("Taskbar &settings"), icon: "configure", enabled: System.available("taskbar-settings"), action: () => System.trigger("taskbar-settings") }
-                ], p.x, root.menuBottom, { above: true })
+                ], emptyArea, mouse.x, mouse.y)
             }
         }
 
-        // A thin line of light on the top edge, like glass.
+        // A thin line of light on the edge facing the windows, like glass.
         Rectangle {
             visible: !root.floating
-            anchors { left: parent.left; right: parent.right; top: parent.top }
-            height: 1
+            x: root.position === "left" ? parent.width - 1 : 0
+            y: root.atTop ? parent.height - 1 : 0
+            width: root.vertical ? 1 : parent.width
+            height: root.vertical ? parent.height : 1
             color: root.style.stroke
         }
     }
@@ -522,27 +599,42 @@ Window {
     Item {
         id: buttonClip
         objectName: "taskbarButtonClip"
-        x: root.buttonsLeft
-        width: Math.min(root.buttonsAreaWidth, Math.max(0,
-            (root.primary ? (transferIndicator.visible ? transferIndicator.x : tray.x) : clock.x) - x - 4))
-        height: parent.height
+        x: root.vertical ? 0 : root.buttonsLeft
+        y: root.vertical ? root.buttonsTop : 0
+        // Up to the first of the tray's pieces.
+        readonly property Item next: root.primary ? (transferIndicator.visible ? transferIndicator : tray) : clock
+        width: root.vertical ? parent.width
+            : Math.min(root.buttonsAreaWidth, Math.max(0, next.x - x - 4))
+        height: root.vertical ? Math.max(0, Math.min(root.buttonsBottom, next.y - 4) - y) : parent.height
         clip: true
-        Row {
+        Grid {
             id: buttons
             objectName: "taskbarButtons"
+            // A row, or a column on a vertical bar.
+            rows: root.vertical ? -1 : 1
+            columns: root.vertical ? 1 : -1
             // Centered by hand instead of with anchors: so when an app opens or
             // closes, the row slides to the new center instead of jumping. Or on
-            // the left, like earlier versions of Windows.
-            x: Math.max(root.buttonsLeft, Math.min(root.buttonsRight - width, preferredX)) - buttonClip.x
+            // the left, like earlier versions of Windows (the top, on a
+            // vertical bar).
+            x: root.vertical ? Math.round((buttonClip.width - width) / 2)
+                : Math.max(root.buttonsLeft, Math.min(root.buttonsRight - width, preferredX)) - buttonClip.x
+            y: root.vertical ? Math.max(root.buttonsTop, Math.min(root.buttonsBottom - height, preferredY)) - buttonClip.y
+                : Math.round((buttonClip.height - height) / 2)
             readonly property real preferredX: root.edge && root.style.edge === 2 ? root.style.margin + 12
                 : root.fit && !root.edge ? Math.round((root.width - width - root.fitGap - root.trayGroupWidth) / 2)
                 : !root.edge && Config.taskbarAlignment === "left" ? root.buttonsLeft
                 : Math.round((root.width - width) / 2)
-            anchors.verticalCenter: parent.verticalCenter
+            readonly property real preferredY: Config.taskbarAlignment === "left" ? root.buttonsTop
+                : Math.round((root.height - height) / 2)
             spacing: root.style.spacing
 
             Behavior on x {
-                enabled: Theme.motion > 0
+                enabled: Theme.motion > 0 && !root.vertical
+                Eased {}
+            }
+            Behavior on y {
+                enabled: Theme.motion > 0 && root.vertical
                 Eased {}
             }
             // The button of an app just opened comes in growing.
@@ -551,7 +643,7 @@ Window {
                 Eased { property: "scale"; from: 1 - 0.5 * Theme.motion; to: 1; duration: Theme.slow }
             }
             move: Transition {
-                Eased { property: "x"; duration: Theme.normal * Theme.motion }
+                Eased { properties: "x,y"; duration: Theme.normal * Theme.motion }
             }
 
             TaskbarButton {
@@ -599,9 +691,13 @@ Window {
                 id: appStrip
                 objectName: "taskbarApps"
                 style: root.style
+                vertical: root.vertical
                 visible: taskRepeater.count > 0
-                width: Math.min(implicitWidth, Math.max(0, root.buttonsAreaWidth - root.fixedButtonsWidth - buttons.spacing))
-                height: root.style.buttonHeight
+                width: root.vertical ? root.style.buttonWidth
+                    : Math.min(implicitWidth, Math.max(0, root.buttonsAreaWidth - root.fixedButtonsWidth - buttons.spacing))
+                height: root.vertical
+                    ? Math.min(implicitHeight, Math.max(0, root.buttonsBottom - root.buttonsTop - root.fixedButtonsHeight - buttons.spacing))
+                    : root.style.buttonHeight
                 onContentXChanged: {
                     previewDelay.stop()
                     Menus.preview = null
@@ -618,7 +714,8 @@ Window {
                         // Dropped further away: it moves by as many places as buttons
                         // it passed.
                         onDropped: dx => {
-                            const to = Math.max(0, Math.min(taskRepeater.count - 1, index + Math.round(dx / (width + buttons.spacing))))
+                            const step = (root.vertical ? height : width) + buttons.spacing
+                            const to = Math.max(0, Math.min(taskRepeater.count - 1, index + Math.round(dx / step)))
                             if (to !== index) root.taskModel.move(index, to)
                         }
                         onDraggingChanged: if (dragging) Menus.preview = null
@@ -702,6 +799,7 @@ Window {
                             }
                         }
                         onXChanged: reportGeometry()
+                        onYChanged: reportGeometry()
                         onWindowCountChanged: reportGeometry()
                         onActiveChanged: if (active) Qt.callLater(() => appStrip.reveal(task))
                         Component.onCompleted: if (active) Qt.callLater(() => appStrip.reveal(task))
@@ -722,6 +820,7 @@ Window {
                         Connections {
                             target: buttonClip
                             function onXChanged() { task.reportGeometry() }
+                            function onYChanged() { task.reportGeometry() }
                         }
 
                         Image {
@@ -807,19 +906,27 @@ Window {
             root.openAbove(entries, transferIndicator, true, { minWidth: 360 })
         }
         Fill {
-            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
+            anchors {
+                fill: parent
+                topMargin: root.vertical ? 2 : 8 + root.inset
+                bottomMargin: root.vertical ? 2 : 8 + root.inset
+                leftMargin: root.vertical ? 6 : 0
+                rightMargin: root.vertical ? 6 : 0
+            }
             radius: root.style.corner(8, Theme.radius)
             color: transferMouse.pressed ? Theme.subtlePressed
                 : transferMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
+        // Side by side; one above the other on a vertical bar.
         Icon {
-            x: 7
-            anchors.verticalCenter: parent.verticalCenter
+            x: root.vertical ? Math.round((parent.width - width) / 2) : 7
+            y: root.vertical ? 6 : Math.round((parent.height - height) / 2)
             name: "document-save"
             size: 16
         }
         Text {
-            anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 6 }
+            x: root.vertical ? Math.round((parent.width - width) / 2) : parent.width - width - 6
+            y: root.vertical ? parent.height - height - 5 : Math.round((parent.height - height) / 2)
             text: transferIndicator.progress >= 0 ? transferIndicator.progress + "%"
                 : String(Transfers.activeCount)
             color: Theme.text
@@ -837,17 +944,20 @@ Window {
     // accepts a drop only when a single launcher is pinned as a copy.
     DropArea {
         id: appDrop
-        x: root.buttonsX + root.fixedButtonsWidth
-        y: buttons.mapToItem(root.contentItem, 0, 0).y
-        width: Math.max(0, root.buttonsRight - x)
-        height: buttons.height
+        // After Start and Task View, along the bar up to the tray.
+        readonly property point start: buttons.mapToItem(root.contentItem, 0, 0)
+        x: root.vertical ? 0 : root.buttonsX + root.fixedButtonsWidth
+        y: root.vertical ? start.y + root.fixedButtonsHeight : start.y
+        width: root.vertical ? root.width : Math.max(0, root.buttonsRight - x)
+        height: root.vertical ? Math.max(0, root.buttonsBottom - y) : buttons.height
         property bool pinning: false
         property var hoveredButton: null
         property int insertRow: -1
         property real markerX: 0
 
+        // `px` along the bar, in the area's coordinates.
         function updatePosition(px) {
-            const position = px + x
+            const position = px + (root.vertical ? y : x)
             let hit = null
             let insertBefore = -1
             let marker = x
@@ -858,8 +968,8 @@ Window {
             for (let i = 0; i < taskRepeater.count; ++i) {
                 const task = taskRepeater.itemAt(i)
                 if (!task || !appStrip.fullyVisible(task)) continue
-                const left = task.mapToItem(root.contentItem, 0, 0).x
-                const right = left + task.width
+                const left = root.along(task)
+                const right = left + root.lengthOf(task)
                 if (firstAppEdge < 0) {
                     firstAppEdge = left
                     firstAppRow = i
@@ -888,7 +998,7 @@ Window {
                 }
             }
             insertRow = insertBefore
-            markerX = Math.max(0, Math.min(width - 2, marker - x))
+            markerX = Math.max(0, Math.min((root.vertical ? height : width) - 2, marker - (root.vertical ? y : x)))
             if (hoveredButton !== hit) {
                 springTimer.stop()
                 if (Menus.preview && Menus.preview.spring) Menus.preview = null
@@ -900,9 +1010,9 @@ Window {
             pinning = drag.hasUrls && drag.urls.length === 1 && !!(drag.supportedActions & Qt.CopyAction)
                 && root.taskModel.isLauncherDrop(drag.urls[0])
             hoveredButton = null
-            updatePosition(drag.x)
+            updatePosition(root.vertical ? drag.y : drag.x)
         }
-        onPositionChanged: drag => updatePosition(drag.x)
+        onPositionChanged: drag => updatePosition(root.vertical ? drag.y : drag.x)
         onExited: {
             if (Menus.preview && Menus.preview.spring) Menus.previewButtonHovered = false
             hoveredButton = null
@@ -933,27 +1043,31 @@ Window {
         }
         Rectangle {
             visible: appDrop.containsDrag && appDrop.pinning
-            x: appDrop.markerX
-            anchors { top: parent.top; bottom: parent.bottom; margins: 3 }
-            width: 2
+            x: root.vertical ? 3 : appDrop.markerX
+            y: root.vertical ? appDrop.markerX : 3
+            width: root.vertical ? parent.width - 6 : 2
+            height: root.vertical ? 2 : parent.height - 6
             radius: 1
             color: Theme.accent
         }
     }
 
     // The main taskbar's notification area, left of the system icons.
-    Row {
+    Grid {
         id: tray
         objectName: "taskbarTray"
         visible: root.primary && (root.trayIcons.shown.length > 0 || root.hiddenTrayIcons.length > 0)
+        rows: root.vertical ? -1 : 1
+        columns: root.vertical ? 1 : -1
         anchors { right: screenSharing.left; top: parent.top; bottom: parent.bottom; rightMargin: 4 }
 
         TaskbarButton {
             id: overflowButton
             objectName: "trayOverflowButton"
             visible: root.hiddenTrayIcons.length > 0 || root.draggedTrayKey !== ""
-            width: visible ? root.traySlotWidth : 0
-            anchors.verticalCenter: parent.verticalCenter
+            width: !visible ? 0 : root.vertical ? root.style.buttonWidth : root.traySlotWidth
+            height: !visible ? 0 : root.vertical ? root.traySlotWidth : root.style.buttonHeight
+            y: root.vertical ? 0 : Math.round((tray.height - height) / 2)
             active: !!Menus.trayOverflow || (root.draggedTrayKey !== "" && root.trayMarkerX < 0)
             Accessible.role: Accessible.Button
             Accessible.name: qsTr("Show hidden icons")
@@ -962,13 +1076,15 @@ Window {
                 if (Menus.trayOverflow) {
                     Menus.trayOverflow = null
                 } else {
-                    const center = mapToItem(null, width / 2, 0).x
-                    Menus.trayOverflow = { bar: root, center: center, screen: root.screenName }
+                    Menus.trayOverflow = { bar: root, center: root.centerOnScreen(overflowButton), screen: root.screenName }
                 }
             }
+            // Pointing to where the drawer opens, back when it is open.
             Text {
                 anchors.centerIn: parent
-                rotation: overflowButton.active ? 90 : -90
+                readonly property real towards: root.atTop ? 90 : root.position === "left" ? 0
+                    : root.position === "right" ? 180 : -90
+                rotation: overflowButton.active ? towards + 180 : towards
                 text: "›"
                 color: Theme.text
                 font.pixelSize: 19
@@ -984,15 +1100,17 @@ Window {
                 required property int index
                 objectName: "trayIcon-" + index
                 entry: modelData
-                width: root.traySlotWidth
-                height: tray.height
-                inset: 8 + root.inset
+                vertical: root.vertical
+                centerOnScreen: () => root.centerOnScreen(trayItem)
+                width: root.vertical ? root.width - 2 * root.inset : root.traySlotWidth
+                height: root.vertical ? root.traySlotWidth : tray.height
+                inset: root.vertical ? 6 : 8 + root.inset
                 draggable: entry.key !== ""
                 onDragMoved: p => root.trayDragMoved(entry.key, p.x, p.y)
                 onDropped: p => root.trayDropped(entry.key, p.x, p.y)
                 onDragCanceled: root.trayDragCanceled()
                 onInvoked: button => {
-                    const center = mapToItem(null, width / 2, 0).x
+                    const center = root.centerOnScreen(trayItem)
                     if (button === Qt.RightButton) Tray.requestMenu(entry.row, center, true)
                     else if (button === Qt.MiddleButton) Tray.secondaryActivate(entry.row)
                     else Tray.activate(entry.row, center)
@@ -1003,10 +1121,10 @@ Window {
     // Where a dragged icon would land among the shown ones.
     Rectangle {
         visible: root.draggedTrayKey !== "" && root.trayMarkerX >= 0
-        x: root.trayMarkerX - 1
-        y: tray.y + 8 + root.inset
-        width: 2
-        height: tray.height - 2 * (8 + root.inset)
+        x: root.vertical ? tray.x + 6 : root.trayMarkerX - 1
+        y: root.vertical ? root.trayMarkerX - 1 : tray.y + 8 + root.inset
+        width: root.vertical ? tray.width - 12 : 2
+        height: root.vertical ? 2 : tray.height - 2 * (8 + root.inset)
         radius: 1
         color: Theme.accent
     }
@@ -1022,8 +1140,7 @@ Window {
         width: visible ? 32 : 0
 
         function showTooltip() {
-            const p = screenSharing.mapToItem(null, screenSharing.width / 2, 0)
-            Menus.tooltip = { text: Sharing.summary, center: p.x, screen: root.screenName, owner: "screenSharing" }
+            Menus.tooltip = { text: Sharing.summary, center: root.centerOnScreen(screenSharing), screen: root.screenName, owner: "screenSharing" }
         }
         function hideTooltip() {
             sharingTooltipDelay.stop()
@@ -1067,7 +1184,13 @@ Window {
             onTriggered: screenSharing.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
+            anchors {
+                fill: parent
+                topMargin: root.vertical ? 2 : 8 + root.inset
+                bottomMargin: root.vertical ? 2 : 8 + root.inset
+                leftMargin: root.vertical ? 6 : 0
+                rightMargin: root.vertical ? 6 : 0
+            }
             radius: root.style.corner(8, Theme.radius)
             color: sharingMouse.pressed ? Theme.subtlePressed : sharingMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
@@ -1116,8 +1239,7 @@ Window {
             return [qsTr("These apps are using your microphone:")].concat(users.map(u => u.name)).join("\n")
         }
         function showTooltip() {
-            const p = microphone.mapToItem(null, microphone.width / 2, 0)
-            Menus.tooltip = { text: microphone.tooltipText, center: p.x, screen: root.screenName, owner: "microphone" }
+            Menus.tooltip = { text: microphone.tooltipText, center: root.centerOnScreen(microphone), screen: root.screenName, owner: "microphone" }
         }
         function hideTooltip() {
             tooltipDelay.stop()
@@ -1134,7 +1256,13 @@ Window {
             onTriggered: microphone.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
+            anchors {
+                fill: parent
+                topMargin: root.vertical ? 2 : 8 + root.inset
+                bottomMargin: root.vertical ? 2 : 8 + root.inset
+                leftMargin: root.vertical ? 6 : 0
+                rightMargin: root.vertical ? 6 : 0
+            }
             radius: root.style.corner(8, Theme.radius)
             color: microphoneMouse.pressed ? Theme.subtlePressed : microphoneMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
         }
@@ -1178,8 +1306,7 @@ Window {
             : Access.caffeineSecs > 0 ? qsTr("Caffeine: %1").arg(remainingText(Access.caffeineSecs))
             : qsTr("Caffeine: keeping the computer awake")
         function showTooltip() {
-            const p = caffeine.mapToItem(null, caffeine.width / 2, 0)
-            Menus.tooltip = { text: caffeine.tooltipText, center: p.x, screen: root.screenName, owner: "caffeine" }
+            Menus.tooltip = { text: caffeine.tooltipText, center: root.centerOnScreen(caffeine), screen: root.screenName, owner: "caffeine" }
         }
         function hideTooltip() {
             caffeineTooltipDelay.stop()
@@ -1222,7 +1349,13 @@ Window {
             onTriggered: caffeine.showTooltip()
         }
         Fill {
-            anchors { fill: parent; topMargin: 8 + root.inset; bottomMargin: 8 + root.inset }
+            anchors {
+                fill: parent
+                topMargin: root.vertical ? 2 : 8 + root.inset
+                bottomMargin: root.vertical ? 2 : 8 + root.inset
+                leftMargin: root.vertical ? 6 : 0
+                rightMargin: root.vertical ? 6 : 0
+            }
             radius: root.style.corner(8, Theme.radius)
             color: caffeineMouse.pressed ? Theme.subtlePressed : Theme.subtleHover
             opacity: caffeineMouse.containsMouse ? 1 : 0
@@ -1261,14 +1394,22 @@ Window {
         width: visible ? iconsRow.width + 16 : 0
 
         Fill {
-            anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
+            anchors {
+                fill: parent
+                topMargin: root.vertical ? 2 : 4 + root.inset
+                bottomMargin: root.vertical ? 2 : 4 + root.inset
+                leftMargin: root.vertical ? 4 : 0
+                rightMargin: root.vertical ? 4 : 0
+            }
             radius: root.style.corner(4, root.floating ? root.style.ownButtonRadius : Theme.radius)
             color: systemMouse.pressed ? Theme.subtlePressed : systemMouse.containsMouse || Menus.quickSettingsOpen ? Theme.subtleHover : Theme.subtleRest
         }
-        Row {
+        Grid {
             id: iconsRow
             anchors.centerIn: parent
-            spacing: 10
+            rows: root.vertical ? -1 : 1
+            columns: root.vertical ? 1 : -1
+            spacing: root.vertical ? 8 : 10
             Icon {
                 id: networkIcon
                 name: Status.networkIconName
@@ -1295,15 +1436,16 @@ Window {
                     return
                 }
                 // The menu of the icon under the mouse: volume or network.
-                const p = root.screenPoint(systemMouse, mouse.x, 0)
-                const overVolume = volumeIcon.visible && mouse.x >= volumeIcon.x + iconsRow.x - 5
-                    && mouse.x < volumeIcon.x + iconsRow.x + volumeIcon.width + 5
-                root.openMenu(overVolume ? [
+                const at = root.vertical ? mouse.y : mouse.x
+                const start = root.vertical ? volumeIcon.y + iconsRow.y : volumeIcon.x + iconsRow.x
+                const overVolume = volumeIcon.visible && at >= start - 5
+                    && at < start + (root.vertical ? volumeIcon.height : volumeIcon.width) + 5
+                root.openFromBar(overVolume ? [
                     { text: qsTr("Open volume &mixer"), icon: "audio-volume-high", enabled: Audio.available, action: () => { root.fromHere(); Shell.soundOutputRequested() } },
                     { text: qsTr("&Sound settings"), icon: "audio-speakers-symbolic", enabled: System.available("sound-settings"), action: () => System.trigger("sound-settings") }
                 ] : [
                     { text: qsTr("&Network and Internet settings"), icon: "preferences-system-network-symbolic", enabled: System.available("network"), action: () => System.trigger("network") }
-                ], p.x, root.menuBottom, { above: true })
+                ], systemMouse, mouse.x, mouse.y)
             }
             // Like the keyboard's volume keys, with the indicator: a step every
             // notch (120), touchpads add up their small ones.
@@ -1330,6 +1472,7 @@ Window {
             : parent.width - width - 12 - (root.floating ? root.sideMargin : 0)
         anchors { top: parent.top; bottom: parent.bottom }
         width: clockColumn.implicitWidth + 16 + (badge.visible ? 22 : 0)
+        height: clockColumn.implicitHeight + 16 // on a vertical bar; a row's spans it
 
         property date now: Shell.now()
 
@@ -1343,7 +1486,13 @@ Window {
         }
 
         Fill {
-            anchors { fill: parent; topMargin: 4 + root.inset; bottomMargin: 4 + root.inset }
+            anchors {
+                fill: parent
+                topMargin: root.vertical ? 2 : 4 + root.inset
+                bottomMargin: root.vertical ? 2 : 4 + root.inset
+                leftMargin: root.vertical ? 4 : 0
+                rightMargin: root.vertical ? 4 : 0
+            }
             // A floating style's buttons' corners: its highlight is one of them.
             radius: root.style.corner(4, root.floating ? root.style.ownButtonRadius : Theme.radius)
             color: clockMouse.containsMouse || Menus.notificationCenterOpen ? Theme.subtleHover : Theme.subtleRest
@@ -1355,7 +1504,10 @@ Window {
         Rectangle {
             id: badge
             visible: (Config.notificationCount && Notifications.history.count > 0) || Notifications.silenced
-            anchors { right: parent.right; rightMargin: -2; verticalCenter: parent.verticalCenter }
+            // Beside the time; at the column's top corner on a vertical bar.
+            x: root.vertical ? parent.width - width + 2 : parent.width - width + 2
+            y: root.vertical ? -2 : Math.round((parent.height - height) / 2)
+            z: 1
             width: 18
             height: 18
             radius: 9
@@ -1376,27 +1528,40 @@ Window {
             }
         }
 
+        // On a vertical bar the lines are centered, AM/PM has a line of its
+        // own and the date is the day and the month: the column is narrow.
+        readonly property bool hasMeridiem: /a/i.test(Config.clockFormat)
         Column {
             id: clockColumn
-            anchors { left: parent.left; leftMargin: 8; verticalCenter: parent.verticalCenter }
+            x: root.vertical ? Math.round((parent.width - width) / 2) : 8
+            anchors.verticalCenter: parent.verticalCenter
             spacing: 1
 
             Text {
-                anchors.right: parent.right
+                anchors.right: root.vertical ? undefined : parent.right
+                anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
                 // 24-hour or 12-hour, with or without the seconds (Settings >
                 // Taskbar). Digits all as wide, so the clock doesn't twitch
                 // every second.
                 objectName: "taskbarTime"
-                text: Qt.formatTime(clock.now, Config.clockFormat)
+                text: Qt.formatTime(clock.now, root.vertical ? Config.clockFormat.replace(/\s*a+p*\s*/i, "") : Config.clockFormat)
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
                 font.features: { "tnum": 1 }
             }
             Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: root.vertical && clock.hasMeridiem
+                text: visible ? Qt.formatTime(clock.now, "AP") : ""
+                color: Theme.text
+                font.pixelSize: Theme.fontCaption
+            }
+            Text {
                 objectName: "taskbarDate"
-                anchors.right: parent.right
+                anchors.right: root.vertical ? undefined : parent.right
+                anchors.horizontalCenter: root.vertical ? parent.horizontalCenter : undefined
                 visible: Config.clockDate
-                text: Qt.formatDate(clock.now, "dd/MM/yyyy")
+                text: Qt.formatDate(clock.now, root.vertical ? "dd/MM" : "dd/MM/yyyy")
                 color: Theme.text
                 font.pixelSize: Theme.fontCaption
             }
@@ -1413,11 +1578,10 @@ Window {
                     Shell.notificationCenterRequested()
                     return
                 }
-                const p = root.screenPoint(clock, mouse.x, 0)
-                root.openMenu([
+                root.openFromBar([
                     { text: qsTr("&Adjust date and time"), icon: "clock", enabled: System.available("datetime"), action: () => System.trigger("datetime") },
                     { text: qsTr("&Notification settings"), icon: "preferences-desktop-notification-symbolic", enabled: System.available("notification-settings"), action: () => System.trigger("notification-settings") }
-                ], p.x, root.menuBottom, { above: true })
+                ], clock, mouse.x, mouse.y)
             }
         }
     }
@@ -1428,13 +1592,13 @@ Window {
         id: showDesktop
         anchors { right: parent.right; top: parent.top; bottom: parent.bottom }
         width: 8
+        height: 8 // on a vertical bar
         visible: Config.showDesktopCorner
 
         function showTooltip() {
-            const p = showDesktop.mapToItem(null, showDesktop.width / 2, 0)
             Menus.tooltip = {
                 text: qsTr("Show desktop"),
-                center: p.x,
+                center: root.centerOnScreen(showDesktop),
                 screen: root.screenName,
                 owner: "show-desktop"
             }
@@ -1467,9 +1631,10 @@ Window {
             }
         }
         Rectangle {
-            anchors { right: parent.right; rightMargin: 2; verticalCenter: parent.verticalCenter }
-            width: 2
-            height: 18
+            x: root.vertical ? Math.round((parent.width - width) / 2) : parent.width - width - 2
+            y: root.vertical ? parent.height - height - 2 : Math.round((parent.height - height) / 2)
+            width: root.vertical ? 18 : 2
+            height: root.vertical ? 2 : 18
             radius: 1
             color: Theme.textSecondary
             opacity: showDesktopMouse.containsMouse ? 0.9 : 0
@@ -1490,6 +1655,73 @@ Window {
             onClicked: {
                 showDesktop.hideTooltip()
                 Tasks.toggleDesktop()
+            }
+        }
+    }
+
+    // A vertical bar (docs/taskbar.md §11.2): the tray's pieces stacked from
+    // the bottom, the show-desktop strip last, each as wide as the bar (less a
+    // floating pill's margin).
+    Item {
+        states: State {
+            name: "vertical"
+            when: root.vertical
+            AnchorChanges {
+                target: showDesktop
+                anchors { right: undefined; top: undefined; bottom: parent.bottom; left: parent.left }
+            }
+            PropertyChanges { target: showDesktop; width: root.width; anchors.bottomMargin: root.inset }
+            AnchorChanges {
+                target: clock
+                anchors { top: undefined; bottom: showDesktop.top; left: parent.left; right: parent.right }
+            }
+            PropertyChanges {
+                target: clock
+                anchors.bottomMargin: showDesktop.visible ? 0 : root.columnEnd
+                anchors.leftMargin: root.inset
+                anchors.rightMargin: root.inset
+            }
+            AnchorChanges {
+                target: systemIcons
+                anchors { right: parent.right; top: undefined; bottom: clock.top; left: parent.left }
+            }
+            PropertyChanges {
+                target: systemIcons
+                height: systemIcons.visible ? iconsRow.height + 16 : 0
+                anchors.rightMargin: root.inset
+                anchors.leftMargin: root.inset
+                anchors.bottomMargin: 2
+            }
+            AnchorChanges {
+                target: caffeine
+                anchors { right: parent.right; top: undefined; bottom: systemIcons.top; left: parent.left }
+            }
+            PropertyChanges { target: caffeine; height: caffeine.visible ? 32 : 0; anchors.leftMargin: root.inset; anchors.rightMargin: root.inset }
+            AnchorChanges {
+                target: microphone
+                anchors { right: parent.right; top: undefined; bottom: caffeine.top; left: parent.left }
+            }
+            PropertyChanges { target: microphone; height: microphone.visible ? 32 : 0; anchors.leftMargin: root.inset; anchors.rightMargin: root.inset }
+            AnchorChanges {
+                target: screenSharing
+                anchors { right: parent.right; top: undefined; bottom: microphone.top; left: parent.left }
+            }
+            PropertyChanges { target: screenSharing; height: screenSharing.visible ? 32 : 0; anchors.leftMargin: root.inset; anchors.rightMargin: root.inset }
+            AnchorChanges {
+                target: tray
+                anchors { right: undefined; top: undefined; bottom: screenSharing.top; horizontalCenter: parent.horizontalCenter }
+            }
+            PropertyChanges { target: tray; anchors.rightMargin: 0; anchors.bottomMargin: 4 }
+            AnchorChanges {
+                target: transferIndicator
+                anchors { right: parent.right; top: undefined; bottom: tray.top; left: parent.left }
+            }
+            PropertyChanges {
+                target: transferIndicator
+                height: transferIndicator.visible ? 44 : 0
+                anchors.rightMargin: root.inset
+                anchors.leftMargin: root.inset
+                anchors.bottomMargin: 4
             }
         }
     }

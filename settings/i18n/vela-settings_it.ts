@@ -3616,6 +3616,10 @@ Specifiche sistema
         <source>Left</source>
         <translation>A sinistra</translation>
     </message>
+    <message>
+        <source>Top</source>
+        <translation>In alto</translation>
+    </message>
 </context>
 <context>
     <name>TaskbarPage</name>
@@ -3754,6 +3758,26 @@ Specifiche sistema
     <message>
         <source>Show %1 on the taskbar</source>
         <translation>Mostra %1 sulla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Taskbar position</source>
+        <translation>Posizione della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Bottom</source>
+        <translation>In basso</translation>
+    </message>
+    <message>
+        <source>Top</source>
+        <translation>In alto</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>A sinistra</translation>
+    </message>
+    <message>
+        <source>Right</source>
+        <translation>A destra</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>

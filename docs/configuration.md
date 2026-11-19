@@ -216,6 +216,7 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | Key | Default | Meaning |
 |---|---|---|
 | `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/position` | `bottom` | The edge of every display the taskbar sits on: `bottom`, `top`, `left` or `right`. Start, the previews and the tray's panels open from that edge; on the left and the right the bar is a column at least 56 wide. |
 | `taskbar/windowsFrom` | `desktop` | `desktop` shows windows on the current desktop, `all` shows windows on every desktop. |
 | `taskbar/appsOn` | `all` | `window` limits windows to their display's taskbar when taskbars are on all displays. |
 | `taskbar/clickActive` | `previews` | On an active app with several windows, show `previews` or cycle to the `next` window. |

@@ -14,6 +14,8 @@ under "Unreleased" in the pull request that makes a user-visible change.
   previews on click, and adds Super+number shortcuts, attention indicators,
   app badges and progress, a tray drawer chosen icon by icon (drag an icon in
   or out of "^", its menu, or Settings), and drag-to-pin and drag-to-raise.
+  The taskbar can sit at the bottom, the top, the left or the right of the
+  screen (Settings > Personalization > Taskbar > Taskbar position).
 
 - Context menus: the entries apps add (KDE service menus) are in the menu
   itself, with no "Show more options"; Settings > Personalization > Context

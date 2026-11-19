@@ -151,12 +151,15 @@ private slots:
               "discord\nattention=unknown\n");
         Preferences prefs;
         QCOMPARE(prefs.taskbarWindowsFrom(), QStringLiteral("desktop"));
+        QCOMPARE(prefs.taskbarPosition(), QStringLiteral("bottom"));
         QCOMPARE(prefs.taskbarAppsOn(), QStringLiteral("all"));
         QCOMPARE(prefs.taskbarClickActive(), QStringLiteral("previews"));
         QCOMPARE(prefs.taskbarTrayShown(), QStringList { QStringLiteral("discord") });
         QVERIFY(prefs.taskbarAttention());
 
         prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarPosition(QStringLiteral("diagonal"));
+        prefs.setTaskbarPosition(QStringLiteral("left"));
         prefs.setTaskbarAppsOn(QStringLiteral("window"));
         prefs.setTaskbarClickActive(QStringLiteral("next"));
         prefs.setTrayIconShown(QStringLiteral("steam"), true);
@@ -168,6 +171,7 @@ private slots:
         prefs.setTaskbarNumberHints(false);
         expectFreshShell({
             { "taskbar/windowsFrom", "all" },
+            { "taskbar/position", "left" },
             { "taskbar/appsOn", "window" },
             { "taskbar/clickActive", "next" },
             { "taskbar/trayShown", QStringList { QStringLiteral("steam"), QStringLiteral("telegram") } },

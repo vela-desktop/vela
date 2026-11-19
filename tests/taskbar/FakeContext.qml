@@ -65,6 +65,7 @@ QtObject {
         function now() { return new Date(2026, 10, 15, 23, 59, 59) }
         function placeOnScreen(window, screen) {}
         function placeAtLeft(window, left) {}
+        function placeAnchored(window, edges, left, top) {}
         function shiftHeld() { return false }
         function toggleStartMenu() { startMenuOpen = !startMenuOpen }
     }

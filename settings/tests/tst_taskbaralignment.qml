@@ -51,6 +51,20 @@ Item {
             compare(choice().currentIndex, 1)
         }
 
+        // On a vertical bar no pill fits its apps: the choice is the user's,
+        // and its second value is the top.
+        function test_a_vertical_bar_keeps_the_choice() {
+            Prefs.taskbarAlignment = "left"
+            layout({ "taskbar-radius": 8, "taskbar-fit": 1 })
+            Prefs.taskbarPosition = "left"
+            verify(choice().enabled)
+            compare(card.description, "")
+            compare(choice().currentIndex, 1)
+            compare(choice().model[1], "Top")
+            Prefs.taskbarPosition = "bottom"
+            verify(!choice().enabled)
+        }
+
         function test_choosing_left() {
             choice().chosen(1)
             compare(Prefs.taskbarAlignment, "left")

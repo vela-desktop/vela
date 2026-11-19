@@ -63,6 +63,10 @@ public:
     // settings and the notification center above a centered taskbar's
     // buttons.
     Q_INVOKABLE void placeAbove(QWindow* window, int left);
+    // Anchors a panel at `edges` (layer-shell bits: top 1, bottom 2, left 4,
+    // right 8), `left` and `top` its margins from them: the panels a taskbar
+    // on any edge opens (docs/taskbar.md §11.3).
+    Q_INVOKABLE void placeAnchored(QWindow* window, int edges, int left, int top);
     // A (hidden) shell panel on output `name`: it appears there the next time
     // it opens.
     Q_INVOKABLE void setPanelKeyboard(QWindow* window, bool on);

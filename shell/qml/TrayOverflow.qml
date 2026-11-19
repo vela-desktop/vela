@@ -8,22 +8,26 @@ Window {
     id: root
     visible: false
     color: "transparent"
-    width: panel.width + 2 * shadow.reach
-    height: panel.height + shadow.reach + 12
+    // The panel with room for its shadow, 12 from the taskbar on whichever
+    // edge it is (docs/taskbar.md §11.3).
+    readonly property QtObject bar: Styles.taskbar
+    width: bar.pad("left", 0, 12, shadow.reach) + panel.width + bar.pad("right", 0, 12, shadow.reach)
+    height: bar.pad("top", 0, 12, shadow.reach) + panel.height + bar.pad("bottom", 0, 12, shadow.reach)
 
     readonly property var info: Menus.trayOverflow
     readonly property var entries: info && info.bar ? info.bar.hiddenTrayIcons : []
     property int selected: 0
-    property int left: 0
-    // The rows that fit above the taskbar; the others scroll.
-    readonly property int gridRoom: Math.max(36, Screen.height - (info && info.bar ? info.bar.height : 0) - shadow.reach - 24)
+    property int left: 0 // its start along the bar, on the output
+    // The rows that fit on the screen beside the taskbar; the others scroll.
+    readonly property int gridRoom: Math.max(36, Screen.height - (bar.vertical ? 0 : bar.thickness) - shadow.reach - 24)
     onSelectedChanged: {
         const top = Math.floor(selected / grid.columns) * 36
         if (top < viewport.contentY) viewport.contentY = top
         else if (top + 36 > viewport.contentY + viewport.height) viewport.contentY = top + 36 - viewport.height
     }
     onEntriesChanged: {
-        if (entries.length === 0 && info) Menus.trayOverflow = null
+        // Empty, it closes: later, not while `entries` itself is changing.
+        if (entries.length === 0 && info) Qt.callLater(() => { if (root.entries.length === 0) Menus.trayOverflow = null })
         selected = Math.max(0, Math.min(selected, entries.length - 1))
     }
     onInfoChanged: {
@@ -35,14 +39,29 @@ Window {
         Shell.placeOnScreen(root, info.screen)
         Qt.callLater(root.place)
     }
-    // From this window's coordinates to the taskbar's, the bar right below.
+    // This window's top-left on the output, against the bar.
+    function origin() {
+        const thick = info && info.bar ? (bar.vertical ? info.bar.width : info.bar.height) : bar.thickness
+        return bar.position === "top" ? Qt.point(left, thick)
+            : bar.position === "left" ? Qt.point(thick, left)
+            : bar.position === "right" ? Qt.point(Screen.width - thick - width, left)
+            : Qt.point(left, Screen.height - thick - height)
+    }
+    // From this window's coordinates to the taskbar's.
     function toBar(p) {
-        return Qt.point(p.x + root.left, p.y - root.height)
+        const o = origin()
+        const b = info.bar.barOrigin()
+        return Qt.point(p.x + o.x - b.x, p.y + o.y - b.y)
+    }
+    // An icon's middle along the bar, on the output: its menu opens there.
+    function centerOnScreen(item) {
+        const o = origin()
+        const p = item.mapToItem(null, item.width / 2, item.height / 2)
+        return bar.vertical ? o.y + p.y : o.x + p.x
     }
     function place() {
         if (!info || entries.length === 0) return
-        left = Math.round(Math.max(0, Math.min(Screen.width - width, info.center - width / 2)))
-        Shell.placeAtLeft(root, left)
+        left = Menus.placeBesideBar(root, info.center, root.screen)
         visible = true
         panel.forceActiveFocus()
         motion.open()
@@ -55,11 +74,11 @@ Window {
     }
     PanelMotion {
         id: motion
-        x: shadow.reach
-        y: shadow.reach
+        x: root.bar.pad("left", 0, 12, shadow.reach)
+        y: root.bar.pad("top", 0, 12, shadow.reach)
         width: 172
         height: viewport.height + 12
-        offset: Qt.point(0, 8)
+        offset: root.bar.towards(8)
         duration: Theme.normal
         instantExit: true
         onClosed: root.visible = false
@@ -119,6 +138,7 @@ Window {
                             required property var modelData
                             objectName: "trayOverflowIcon-" + index
                             entry: modelData
+                            centerOnScreen: () => root.centerOnScreen(icon)
                             width: 40
                             height: 36
                             highlighted: root.active && index === root.selected
@@ -135,7 +155,7 @@ Window {
                             onDragCanceled: root.info.bar.trayDragCanceled()
                             onInvoked: button => {
                                 root.selected = index
-                                const anchor = root.left + icon.mapToItem(null, icon.width / 2, 0).x
+                                const anchor = root.centerOnScreen(icon)
                                 if (button === Qt.RightButton) {
                                     Tray.requestMenu(entry.row, anchor, true)
                                 } else {

@@ -176,6 +176,7 @@ void Preferences::loadShell(const QSettings& settings)
     m_taskbarAlignment = settings.value(QStringLiteral("taskbar/alignment")).toString() == QLatin1String("left")
         ? QStringLiteral("left")
         : QStringLiteral("center");
+    m_taskbarPosition = vela::taskbar::position(settings);
     m_endTask = settings.value(QStringLiteral("taskbar/endTask"), true).toBool();
     m_taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
@@ -681,6 +682,18 @@ void Preferences::setTaskbarAlignment(const QString& alignment)
     if (alignment != m_taskbarAlignment) {
         if (setShell(QStringLiteral("taskbar/alignment"), alignment)) {
             m_taskbarAlignment = alignment;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarPosition(const QString& position)
+{
+    const bool known = position == QLatin1String("bottom") || position == QLatin1String("top")
+        || position == QLatin1String("left") || position == QLatin1String("right");
+    if (known && position != m_taskbarPosition) {
+        if (setShell(QStringLiteral("taskbar/position"), position)) {
+            m_taskbarPosition = position;
         }
         emit taskbarChanged();
     }
