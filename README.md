@@ -56,7 +56,7 @@ desktop feel less modern.
 - **Themes:** complete looks in one click, Vela Expressive among them, with an accent
   that can follow your wallpaper's colors.
 - **Files:** tabs, search, previews, archives, removable drives and safe background copies.
-- **Settings:** displays, sound, network, Bluetooth, input, personalization,
+- **Settings:** displays, sound, network, Bluetooth, input, power, personalization,
   accessibility and updates.
 - **Session:** a secure lock screen, an authorization prompt for administrator actions,
   and recovery from compositor, shell and GPU crashes without losing your windows.
@@ -141,9 +141,9 @@ Matrix homeserver works; no `velade.org` account is required.
 - **Using Vela:** [features](docs/features.md) · [installation and updates](docs/installation.md) ·
   [keyboard shortcuts](docs/shortcuts.md) · [configuration](docs/configuration.md) ·
   [hardware coverage](docs/hardware.md) · [release channels](docs/release-channels.md) ·
-  [VM setup](docs/vm-fedora44-venus.md) ·
+  [virtual machines](docs/virtual-machines.md) ·
   [roadmap](docs/roadmap.md)
-- **Design:** [renderer](docs/renderer.md) · [audio](docs/audio.md) ·
+- **Design:** [renderer](docs/renderer.md) · [taskbar](docs/taskbar.md) · [audio](docs/audio.md) ·
   [Bluetooth](docs/bluetooth.md) · [brightness](docs/brightness.md) ·
   [screen sharing](docs/screen-sharing.md) · [theme system](docs/theme-system.md) ·
   [authorization prompt](docs/polkit-agent.md) · [updates](docs/updates.md) ·
