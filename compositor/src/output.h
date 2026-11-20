@@ -63,6 +63,9 @@ struct vela_output {
     // there and not over another output at (0, 0).
     bool has_last_position;
     int last_x, last_y;
+    // The layout to recover when a temporarily missing output returns.
+    bool has_preferred_position;
+    int preferred_x, preferred_y;
     // Only when Vela runs in a window inside another session.
     struct vela_nested *nested;
     // Its brightness (brightness.h); NULL: none to drive.

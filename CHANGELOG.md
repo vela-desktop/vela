@@ -10,6 +10,9 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Display layouts keep monitors from overlapping. Unplugging a monitor closes
+  gaps that would otherwise trap the pointer on one screen.
+
 - The taskbar filters windows by desktop and display, opens keyboard-accessible
   previews on click, and adds Super+number shortcuts, attention indicators,
   app badges and progress, a tray drawer chosen icon by icon (drag an icon in

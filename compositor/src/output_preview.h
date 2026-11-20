@@ -8,6 +8,7 @@ struct vela_server;
 struct wlr_output_configuration_v1;
 
 void vela_output_preview_init(struct vela_server *server);
+void vela_output_preview_hotplug(struct vela_server *server);
 void vela_output_preview_finish(struct vela_server *server);
 // Reject competing, expired or abandoned protected configurations.
 bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output_configuration_v1 *config);

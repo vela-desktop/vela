@@ -88,6 +88,21 @@ class Outputs(unittest.TestCase):
         self.vela.command("test-output remove HEADLESS-2")
         self.vela.wait_for(lambda s: len(s["outputs"]) == 1, what="one output again")
 
+    def test_unplugging_the_middle_output_closes_the_gap(self):
+        state = self.add_second()
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="three outputs")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        self.assertEqual(third["x"], second["x"] + second["w"])
+
+        self.vela.command("test-output remove HEADLESS-2")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2 and any(
+            o["name"] == "HEADLESS-3" and o["x"] == second["x"] for o in s["outputs"]),
+            what="third output fills the gap left by the middle one")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        self.assertEqual(third["y"], 0)
+
     def test_windows_are_rescued_and_come_back(self):
         state = self.add_second()
         second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")

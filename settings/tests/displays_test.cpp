@@ -544,10 +544,10 @@ private slots:
         client->revert();
         QTRY_VERIFY(!client->pending());
         QTRY_VERIFY(!output("HEADLESS-2")["enabled"].toBool());
-        // An explicitly requested origin must override the remembered position.
-        QVERIFY(client->apply("HEADLESS-2", { { "enabled", true }, { "x", 0 }, { "y", 0 } }));
+        // An explicit position next to the active display overrides the remembered one.
+        QVERIFY(client->apply("HEADLESS-2", { { "enabled", true }, { "x", 1920 }, { "y", 0 } }));
         QTRY_VERIFY(client->confirming());
-        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 0);
+        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 1920);
         QCOMPARE(output("HEADLESS-2")["y"].toInt(), 0);
     }
     void failedCommitRestoresPartialChanges()
@@ -607,11 +607,22 @@ private slots:
         command("remove HEADLESS-2");
         command("add");
         QTRY_VERIFY(!output("HEADLESS-3").isEmpty());
-        const auto added = output("HEADLESS-3");
-        client->revert();
         QTRY_VERIFY(!client->pending());
         QTRY_COMPARE(output("HEADLESS-1")["scale"].toDouble(), 1.0);
-        QCOMPARE(output("HEADLESS-3"), added);
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
+        QVERIFY(saved().isEmpty());
+    }
+    void overlappingPositionsAreRejected()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        const auto before = client->outputs();
+        QVERIFY(client->apply("HEADLESS-2", { { "x", 0 }, { "y", 0 } }));
+        QTRY_VERIFY(!client->pending());
+        QVERIFY(!client->error().isEmpty());
+        QCOMPARE(client->outputs(), before);
+        QVERIFY(saved().isEmpty());
     }
     void advertisedResolutionAndFrequency()
     {

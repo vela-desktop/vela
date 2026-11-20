@@ -38,7 +38,15 @@ void vela_view_keep_in_place(struct vela_view *view) {}
 // Provide the view/scene entry points used by the actual output manager's
 // monitor-origin translation, without linking the Vulkan compositor.
 struct vela_output *vela_view_output(struct vela_view *view) { return NULL; }
-struct wlr_box vela_output_box(const struct vela_output *output) { return (struct wlr_box) {0}; }
+struct wlr_box vela_output_box(const struct vela_output* output)
+{
+    struct wlr_box box = { 0 };
+    wlr_output_layout_get_box(output->server->output_layout, output->wlr, &box);
+    return box;
+}
+void vela_interact_rebase(struct vela_server* server)
+{
+}
 void vela_node_set_position(struct vela_node *node, double x, double y) {}
 void vela_view_sync_x11(struct vela_view *view) {}
 void vela_scene_changed(struct vela_scene *scene) {}
@@ -58,6 +66,7 @@ static void destroyed(struct wl_listener *listener, void *data)
 {
     struct vela_output *output = wl_container_of(listener, output, destroy);
     wl_list_remove(&output->link);
+    vela_output_manager_hotplug(output->server);
     wl_list_remove(&output->destroy.link);
     output->wlr->data = NULL;
     free(output);
@@ -78,6 +87,7 @@ static void add_output(struct vela_server *server)
     wl_list_insert(server->outputs.prev, &output->link);
     output->destroy.notify = destroyed;
     wl_signal_add(&wlr->events.destroy, &output->destroy);
+    vela_output_manager_hotplug(server);
     wlr_output_layout_add_auto(server->output_layout, wlr);
     vela_output_manager_update(server);
 }

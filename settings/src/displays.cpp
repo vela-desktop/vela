@@ -312,7 +312,14 @@ struct Displays::Client {
             QVariantMap output { { "name", h->name }, { "description", h->description }, { "enabled", h->enabled },
                 { "x", h->x }, { "y", h->y }, { "scale", h->scale },
                 { "transform", transforms.value(h->transform, transforms.first()) }, { "modes", modes } };
-            if (h->current) output["current"] = h->current->map(true);
+            if (h->current) {
+                output["current"] = h->current->map(true);
+                const QSize size = logicalSize(h->current, h->scale, h->transform);
+                if (!size.isEmpty()) {
+                    output["logicalWidth"] = size.width();
+                    output["logicalHeight"] = size.height();
+                }
+            }
             list.append(output);
         }
         c->published = list;

@@ -57,7 +57,7 @@ static void finish(struct vela_output_preview *preview, uint32_t result)
     }
     if (preview->before) {
         if (result == VELA_OUTPUT_PREVIEW_V1_RESULT_CONFIRMED) {
-            if (!vela_output_manager_save(preview->owner->server)) {
+            if (!vela_output_manager_save(preview->owner->server, preview->before)) {
                 result = VELA_OUTPUT_PREVIEW_V1_RESULT_SAVE_FAILED;
                 wlr_log(WLR_ERROR, "Display configuration confirmed but could not be persisted");
             }
@@ -242,6 +242,14 @@ bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_c
         vela_output_preview_v1_send_applied(preview->resource, VELA_OUTPUT_PREVIEW_TIMEOUT_MS);
     }
     return true;
+}
+
+void vela_output_preview_hotplug(struct vela_server *server)
+{
+    struct vela_output_previews *owner = server->output_previews;
+    if (owner && owner->active) {
+        finish(owner->active, VELA_OUTPUT_PREVIEW_V1_RESULT_REVERTED);
+    }
 }
 
 void vela_output_preview_finish(struct vela_server *server)
