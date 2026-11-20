@@ -252,7 +252,10 @@ class Windows(unittest.TestCase):
     def test_system_prompt_keeps_focus_over_new_windows(self):
         # The keyring asks for the password while the app that asked opens its
         # window: the dialog stays in front with the keyboard.
-        prompt = self.vela.open_window(300, 200, app_id="org.kde.ksecretd")
+        # Only the installed program gets that place, not any app that takes
+        # its name (test_fullscreen_stack.py has the impostor).
+        program = self.vela.install_prompt("ksecretd")
+        prompt = self.vela.open_window(command=[program, "--app-id", "org.kde.ksecretd", "300", "200"])
         self.vela.wait_for(lambda s: s["focused"] == prompt)
         app = self.vela.open_window()
         state = self.vela.wait_for(lambda s: s.has(app), what="the app's window")
