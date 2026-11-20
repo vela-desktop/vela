@@ -189,8 +189,12 @@ if(VELA_PACKAGE_DEB)
     # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
     # Recommends and Arch's optional dependency. Settings > Updates runs
     # vela-update in a terminal (docs/updates.md §6.3): xdg-terminal-exec
-    # (Depends) picks any one installed, Konsole by default.
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez, konsole | x-terminal-emulator")
+    # (Depends) picks any one installed, Konsole by default. The portals
+    # match Fedora's Recommends and Arch's dependencies: GTK serves file
+    # choosers and other generic portals, wlr screenshots and screencasts
+    # (session/vela-portals.conf).
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
+        "bluez, konsole | x-terminal-emulator, xdg-desktop-portal, xdg-desktop-portal-gtk, xdg-desktop-portal-wlr")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")
