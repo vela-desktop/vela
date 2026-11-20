@@ -14,7 +14,7 @@ on:
         type: boolean
         default: false
       record_promo_smoke:
-        description: Record and verify isolated promo scenes at 100% and 125% scaling
+        description: Record and verify isolated promo scenes at 100% and 125% scaling (not yet possible on Vast containers, docs/ci-quality.md)
         type: boolean
         default: false
       tests:

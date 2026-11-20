@@ -206,6 +206,16 @@ container runner uses `runuser` without a passwordless-sudo rule and checks
 the runner archive against the SHA256 published with its GitHub release before
 extracting it. These checks do not replace a real NVIDIA hardware run.
 
+The promo smoke test cannot complete on the rented containers yet. Its
+recordings start the shell and Settings through unprivileged user and mount
+namespaces (`unshare --user --mount`), so that they see a neutral user and a
+private `/usr/share/applications`. Docker's default seccomp profile refuses
+those namespaces to a process without `CAP_SYS_ADMIN`, and Vast.ai does not
+let the rental change it. On 20 November 2026 (run 44787645288, RTX 2060S)
+the full GPU suite passed and every promo dependency, `pw-cat` included, was
+found. The recording then stopped at that namespace check, before any frame
+was captured. Run the promo smoke on the AMD or Intel runners.
+
 The NVIDIA test job sizes Ninja parallelism from the offered effective CPU
 allocation, container CPU affinity/quota and available host/cgroup memory,
 reserving memory for the system and capping builds at 16 concurrent jobs.
