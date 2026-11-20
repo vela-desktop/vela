@@ -1,11 +1,11 @@
 {
-  "collected_at": "2026-11-19T11:38:28+00:00",
+  "collected_at": "2026-11-20T11:37:56+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 60,
+      "count": 54,
       "referrer": "velade.org",
-      "uniques": 47
+      "uniques": 43
     },
     {
       "count": 28,
@@ -13,9 +13,9 @@
       "uniques": 25
     },
     {
-      "count": 27,
+      "count": 25,
       "referrer": "github.com",
-      "uniques": 19
+      "uniques": 18
     },
     {
       "count": 22,
