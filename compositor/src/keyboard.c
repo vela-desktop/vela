@@ -375,6 +375,16 @@ static void handle_key(struct wl_listener *listener, void *data)
         stop_repeat(keyboard);
     }
 
+    // The release of a number Super took is the compositor's, even when it
+    // comes during a keyboard Move: its bit goes first, or the next plain
+    // press would reach the app without its release.
+    const int number = vela_super_number_index(event->keycode);
+    const uint16_t number_bit = number >= 0 ? (uint16_t)(1u << number) : 0;
+    const bool number_released = !pressed && (keyboard->handled_numbers & number_bit);
+    if (number_released) {
+        keyboard->handled_numbers &= (uint16_t)~number_bit;
+    }
+
     // Keyboard "Move"/"Size": all keys belong to the compositor.
     if (vela_interact_keyboard(server, syms, count, mods, pressed)) {
         return;
@@ -410,14 +420,17 @@ static void handle_key(struct wl_listener *listener, void *data)
             }
         }
     }
-    if (vela_super_number_index(event->keycode) >= 0) {
-        const unsigned index = (unsigned)vela_super_number_index(event->keycode);
-        const uint16_t bit = (uint16_t)(1u << index);
-        if (pressed && !inhibited && handle_super_number(input, index, mods)) {
-            keyboard->handled_numbers |= bit;
-            handled = true;
-        } else if (!pressed && (keyboard->handled_numbers & bit)) {
-            keyboard->handled_numbers &= (uint16_t)~bit;
+    if (number >= 0) {
+        if (pressed && !inhibited) {
+            // Taken before the action runs: a desktop switch focuses the
+            // window there now, and its enter must leave this key out
+            // (vela_input_keyboard_enter).
+            keyboard->handled_numbers |= number_bit;
+            handled = handle_super_number(input, (unsigned)number, mods);
+            if (!handled) {
+                keyboard->handled_numbers &= (uint16_t)~number_bit;
+            }
+        } else if (number_released) {
             handled = true;
         }
     }

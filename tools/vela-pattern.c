@@ -44,6 +44,10 @@
 // handled before the next, then its own again, and logs
 // "vela-pattern: app-ids-cycled": a client that keeps changing its app_id
 // (the icon cache's budget, docs/memory-allocation-policy.md).
+// --log-keys: writes "vela-pattern: keyboard-enter KEY..." with the keys held
+// when the window gets the keyboard, and "vela-pattern: key KEY STATE" for
+// every key event (evdev codes): what reaches the app of the keys the
+// compositor keeps (Super's numbers).
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -109,6 +113,7 @@ static int transientMaximized;
 static int transientSiblings;
 static int fullscreenParent;
 static int logPointer;
+static int logKeys;
 static int lockPointer;
 static struct wl_seat* seat;
 static struct zwp_pointer_constraints_v1* pointerConstraints;
@@ -165,12 +170,54 @@ static const struct wl_pointer_listener pointerListener = {
     .axis = onPointerAxis,
 };
 
+static void onKeymap(void *data, struct wl_keyboard *keyboard, uint32_t format, int32_t fd, uint32_t size)
+{
+    close(fd);
+}
+static void onKeyboardEnter(
+    void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *entered, struct wl_array *keys)
+{
+    char line[256] = "vela-pattern: keyboard-enter";
+    const uint32_t *key;
+    wl_array_for_each(key, keys)
+    {
+        const size_t used = strlen(line);
+        snprintf(line + used, sizeof(line) - used, " %u", *key);
+    }
+    fprintf(stderr, "%s\n", line);
+}
+static void onKeyboardLeave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *left)
+{
+}
+static void onKey(
+    void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+{
+    fprintf(stderr, "vela-pattern: key %u %u\n", key, state);
+}
+static void onModifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t depressed, uint32_t latched,
+    uint32_t locked, uint32_t group)
+{
+}
+
+static const struct wl_keyboard_listener keyboardListener = {
+    .keymap = onKeymap,
+    .enter = onKeyboardEnter,
+    .leave = onKeyboardLeave,
+    .key = onKey,
+    .modifiers = onModifiers,
+};
+
 static void onSeatCapabilities(void* data, struct wl_seat* seat, uint32_t capabilities)
 {
     static struct wl_pointer* pointer;
-    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+    static struct wl_keyboard *keyboard;
+    if (logPointer && (capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
         pointer = wl_seat_get_pointer(seat);
         wl_pointer_add_listener(pointer, &pointerListener, NULL);
+    }
+    if (logKeys && (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
+        keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(keyboard, &keyboardListener, NULL);
     }
 }
 
@@ -178,8 +225,8 @@ static const struct wl_seat_listener seatListener = { .capabilities = onSeatCapa
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
-    if (logPointer && !seat && !strcmp(interface, wl_seat_interface.name)) {
-        // Version 1: no pointer frames to answer.
+    if ((logPointer || logKeys) && !seat && !strcmp(interface, wl_seat_interface.name)) {
+        // Version 1: no pointer frames nor key repeat info to answer.
         seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
         wl_seat_add_listener(seat, &seatListener, NULL);
     } else if (lockPointer && !strcmp(interface, zwp_pointer_constraints_v1_interface.name)) {
@@ -503,6 +550,8 @@ int main(int argc, char** argv)
             transientSiblings = 1;
         } else if (!strcmp(argv[arg], "--log-pointer")) {
             logPointer = 1;
+        } else if (!strcmp(argv[arg], "--log-keys")) {
+            logKeys = 1;
         } else if (!strcmp(argv[arg], "--lock-pointer")) {
             logPointer = lockPointer = 1;
         } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
