@@ -134,6 +134,7 @@ add_library(vela-pure STATIC
     src/legacy_names.c
     src/lock_state.c
     src/motion.c
+    src/output_arrangement.c
     src/output_config.c
     src/output_key.c
     src/path_security.c
@@ -669,6 +670,7 @@ if(VELA_BUILD_TOOLS)
             tests/geometry_test.cpp
             tests/color_sun_test.cpp
             tests/settings_test.cpp
+            tests/output_arrangement_test.cpp
             tests/output_config_test.cpp
             tests/output_key_test.cpp
             tests/path_security_test.cpp

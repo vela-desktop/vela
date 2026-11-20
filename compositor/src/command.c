@@ -21,6 +21,7 @@
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
+#include "snap.h"
 #include "switcher.h"
 #include "util.h"
 #include "view.h"
@@ -155,6 +156,14 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         (unsigned long long)uploads.deferred, (unsigned long long)uploads.replaced,
         (unsigned long long)uploads.completed, (unsigned long long)uploads.abandoned,
         (unsigned long long)uploads.pieces, (unsigned long long)uploads.rejected);
+    vela_buffer_append(json, ",\"snapPreview\":");
+    const struct vela_snapping *snapping = server->snapping;
+    if (snapping->rect && snapping->rect->color.a > 0) {
+        vela_buffer_appendf(json, "[%.3f,%.3f,%.3f,%.3f]", snapping->preview->node.x, snapping->preview->node.y,
+            snapping->rect->width, snapping->rect->height);
+    } else {
+        vela_buffer_append(json, "null");
+    }
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;
