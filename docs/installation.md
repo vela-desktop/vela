@@ -151,13 +151,13 @@ sh vela/packaging/vela-update --channel beta
 Beta downloads the release's DEB, verifies its checksum and signed
 provenance, and installs it with APT.
 
-The DEB recommends the portal backends that file choosers in sandboxed apps,
-screenshots and screen sharing need
-([integration services](hardware.md#integration-services)). If APT is set
-not to install recommendations, install them yourself:
+On Beta `v0.1.2`, install the following packages for file choosers in
+sandboxed apps, screenshots and screen sharing. The Experimental DEB built
+from current `main` recommends all three, so on that channel this step is
+only needed if APT skips recommendations.
 
 ```sh
-sudo apt install xdg-desktop-portal-gtk xdg-desktop-portal-wlr
+sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr
 ```
 
 Experimental (`sh vela/packaging/vela-update`) installs the Ubuntu build
@@ -223,17 +223,17 @@ its devices, and Vela changes nothing.
 
 **Settings > System > Updates** shows whether an update is available, what's
 new (Beta's release notes, or Experimental's commits) and the update channel.
-Vela checks by itself once a day, or every 6, 12 or 48 hours or once a week
-as chosen on the same page, never on a metered connection, and sends a
-notification when there is something new; turn this off there too. The page
-also shows when the next check is due.
+Automatic checks run daily by default, skip metered connections and notify
+you when an update is available. On Beta `v0.1.2`, you can turn these checks
+on or off. On Experimental, you can also choose an interval of 6, 12, 24 or
+48 hours or one week, and see when the next automatic check is due.
 
 **Install now** runs `vela-update` in a terminal, where the package manager
-asks for your password and the build stays readable. Before installing, it
-shows the packaging recipe for the exact commit it installs (press `q` to
-continue). Updates started by hand
-in a terminal show on the page too. `xdg-terminal-exec` (a dependency of the
-package) opens your default terminal, or Konsole without one. After an update,
+asks for your password. The updater shipped with Experimental also shows the
+packaging recipe for the selected commit. If it opens in `less`, press `q`
+to continue. Updates started by hand in a terminal show on the page too.
+`xdg-terminal-exec` (a package dependency) opens your default terminal,
+or Konsole without one. After an update,
 sign out and in again to use the new version: the page and a notification say
 so. The design is in [Updates](updates.md).
 

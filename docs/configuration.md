@@ -228,7 +228,7 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
-| `notifications/silenceWhileSharing` | `true` | Do not disturb by itself while an app shares or records the screen: popups wait in the notification center; the user's own Do not disturb (`notifications/doNotDisturb`) is never changed ([screen sharing](screen-sharing.md) §7) |
+| `notifications/silenceWhileSharing` | `true` | Silences ordinary popups while an app shares or records the screen. Critical notifications can still appear. The user's Do Not Disturb switch (`notifications/doNotDisturb`) keeps its setting ([screen sharing](screen-sharing.md) §7) |
 | `battery/notify` | `true` | Notifications about the PC's battery, low and critical (Settings → System → Power, [battery notifications](battery-notifications.md#6-settings)) |
 | `battery/lowLevel` | `20` | The PC's low battery level in percent: 5–95 (Settings offers 10, 15, 20, 25, 30, 40, 50); anything else is 20 |
 | `battery/devices` | `true` | Notifications about the peripherals' batteries: mice, keyboards, headsets (Settings → Bluetooth & devices) |

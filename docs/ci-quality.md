@@ -14,7 +14,7 @@ expensive Build jobs after an inexpensive source-change check.
 | Workflow | What it checks | When it runs |
 |---|---|---|
 | [Build](../.github/workflows/build.yml) | Arch build and CTest, a `qmllint` report (not blocking), Arch and Fedora packages with clean-install smoke tests, `packaging/tests` | Pull requests, pushes to `main` and `release/**`, `v0.*` tags (Beta publication), manual |
-| [Ubuntu 26.10 build](../.github/workflows/ubuntu.yml) | Full source build and the non-GPU CTest suite; installs the DEB on a clean system | Pull requests, pushes to `main` and `release/**` |
+| [Ubuntu 26.10 build](../.github/workflows/ubuntu.yml) | Full source build and the non-GPU CTest suite; installs the DEB on a clean system | Pull requests, pushes to `main` and `release/**`, manual runs. Build also calls this workflow on `v0.*` tags before publishing a Beta |
 | [Static Analysis](../.github/workflows/static-analysis.yml) | ShellCheck on every tracked shell script, `.clang-format` on the changed C/C++ lines (clang-format 18), Clang Static Analyzer, cppcheck and clang-tidy | Pull requests, manual |
 | [Sanitizer Tests](../.github/workflows/sanitizers.yml) | ASan and UBSan on the CPU-only suites | Pull requests, pushes to `main` and `release/**` (cache), manual |
 | [Fuzzing](../.github/workflows/fuzz.yml) | libFuzzer on the `vela.conf`, `.desktop` and DDC/CI parsers ([testing](testing.md)) | Pull requests that touch the parsers (one minute per target), nightly (ten minutes), manual |

@@ -985,9 +985,10 @@ directly at that size.
 
 ## 10. Measurements and tests
 
-- **Timing**: GPU timestamps for every frame and every effect; CPU time; missed
-  frames. `VELA_STATS=1` logs them every two seconds; an on-screen overlay was
-  planned and is not implemented.
+- **Timing**: `VELA_STATS=1` logs a summary for each active output every two
+  seconds, including frame rate and missed vblanks. When timing samples are
+  available, it also reports mean and maximum CPU time, GPU wait and GPU work.
+  GPU timestamps bracket the drawing pass as a whole.
 - **Validation**: `VELA_VULKAN_VALIDATION=1` enables the validation layers.
 - **Image tests** (headless): reference scenes compared with expected images;
   for sharpness, bit-for-bit comparison (§3.10); for effects, a small tolerance.

@@ -45,9 +45,10 @@ under "Unreleased" in the pull request that makes a user-visible change.
   or a picture; Start's pinned apps and the desktop icons can be hidden.
 - Battery alerts when the PC or a peripheral (mouse, keyboard, headset) runs
   low or critical, with the PC's low level set in Settings > System > Power.
-- While an app shares or records the screen, the taskbar says which app and
-  what it captures, and popups wait in the notification center (on by default,
-  Settings > System > Notifications).
+- While an app shares or records the screen, the taskbar shows which app is
+  capturing what. By default, Do Not Disturb silences ordinary popups while
+  sharing. Critical notifications can still appear on the shared screen.
+  You can change the automatic Do Not Disturb setting in Settings > System > Notifications.
 - Right-click a notification to dismiss it.
 - Settings > System > Updates chooses how often Vela checks (6 hours to 7 days)
   and shows the next check; the updater shows the packaging recipe before it

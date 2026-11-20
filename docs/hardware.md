@@ -65,7 +65,7 @@ These are **coverage descriptions**, not a ranking of hardware or a statement th
 
 ## Integration services
 
-Different features rely on installed/running system services. On Arch, the Beta ([`vela`](../packaging/arch/PKGBUILD.beta)) and Experimental ([`vela-git`](../packaging/arch/PKGBUILD)) packages install Vela Core and the standard Vela Desktop integration together; the [Fedora package](../packaging/fedora/vela.spec) and the Ubuntu DEB recommend the same portals, which DNF and APT install by default. Additional hardware/services remain optional.
+On Arch, the Beta ([`vela`](../packaging/arch/PKGBUILD.beta)) and Experimental ([`vela-git`](../packaging/arch/PKGBUILD)) packages install Vela Core and the standard Vela Desktop integration together. The [Fedora package](../packaging/fedora/vela.spec) and the Ubuntu Experimental DEB built from current `main` recommend the GTK and wlr portal backends, which DNF and APT install by default. On Ubuntu Beta `v0.1.2`, install the portals as described in the [installation guide](installation.md#ubuntu-2610). Additional hardware and services remain optional.
 
 | Feature | Typically needed |
 |---|---|
@@ -74,7 +74,7 @@ Different features rely on installed/running system services. On Arch, the Beta 
 | Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
-| Screen sharing / application portals | Arch installs `xdg-desktop-portal`, `xdg-desktop-portal-gtk` and `xdg-desktop-portal-wlr` by default, and Fedora and Ubuntu recommend them. GTK serves generic portals, KDE is an optional fallback if already installed, and wlr handles screenshot and screencast |
+| Screen sharing / application portals | `xdg-desktop-portal` with `xdg-desktop-portal-gtk` for file choosers and other generic portals, and `xdg-desktop-portal-wlr` for screenshots and screencasts. KDE is an optional fallback for generic portals if already installed |
 | KDE styling and secrets | Appropriate KDE icon/theme/wallet components |
 
 Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. Konsole and Breeze icons remain default desktop components. BlueZ remains optional for native Vela Bluetooth integration; Bluedevil plus bluez-obex are optional for Bluetooth file sending from Files.
