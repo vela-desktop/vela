@@ -3,6 +3,8 @@
 """Unit tests for the isolated NVIDIA GPU rental and build sizing logic."""
 
 import importlib.util
+import io
+import json
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -20,6 +22,7 @@ def load(name, filename):
 
 vast_runner = load("vast_runner_test", "vast-runner.py")
 build_jobs = load("ci_nvidia_build_jobs_test", "ci-nvidia-build-jobs.py")
+arch_audit_gate = load("ci_arch_audit_gate_test", "ci-arch-audit-gate.py")
 
 
 def offer(*, machine=1, gpu="RTX 3060", cpu=8, price=0.08, reliability=0.99,
@@ -86,6 +89,18 @@ class ProvisioningTests(unittest.TestCase):
             result = vast_runner.wait_online("vela-desktop", 9, 123)
         return result, clock.now
 
+    def test_rejects_mutable_image_before_renting(self):
+        with self.assertRaisesRegex(ValueError, "sha256 digest"):
+            vast_runner.start("vela-desktop", "probe",
+                              "ghcr.io/vela-desktop/vela-ci-nvidia:latest",
+                              "2.338.2", "a" * 64, 0.12, None)
+
+    def test_rejects_invalid_runner_checksum_before_renting(self):
+        with self.assertRaisesRegex(ValueError, "runner SHA256"):
+            vast_runner.start("vela-desktop", "probe",
+                              "ghcr.io/vela-desktop/vela-ci-nvidia@sha256:" + "b" * 64,
+                              "2.338.2", "bogus", 0.12, None)
+
     def test_runner_already_online(self):
         result, elapsed = self.probe([{"actual_status": "loading", "status_msg": ""}],
                                      github_state="online")
@@ -131,6 +146,43 @@ class ProvisioningTests(unittest.TestCase):
         ])
         self.assertFalse(result)
         self.assertEqual(elapsed, 0)
+
+
+def advisory(severity, *, name="AVG-1", packages=("openssl",)):
+    return {"name": name, "packages": list(packages), "status": "Fixed",
+            "type": "arbitrary code execution", "severity": severity,
+            "fixed": "3.6.1-1", "issues": ["CVE-2026-0001"]}
+
+
+class ArchAuditGateTests(unittest.TestCase):
+    def run_gate(self, text):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            status = arch_audit_gate.main(io.StringIO(text))
+        return status, out.getvalue()
+
+    def test_clean_report_passes(self):
+        self.assertEqual(self.run_gate("[]")[0], 0)
+
+    def test_fixable_high_and_critical_block(self):
+        for severity in ("High", "Critical"):
+            with self.subTest(severity=severity):
+                status, out = self.run_gate(json.dumps([advisory(severity)]))
+                self.assertEqual(status, 1)
+                self.assertIn("openssl", out)
+                self.assertIn("3.6.1-1", out)
+
+    def test_lower_severities_do_not_block(self):
+        report = [advisory(s, name=f"AVG-{i}")
+                  for i, s in enumerate(("Medium", "Low", "Unknown"))]
+        self.assertEqual(self.run_gate(json.dumps(report))[0], 0)
+
+    def test_unreadable_reports_fail_closed(self):
+        for text in ("", "not json", "{}", "[1]", '[{"name": "AVG-1"}]',
+                     json.dumps([advisory("High", packages=())]),
+                     json.dumps([advisory(None)]), json.dumps([advisory("high")]),
+                     json.dumps([advisory("Severe")])):
+            with self.subTest(text=text):
+                self.assertEqual(self.run_gate(text)[0], 2)
 
 
 class BuildSizingTests(unittest.TestCase):
