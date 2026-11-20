@@ -9,6 +9,9 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Action | Normal session | Nested session |
 |---|---|---|
 | App launcher | <kbd>Super</kbd> | <kbd>Alt</kbd>+<kbd>S</kbd> |
+| Activate a taskbar app / open its window previews | <kbd>Super</kbd>+<kbd>1</kbd>…<kbd>9</kbd>, <kbd>0</kbd> | — |
+| Open a new instance of a taskbar app | <kbd>Super</kbd>+<kbd>Shift</kbd>+number | — |
+| Open a taskbar app's jump list | <kbd>Super</kbd>+<kbd>Alt</kbd>+number | — |
 | Task View | <kbd>Super</kbd>+<kbd>Tab</kbd> | <kbd>Alt</kbd>+<kbd>W</kbd> |
 | Switch windows | <kbd>Alt</kbd>+<kbd>Tab</kbd> | <kbd>Alt</kbd>+<kbd>J</kbd> |
 | Snap left / right | <kbd>Super</kbd>+<kbd>←</kbd> / <kbd>→</kbd> | <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> |
@@ -22,6 +25,10 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Resize any window | <kbd>Super</kbd>+right-drag | — |
 | Window menu | <kbd>Alt</kbd>+<kbd>Space</kbd> | <kbd>Alt</kbd>+<kbd>Space</kbd> |
 | Close window | <kbd>Alt</kbd>+<kbd>F4</kbd> | <kbd>Alt</kbd>+<kbd>Q</kbd> |
+
+In Taskbar settings, the number keys can switch to the corresponding virtual
+desktop, move the focused window there with Shift, or be turned off.
+See [taskbar shortcuts](taskbar.md#7-super19-and-super0).
 
 ## Shell and apps
 

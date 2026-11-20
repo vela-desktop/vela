@@ -18,6 +18,7 @@
 #include "scene/surface.h"
 #include "server.h"
 #include "shell.h"
+#include "super_numbers.h"
 #include "util.h"
 
 #include <math.h>
@@ -182,6 +183,24 @@ static void load_pointer_settings(struct vela_input *input)
     vela_config_finish(&settings);
 }
 
+static void load_super_numbers(struct vela_input *input, const struct vela_config *settings)
+{
+    const char *mode = vela_config_get(settings, "super-number-keys", "apps");
+    input->super_numbers = vela_super_numbers_parse(mode);
+    vela_input_hide_super_hints(input);
+}
+
+void vela_input_hide_super_hints(struct vela_input *input)
+{
+    if (input->super_timer) {
+        wl_event_source_timer_update(input->super_timer, 0);
+    }
+    if (input->super_hints_visible) {
+        vela_shell_send(input->server, "super-hints-hidden");
+        input->super_hints_visible = false;
+    }
+}
+
 void vela_input_reload(struct vela_input *input)
 {
     struct vela_config settings;
@@ -190,6 +209,7 @@ void vela_input_reload(struct vela_input *input)
     wl_list_for_each (keyboard, &input->keyboards, link) {
         vela_keyboard_apply_settings(keyboard, &settings);
     }
+    load_super_numbers(input, &settings);
     vela_config_finish(&settings);
     struct wlr_seat *seat = input->server->seat;
     if (seat->keyboard_state.keyboard) {
@@ -646,8 +666,19 @@ void vela_input_keyboard_enter(struct vela_input *input, struct wlr_surface *sur
     struct wlr_seat *seat = input->server->seat;
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
     if (keyboard) {
-        wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes,
-            &keyboard->modifiers);
+        // The number keys Super took (keyboard.c) stay out: their release is
+        // the compositor's too, the app would keep them pressed.
+        uint16_t handled = 0;
+        struct vela_keyboard *own;
+        wl_list_for_each(own, &input->keyboards, link)
+        {
+            if (own->wlr == keyboard) {
+                handled = own->handled_numbers;
+            }
+        }
+        uint32_t keycodes[WLR_KEYBOARD_KEYS_CAP];
+        const size_t count = vela_super_numbers_filter(keyboard->keycodes, keyboard->num_keycodes, handled, keycodes);
+        wlr_seat_keyboard_notify_enter(seat, surface, keycodes, count, &keyboard->modifiers);
     } else {
         wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
     }
@@ -839,6 +870,10 @@ struct vela_input *vela_input_create(struct vela_server *server)
         struct wlr_virtual_keyboard_manager_v1 *keyboards = VELA_MUST(wlr_virtual_keyboard_manager_v1_create(display));
         vela_listen(&keyboards->events.new_virtual_keyboard, &input->new_virtual_keyboard, handle_new_virtual_keyboard);
     }
+    struct vela_config settings;
+    vela_config_read(&settings);
+    load_super_numbers(input, &settings);
+    vela_config_finish(&settings);
     return input;
 }
 
@@ -858,6 +893,9 @@ void vela_input_destroy(struct vela_input *input)
         pointer_destroy(pointer);
     }
     drag_icon_destroy(input->drag_icon);
+    if (input->super_timer) {
+        wl_event_source_remove(input->super_timer);
+    }
     if (input->paste_timer) {
         wl_event_source_remove(input->paste_timer);
     }

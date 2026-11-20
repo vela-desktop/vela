@@ -6,6 +6,7 @@
 #include <QAbstractListModel>
 #include <QFileSystemWatcher>
 #include <QHash>
+#include <QMap>
 #include <QList>
 #include <QSet>
 #include <QString>
@@ -78,6 +79,11 @@ public:
     Q_INVOKABLE bool launchAction(const QString& id, const QString& actionId);
     // Opens a file (or a URL) with that app.
     Q_INVOKABLE bool launchWithFile(const QString& id, const QString& url);
+    Q_INVOKABLE QUrl desktopUrl(const QString& id) const;
+    static bool isLauncherUrl(const QUrl& url);
+    // A launcher dropped on the taskbar and kept as a copy (vela-taskbar-*).
+    static bool isImportedLauncher(const QString& id);
+    QString importTaskbarLauncher(const QUrl& url);
     Q_INVOKABLE QString desktopFile(const QString& id) const;
     Q_INVOKABLE QString name(const QString& id) const;
     // The program the app starts (such as "kate"), to recognize it elsewhere.
@@ -119,6 +125,9 @@ private:
     // the shell.
     bool launchEntry(const Entry& entry, const QList<QUrl>& files = {}) const;
 
+    void loadTaskbarLaunchers();
+    // By id: the same launcher wins on every run when two match a window.
+    QMap<QString, Entry> m_taskbarLaunchers;
     QList<Entry> m_all; // sorted by name
     QList<int> m_visible; // indexes in m_all matching the search
     QString m_query;

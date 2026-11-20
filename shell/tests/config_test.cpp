@@ -10,6 +10,7 @@
 #include "clockformat.h"
 #include "config.h"
 #include "privatehome.h"
+#include "../../common/taskbarsettings.h"
 
 #include <QDir>
 #include <QFile>
@@ -17,9 +18,12 @@
 #include <QIcon>
 #include <QImage>
 #include <QSaveFile>
+#include <QSettings>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+
+#include <unistd.h>
 
 using namespace vela::test;
 
@@ -148,6 +152,127 @@ private slots:
         QCOMPARE(clock.count(), 0);
         QCOMPARE(start.count(), 0);
         QCOMPARE(desktop.count(), 0);
+    }
+
+    void taskbarDefaults()
+    {
+        Config config;
+        QCOMPARE(config.taskbarAlignment(), QStringLiteral("center"));
+        QCOMPARE(config.taskbarPosition(), QStringLiteral("bottom"));
+        QCOMPARE(config.taskbarWindowsFrom(), QStringLiteral("desktop"));
+        QCOMPARE(config.taskbarAppsOn(), QStringLiteral("all"));
+        QCOMPARE(config.taskbarClickActive(), QStringLiteral("previews"));
+        QCOMPARE(config.taskbarTrayShown(), QStringList());
+        QVERIFY(config.taskbarAttention());
+        QVERIFY(config.taskbarBadges());
+        QVERIFY(config.taskbarProgress());
+        QVERIFY(config.taskbarNumberHints());
+        QVERIFY(config.taskbarAllScreens());
+        QVERIFY(config.endTask());
+        QVERIFY(config.taskView());
+        QVERIFY(config.showDesktopCorner());
+    }
+
+    // Every choice of Settings' taskbar page, live (docs/taskbar.md).
+    void followsTheTaskbarChoices()
+    {
+        Config config;
+        QSignalSpy taskbar(&config, &Config::taskbarChanged);
+        write("[taskbar]\nalignment=left\nposition=\" Left \"\nwindowsFrom=all\nappsOn=window\nclickActive=next\n"
+              "trayShown=steam, \" discord \", , steam\nattention=false\nbadges=0\nprogress=FALSE\n"
+              "numberHints=no\nallScreens=false\nendTask=false\ntaskView=false\nshowDesktopCorner=false\n");
+        QVERIFY(taskbar.wait(3000));
+        QCOMPARE(config.taskbarAlignment(), QStringLiteral("left"));
+        QCOMPARE(config.taskbarPosition(), QStringLiteral("left"));
+        QCOMPARE(config.taskbarWindowsFrom(), QStringLiteral("all"));
+        QCOMPARE(config.taskbarAppsOn(), QStringLiteral("window"));
+        QCOMPARE(config.taskbarClickActive(), QStringLiteral("next"));
+        // Trimmed, without blanks or repeats, in the order chosen.
+        QCOMPARE(config.taskbarTrayShown(), (QStringList { QStringLiteral("steam"), QStringLiteral("discord") }));
+        QVERIFY(!config.taskbarAttention());
+        QVERIFY(!config.taskbarBadges());
+        QVERIFY(!config.taskbarProgress());
+        // Only "false" and "0" turn a switch off.
+        QVERIFY(config.taskbarNumberHints());
+        QVERIFY(!config.taskbarAllScreens());
+        QVERIFY(!config.endTask());
+        QVERIFY(!config.taskView());
+        QVERIFY(!config.showDesktopCorner());
+
+        // Each edge, and anything else is the bottom.
+        for (const char* edge : { "top", "right", "RIGHT", "middle", "" }) {
+            taskbar.clear();
+            write(QByteArray("[taskbar]\nposition=") + edge + "\n");
+            const QString expected = QString::fromLatin1(edge).toLower();
+            const QString position = expected == QLatin1String("top") || expected == QLatin1String("right")
+                ? expected
+                : QStringLiteral("bottom");
+            QTRY_COMPARE_WITH_TIMEOUT(config.taskbarPosition(), position, 3000);
+        }
+        QCOMPARE(config.taskbarAlignment(), QStringLiteral("center"));
+        QCOMPARE(config.taskbarTrayShown(), QStringList());
+    }
+
+    // The drawer's moves (docs/taskbar.md §8.2): saved at once, cleaned up.
+    void savesTheTrayIconsShown()
+    {
+        Config config;
+        QSignalSpy taskbar(&config, &Config::taskbarChanged);
+        QVERIFY(config.setTaskbarTrayShown(
+            { QStringLiteral(" steam "), QString(), QStringLiteral("discord"), QStringLiteral("steam") }));
+        QCOMPARE(taskbar.count(), 1); // without waiting for the file watcher
+        const QStringList shown { QStringLiteral("steam"), QStringLiteral("discord") };
+        QCOMPARE(config.taskbarTrayShown(), shown);
+        QSettings settings(confPath(), QSettings::IniFormat);
+        QCOMPARE(settings.value(QStringLiteral("taskbar/trayShown")).toStringList(), shown);
+
+        // The same list again: nothing to write or tell.
+        QVERIFY(config.setTaskbarTrayShown(shown));
+        QCOMPARE(taskbar.count(), 1);
+        // Its own write read back changes nothing either.
+        QTest::qWait(500);
+        QCOMPARE(config.taskbarTrayShown(), shown);
+        QCOMPARE(taskbar.count(), 1);
+
+        QVERIFY(config.setTaskbarTrayShown({}));
+        QCOMPARE(config.taskbarTrayShown(), QStringList());
+        QCOMPARE(taskbar.count(), 2);
+    }
+
+    void refusesTheTrayIconsWhenTheFileCannotBeWritten()
+    {
+        if (geteuid() == 0) {
+            QSKIP("root writes into a read-only directory");
+        }
+        Config config;
+        QSignalSpy taskbar(&config, &Config::taskbarChanged);
+        const QString directory = QFileInfo(confPath()).absolutePath();
+        QVERIFY(QFile::setPermissions(directory, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+        const bool saved = config.setTaskbarTrayShown({ QStringLiteral("steam") });
+        QVERIFY(
+            QFile::setPermissions(directory, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+        QVERIFY(!saved);
+        QCOMPARE(config.taskbarTrayShown(), QStringList());
+        QCOMPARE(taskbar.count(), 0);
+    }
+
+    void readsTheTaskbarPosition()
+    {
+        QSettings settings(home().filePath(QStringLiteral("position.conf")), QSettings::IniFormat);
+        QCOMPARE(vela::taskbar::position(settings), QStringLiteral("bottom"));
+        settings.setValue(QStringLiteral("taskbar/position"), QStringLiteral(" Top"));
+        QCOMPARE(vela::taskbar::position(settings), QStringLiteral("top"));
+        settings.setValue(QStringLiteral("taskbar/position"), QStringLiteral("left"));
+        QCOMPARE(vela::taskbar::position(settings), QStringLiteral("left"));
+        settings.setValue(QStringLiteral("taskbar/position"), QStringLiteral("bottom-left"));
+        QCOMPARE(vela::taskbar::position(settings), QStringLiteral("bottom"));
+        QVERIFY(vela::taskbar::enabled(settings, QStringLiteral("taskbar/missing")));
+        settings.setValue(QStringLiteral("taskbar/badges"), QStringLiteral(" False "));
+        QVERIFY(!vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges")));
+        settings.setValue(QStringLiteral("taskbar/badges"), 0);
+        QVERIFY(!vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges")));
+        settings.setValue(QStringLiteral("taskbar/badges"), true);
+        QVERIFY(vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges")));
     }
 
     void followsStart()

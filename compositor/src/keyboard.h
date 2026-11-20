@@ -25,6 +25,7 @@ struct vela_keyboard {
     struct wl_list link; // vela_input.keyboards
     struct vela_input *input;
     struct wlr_keyboard *wlr;
+    uint16_t handled_numbers;
     bool restoring; // sticky keys: the modifiers are being put back
     // A shortcut held down that repeats (the volume keys): the app doesn't get
     // the key, so it can't repeat it. With the keyboard's delay and rate.

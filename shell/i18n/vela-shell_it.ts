@@ -1299,12 +1299,12 @@
 <context>
     <name>Taskbar</name>
     <message>
-        <source>Previous tray icons</source>
-        <translation>Icone precedenti dell’area di notifica</translation>
+        <source>%1 needs attention</source>
+        <translation>%1 richiede attenzione</translation>
     </message>
     <message>
-        <source>Next tray icons</source>
-        <translation>Icone successive dell’area di notifica</translation>
+        <source>Show hidden icons</source>
+        <translation>Mostra le icone nascoste</translation>
     </message>
     <message>
         <source>1 minute remaining</source>
@@ -1493,6 +1493,14 @@
     <message>
         <source>&amp;Desktop</source>
         <translation>Des&amp;ktop</translation>
+    </message>
+    <message>
+        <source>&amp;Hide in the drawer</source>
+        <translation>&amp;Nascondi nel cassetto</translation>
+    </message>
+    <message>
+        <source>&amp;Show on the taskbar</source>
+        <translation>Mo&amp;stra sulla barra delle applicazioni</translation>
     </message>
     <message>
         <source>Task &amp;manager</source>

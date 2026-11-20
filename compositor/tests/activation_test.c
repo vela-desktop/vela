@@ -31,8 +31,16 @@ static unsigned activations;
 void vela_focus_new_view(struct vela_server *s, struct vela_view *view)
 {
     assert(s == &server);
+    view->attention = false;
     last_activated = view;
     ++activations;
+}
+
+void vela_view_set_attention(struct vela_view *view, bool on)
+{
+    if (view->mapped && (!on || !view->activated)) {
+        view->attention = on;
+    }
 }
 
 struct vela_view *vela_views_focused(struct vela_server *s)
@@ -179,6 +187,7 @@ static void legacy_activation(void)
         vela_activation_request_x11(&views[1]);
     }
     assert(activations == before); // repeated chat notifications over a game
+    assert(views[1].attention);
     views[0].fullscreen = false;
     vela_activation_request_x11(&views[1]);
     assert(activations == before); // ordinary windows deserve the same protection
@@ -237,10 +246,15 @@ int main(void)
     uint32_t old_serial = focus_client(&clients[1], 1);
     uint32_t serial = focus_client(&clients[0], 0);
 
+    activate(&clients[1], "unknown-token", false);
+    assert(views[1].attention);
+    views[1].attention = false;
+
     // A background client can obtain protocol tokens while omitting the
     // optional seat/surface. None of these may raise its window.
     request_token(&clients[1], false, false, 0);
     activate(&clients[1], clients[1].token, false);
+    assert(views[1].attention);
     request_token(&clients[1], true, false, 0);
     activate(&clients[1], clients[1].token, false);
     request_token(&clients[1], false, true, old_serial);
@@ -255,7 +269,7 @@ int main(void)
     request_token(&clients[0], true, true, serial);
     focus_client(&clients[1], 1);
     activate(&clients[1], clients[0].token, true);
-    assert(last_activated == &views[1]);
+    assert(last_activated == &views[1] && !views[1].attention);
     activate(&clients[1], clients[0].token, false);
 
     // Neither issuing nor redeeming a token while locked may activate a view.

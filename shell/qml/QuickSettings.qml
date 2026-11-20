@@ -24,9 +24,12 @@ Window {
     // meets the taskbar and the output's edge (docs/visual-coherence.md
     // §6.9): the panel rests 12 units from both.
     readonly property real room: shadow.reach
+    // In the clock's corner, wherever the taskbar is (docs/taskbar.md §11.3).
+    readonly property QtObject bar: Styles.taskbar
+    readonly property int edges: bar.trayCorner
     // With a style, the blur is rounded like the panel (Styles.qml).
     readonly property real blurRadius: Styles.quickSettings.chosen ? Styles.quickSettings.radius : 0
-    width: room + 360 + 12
+    width: bar.pad("left", edges, 12, room) + 360 + bar.pad("right", edges, 12, room)
     height: room + d.roomHeight + 12
     color: "transparent"
 
@@ -109,8 +112,8 @@ Window {
     property int screenLeft: -1
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point((root.screenLeft >= 0 ? root.screenLeft : Screen.width - root.width) + p.x,
-                        Screen.height - Styles.taskbar.height - root.height + p.y)
+        const o = Menus.trayPanelOrigin(root, root.screenLeft)
+        return Qt.point(o.x + p.x, o.y + p.y)
     }
     // The outputs (or inputs) for one app (the mixer), in a menu under its
     // button.
@@ -142,6 +145,12 @@ Window {
         function onQuickSettingsRequested() { root.toggle() }
         function onSoundOutputRequested() { root.toggleSound() }
         function onNotificationCenterRequested() { root.close() }
+    }
+    // The taskbar moved to another edge: the panel's place, and the origin
+    // its menus open from, belong to the old one. Placed again on reopening.
+    Connections {
+        target: Styles.taskbar
+        function onPositionChanged() { root.close() }
     }
 
     // Back from a page: Alt+Left, the keyboard's Back key and the mouse's
@@ -501,11 +510,13 @@ Window {
     // like Start, and leaves the same way.
     PanelMotion {
         id: motion
-        x: root.room
-        y: root.height - 12 - height
+        x: root.bar.pad("left", root.edges, 12, root.room)
+        y: (root.edges & 1) ? 12 : root.height - 12 - height
         width: 360
         height: d.panelHeight
-        offset: Qt.point(0, 48)
+        // From the bar: up from a bottom one, down from a top one, sideways
+        // from a vertical one.
+        offset: root.bar.towards(48)
         onClosed: {
             root.visible = false
             d.settle()

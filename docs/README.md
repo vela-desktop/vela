@@ -29,6 +29,7 @@ Each design document opens with a status header (see [below](#status-headers)).
   - [Renderer](renderer.md): Vela's own scene and Vulkan renderer, frame timing, effects and title bar.
   - [Visual coherence](visual-coherence.md): one look and one motion across the compositor, the shell and Vela's apps.
   - [Theme system](theme-system.md): themes, styles and their contract.
+  - [Taskbar](taskbar.md): which windows a button counts, attention, Super+1…9, the tray's drawer, drag and drop, badges, the taskbar on any edge.
   - [The C core](c-core.md): the compositor's rewrite from C++ to C and the rules the C code follows.
   - [Host allocation policy](memory-allocation-policy.md): how C code obtains memory and fails when it cannot.
   - [Compositor security model](security-model.md): trust boundaries, privileged protocols and the lock across crashes.

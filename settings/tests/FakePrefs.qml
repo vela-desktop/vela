@@ -30,6 +30,7 @@ QtObject {
     property var surfaceStyles: ({})
     property int themesRevision: 0
     property string taskbarAlignment: "center"
+    property string taskbarPosition: "bottom"
     // What styleGallery() lists: the themes ("") and each surface's styles.
     property var themes: []
     property var styles: ({})
@@ -66,6 +67,7 @@ QtObject {
         refuseMenuWrites = false
         surfaceStyles = { taskbar: "", startmenu: "", notifications: "" }
         taskbarAlignment = "center"
+        taskbarPosition = "bottom"
         startIcon = "vela"
         startIconSource = ""
         distributionName = "Test Linux"

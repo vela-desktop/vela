@@ -38,6 +38,49 @@ QtObject {
         // A look of its own (a style, or the theme's keys for it): the
         // compositor makes the bar glass from 4% alpha.
         readonly property bool chosen: Style.chosenStyles.indexOf("taskbar") >= 0
+        // The edge it sits on (taskbar/position, docs/taskbar.md §11):
+        // "bottom", "top", "left" or "right". Every panel it opens comes from
+        // that edge.
+        // (Config is the shell's; tests that load this file alone have none.)
+        readonly property string position: typeof Config !== "undefined" && Config.taskbarPosition ? Config.taskbarPosition : "bottom"
+        readonly property bool vertical: position === "left" || position === "right"
+        // How far it reaches into the screen: its height, or as wide on a
+        // vertical bar (never under 56: the clock's two lines must fit).
+        readonly property int thickness: vertical ? Math.max(height, 56) : height
+        // Its edge as a layer-shell anchor (top 1, bottom 2, left 4, right 8).
+        readonly property int edgeAnchor: position === "top" ? 1 : position === "left" ? 4 : position === "right" ? 8 : 2
+        // Where a panel comes from, `distance` units towards the bar.
+        function towards(distance) {
+            return position === "top" ? Qt.point(0, -distance) : position === "left" ? Qt.point(-distance, 0)
+                : position === "right" ? Qt.point(distance, 0) : Qt.point(0, distance)
+        }
+        // The output's area outside the bar, which panels keep to.
+        function usable(screenWidth, screenHeight) {
+            return Qt.rect(position === "left" ? thickness : 0, position === "top" ? thickness : 0,
+                screenWidth - (vertical ? thickness : 0), screenHeight - (vertical ? 0 : thickness))
+        }
+        // A panel window's top-left on the output, anchored at `edges` (the
+        // layer-shell bits above; neither left nor right: centered) inside the
+        // usable area, `left` and `top` its margins there.
+        function origin(edges, width, height, screenWidth, screenHeight, left, top) {
+            const area = usable(screenWidth, screenHeight)
+            const x = (edges & 4) ? area.x + (left || 0) : (edges & 8) ? area.x + area.width - width
+                : area.x + (area.width - width) / 2
+            const y = (edges & 1) ? area.y + (top || 0) : (edges & 2) ? area.y + area.height - height
+                : area.y + (area.height - height) / 2
+            return Qt.point(x, y)
+        }
+        // A panel's margin inside its window on `side` ("left", "top",
+        // "right", "bottom"), anchored at `edges`: `gap` on the bar's side,
+        // 12 at the screen's edges it is anchored to, `room` (its shadow's)
+        // where it faces the screen.
+        function pad(side, edges, gap, room) {
+            const bit = side === "top" ? 1 : side === "bottom" ? 2 : side === "left" ? 4 : 8
+            return side === position ? gap : (edges & bit) ? 12 : room
+        }
+        // The corner the tray's panels open in (quick settings, the
+        // notification center, the clipboard, notifications): the clock's.
+        readonly property int trayCorner: position === "top" ? 1 | 8 : position === "left" ? 2 | 4 : 2 | 8
         // The bar's height; the panels it opens sit above it. A floating pill
         // sits `margin` inside it above and below, so the bar is at least as
         // tall as the pill's buttons with 4 units above and below, plus the

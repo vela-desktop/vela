@@ -26,6 +26,7 @@ static const char *const privileged[] = {
     // Listing and driving other clients' windows.
     "ext_foreign_toplevel_list_v1",
     "zwlr_foreign_toplevel_manager_v1",
+    "vela_toplevel_identifier_v1",
     // The clipboard without focus.
     "zwlr_data_control_manager_v1",
     "ext_data_control_manager_v1",

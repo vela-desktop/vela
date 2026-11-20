@@ -28,6 +28,7 @@
 #include "levelmeter.h"
 #include "network.h"
 #include "preferences.h"
+#include "trayicons.h"
 #include "servicemenus.h"
 #include "systemactions.h"
 #include "systemstatus.h"
@@ -180,6 +181,7 @@ int main(int argc, char* argv[])
     SystemStatus status(&bluetooth);
     Brightness brightness;
     ServiceMenus serviceMenus; // read when Personalization > Context menu opens
+    TrayIcons trayIcons; // Personalization > Taskbar > Notification area
 
     QQmlApplicationEngine engine;
     qmlEngine = &engine;
@@ -197,6 +199,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("Apps"), &apps);
     context->setContextProperty(QStringLiteral("System"), &system);
     context->setContextProperty(QStringLiteral("Prefs"), &preferences);
+    context->setContextProperty(QStringLiteral("TrayIcons"), &trayIcons);
     context->setContextProperty(QStringLiteral("ServiceMenus"), &serviceMenus);
     context->setContextProperty(QStringLiteral("Displays"), &displays);
     context->setContextProperty(QStringLiteral("Audio"), &audio);

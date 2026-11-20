@@ -45,8 +45,11 @@ Window {
 
     // --- menus (docs/renderer.md §14.9) ---
 
+    // x, y in the icons' area, which a top or left taskbar moves off the
+    // output's corner: the menu opens on the output.
     function openMenu(entries, x, y, keyboard) {
-        Menus.open(entries, x, y, { screen: root.screen ? root.screen.name : "", keyboard: !!keyboard })
+        const p = icons.mapToItem(null, x, y)
+        Menus.open(entries, p.x, p.y, { screen: root.screen ? root.screen.name : "", keyboard: !!keyboard })
     }
 
     // The entries apps add for these files (KDE service menus), in their
@@ -199,7 +202,14 @@ Window {
 
     Item {
         id: icons
-        anchors { fill: parent; bottomMargin: Styles.taskbar.height }
+        // Out of the taskbar's space, on whichever edge it is.
+        anchors {
+            fill: parent
+            topMargin: Styles.taskbar.position === "top" ? Styles.taskbar.thickness : 0
+            bottomMargin: Styles.taskbar.position === "bottom" ? Styles.taskbar.thickness : 0
+            leftMargin: Styles.taskbar.position === "left" ? Styles.taskbar.thickness : 0
+            rightMargin: Styles.taskbar.position === "right" ? Styles.taskbar.thickness : 0
+        }
         focus: true
 
         // The model uses the sizes to lay out the icons.

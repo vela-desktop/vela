@@ -179,6 +179,8 @@ struct vela_server {
     struct wl_listener new_toplevel;
     struct wl_listener new_capture_request;
     struct wl_listener new_decoration;
+    struct wlr_xdg_activation_v1 *activation;
+    struct wl_protocol_logger *activation_logger;
     struct wl_listener new_activation_token;
     struct wl_listener request_activation;
     struct wlr_xwayland *xwayland; // NULL without Xwayland

@@ -21,18 +21,23 @@ Window {
     property bool atLeft: false
     // A Start menu style (Styles.startMenu): its size, corners and tint.
     readonly property QtObject style: Styles.startMenu
-    readonly property real gap: 12 // above the taskbar
+    readonly property real gap: 12 // from the taskbar
     // With a style, the blur is rounded like the panel (the compositor makes
     // it glass from 4% alpha: the shadow in the corners must stay out).
     readonly property real blurRadius: style.chosen ? style.radius : 0
     readonly property real room: shadow.reach
-    readonly property real roomLeft: atLeft ? 12 : room
+    // Where main.cpp's placeStartMenu() anchors it: against the bar, centered
+    // or at the left; at the top beside a vertical bar (docs/taskbar.md
+    // §11.3).
+    readonly property QtObject bar: Styles.taskbar
+    readonly property int edges: bar.edgeAnchor | (bar.vertical ? 1 : atLeft ? 4 : 0)
     readonly property real panelWidth: style.width - 20
-    width: roomLeft + panelWidth + room
+    width: bar.pad("left", edges, gap, room) + panelWidth + bar.pad("right", edges, gap, room)
     // On short outputs it gets shorter: the search at the top must stay
     // visible, the shadow above it is cut.
-    readonly property real panelHeight: Math.min(style.height - 32, Screen.height - Styles.taskbar.height - 44)
-    height: Math.min(room + panelHeight + gap, Screen.height - Styles.taskbar.height)
+    readonly property real usableHeight: Screen.height - (bar.vertical ? 0 : bar.thickness)
+    readonly property real panelHeight: Math.min(style.height - 32, usableHeight - 44)
+    height: Math.min(bar.pad("top", edges, gap, room) + panelHeight + bar.pad("bottom", edges, gap, room), usableHeight)
     color: "transparent"
     // Asked of logind only once: can the computer suspend?
     readonly property bool canSuspend: Shell.canSuspend()
@@ -86,12 +91,11 @@ Window {
         })
     }
 
-    // The Start menu is above the taskbar, centered or at the left: from its
-    // coordinates to the output's, for right-click menus.
+    // From its coordinates to the output's, for right-click menus.
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point((atLeft ? 0 : (Screen.width - root.width) / 2) + p.x,
-                        Screen.height - Styles.taskbar.height - root.height + p.y)
+        const o = bar.origin(edges, root.width, root.height, Screen.width, Screen.height, 0, 0)
+        return Qt.point(o.x + p.x, o.y + p.y)
     }
 
     // An app's menu (docs/renderer.md §14.7): recent files and tasks at the
@@ -322,15 +326,15 @@ Window {
         onOutside: root.close()
     }
 
-    // It rises 140 units from behind the taskbar, where the window cuts it,
+    // It comes 140 units from behind the taskbar, where the window cuts it,
     // and leaves the same way.
     PanelMotion {
         id: motion
-        x: root.roomLeft
-        y: root.height - root.gap - height
+        x: root.bar.pad("left", root.edges, root.gap, root.room)
+        y: (root.edges & 1) ? root.bar.pad("top", root.edges, root.gap, root.room) : root.height - root.gap - height
         width: root.panelWidth
         height: root.panelHeight
-        offset: Qt.point(0, 140)
+        offset: root.bar.towards(140)
         onClosed: root.visible = false
         onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], root.blurRadius) // the travel while it moves, the panel at rest
 
@@ -427,6 +431,8 @@ Window {
                     height: grid.cellHeight
                     current: root.selectionShown && root.pinnedSelection < 0 && index === grid.currentIndex
                     expressive: root.style.expressive
+                    launcherUrl: Apps.desktopUrl(tile.appId)
+                    onLauncherDropped: root.close()
                     onActivated: root.launch(index)
                     onContextRequested: (x, y) => root.openAppMenu(tile, x, y, tile.appId, false)
                 }
@@ -471,6 +477,8 @@ Window {
                                 current: root.selectionShown && root.pinnedSelection === index
                                 containerRadius: root.style.expressive ? Theme.shapeExtraLarge : 0
                                 expressive: root.style.expressive
+                                launcherUrl: Apps.desktopUrl(modelData.id)
+                                onLauncherDropped: root.close()
                                 onActivated: {
                                     if (Apps.launchId(modelData.id)) {
                                         root.close()

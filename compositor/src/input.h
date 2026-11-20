@@ -30,6 +30,8 @@
 #include <stdint.h>
 #include <wayland-server-core.h>
 
+#include "super_numbers.h"
+
 struct vela_server;
 struct vela_tree;
 struct vela_surface_node;
@@ -81,6 +83,10 @@ struct vela_input {
 
     // Super pressed and released alone: opens the Start menu.
     bool super_tap;
+    enum vela_super_numbers super_numbers;
+    struct wl_event_source *super_timer;
+    struct vela_keyboard *super_keyboard;
+    bool super_hints_visible;
     // The layout written to the log last time (keyboard.c): only changes are
     // logged.
     char keymap_logged[1024];
@@ -139,6 +145,7 @@ void vela_input_destroy(struct vela_input *input);
 // touchpads.
 void vela_input_reload(struct vela_input *input);
 
+void vela_input_hide_super_hints(struct vela_input *input);
 bool vela_input_has_touchpad(const struct vela_input *input);
 // The focused app keeps the shortcuts to itself.
 bool vela_input_shortcuts_inhibited(const struct vela_input *input);

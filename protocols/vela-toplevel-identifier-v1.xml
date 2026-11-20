@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="vela_toplevel_identifier_v1">
+  <copyright>
+    SPDX-FileCopyrightText: 2026 Brando Giuffrida
+    SPDX-License-Identifier: GPL-3.0-or-later
+  </copyright>
+  <interface name="vela_toplevel_identifier_v1" version="1">
+    <description summary="identify a foreign toplevel">
+      Relates a wlr foreign toplevel handle to the ext foreign toplevel
+      identifier used by workspace state and window capture.
+    </description>
+    <request name="identify">
+      <arg name="handle_id" type="uint" summary="object ID of the client's wlr foreign toplevel handle"/>
+    </request>
+    <request name="destroy" type="destructor"/>
+    <event name="identified">
+      <arg name="handle_id" type="uint"/>
+      <arg name="identifier" type="string" summary="empty for a handle that has already gone away"/>
+    </event>
+  </interface>
+</protocol>

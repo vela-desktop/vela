@@ -56,6 +56,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `color-filters-shortcut` | `no` | Allow Super+Ctrl+C to toggle color filters. |
 | `magnifier-step` | `100` | Magnifier step in percent. |
 | `sticky-keys` | `no` | Sticky modifier keys. |
+| `super-number-keys` | `apps` | `apps` opens taskbar apps, `desktops` switches desktops, `off` releases the digit shortcuts. Settings > Personalization > Taskbar. |
 | `animation-effects` | `yes` | Windows and the shell's panels move as they open, close and change. `no`: nothing moves (no rise, slide, scale, flight to the taskbar or magnifier zoom) and what fades takes at most 120 ms ([visual coherence](visual-coherence.md#65-animation-effects-one-switch-d11)). Settings > Accessibility > Visual effects. |
 | `animation-duration` | `100` | How long animations take, in percent of Vela's durations: 50–300 (Settings' slider, in steps of 25). With `animation-effects=no` fades stay at 120 ms. |
 | `tearing` | `yes` | Allow fullscreen apps that explicitly request tearing. |
@@ -124,6 +125,7 @@ Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 | `card`, `cardHover`, `cardPressed`, `cardStroke`, `flyout`, `dialog`, `dialogFooter`, `field` | color |
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
+| `attention` (the taskbar's highlight for an app asking for attention; the mode's caution color if unset). A theme token only: a taskbar style can't set it | color |
 | `primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`, `secondary`, `onSecondary`, `secondaryContainer`, `onSecondaryContainer`, `tertiary`, `onTertiary`, `tertiaryContainer`, `onTertiaryContainer`, `error`, `onError`, `errorContainer`, `onErrorContainer` | color: Material's tonal roles ([Expressive look](#expressive-look)) |
 | `surfaceBase` (Material's `surface`), `surfaceContainerLowest`, `surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest`, `onSurface`, `onSurfaceVariant`, `outline`, `outlineVariant`, `inverseSurface`, `inverseOnSurface`, `inversePrimary` | color: Material's surface roles |
 | `radius` (controls) | pixels, 0–24 |
@@ -214,6 +216,15 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | Key | Default | Meaning |
 |---|---|---|
 | `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/position` | `bottom` | The edge of every display the taskbar sits on: `bottom`, `top`, `left` or `right`. Start, the previews and the tray's panels open from that edge; on the left and the right the bar is a column at least 56 wide. |
+| `taskbar/windowsFrom` | `desktop` | `desktop` shows windows on the current desktop, `all` shows windows on every desktop. |
+| `taskbar/appsOn` | `all` | `window` limits windows to their display's taskbar when taskbars are on all displays. |
+| `taskbar/clickActive` | `previews` | On an active app with several windows, show `previews` or cycle to the `next` window. |
+| `taskbar/attention` | `true` | Highlight apps asking for attention. |
+| `taskbar/trayShown` | empty | The notification area icons on the taskbar, in order, by their StatusNotifierItem `Id` (the title when there is none); the others are in the drawer behind "^". New icons start in the drawer. |
+| `taskbar/badges` | `true` | Count badges on app buttons. |
+| `taskbar/progress` | `true` | Progress indicators on app buttons. |
+| `taskbar/numberHints` | `true` | Show shortcut numbers while holding Super in the `apps` mode. |
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
