@@ -4,50 +4,40 @@
 
 # Vela
 
-**A modern, fluid and sharp Linux desktop built for today's hardware.**
+Vela is a Linux desktop for Wayland with its own Vulkan compositor, Qt Quick
+shell, file manager and settings app.
 
-Vela is a complete desktop environment for Wayland: its own compositor and Vulkan
-renderer, a Qt Quick shell, a file manager and a settings app, designed together.
+Press **Super+Z** to pick a layout, then choose the windows to fill it.
+You can bring the group back together from the taskbar.
+
+**[Install the Beta](#get-vela)** · [See screenshots](docs/features.md#screenshots)
+
+<img src="docs/screenshots/files.webp" alt="The Vela desktop with the file manager open" width="100%">
 
 [![Build](https://github.com/vela-desktop/vela/actions/workflows/build.yml/badge.svg)](https://github.com/vela-desktop/vela/actions/workflows/build.yml)
 [![Release](https://img.shields.io/github/v/release/vela-desktop/vela?label=release&color=yellow)](https://github.com/vela-desktop/vela/releases)
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-[Website](https://velade.org) · [Get Vela](#get-vela) · [Features](docs/features.md) ·
-[What's new](CHANGELOG.md) · [How it works](#how-it-works) ·
-[Documentation](#documentation) · [Community](#community) · [Roadmap](docs/roadmap.md)
-
-<br>
-
-<img src="docs/screenshots/files.webp" alt="The Vela desktop with the file manager open" width="100%">
-
 </div>
 
 > [!NOTE]
 > **Vela is beta software.** You can pick it at the login screen and use it every day,
-> but keep a working desktop or TTY available. Packages are available for Arch Linux
-> (and CachyOS, EndeavourOS), Fedora 44 and 45, and Ubuntu 26.10. It is tested on AMD
+> but keep a working desktop or TTY available. It is tested on AMD
 > and NVIDIA GPUs, and on Intel in experimental CI; read the
 > [hardware coverage and known limitations](docs/hardware.md) before installing. The
 > interface is available in English and Italian.
 
 ## Why Vela
 
-Vela uses modern hardware where that improves the experience and avoids overhead where
-it does not. Efficiency comes from doing less unnecessary work, not from making the
-desktop feel less modern.
-
-- **Modern.** Shell, window management, file manager and settings are designed as one
-  desktop rather than a collection of unrelated utilities.
-- **Fluid.** Animations advance on the monitor's real frames, never on arbitrary timers,
-  and each frame is drawn as late as safely possible. Fullscreen games can go straight
-  to the display, with VRR and tearing support.
-- **Sharp.** Fractional scaling is designed around physical pixels: at 125% or 175% an
-  app rendering at the screen's scale is shown 1:1 with no filtering, and an automated
-  test checks this bit for bit.
-- **Efficient.** Damage tracking, direct scanout and native components keep overhead
-  low: the compositor idles at about 17 MiB and 0.1% of one CPU core on the development
-  system ([methodology](docs/performance.md)).
+- **Sharp text at 125% or 175%.** When an app draws at the display's scale,
+  Vela maps its pixels directly to the screen. The sharpness tests compare
+  the displayed pixels with the originals bit for bit.
+- **Motion follows the monitor.** Vela times animations to the display's
+  refresh cycle. Fullscreen games can use direct scanout, variable refresh
+  rate and tearing where the display supports them.
+- **Low idle overhead.** On the development system, the compositor used
+  about 17 MiB of memory (PSS) and 0.1% of one CPU core at idle.
+  [Performance measurements](docs/performance.md)
 
 ## What's inside
 
@@ -74,24 +64,15 @@ proprietary driver ≥ 570 or NVK) and **PipeWire with WirePlumber** for sound. 
 2017-generation hardware, though the instruction set, not the date, is what counts.
 CPU and GPU requirements are independent.
 
-Install the prerequisites for your distribution:
+Choose your distribution for the prerequisites and install commands:
 
-| Distribution | Prerequisites |
-|---|---|
-| Arch Linux, CachyOS, EndeavourOS | `sudo pacman -S --needed git curl base-devel cosign` |
-| Fedora 44 and 45 | `sudo dnf install git curl rpm-build dnf5-plugins`, plus the [upstream Cosign RPM](docs/installation.md#fedora-44-and-45) |
-| Ubuntu 26.10 (with *universe*) | `sudo apt install git ca-certificates sudo cosign` |
+- [Arch Linux, CachyOS and EndeavourOS](docs/installation.md#arch-linux-cachyos-endeavouros)
+- [Fedora 44 and 45](docs/installation.md#fedora-44-and-45)
+- [Ubuntu 26.10](docs/installation.md#ubuntu-2610)
 
-Then install the current Beta and choose **Vela** at the login screen:
-
-```sh
-git clone https://github.com/vela-desktop/vela.git
-sh vela/packaging/vela-update --channel beta
-```
-
-Beta packages are prebuilt, signed and verified with Cosign before installing. The
-[installation guide](docs/installation.md) covers the Experimental channel, updates,
-rollback and [other distributions](docs/installation.md#other-distributions).
+The updater verifies the prebuilt Beta package with Cosign before installing it.
+Then choose **Vela** at the login screen. See the [installation guide](docs/installation.md)
+for Experimental, updates, rollback and [other distributions](docs/installation.md#other-distributions).
 
 **Just want a look?** [Build from source](docs/development.md#build) and run
 `sh scripts/run-nested.sh`: Vela opens in a window inside your current Wayland desktop.
@@ -150,6 +131,8 @@ browse and join the rooms you're interested in. An account from any federated
 Matrix homeserver works; no `velade.org` account is required.
 
 ## Documentation
+
+[Project website](https://velade.org) · [What's new](CHANGELOG.md) · [Roadmap](docs/roadmap.md)
 
 [Features](docs/features.md) · [Installation and updates](docs/installation.md) ·
 [Keyboard shortcuts](docs/shortcuts.md) · [Hardware coverage](docs/hardware.md) ·
