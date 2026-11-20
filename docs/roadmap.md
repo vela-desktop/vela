@@ -1,105 +1,12 @@
 # Roadmap
 
-The current Beta is
-[`v0.1.2`](https://github.com/vela-desktop/vela/releases/tag/v0.1.2).
-[Vela 0.2](#02--personalization-productivity-and-architectural-hardening)
-is next, with most of its features merged into `main` and release validation
-ahead. The targets for 0.3–0.6 are provisional. Changes on `main` reach the
-Beta channel through a tagged release. See [hardware coverage](hardware.md)
+<a id="01--first-beta-stability-integration-release-readiness"></a>
+
+The current Beta is [`v0.1.2`](https://github.com/vela-desktop/vela/releases/tag/v0.1.2).
+The [0.1 release history](release-history.md#01) covers the first Beta and its
+maintenance releases. Most 0.2 features are already available on Experimental.
+The targets for 0.3–0.6 are provisional. See [hardware coverage](hardware.md)
 for the GPU and driver combinations tested so far.
-
-## 0.1 — First beta: stability, integration, release readiness
-
-The beta stabilizes and packages what Vela already provides, removes unwanted
-desktop dependencies, and publishes a versioned, signed release. Work landing
-during the 0.1 feature freeze is restricted to fixes, tests, CI, packaging,
-release engineering, documentation and translations; the Updates page was
-the only feature exception.
-
-**Done for 0.1:**
-
-- **Updates page:** Settings shows the installed and newest version, checks
-  for updates, shows what's new and errors, and launches the updater in a
-  terminal; Vela checks in the background and sends a notification
-  ([#161](https://github.com/vela-desktop/vela/pull/161), which superseded
-  [#133](https://github.com/vela-desktop/vela/pull/133);
-  [design](updates.md)). Real updates were verified in clean Arch, Fedora 44
-  and Ubuntu 26.10 containers.
-- **NVIDIA capture performance:**
-  [#132](https://github.com/vela-desktop/vela/issues/132) is fixed by
-  deferred SHM readback that no longer blocks presentation
-  ([#156](https://github.com/vela-desktop/vela/pull/156),
-  [#173](https://github.com/vela-desktop/vela/pull/173)), without
-  relaxing the tests.
-- **Native Bluetooth pairing and device lifecycle:** the session
-  `vela-bluetooth` daemon with its BlueZ pairing agent, confirmation,
-  PIN and passkey questions, and the shell, quick settings and Settings on
-  top of it ([#146](https://github.com/vela-desktop/vela/pull/146),
-  [#157](https://github.com/vela-desktop/vela/pull/157);
-  [design](bluetooth.md)).
-- **Vela Lock wallpaper quality:** a sharp blurred wallpaper on the
-  password screen ([#149](https://github.com/vela-desktop/vela/pull/149);
-  [notes](lock-wallpaper-quality.md)).
-- **Vulkan device loss:** the compositor detects a lost device, stops GPU
-  work and exits so the supervisor can restart it
-  ([#147](https://github.com/vela-desktop/vela/pull/147);
-  [policy](vulkan-device-loss.md)).
-- **Packaging and runtime independence:** clean installation with the GTK
-  portal for generic dialogs and `xdg-desktop-portal-wlr` for screencast
-  and screenshots, without `xdg-desktop-portal-kde` or Plasma Workspace
-  ([#120](https://github.com/vela-desktop/vela/pull/120)).
-- **Release channels:** Beta (`vela`, signed `v0.x.y` releases built from
-  a protected tag) and Experimental (`vela-git`, development commits) on
-  Arch, Fedora 44 and Ubuntu 26.10
-  ([#160](https://github.com/vela-desktop/vela/pull/160);
-  [release channels](release-channels.md)).
-- **X11 at native resolution:** X11 apps and fullscreen games run 1:1 in
-  the output's pixels, with direct scanout
-  ([#167](https://github.com/vela-desktop/vela/pull/167)).
-
-**Release of `v0.1.0` (31 October 2026):**
-
-- **GPU and session verification:** full AMD and NVIDIA suites on the
-  exact release commit, as the [GPU CI policy](ci-quality.md#gpu-ci-policy)
-  requires, plus physical-session smoke tests.
-- **Updates in a real session:** a real terminal and "Sign out to finish"
-  ([updates §11](updates.md#11-stages)); the Beta check finds `v0.1.0`.
-- **Release rehearsal:** the whole tag pipeline on a public fork first, as
-  [release channels](release-channels.md#rollout-validation) require. It
-  found two release-only pipeline bugs, fixed before the real tag
-  ([#177](https://github.com/vela-desktop/vela/pull/177)).
-
-**Support lifecycle.** The current Beta series receives maintenance fixes
-until the next minor Beta is published. When `v0.2.0` ships, support for
-0.1.x ends and fixes, including security updates, go to the 0.2.x series.
-The updater in 0.1.0–0.1.2 cannot see `v0.2.0`, so those installations need
-the [one-time updater step](release-channels.md#updating-older-beta-installations).
-See the [release branch policy](release-channels.md#release-branches).
-Maintenance releases take fixes only, without new user-facing features: new
-work waits for the next minor release.
-
-The [`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
-shipped on 16 November 2026. It made two explicit exceptions: Fedora 45
-packaging ([#224](https://github.com/vela-desktop/vela/pull/224)), accepted
-as a packaging extension, and a temporary choice between KWallet and GNOME
-Keyring for app passwords pending Vela Secrets, backported as the fix for
-[#222](https://github.com/vela-desktop/vela/issues/222)
-([#255](https://github.com/vela-desktop/vela/pull/255),
-[#277](https://github.com/vela-desktop/vela/pull/277)). Backported fixes
-improved allocation recovery, renderer pass reuse, resource limits and
-compositor security. They also stabilized text during
-animation and scrolling ([#217](https://github.com/vela-desktop/vela/pull/217)),
-prevented background apps from stealing focus
-([#264](https://github.com/vela-desktop/vela/pull/264)), and reduced copying
-in shared-memory screen capture
-([#260](https://github.com/vela-desktop/vela/pull/260)). Other fixes kept
-crowded taskbars navigable, preserved settings when writes failed, and
-restored discovery of installed XDG icon themes
-([#266](https://github.com/vela-desktop/vela/pull/266),
-[#267](https://github.com/vela-desktop/vela/pull/267),
-[#259](https://github.com/vela-desktop/vela/pull/259)). See the
-[completed release tracker #225](https://github.com/vela-desktop/vela/issues/225)
-for the backport inventory.
 
 ## 0.2 — Personalization, productivity and architectural hardening
 
@@ -452,7 +359,8 @@ This page changes in the same pull request as the work it describes:
 
 - A new design document adds its row to **In progress**.
 - The pull request that finishes a feature records it in the relevant release section.
-- Update the supported Beta series in this roadmap when a new minor Beta ships.
+- When a new minor Beta ships, update the supported series here and move the
+  completed milestone to the [release history](release-history.md).
 - Distinguish merged main changes, proposed release candidates and
   actually published Beta features.
 - Finalize the remaining 0.2 scope explicitly; review and either accept
