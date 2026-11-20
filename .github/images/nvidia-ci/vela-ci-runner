@@ -6,7 +6,11 @@
 # that scripts/vast-runner.py registered, as the unprivileged user "runner".
 # The workflow destroys the instance afterwards; the timeout is a backstop.
 set -eu
-: "${VELA_RUNNER_JITCONFIG:?}" "${VELA_RUNNER_VERSION:?}"
+: "${VELA_RUNNER_JITCONFIG:?}" "${VELA_RUNNER_VERSION:?}" "${VELA_RUNNER_SHA256:?}"
+if ! printf "%s\n" "$VELA_RUNNER_SHA256" | grep -Eq "^[0-9a-f]{64}$"; then
+    echo "vela-ci-runner: runner SHA256 must be 64 lowercase hex digits" >&2
+    exit 1
+fi
 
 # The NVIDIA container toolkit mounts the driver's GBM backend where Debian
 # keeps it; Arch's libgbm looks in /usr/lib/gbm, and would fall back on
@@ -44,6 +48,10 @@ for icd in /etc/vulkan/icd.d/nvidia_icd.json /usr/share/vulkan/icd.d/nvidia_icd.
            /etc/vulkan/icd.d/nvidia_icd.x86_64.json /usr/share/vulkan/icd.d/nvidia_icd.x86_64.json; do
     [ -f "$icd" ] && break
 done
+if [ ! -f "$icd" ]; then
+    echo "vela-ci-runner: NVIDIA ICD manifest not found" >&2
+    exit 1
+fi
 extensions=$(VK_DRIVER_FILES=$icd vulkaninfo 2>/dev/null || true)
 for ext in VK_EXT_image_drm_format_modifier VK_KHR_external_memory_fd VK_EXT_external_memory_dma_buf \
            VK_EXT_queue_family_foreign VK_KHR_external_semaphore_fd VK_EXT_physical_device_drm; do
@@ -53,12 +61,60 @@ for ext in VK_EXT_image_drm_format_modifier VK_KHR_external_memory_fd VK_EXT_ext
     esac
 done
 
+# Vela's command socket accepts only peers it can verify outside a sandbox
+# (vela_peer_sandbox in compositor/src/security_policy.c): it needs
+# SO_PEERPIDFD (Linux 6.5) and /proc/<pid>/root of the peer. On a host where
+# that fails every functional test is refused, so check it the same way, as
+# the user the tests run as, and try another offer instead.
+if ! runuser -u runner -- python3 -c '
+import os, socket, struct, sys
+server = socket.socket(socket.AF_UNIX)
+server.bind("\0vela-ci-peer-probe")
+server.listen(1)
+child = os.fork()
+if child == 0:
+    peer = socket.socket(socket.AF_UNIX)
+    peer.connect("\0vela-ci-peer-probe")
+    peer.recv(1)
+    os._exit(0)
+connection, _ = server.accept()
+try:
+    pid = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[0]
+    pidfd = struct.unpack("i", connection.getsockopt(socket.SOL_SOCKET, 77, 4))[0]  # SO_PEERPIDFD
+    with open(f"/proc/self/fdinfo/{pidfd}") as info:
+        if f"Pid:\t{pid}\n" not in info.read():
+            sys.exit("the peer pidfd is not the peer")
+    root = os.open(f"/proc/{pid}/root", os.O_PATH | os.O_DIRECTORY)
+    try:
+        os.open(".flatpak-info", os.O_RDONLY, dir_fd=root)
+        sys.exit("the peer looks sandboxed")
+    except FileNotFoundError:
+        pass
+except OSError as error:
+    sys.exit(f"{error}")
+finally:
+    connection.close()
+    os.waitpid(child, 0)
+'; then
+    echo "vela-ci-runner: kernel $(uname -r) can't verify a command socket peer" >&2
+    exit 1
+fi
+
 dir=/home/runner/actions-runner
 mkdir -p "$dir"
-curl -fsSL "https://github.com/actions/runner/releases/download/v$VELA_RUNNER_VERSION/actions-runner-linux-x64-$VELA_RUNNER_VERSION.tar.gz" \
-    | tar -xz -C "$dir"
+# Download to a file first: a truncated or tampered archive must never be
+# extracted. GitHub's release asset digest is fetched on the trusted host.
+archive=$(mktemp)
+trap 'rm -f "$archive"' EXIT
+curl -fsSL --retry 3 --output "$archive" \
+    "https://github.com/actions/runner/releases/download/v$VELA_RUNNER_VERSION/actions-runner-linux-x64-$VELA_RUNNER_VERSION.tar.gz"
+printf '%s  %s\n' "$VELA_RUNNER_SHA256" "$archive" | sha256sum -c -
+tar -xzf "$archive" -C "$dir"
+rm -f "$archive"
+trap - EXIT
 chown -R runner:runner "$dir"
 
 jit=$VELA_RUNNER_JITCONFIG
-unset VELA_RUNNER_JITCONFIG
-exec timeout 150m sudo -u runner -H sh -c 'cd "$1" && exec ./run.sh --jitconfig "$2"' sh "$dir" "$jit"
+unset VELA_RUNNER_JITCONFIG VELA_RUNNER_SHA256
+# runuser lowers privileges without granting the CI job passwordless sudo.
+exec timeout 150m runuser -u runner -- sh -c 'cd "$1" && exec ./run.sh --jitconfig "$2"' sh "$dir" "$jit"
