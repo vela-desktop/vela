@@ -140,7 +140,7 @@ struct RawOutputClient {
         wl_display_disconnect(display);
     }
     bool sync() { return wl_display_roundtrip(display) >= 0; }
-    void prepare(bool protect, QSize panelMode = { })
+    void prepare(bool protect, QSize panelMode = QSize())
     {
         configuration = zwlr_output_manager_v1_create_configuration(manager, serial);
         static const zwlr_output_configuration_v1_listener listener {
