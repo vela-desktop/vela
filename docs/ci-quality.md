@@ -188,7 +188,10 @@ by `arch-audit --upgradable` against the
 [Arch security tracker](https://security.archlinux.org/) and
 [scripts/ci-arch-audit-gate.py](../scripts/ci-arch-audit-gate.py); Trivy then
 covers only packages installed outside pacman. If the tracker cannot be
-reached or its report cannot be read, publication fails too.
+reached or its report cannot be read, publication fails too. The image leaves out
+libcap's `captree`: Arch builds it with Go only when libcap changes, so its Go
+standard library falls behind Go's security fixes, and nothing in the CI
+uses it.
 
 The image qualification step checks both the mandatory Vulkan/CTest tools
 and optional promo recording prerequisites before publication. In particular,

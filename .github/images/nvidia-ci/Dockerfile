@@ -7,6 +7,13 @@
 # runner and the NVIDIA laptop that came before.
 FROM docker.io/library/archlinux:base-devel
 
+# libcap's captree is a Go binary that Arch rebuilds only with libcap, so its
+# Go standard library lags behind Go's security fixes and fails the image's
+# vulnerability gate. Nothing here uses it: never extract it, and drop the copy
+# the base image may already have.
+RUN sed -i '/^\[options\]/a NoExtract = usr/bin/captree' /etc/pacman.conf \
+    && rm -f /usr/bin/captree
+
 RUN pacman -Syu --noconfirm --needed \
         git curl \
     # Build dependencies, as in docs/development.md.
