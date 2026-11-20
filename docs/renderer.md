@@ -1,8 +1,8 @@
 # The Vela renderer
 
-> **Status:** Accepted. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Accepted. **Checked:** 20 November 2026, `215337ef`.
 >
-> **Remaining:** S5 blurred-background cache, S6 live blur behind the title bar and animated hover, S7, color (10 bit, HDR, `color-management-v1`), and later the refresh-rate policy for VRR during animations (§11).
+> **Remaining:** S7, color (10 bit, HDR, `color-management-v1`); live blur behind the title bar, when there is a reason ([visual coherence §10](visual-coherence.md#10-later-when-there-is-a-reason)); and later the refresh-rate policy for VRR during animations (§11). The title bar's animated hover came with visual coherence PR 6; the blurred-background cache of S5 was rejected ([visual coherence §9](visual-coherence.md#9-rejected)).
 
 > **Design history:** the stage log and risk register below preserve decisions
 > made earlier in development. Descriptions such as “postponed” refer to the
@@ -12,8 +12,8 @@
 
 Design of Vela's own scene and renderer, native to Vulkan. It is the foundation
 of milestone 2 (blur, rounded corners, shadows) and of everything that comes
-after. This document comes before the code: decisions are made here, and the
-code follows them.
+after. This document came before the code: the decisions were made here, and
+the code follows them.
 
 The fundamental choices are approved (§2, also summarized in §13). Stages
 **S0–S6 are done** (§11): Vela's scene and renderer are the only ones, apps
@@ -53,7 +53,7 @@ renderer this means, in order of importance:
 | Default scale | **chosen by Vela from the monitor's DPI**, in 25% steps | like Windows; the user can change it (§3.8) |
 | X11 apps at fractional scale | **drawn 1:1 in the pixels of their output**, scaling themselves with Xft.dpi (October 2026; before, upscaled by the compositor) | games find the native resolution; an app that ignores Xft.dpi looks smaller (§3.9) |
 | Battery | **no reduction of effects** | modern laptops handle everything; no automatic "power saving" mode (§8.3) |
-| VRR | **postponed**, but the design must not rule it out | §4.4 |
+| VRR | **postponed** at first, but the design must not rule it out; now per output, for games by default | §4.4 |
 | Vela's title bar | **designed here**, drawn by the compositor | §9 |
 | Title bar tint | **derived from the wallpaper**, like Mica | §9.4 |
 | Title bar font | **KDE's**, for now | §9.5 |
@@ -201,7 +201,8 @@ Each managed or detached launch refreshes that environment, including when an
 `ExternalProcess` instance is reused after a token change.
 The `process-launch-environment` integration test verifies real children;
 packaging tests prohibit UI launchers that bypass the wrapper. The RHI glyph
-test requires Qt 6.6+ without increasing Vela's 6.5 production minimum.
+test requires Qt 6.6+; Vela's build already needs Qt 6.7 (its translations use
+Qt 6.7's Linguist tools, [development](development.md#build)).
 
 ### 3.8 The default scale
 
@@ -383,7 +384,7 @@ margin grows by itself.
 - **The virtual vblank** of the headless backend simulates a real output: a
   frame appears at the first vblank at which it was ready (the GPU must have
   finished too); if it wasn't, the previous one stays and the vblank is missed.
-- **The statistics** (`VELA_DEBUG=1`, every 2 s) report: cost, margin, average
+- **The statistics** (`VELA_STATS=1`, every 2 s) report: cost, margin, average
   time **from drawing to light** (the latency the compositor adds to input and
   animations), prediction error, missed vblanks. `VELA_LATCH=0` turns late
   latching off for comparison.
@@ -792,8 +793,8 @@ corners): it costs a frame, not the whole area.
 
 - **What gets blurred**: the areas a client asks for with the standard
   `ext-background-effect-v1` protocol (the shell for the taskbar, Start menu,
-  Alt+Tab, notifications; apps that support it) and our server-side
-  decorations. Not "everything transparent": apps' shadow margins are
+  Alt+Tab, notifications; apps that support it); our server-side decorations
+  only later (§9.4). Not "everything transparent": apps' shadow margins are
   transparent and must not be blurred.
 - **Algorithm**: dual Kawase (a chain of downsamples and upsamples at half
   resolution) and a veil of noise to avoid banding. The radius is in logical
@@ -804,18 +805,22 @@ corners): it costs a frame, not the whole area.
   §6.7). Every client asking for blur gets the blur and the dither (the
   dither is technical: no banding when the blur is written in 8 or 10 bits).
   The acrylic recipe, saturation 1.25 and the gray tint (`acrylic_tint`,
-  Windows 11's dark or light gray at 55%, by the shell's mode), is only for
-  Vela's surfaces: layer surfaces named `vela-…` (the shell's panels, the
-  polkit prompt). Keying a visual rule on the layer namespace is what other
-  wlroots compositors do for blur; a client that picks a `vela-` name only
+  Windows 11's dark or light gray at 55%, by the shell's mode; a theme's
+  `blur-*` keys can change both), is only for Vela's surfaces: layer surfaces
+  named `vela-…` (the shell's panels, the polkit prompt) and windows whose app
+  id starts with `vela-` (Vela's apps, see-through under Window Glass).
+  Keying a visual rule on the layer namespace is what other wlroots
+  compositors do for blur; a client that picks a `vela-` name only
   changes its own look. The gray stays in the compositor rather than in the
   panels' fill: it must come before the dither, which only survives what is
   drawn after it (a fill blended on top can't be dithered).
 - **Cost under control**:
   - only the **damaged** part behind each area is blurred, enlarged by the
     radius;
-  - the blurred background of each area is **cached**: if nothing changed
-    behind the taskbar (the normal case), the blur is not recomputed at all;
+  - the blurred background is **not cached**: if nothing changed behind the
+    taskbar (the normal case), nothing is redrawn at all, the blur included
+    (a cache was planned for S5, then rejected:
+    [visual coherence](visual-coherence.md) §9);
   - a change behind a blurred area damages the area itself as well (this is how
     the blur "follows" what moves behind it).
 - Blurs on top of each other (the Start menu over the taskbar) compose in the
@@ -834,8 +839,8 @@ with the Start menu opening over the taskbar. The cache of the blurred
 background (keeping it from one frame to the next if nothing changes behind) has
 not been needed yet: at idle nothing is redrawn anyway. `blur_mix.frag` applies
 the acrylic recipe when the draw's flags have bit 3, which `add_surface()` sets
-from the layer surface's namespace; for other clients `vela_pass_add_blur()`
-passes no tint and a saturation of 1.
+from the layer surface's namespace or the window's app id; for other clients
+`vela_pass_add_blur()` passes no tint and a saturation of 1.
 - **Everything at full quality, even on battery**: no automatic reduction of
   effects. Savings come from not drawing what doesn't change, not from removing
   effects.
@@ -897,8 +902,9 @@ Two ways:
   compositor (FreeType + HarfBuzz + fontconfig, already present on every system:
   Qt uses them too).
 
-**Proposal: the compositor.** The text engine will be needed anyway for the
-debug overlay (§10) and for other compositor UI.
+**Proposal: the compositor.** The text engine would serve other compositor UI
+too (an on-screen debug overlay, §10, was planned; the error screen draws its
+message with FreeType directly).
 
 ### 9.3 What it looks like
 
@@ -906,8 +912,8 @@ debug overlay (§10) and for other compositor UI.
   corners with radius 8, invisible 8-logical-unit resize borders outside the
   window. Only where they can be seen: a fullscreen game, a menu (another
   window's, the window's own, X11's) or a panel drawn above covers them.
-- **Background**: live blur of what's behind, with a **tint derived from the
-  desktop wallpaper** (like Mica on Windows): see §9.4.
+- **Background**: a **tint derived from the desktop wallpaper** (like Mica on
+  Windows), solid today; live blur behind it is for later: see §9.4.
 - **Minimize/maximize/close buttons**: glyphs drawn as SDFs (lines), sharp at
   every scale. Their hover is WinUI's SubtleFillColorSecondary (white at 6.1% in
   dark mode, black at 3.7% in light mode: `Theme.subtleHover`, checked by
@@ -969,16 +975,19 @@ directly at that size.
 - The icon is looked up in the theme (freedesktop specification), always
   preferring the SVG version; PNGs are only used if the app has nothing else,
   choosing the largest and downscaling it with the quality filter.
-- For drawing SVGs I propose **resvg**: it is the most faithful to the
+- For drawing SVGs the proposal was **resvg**: it is the most faithful to the
   specification, has a C API, doesn't drag cairo and glib into the compositor and
   is in Arch's official repositories. The alternative, should it be missing in
-  some distribution: lunasvg (C++, small) included in the source tree.
+  some distribution: lunasvg (C++, small) included in the source tree. **Today**
+  the compositor uses librsvg, optional at build time (without it the bar has no
+  icon); resvg stays postponed (S6).
 - Drawn icons are cached per (icon, physical size).
 
 ## 10. Measurements and tests
 
 - **Timing**: GPU timestamps for every frame and every effect; CPU time; missed
-  frames. `VELA_DEBUG_OVERLAY=1` shows them on screen.
+  frames. `VELA_STATS=1` logs them every two seconds; an on-screen overlay was
+  planned and is not implemented.
 - **Validation**: `VELA_VULKAN_VALIDATION=1` enables the validation layers.
 - **Image tests** (headless): reference scenes compared with expected images;
   for sharpness, bit-for-bit comparison (§3.10); for effects, a small tolerance.
@@ -1003,8 +1012,8 @@ matched it; then `wlr_scene` went away. Each stage closes only with its tests.
 | **S2** Sharpness ✔ | fractional scale, pixel snapping, quality filters, multiple outputs with different scales, per-scale cursor, default scale from DPI | done: `scripts/test-sharpness.sh` bit for bit at 100, 125, 150, 175, 200 and 225% (opened, snapped left and right, maximized, restored); mixed outputs at 150% + 100%, bit for bit on the 150% one. Before the fixes: up to 134 thousand differing pixels at 150% for a centered window. Catmull-Rom bicubic filter for upscaling; downscaling still bilinear (mipmaps to do with scale animations, S4) |
 | **S3** Time and latency ✔ | late latching, direct scanout, explicit sync, dmabuf feedback | done: headless at 60, 75, 144, 165, 240 and 360 Hz with vkcube: 0 missed vblanks, prediction error 0, from drawing to light 1.1–1.9 ms (a whole period without late latching). Shell, Konsole and a window dragged at 360 Hz: a single late frame (wlroots allocating a new swapchain buffer), absorbed by the margin. Direct scanout with fullscreen mpv: headless (OpenGL, implicit sync, frame cost 0.02 ms) and nested in KWin (Vulkan, explicit sync, with scanout dmabuf feedback); captures during scanout work. Validation layers (synchronization included): no messages. 0 CPU at idle |
 | **S4** Shape ✔ | rounded corners, shadows | done: SDF in physical pixels and a two-layer analytic shadow; `scripts/test-sharpness.sh` bit for bit at 100–225% outside the corners; validation layers: no messages |
-| **S5** Blur ✔ | `ext-background-effect`, dual Kawase, acrylic for the shell | done: taskbar, Start menu, menus, Alt+Tab and notifications blurred; 0.05–0.13 ms of GPU per frame while the Start menu opens; nothing at idle; validation layers: no messages. The blurred-background cache is postponed |
-| **S6** Title bar ✔ | `xdg-decoration`, text engine with KDE's font, buttons, SVG icons, wallpaper tint, interactions | done: apps accepting xdg-decoration (Qt/KDE) have Vela's bar, with the app icon (SVG from KDE's theme with librsvg, at physical size) and the wallpaper's Mica tint; invisible resize borders. Postponed: live blur behind the bar (solid tint for now), animated hover, resvg instead of librsvg |
+| **S5** Blur ✔ | `ext-background-effect`, dual Kawase, acrylic for the shell | done: taskbar, Start menu, menus, Alt+Tab and notifications blurred; 0.05–0.13 ms of GPU per frame while the Start menu opens; nothing at idle; validation layers: no messages. The blurred-background cache was postponed, then rejected ([visual coherence](visual-coherence.md) §9) |
+| **S6** Title bar ✔ | `xdg-decoration`, text engine with KDE's font, buttons, SVG icons, wallpaper tint, interactions | done: apps accepting xdg-decoration (Qt/KDE) have Vela's bar, with the app icon (SVG from KDE's theme with librsvg, at physical size) and the wallpaper's Mica tint; invisible resize borders. Postponed: live blur behind the bar (solid tint for now), animated hover (done since, [visual coherence](visual-coherence.md) §6.6), resvg instead of librsvg |
 | **Ready commits** ✔ | commits wait for their fences; imports only while in use | done (§7.3): an app whose GPU ends 150 ms after the commit, explicit and implicit sync, headless at 60 Hz with the cursor moving: 0 missed vblanks (47 before). In the functional tests |
 | **S7** Color | 10 bit, HDR, `color-management-v1` | |
 | (later) VRR | refresh rate policy during animations | §4.4 |
@@ -1067,7 +1076,7 @@ matched it; then `wlr_scene` went away. Each stage closes only with its tests.
 
 - Default scale from DPI → §3.8
 - X11 apps in the outputs' pixels, with Xft.dpi → §3.9
-- VRR postponed → §4.4
+- VRR: postponed at first, now per output, for games by default → §4.4
 - No reduction on battery → §8.3
 - Title bar in this document → §9
 - Tint derived from the wallpaper → §9.4
@@ -1143,8 +1152,8 @@ Two details that Wayland makes necessary:
 
 Like Windows 11's menus (WinUI), in the dark theme:
 
-- rounded corners (8), a thin border, a shadow; an acrylic background once blur
-  exists (S5), until then the theme's `popup` color;
+- rounded corners (8), a thin border, a shadow; an acrylic background (blurred
+  since S5) under the theme's `popup` color;
 - each row: a 16×16 icon on the left (an empty column if no item in the group has
   an icon), text in KDE's font, the shortcut on the right in gray, an arrow `›`
   for submenus; check marks and bullets for choice items;
