@@ -185,7 +185,7 @@ patch release whose branch does not exist.
 | **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
 | **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | [#307](https://github.com/vela-desktop/vela/pull/307) |
 | **R3** | The commands (§6): `prepare`, GPU suites started by `rehearse`, `status`, `tag`. | [#308](https://github.com/vela-desktop/vela/pull/308) |
-| **R4** | After publication (§7): notes from the CHANGELOG section, and `release.py finish`. | — |
+| **R4** | After publication (§7): notes from the CHANGELOG section, and `release.py finish`. | [#309](https://github.com/vela-desktop/vela/pull/309) |
 
 ## 9. Not in scope
 
