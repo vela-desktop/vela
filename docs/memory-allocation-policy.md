@@ -1,6 +1,6 @@
 # Host allocation policy
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** nothing; the migration is complete (see "Migration order").
 
@@ -8,7 +8,8 @@ The fifth revision was accepted with option c on 9 November 2026, against
 `main` at `bb6cc0c`. Migration steps 1–3 are in #148, step 4 in #243, step 5
 in #246, step 6 in #250 and step 7 in #252. Every factual claim names the
 code it was checked against; claims not yet measured are marked
-*to verify*.
+*to verify*. "Today" in the audit and design sections means `main` at
+`bb6cc0c`, before the migration; what changed is in "Migration order".
 
 ## Decision in one paragraph
 
@@ -20,8 +21,9 @@ process then restarts through the recovery path it already has.
 That decision rests on four conditions, and this document treats them as
 part of the policy, not as background:
 
-1. **Crash recovery fails closed in every state.** Today it does not. Four
-   paths can reveal the desktop after a crash; see "The premise".
+1. **Crash recovery fails closed in every state.** When this was written it
+   did not: four paths could reveal the desktop after a crash (see "The
+   premise"); the migration closed them.
 2. **External input never reaches an aborting helper unvalidated.** The
    supervisor ends the session after three crashes in a minute
    (`supervisor.c`), so an abort that another party can trigger is a way to
@@ -453,7 +455,7 @@ Results:
 
 | Class | Sites | Bound |
 |---|---|---|
-| Internal | `command.c` `end_task`; `output_manager.c` (3); `snap.c`; `view.c`; `workspace.c` ordering; `icons.c` theme dirs; `render/pass.c` (4); `supervisor.c` argv; `brightness.c` and `capture_watch.c` published text; `path_security.c` components; `brightness/probe.c` sysfs names; `process.c` command copy; `updates/` argv arrays (`install.c`, `report.c`) | Counts of views, outputs, draws, waits, arguments |
+| Internal | `command.c` `end_task`; `output_manager.c` (3; 10 since #303) and `output_arrangement.c` (#303), all sized by the number of outputs or windows; `snap.c`; `view.c`; `workspace.c` ordering; `icons.c` theme dirs; `render/pass.c` (4); `supervisor.c` argv; `brightness.c` and `capture_watch.c` published text; `path_security.c` components; `brightness/probe.c` sysfs names; `process.c` command copy; `updates/` argv arrays (`install.c`, `report.c`) | Counts of views, outputs, draws, waits, arguments |
 | Internal, from the driver | `render/vulkan.c` (6); `render/allocator.c` modifiers | Vulkan and DRM enumeration counts |
 | Internal, pixels chosen by the compositor | `decoration.c` (2); `icons.c` icon pixels; `render/pixel_buffer.c`; `text.c` | Scale × design size; text is ellipsised to `max_width`, which `decoration.c` only passes when `> 0` |
 | External, Wayland | `output_preview.c` `preserve_position`; `decoration.c` title and app ID; `icons.c` cached app ID | A wire message carries its size in 16 bits, so no message exceeds 64 KiB whatever the configuration. Within that, libwayland's connection buffer applies: Vela does not call `wl_display_set_default_max_buffer_size`, so the default applies (4096 bytes, *to verify* with a test sending an oversized string) |
