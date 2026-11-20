@@ -1,3 +1,12 @@
+The DEB recommends the portal backends that file choosers in sandboxed apps,
+screenshots and screen sharing need
+([integration services](hardware.md#integration-services)). If APT is set
+not to install recommendations, install them yourself:
+
+```sh
+sudo apt install xdg-desktop-portal-gtk xdg-desktop-portal-wlr
+```
+
 # Installing and updating Vela
 
 Vela is beta software. Keep a working desktop or TTY available, and review
