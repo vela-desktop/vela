@@ -14,6 +14,7 @@ RUN pacman -Syu --noconfirm --needed \
         libxkbcommon pixman libinput qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt \
         vulkan-headers vulkan-icd-loader shaderc mesa libdrm freetype2 harfbuzz fontconfig cairo \
         pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
+    # pipewire-audio (not pipewire) supplies pw-cat/pw-record on Arch.
         pipewire pipewire-audio wireplumber systemd-libs \
     # What the GPU suites run against (docs/ci-quality.md).
         breeze-icons noto-fonts python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop \
@@ -21,7 +22,7 @@ RUN pacman -Syu --noconfirm --needed \
     # platforms nvidia-utils depends on (Qt's Wayland windows need egl-wayland2
     # on recent drivers); the driver itself comes from the host.
         vulkan-tools vulkan-validation-layers libxext libglvnd egl-wayland egl-wayland2 egl-gbm egl-x11 \
-    # pipewire-audio (not pipewire) supplies pw-cat/pw-record on Arch.\n    # The workflow's options: coverage and the promo smoke test.
+    # The workflow's options: coverage and the promo smoke test.
         gcovr ffmpeg util-linux \
     # The GitHub Actions runner (.NET): its install script doesn't know pacman.
         icu krb5 openssl lttng-ust \
