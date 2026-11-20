@@ -23,6 +23,8 @@ class ForeignToplevel : public QObject, public QtWayland::zwlr_foreign_toplevel_
     Q_OBJECT
 
 public:
+    // With no handle, a window no compositor backs (the tests' own): its
+    // requests do nothing, its events come from whoever calls the handlers.
     explicit ForeignToplevel(::zwlr_foreign_toplevel_handle_v1* handle, QObject* parent = nullptr);
     ~ForeignToplevel() override;
 
@@ -38,8 +40,11 @@ public:
     quint64 lastActivated = 0; // to know which of an app's windows is the most recent
     bool ready = false; // received the first "done"
 
-    void requestActivate();
-    void requestMinimize();
+    // Virtual for the tests, which record them.
+    virtual void requestActivate();
+    virtual void requestMinimize();
+    virtual void requestMaximize(bool on);
+    virtual void requestClose();
     // Where its button is (in `panel`'s coordinates): the compositor flies the
     // window there when it's minimized.
     void setButtonRect(QWindow* panel, const QRect& rect);
@@ -99,6 +104,8 @@ signals:
 
 protected:
     void zwlr_foreign_toplevel_manager_v1_toplevel(::zwlr_foreign_toplevel_handle_v1* handle) override;
+    // A new window, listed at its first "done" and gone at "closed".
+    void adopt(ForeignToplevel* window, uint32_t handleId);
 
 private:
     QList<ForeignToplevel*> m_windows;

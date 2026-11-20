@@ -351,6 +351,29 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-clock-formats COMMAND vela-taskbar-test -input ${PROJECT_SOURCE_DIR}/tests/clock)
     set_tests_properties(shell-clock-formats PROPERTIES TIMEOUT 60 ENVIRONMENT "VELA_TEST_SHELL_CONFIG=real")
 
+    # The taskbar's buttons from windows no compositor backs (ForeignToplevel
+    # with no handle), apps in a private home and badges on a private bus.
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        qt_add_executable(vela-taskbarmodel-test tests/taskbarmodel_test.cpp
+            src/taskbarmodel.cpp src/taskbarmodel.h src/foreigntoplevels.cpp src/foreigntoplevels.h
+            src/appmodel.cpp src/appmodel.h src/desktopexec.h src/mimeapps.h
+            src/config.cpp src/config.h src/batterysettings.h src/clockformat.h src/starticon.h src/defaults.h
+            src/launcherentry.cpp src/launcherentry.h src/workspaces.cpp src/workspaces.h
+            ${PROJECT_SOURCE_DIR}/common/tests/privatehome.h)
+        # The protocol code generated for vela-shell, in this same directory.
+        foreach(protocol wlr-foreign-toplevel-management-unstable-v1 vela-toplevel-identifier-v1)
+            target_sources(vela-taskbarmodel-test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/qwayland-${protocol}.cpp
+                ${CMAKE_CURRENT_BINARY_DIR}/wayland-${protocol}-protocol.c)
+        endforeach()
+        target_include_directories(vela-taskbarmodel-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src
+            ${CMAKE_CURRENT_BINARY_DIR})
+        target_compile_options(vela-taskbarmodel-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-taskbarmodel-test PRIVATE vela-process Qt6::DBus Qt6::Gui Qt6::GuiPrivate Qt6::Network
+            Qt6::WaylandClient Qt6::Test)
+        add_test(NAME shell-taskbarmodel COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-taskbarmodel-test>)
+        set_tests_properties(shell-taskbarmodel PROPERTIES TIMEOUT 60)
+    endif()
+
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h
         src/batterysettings.h src/clockformat.h src/starticon.h src/defaults.h)

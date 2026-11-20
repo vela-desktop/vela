@@ -560,7 +560,7 @@ void TaskbarModel::closeWindows(int row)
 {
     if (row >= 0 && row < m_items.size()) {
         for (ForeignToplevel* window : m_items.at(row).windows) {
-            window->close();
+            window->requestClose();
         }
     }
 }
@@ -595,14 +595,14 @@ void TaskbarModel::windowAction(int row, const QString& action)
         if (window->minimized) {
             window->requestActivate();
         } else if (window->maximized) {
-            window->unset_maximized();
+            window->requestMaximize(false);
         }
     } else if (action == QLatin1String("minimize")) {
         window->requestMinimize();
     } else if (action == QLatin1String("maximize")) {
-        window->set_maximized();
+        window->requestMaximize(true);
     } else if (action == QLatin1String("close")) {
-        window->close();
+        window->requestClose();
     } else if (action == QLatin1String("move") || action == QLatin1String("resize")) {
         // From the keyboard, like on Windows: the window comes forward and the
         // compositor moves it with the arrows.

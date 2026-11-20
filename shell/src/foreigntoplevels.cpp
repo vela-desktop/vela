@@ -21,8 +21,10 @@ quint64 activationCounter = 0;
 
 ForeignToplevel::ForeignToplevel(::zwlr_foreign_toplevel_handle_v1* handle, QObject* parent)
     : QObject(parent)
-    , QtWayland::zwlr_foreign_toplevel_handle_v1(handle)
 {
+    if (handle) {
+        init(handle);
+    }
 }
 
 ForeignToplevel::~ForeignToplevel()
@@ -35,14 +37,30 @@ ForeignToplevel::~ForeignToplevel()
 void ForeignToplevel::requestActivate()
 {
     auto* wayland = qGuiApp->nativeInterface<QNativeInterface::QWaylandApplication>();
-    if (wayland && wayland->seat()) {
+    if (wayland && wayland->seat() && isInitialized()) {
         activate(wayland->seat());
     }
 }
 
 void ForeignToplevel::requestMinimize()
 {
-    set_minimized();
+    if (isInitialized()) {
+        set_minimized();
+    }
+}
+
+void ForeignToplevel::requestMaximize(bool on)
+{
+    if (isInitialized()) {
+        on ? set_maximized() : unset_maximized();
+    }
+}
+
+void ForeignToplevel::requestClose()
+{
+    if (isInitialized()) {
+        close();
+    }
 }
 
 void ForeignToplevel::setButtonRect(QWindow* panel, const QRect& rect)
@@ -51,7 +69,7 @@ void ForeignToplevel::setButtonRect(QWindow* panel, const QRect& rect)
         return;
     }
     auto* wayland = panel->nativeInterface<QNativeInterface::Private::QWaylandWindow>();
-    if (!wayland || !wayland->surface()) {
+    if (!wayland || !wayland->surface() || !isInitialized()) {
         return;
     }
     if (!m_buttonRects.contains(panel)) {
@@ -156,8 +174,12 @@ ForeignToplevelManager::ForeignToplevelManager()
 
 void ForeignToplevelManager::zwlr_foreign_toplevel_manager_v1_toplevel(::zwlr_foreign_toplevel_handle_v1* handle)
 {
-    auto* window = new ForeignToplevel(handle, this);
-    const uint32_t handleId = wl_proxy_get_id(reinterpret_cast<wl_proxy*>(handle));
+    adopt(new ForeignToplevel(handle, this), wl_proxy_get_id(reinterpret_cast<wl_proxy*>(handle)));
+}
+
+void ForeignToplevelManager::adopt(ForeignToplevel* window, uint32_t handleId)
+{
+    window->setParent(this);
     m_handles.insert(handleId, window);
     if (m_identifier.isActive()) {
         m_identifier.identify(handleId);
