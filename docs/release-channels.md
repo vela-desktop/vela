@@ -21,11 +21,11 @@ Drafts and tags outside that format are ignored.
 1. Prepare the exact release commit, update `project(VERSION ...)` in
    `CMakeLists.txt`, and complete reviews and required test suites,
    including both GPU suites on that commit.
-2. Rehearse on a public fork: push the same signed tag there and let the
-   whole pipeline publish a release in the fork (see
-   [Rollout validation](#rollout-validation)). `v0.*` tags in this
-   repository can be neither moved nor deleted, so a tag whose pipeline
-   fails burns that version number.
+2. Rehearse: `scripts/release.py rehearse 0.x.y` pushes
+   `rehearsal/v0.x.y` on that commit, which runs the whole pipeline and
+   publishes a draft release (see [Rollout validation](#rollout-validation)).
+   `v0.*` tags in this repository can be neither moved nor deleted, so a tag
+   whose pipeline fails burns that version number.
 3. Create a signed, protected Git tag `v0.x.y` pointing to that commit.
 4. GitHub Actions builds Arch/CachyOS, Fedora 44/45 and Ubuntu 26.10 packages
    for the **tagged** commit, verifies package installs and their runtime
@@ -131,30 +131,40 @@ that the update runs in a terminal.
 
 ## Rollout validation
 
-Before every Beta, run the tag pipeline on a public fork of the repository
-with the exact release commit. In the fork, the workflow runs from the
-tagged commit, so its `main` does not need to be updated. To try again,
-delete the fork's release, if the run got that far, then the fork's tag,
-naming the fork explicitly so that nothing touches the main repository:
+Before every Beta, rehearse the tag pipeline on the exact release commit:
 
 ```sh
-gh release delete v0.x.y --repo <owner>/<fork> --yes
-git push <fork-remote> :refs/tags/v0.x.y
+scripts/release.py rehearse 0.x.y   # --commit <sha> for another commit on the branch
 ```
 
-then push the tag again. `publish-beta` refuses to replace published
-bytes, and an unchanged tag does not start the pipeline. This works
-because immutable releases are off on the fork; never enable them there.
+The candidate is the tip of `release/0.<minor>`, or of `main` for a `.0`
+release. The script refuses unless its `project(VERSION ...)` is `0.x.y`
+and `v0.x.y` does not exist yet, then pushes `rehearsal/v0.x.y`. That tag
+runs every Beta job of `build.yml`, and `publish-beta` creates a **draft**
+release with the same packages and manifests. The updater ignores drafts
+and tag names other than `v0.x.y`, and drafts are not immutable, so running
+the same command again replaces the rehearsal. `scripts/release.py clean
+0.x.y` deletes the draft and the tag; it never deletes a published release.
+The details are in [release automation](release-automation.md#4-the-rehearsal-tag).
 Then check:
 
-- a rerun of `publish-beta` keeps the published assets unchanged;
-- each package matches its manifest and its attestation names the fork,
-  the tag, the commit and the expected workflow;
+- a rerun of `publish-beta` keeps the draft's assets unchanged;
+- each package matches its manifest and its attestation names this
+  repository, the rehearsal tag, the commit and the expected workflow;
 - in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers, the installed
-  `vela-update-beta` with `REPO` pointed at the fork finds the release,
-  replaces `vela-git` unattended, then reports `up-to-date`; the verifier
-  rejects the wrong repository, the wrong commit and tampered bytes; and
-  the way back to Experimental works.
+  `vela-update-beta` finds the release, replaces `vela-git` unattended,
+  then reports `up-to-date`; the verifier rejects the wrong repository,
+  the wrong commit and tampered bytes; and the way back to Experimental
+  works.
+
+The updater cannot read a draft, so until the upgrade tests move into CI
+([release automation R2](release-automation.md#5-stages)) the container
+checks still need a published release: push the same tag to the public
+fork `BrandoDev/vela-release-rehearsal`, point `REPO` at it, and delete
+the fork's release and tag to try again
+(`gh release delete v0.x.y --repo BrandoDev/vela-release-rehearsal --yes`,
+then `git push <fork-remote> :refs/tags/v0.x.y`). Immutable releases are
+off on the fork; never enable them there.
 
 For `v0.1.0` (31 October 2026) the rehearsal found two pipeline bugs that
 only tag builds reach (`cosign` missing from the Arch package job, and the
