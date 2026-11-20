@@ -169,11 +169,15 @@ jobs:
             echo "Missing DEB dependency: xdg-terminal-exec" >&2
             exit 1
           }
-          # Bluetooth needs only BlueZ, recommended (docs/bluetooth.md §10).
-          dpkg-deb -f build-ubuntu/packages/*.deb Recommends | tr ',' '\n' | grep -Eq '^[[:space:]]*bluez([[:space:]]|$)' || {
-            echo "Missing DEB recommendation: bluez" >&2
-            exit 1
-          }
+          # Bluetooth needs only BlueZ (docs/bluetooth.md §10); the portals
+          # serve file choosers, screenshots and screencasts.
+          for recommendation in bluez xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr; do
+            dpkg-deb -f build-ubuntu/packages/*.deb Recommends |
+              tr ',' '\n' | grep -Eq "^[[:space:]]*${recommendation}([[:space:]]|$)" || {
+                echo "Missing DEB recommendation: $recommendation" >&2
+                exit 1
+              }
+          done
       - name: Attest official Ubuntu Beta DEB provenance
         if: startsWith(github.ref, 'refs/tags/v0.')
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
@@ -208,6 +212,18 @@ jobs:
           pkg=vela-git
           case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
           dpkg-query -W -f='${Status}\n' "$pkg" | grep -Fx 'install ok installed'
+          # Every recommendation must exist in Ubuntu 26.10, even though this
+          # minimal install leaves them out.
+          dpkg-deb -f ./deb/*.deb Recommends | tr ',|' '\n\n' |
+            sed 's/([^)]*)//g; s/[[:space:]]//g' | grep -v '^$' |
+            while IFS= read -r recommendation; do
+              [ "$recommendation" = x-terminal-emulator ] && continue
+              candidate=$(apt-cache policy "$recommendation" | sed -n 's/^ *Candidate: //p')
+              if [ -z "$candidate" ] || [ "$candidate" = '(none)' ]; then
+                echo "DEB recommendation not available in Ubuntu 26.10: $recommendation" >&2
+                exit 1
+              fi
+            done
           # --no-install-recommends must still pull in both runtime icon packages.
           for dependency in breeze-icon-theme qt6-svg-plugins; do
             dpkg-query -W -f='${Status}\n' "$dependency" | grep -Fx 'install ok installed'
