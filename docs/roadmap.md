@@ -360,7 +360,8 @@ sections above record when work was integrated or published.
   idle, notifications, system tray, and Vela's own
   [polkit agent](polkit-agent.md) (User Account Control).
 - **Updates**: the [Updates page](updates.md) in Settings, background checks
-  and notifications, over `vela-update-daemon`; Beta and Experimental
+  and notifications, over `vela-update-daemon`, with configurable check
+  intervals; Beta and Experimental
   [release channels](release-channels.md) on Arch, Fedora 44 and 45, and Ubuntu 26.10.
 - **Compositor and renderer**: a [C core](c-core.md), Vela's own scene and
   [Vulkan renderer](renderer.md), pixel-exact fractional scaling, late
@@ -374,13 +375,24 @@ sections above record when work was integrated or published.
   (implemented and tested, including on real hardware).
 - **Desktop**: Settings, Files (with a quick preview on Space: pictures, PDFs,
   text, videos and sounds), desktop icons, virtual desktops, Task View,
-  snap layouts and Snap Assist, modern context menus, light mode, a
-  show-desktop strip, Caffeine, and file transfers in the taskbar.
+  snap layouts and Snap Assist, context menus with entries that can be
+  hidden in Settings, light mode, a show-desktop strip, Caffeine, and file
+  transfers in the taskbar.
+- **[Taskbar](taskbar.md)**: placement on any screen edge, window filters by
+  desktop and display, attention indicators, app badges and progress, a
+  configurable tray drawer, drag and drop, paging when space runs out, and
+  Super+1…9 and Super+0.
+- **Personalization**: a [theme engine](theme-system.md) with declarative
+  themes and per-surface styles, theme galleries with previews and Undo,
+  accent, clock and Start icon settings, and Vela Expressive with a palette
+  that can follow the wallpaper.
 - **[Visual coherence](visual-coherence.md)**: the same pixels, clock and
   motion across compositor, shell and apps, and shared controls for all of
   Vela's interfaces.
 - **Daily comfort**: clipboard history, snipping tool, touchpad gestures,
-  mouse and touchpad settings.
+  mouse and touchpad settings, [battery alerts](battery-notifications.md) for
+  the PC and peripherals, and a [screen-sharing indicator](screen-sharing.md)
+  with optional automatic Do Not Disturb.
 - **Power**: manual energy-saver/balanced/performance profiles where
   `power-profiles-daemon` offers them; screen-off idle timeout and
   lock-on-idle controls in Settings.
@@ -394,6 +406,8 @@ sections above record when work was integrated or published.
   [signed packages with verified provenance](package-provenance.md) for Arch
   and Fedora and for every Beta release, and CI with sanitizers, static analysis and real AMD and NVIDIA
   GPUs (self-hosted RX 9070 XT and per-run Vast.ai NVIDIA RTX rentals) for GPU-affecting changes and releases.
+- **Virtual machines** (experimental): [QEMU/KVM guests](virtual-machines.md)
+  with virtio-gpu and Vulkan Venus.
 - **Languages**: English and Italian, switched live from Settings.
 
 ## Keeping this page current
@@ -410,7 +424,9 @@ This page changes in the same pull request as the work it describes:
 - Mark all unreleased targets as estimates and revise them after testing.
 - Work on a future redesign branch or independent font/icon repositories
   may begin early without merging unfinished designs into `main`.
-- Keep **Done** as a summary of existing capabilities. List remaining work in **Next**.
+- Keep **Done** as a summary of existing capabilities, and add each merged
+  capability to it. List remaining work in **Next**; never re-list
+  implemented features such as clipboard history as future work.
 
 To propose a feature, open an issue that describes the behavior first
 (see [CONTRIBUTING](../CONTRIBUTING.md)).
