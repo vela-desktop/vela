@@ -223,11 +223,15 @@ its devices, and Vela changes nothing.
 
 **Settings > System > Updates** shows whether an update is available, what's
 new (Beta's release notes, or Experimental's commits) and the update channel.
-Vela checks by itself once a day, never on a metered connection, and sends a
-notification when there is something new; turn this off on the same page.
+Vela checks by itself once a day, or every 6, 12 or 48 hours or once a week
+as chosen on the same page, never on a metered connection, and sends a
+notification when there is something new; turn this off there too. The page
+also shows when the next check is due.
 
 **Install now** runs `vela-update` in a terminal, where the package manager
-asks for your password and the build stays readable; updates started by hand
+asks for your password and the build stays readable. Before installing, it
+shows the packaging recipe for the exact commit it installs (press `q` to
+continue). Updates started by hand
 in a terminal show on the page too. `xdg-terminal-exec` (a dependency of the
 package) opens your default terminal, or Konsole without one. After an update,
 sign out and in again to use the new version: the page and a notification say
