@@ -1,11 +1,12 @@
 # Audio
 
 Design of Vela's audio backend: one native library, shared by the shell and
-Settings. It replaces today's three backends, which drive command-line tools
-(`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document comes before the
-code: decisions are made here, and the code follows them.
+Settings. It replaced the three backends Vela had before, which drove
+command-line tools (`wpctl`, `pactl`, `pw-dump`, `pw-metadata`). This document
+came before the code: the decisions were made here, and the code follows them.
+"Today" in it means the code before A1 (October 2026).
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** the tests on real hardware ([hardware](hardware.md#sound)). Stages A0–A6 are in §13.
 

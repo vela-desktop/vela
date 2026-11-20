@@ -1,16 +1,17 @@
 # Updates
 
 Design of Vela's updates in the desktop: Settings > System > Updates, the
-background check and the notification. It is the 0.1 release blocker in the
-[roadmap](roadmap.md), on top of the release channels of
-[release-channels.md](release-channels.md). This document comes before the
-code: decisions are made here, and the code follows them.
+background check and the notification, on top of the release channels of
+[release-channels.md](release-channels.md). It was a 0.1 release blocker in
+the [roadmap](roadmap.md). This document came before the code: the decisions
+were made here, and the code follows them. Configurable check intervals
+(#190) and recipe previews (#247) came after 0.1.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** nothing. Stages U0–U7, including real updates on real systems, are in §11.
 
-## 1. What there is today
+## 1. What there was before (October 2026)
 
 - **`vela-update`** (`packaging/vela-update`) updates Vela from the command
   line. The installed package picks the channel: `vela` is Beta, `vela-git`
@@ -77,7 +78,7 @@ last packages for rollback by hand), a "Terminal" entry in Default apps.
 | Where the logic lives | a session daemon, `vela-update-daemon`, serving `org.vela.Updates` | checks run while Settings is closed; one owner for state, schedule and the running update |
 | How the daemon is started | by the compositor, supervised, like `vela-bluetooth` | it lives exactly as long as the session; no unit files to install |
 | Install | always in a terminal | the password prompt and the build output are visible; no privileged helper to audit |
-| Which terminal | `xdg-terminal-exec`, else `VELA_TERMINAL`, else `konsole` | the freedesktop proposal, packaged by Arch, Fedora and Ubuntu; the rest as the shell does today |
+| Which terminal | `xdg-terminal-exec`, else `VELA_TERMINAL`, else `konsole` | the freedesktop proposal, packaged by Arch, Fedora and Ubuntu; then the variable Super+Enter also reads |
 | How the desktop follows an update | state files written by `vela-update` itself (§5.3) | they work for updates started by hand too, and survive the terminal |
 | JSON in C | `sd-json` from libsystemd (257 or later) | already a dependency; no new library |
 | Who notifies | the shell, when the daemon says so (§6.4) | notification texts are translated with Qt; the daemon has no translations |
