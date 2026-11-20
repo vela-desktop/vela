@@ -178,11 +178,10 @@ static void onKeyboardEnter(
     void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *entered, struct wl_array *keys)
 {
     char line[256] = "vela-pattern: keyboard-enter";
-    const uint32_t *key;
-    wl_array_for_each(key, keys)
-    {
+    const uint32_t *pressed = keys->data;
+    for (size_t i = 0; i < keys->size / sizeof(*pressed); i++) {
         const size_t used = strlen(line);
-        snprintf(line + used, sizeof(line) - used, " %u", *key);
+        snprintf(line + used, sizeof(line) - used, " %u", pressed[i]);
     }
     fprintf(stderr, "%s\n", line);
 }
