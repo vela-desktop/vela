@@ -10,6 +10,10 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- The Ubuntu package recommends the GTK and wlr portal backends, so file
+  choosers in sandboxed apps, screenshots and screen sharing work after a
+  normal installation.
+
 - Display layouts keep monitors from overlapping. Unplugging a monitor closes
   gaps that would otherwise trap the pointer on one screen.
 
