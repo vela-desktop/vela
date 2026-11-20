@@ -975,8 +975,10 @@ void vela_input_destroy(struct vela_input *input)
     }
 #if WLR_HAS_LIBINPUT_BACKEND
     struct wl_list *switches = &input->lid_switches;
-    while (switches->next != switches) {
-        struct vela_lid_switch *lid = wl_container_of(switches->next, lid, link);
+    struct wl_list *next;
+    for (struct wl_list *link = switches->next; link != switches; link = next) {
+        next = link->next;
+        struct vela_lid_switch *lid = wl_container_of(link, lid, link);
         lid_switch_destroy(lid);
     }
 #endif
