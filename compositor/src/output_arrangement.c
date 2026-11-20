@@ -26,6 +26,46 @@ static bool position_clear(
     return true;
 }
 
+// If the projected position is blocked, the nearest free position along
+// this edge must start or end at one of the placed rectangles' edges.
+static bool closest_on_edge(struct vela_output_rect *candidate, struct vela_output_rect anchor, bool vertical,
+    const struct vela_output_rect *rects, const bool *placed, size_t count)
+{
+    if (position_clear(*candidate, rects, placed, count)) {
+        return true;
+    }
+    int64_t project = vertical ? candidate->y : candidate->x;
+    int64_t start = vertical ? anchor.y : anchor.x;
+    int64_t end = start + (vertical ? anchor.height : anchor.width);
+    int64_t length = vertical ? candidate->height : candidate->width;
+    int64_t best = INT64_MAX;
+    struct vela_output_rect trial = *candidate;
+    for (size_t i = 0; i < count; ++i) {
+        if (!placed[i]) {
+            continue;
+        }
+        int64_t edge = vertical ? rects[i].y : rects[i].x;
+        int64_t edges[] = { edge - length, edge + (vertical ? rects[i].height : rects[i].width) };
+        for (size_t j = 0; j < sizeof(edges) / sizeof(edges[0]); ++j) {
+            int64_t pos = edges[j];
+            int64_t distance = llabs(pos - project);
+            if (pos <= start - length || pos >= end || distance >= best) {
+                continue;
+            }
+            if (vertical) {
+                trial.y = pos;
+            } else {
+                trial.x = pos;
+            }
+            if (position_clear(trial, rects, placed, count)) {
+                *candidate = trial;
+                best = distance;
+            }
+        }
+    }
+    return best != INT64_MAX;
+}
+
 void vela_output_arrange_rects(struct vela_output_rect *rects, bool *placed, size_t count)
 {
     if (!count) {
@@ -58,8 +98,11 @@ void vela_output_arrange_rects(struct vela_output_rect *rects, bool *placed, siz
                 };
                 for (size_t k = 0; k < sizeof(candidates) / sizeof(candidates[0]); ++k) {
                     struct vela_output_rect candidate = candidates[k];
+                    if (!closest_on_edge(&candidate, b, k < 2, rects, placed, count)) {
+                        continue;
+                    }
                     int64_t distance = llabs(candidate.x - a.x) + llabs(candidate.y - a.y);
-                    if (distance < best_distance && position_clear(candidate, rects, placed, count)) {
+                    if (distance < best_distance) {
                         best_distance = distance;
                         best_index = i;
                         best = candidate;

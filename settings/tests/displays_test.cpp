@@ -612,6 +612,32 @@ private slots:
         QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
         QVERIFY(saved().isEmpty());
     }
+    void disablingMiddleDisplayKeepsThePreferredArrangement()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        command("add");
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3840);
+        QVERIFY(client->apply("HEADLESS-2", { { "enabled", false } }));
+        QTRY_VERIFY(client->confirming());
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
+        client->revert();
+        QTRY_VERIFY(!client->pending());
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3840);
+
+        QVERIFY(client->apply("HEADLESS-2", { { "enabled", false } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
+        QVERIFY(saved().contains("position=3840,0"));
+        QVERIFY(client->apply("HEADLESS-2", { { "enabled", true } }));
+        QTRY_VERIFY(client->confirming());
+        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 1920);
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3840);
+    }
+
     void overlappingPositionsAreRejected()
     {
         start();

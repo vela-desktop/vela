@@ -159,6 +159,44 @@ class Outputs(unittest.TestCase):
         maximized = state.window(window)
         self.assertEqual((maximized["x"], maximized["w"]), (960, 960))
 
+    def test_qhd_maximize_and_edge_snap_use_its_own_geometry(self):
+        # The resolutions from #301, at 100% scale and with distinct positions.
+        self.vela.command("test-output add 1920x1200")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="the laptop panel")
+        self.vela.randr("--output", "HEADLESS-2", "--scale", "1")
+        self.vela.command("test-output add 2560x1440")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="the QHD output")
+        qhd = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        x, y = qhd["x"], qhd["y"]
+        self.assertEqual((qhd["w"], qhd["h"]), (2560, 1440))
+
+        def drag(window, target_x, target_y):
+            frame = self.vela.state().window(window)
+            grab_x, grab_y = frame["x"] + 50, frame["y"] + 50
+            self.vela.input("move", grab_x, grab_y, "keydown", "super", "down", "sleep", "50",
+                            "move", x + 700, y + 700, "sleep", "50", "move", target_x, target_y,
+                            "sleep", "150", "up", "keyup", "super")
+
+        def check(window, expected):
+            self.vela.wait_for(lambda s: tuple(s.window(window)[k] for k in ("x", "y", "w", "h")) == expected,
+                               what=f"window fills QHD geometry {expected}")
+
+        window = self.vela.open_window(300, 200)
+        drag(window, x + 900, y + 700)
+        self.vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-3")
+        self.vela.keys("super+up")
+        check(window, (x, y, 2560, 1440))
+
+        for target, expected in (
+            ((x + 2, y + 700), (x, y, 1280, 1440)),
+            ((x + 2557, y + 700), (x + 1280, y, 1280, 1440)),
+            ((x + 1280, y + 2), (x, y, 2560, 1440)),
+        ):
+            with self.subTest(target=target):
+                window = self.vela.open_window(300, 200)
+                drag(window, *target)
+                check(window, expected)
+
     def test_above_layout_normalizes_origin_without_moving_window_to_other_monitor(self):
         # Reproduces Isaac's original topology: secondary 1920x1080 located
         # at y=-1080 above primary 1920x1080 at (0,0). XWayland and Wine

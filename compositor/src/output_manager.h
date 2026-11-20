@@ -26,10 +26,9 @@ void vela_output_manager_hotplug(struct vela_server *server);
 
 // Snapshots retain output lifetime listeners, so unplugged heads disappear.
 struct wlr_output_configuration_v1 *vela_output_manager_snapshot(struct vela_server *server);
-bool vela_output_manager_commit(struct vela_server *server, const struct wlr_output_configuration_v1 *config);
 bool vela_output_manager_restore(struct vela_server *server, const struct wlr_output_configuration_v1 *before);
 // True when saved, or when persistence is intentionally disabled (non-DRM session).
-bool vela_output_manager_save(struct vela_server *server, const struct wlr_output_configuration_v1 *before);
+bool vela_output_manager_save(struct vela_server *server, const struct wlr_output_configuration_v1 *preferences);
 
 // "add 1920x1080" or "remove HEADLESS-2": only with the headless backend.
 void vela_test_output_command(struct vela_server *server, const char *arguments);

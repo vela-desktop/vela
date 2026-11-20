@@ -299,8 +299,9 @@ compositor rejects configurations with intersecting active displays.
 
 At startup and when monitors are plugged or unplugged, Vela moves overlapping
 or isolated displays to a shared edge so the pointer can still reach every
-screen. These temporary positions keep the saved arrangement available when
-the original set of monitors returns.
+screen. Disabling a monitor in Settings closes gaps within the preview, so
+Revert restores the prior positions. These temporary positions keep the saved
+arrangement available when the original set of monitors returns.
 
 Settings talks directly to `wlr-output-management`; no external display utility
 is required. Changes are previewed for 15 seconds. Vela's compositor keeps the

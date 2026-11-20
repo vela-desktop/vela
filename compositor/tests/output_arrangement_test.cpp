@@ -51,3 +51,14 @@ TEST(OutputArrangement, MovesCornerOnlyContactToASharedEdge)
     EXPECT_EQ(rects[1].y, 99);
     EXPECT_FALSE(vela_output_rects_overlap(rects[0], rects[1]));
 }
+
+TEST(OutputArrangement, SlidesAlongAnEdgeWhenTheProjectionIsBlocked)
+{
+    vela_output_rect rects[] = { { 0, 0, 100, 100 }, { 100, 0, 100, 50 }, { 80, 40, 20, 20 } };
+    bool placed[3] = {};
+    vela_output_arrange_rects(rects, placed, 3);
+    EXPECT_EQ(rects[1].x, 100);
+    EXPECT_EQ(rects[1].y, 0);
+    EXPECT_EQ(rects[2].x, 100);
+    EXPECT_EQ(rects[2].y, 50);
+}

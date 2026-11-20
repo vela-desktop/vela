@@ -162,26 +162,42 @@ Page {
         const cy = toLogicalY(py) + h / 2
         const neighbors = outputs.filter((o, i) => i !== index && o.enabled && o.logicalWidth > 0 && o.logicalHeight > 0)
             .map(o => ({ x: o.x, y: o.y, w: o.logicalWidth, h: o.logicalHeight }))
+        const clear = (x, y) => !neighbors.some(o => x < o.x + o.w && o.x < x + w &&
+                                                     y < o.y + o.h && o.y < y + h)
         let best = null
-        for (const o of neighbors) {
-            let x = Math.max(o.x - w + 1, Math.min(o.x + o.w - 1, cx - w / 2))
-            let y = Math.max(o.y - h + 1, Math.min(o.y + o.h - 1, cy - h / 2))
-            if (Math.abs(x - o.x) < o.w * 0.1) x = o.x
-            if (Math.abs(y - o.y) < o.h * 0.1) y = o.y
-            const candidates = [
-                { x: o.x - w, y: Math.round(y) },
-                { x: o.x + o.w, y: Math.round(y) },
-                { x: Math.round(x), y: o.y - h },
-                { x: Math.round(x), y: o.y + o.h }
-            ]
-            for (const candidate of candidates) {
-                const distance = Math.hypot(candidate.x + w / 2 - cx, candidate.y + h / 2 - cy)
-                if ((!best || distance < best.distance) && !neighbors.some(other =>
-                    candidate.x < other.x + other.w && other.x < candidate.x + w &&
-                    candidate.y < other.y + other.h && other.y < candidate.y + h)) {
-                    best = { x: candidate.x, y: candidate.y, distance: distance }
+        function considerEdge(fixed, target, start, size, length, vertical) {
+            const min = start - length + 1
+            const max = start + size - 1
+            const projected = Math.round(Math.max(min, Math.min(max, target)))
+            const aligned = Math.abs(projected - start) < size * 0.1 ? start : projected
+            const free = pos => vertical ? clear(fixed, pos) : clear(pos, fixed)
+            let closest = aligned
+            if (!free(aligned)) {
+                let distance = Infinity
+                const positions = [projected]
+                for (const neighbor of neighbors) {
+                    const near = vertical ? neighbor.y : neighbor.x
+                    positions.push(near - length, near + (vertical ? neighbor.h : neighbor.w))
                 }
+                for (const pos of positions) {
+                    const offset = Math.abs(pos - target)
+                    if (pos >= min && pos <= max && offset < distance && free(pos)) {
+                        closest = pos
+                        distance = offset
+                    }
+                }
+                if (!Number.isFinite(distance)) return
             }
+            const x = vertical ? fixed : closest
+            const y = vertical ? closest : fixed
+            const distance = Math.hypot(x + w / 2 - cx, y + h / 2 - cy)
+            if (!best || distance < best.distance) best = { x, y, distance }
+        }
+        for (const o of neighbors) {
+            considerEdge(o.x - w, cy - h / 2, o.y, o.h, h, true)
+            considerEdge(o.x + o.w, cy - h / 2, o.y, o.h, h, true)
+            considerEdge(o.y - h, cx - w / 2, o.x, o.w, w, false)
+            considerEdge(o.y + o.h, cx - w / 2, o.x, o.w, w, false)
         }
         if (best && (best.x !== moving.x || best.y !== moving.y)) {
             selectOutput(index)
