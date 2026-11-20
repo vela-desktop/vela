@@ -68,11 +68,12 @@ Settings and `vela-update` discover normal numbered releases directly.
 `main` is the next minor version in development (the project version on
 `main` is that version, e.g. `0.2.0`), and Experimental follows it. Each
 published minor version has a maintenance branch, `release/0.<minor>`,
-created from its `v0.<minor>.0` tag, which receives fixes only. Both are
+created from its `v0.<minor>.0` tag. The current maintenance branch
+receives fixes only. Both `main` and the current maintenance branch are
 protected the same way: changes go through pull requests and the same
 required checks, and CI runs on pushes to either.
 
-- **Fixes go to `main` first,** then to the release branch: label the
+- **Fixes go to `main` first,** then to the current release branch: label the
   pull request `backport-0.<minor>` and, once it is merged, open a pull
   request against `release/0.<minor>` with `git cherry-pick -x <commit>`,
   which records the original commit. A fix that only applies to the
@@ -87,9 +88,11 @@ required checks, and CI runs on pushes to either.
   `packaging/arch/PKGBUILD.beta`, used by manual builds, stays on the
   latest published tag.
 
-There is one Beta channel, and the updater offers the highest published
-`v0.x.y`: once `v0.<minor+1>.0` is out, Beta users move to it, so the
-previous release branch only matters until then.
+Only the latest published Beta series is supported. Publishing a new minor
+Beta ends support for the previous series, including patch releases,
+security updates and backports. For example, publishing `v0.2.0` ends
+support for 0.1.x and moves maintenance to 0.2.x. The Beta updater offers
+the highest published `v0.x.y` tag.
 
 ## Updater behavior
 

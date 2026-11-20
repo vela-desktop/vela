@@ -76,9 +76,12 @@ the only feature exception.
   found two release-only pipeline bugs, fixed before the real tag
   ([#177](https://github.com/vela-desktop/vela/pull/177)).
 
-**Feature freeze:** 0.1.x remains a maintenance series, without new
-user-facing features. The
-[`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
+**Support lifecycle.** The current Beta series receives maintenance fixes
+until the next minor Beta is published. When `v0.2.0` ships, support for
+0.1.x ends and fixes, including security updates, go to the 0.2.x series.
+See the [release branch policy](release-channels.md#release-branches).
+
+The [`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
 shipped on 16 November 2026. It includes Fedora 45 packaging, keyring
 selection, desktop fixes, and backports for allocation recovery, bounded
 resources and security hardening. Backports also stabilized text during
@@ -220,8 +223,7 @@ themes, packaging and updater tests. Exercise the taskbar with physical
 multi-monitor setups and apps that publish badges and progress. Investigate
 [Ubuntu GPU failures #197](https://github.com/vela-desktop/vela/issues/197).
 Follow the signed-tag rehearsal and
-[release process](release-channels.md). There is **no fixed ship date**;
-0.1.x backports remain independent.
+[release process](release-channels.md). There is **no fixed ship date**.
 
 ## 0.3 — Touch, pen, input methods and on-screen keyboard (indicative)
 
@@ -419,7 +421,7 @@ This page changes in the same pull request as the work it describes:
 
 - A new design document adds its row to **In progress**.
 - The pull request that finishes the last stage moves that work to **Done**.
-- Keep 0.1.x maintenance and 0.2 release preparations separate.
+- Update the supported Beta series in this roadmap when a new minor Beta ships.
 - Distinguish merged main changes, proposed release candidates and
   actually published Beta features.
 - Finalize the remaining 0.2 scope explicitly; review and either accept
