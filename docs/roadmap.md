@@ -72,6 +72,8 @@ the only feature exception.
 **Support lifecycle.** The current Beta series receives maintenance fixes
 until the next minor Beta is published. When `v0.2.0` ships, support for
 0.1.x ends and fixes, including security updates, go to the 0.2.x series.
+The updater in 0.1.0–0.1.2 cannot see `v0.2.0`, so those installations need
+the [one-time updater step](release-channels.md#updating-older-beta-installations).
 See the [release branch policy](release-channels.md#release-branches).
 
 The [`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
@@ -150,8 +152,9 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   ([#190](https://github.com/vela-desktop/vela/pull/190)). The updater shows
   pinned packaging recipes before installing
   ([#247](https://github.com/vela-desktop/vela/pull/247)) and discovers
-  numbered Betas published as normal GitHub releases. Users upgrading from
-  0.1.2 need the [one-time updater procedure](https://github.com/vela-desktop/vela/blob/main/docs/release-channels.md#updating-older-beta-installations)
+  numbered Betas published as normal GitHub releases. Installations on
+  0.1.0–0.1.2 need the
+  [one-time updater step](release-channels.md#updating-older-beta-installations)
   ([#282](https://github.com/vela-desktop/vela/pull/282)).
 - **Experimental virtual machines:** [QEMU/KVM with virtio-gpu and Vulkan
   Venus](virtual-machines.md) landed in

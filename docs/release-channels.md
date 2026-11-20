@@ -92,7 +92,10 @@ Only the latest published Beta series is supported. Publishing a new minor
 Beta ends support for the previous series, including patch releases,
 security updates and backports. For example, publishing `v0.2.0` ends
 support for 0.1.x and moves maintenance to 0.2.x. The Beta updater offers
-the highest published `v0.x.y` tag.
+the highest published `v0.x.y` tag. The updater shipped through 0.1.2 only
+sees prereleases, so 0.1.x installations reach `v0.2.0` through the
+[one-time manual step](#updating-older-beta-installations); Settings on
+0.1.x never offers it.
 
 ## Updater behavior
 
