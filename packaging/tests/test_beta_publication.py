@@ -67,7 +67,8 @@ class BetaPublication(unittest.TestCase):
                     "GITHUB_REPOSITORY": "vela-desktop/vela"}
         workflow = (ROOT / ".github/workflows/build.yml").read_text()
         step = workflow.split("- name: Publish signed Beta release\n", 1)[1]
-        self.script = textwrap.dedent(step.split("        run: |\n", 1)[1])
+        # The step runs until the next job.
+        self.script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n\n  ", 1)[0])
 
     def publish(self):
         return subprocess.run(["bash", "-c", self.script], cwd=self.root,
