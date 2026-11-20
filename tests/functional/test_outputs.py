@@ -132,6 +132,36 @@ class Outputs(unittest.TestCase):
             finally:
                 send("up", "right", "keyup", "super")
 
+    def test_resize_continues_when_only_the_pointer_moves_on_hotplug(self):
+        self.add_second()
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="three outputs")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        window = self.vela.open_window(300, 200)
+        frame = self.vela.state().window(window)
+        self.vela.input("move", frame["x"] + 50, frame["y"] + 50, "keydown", "super", "down",
+                        "sleep", "50", "move", 150, 200, "sleep", "50", "up", "keyup", "super")
+        state = self.vela.wait_for(lambda s: s.window(window)["x"] == 100, what="the window near the left edge")
+        frame = state.window(window)
+        grab_x, grab_y = frame["x"] + frame["w"] - 20, frame["y"] + frame["h"] - 20
+        target_x = third["x"] + 100
+        width = frame["w"] + target_x - grab_x
+        with self.vela.input_session() as send:
+            send("move", grab_x, grab_y, "keydown", "super", "down", "right", "move", target_x, grab_y)
+            try:
+                wide = self.vela.wait_for(lambda s: s.window(window)["w"] == width,
+                                          what="the resize pointer on the third output")
+                self.assertEqual(wide.window(window)["output"], "HEADLESS-1")
+                self.vela.command("test-output remove HEADLESS-2")
+                self.vela.wait_for(lambda s: any(o["name"] == third["name"] and o["x"] == 1920 for o in s["outputs"]),
+                                   what="the pointer's output shifts left")
+                send("rel", 30, 0)
+                self.vela.wait_for(lambda s: s.window(window)["w"] == width + 30
+                                   and s.window(window)["x"] == frame["x"],
+                                   what="the resize continues after only the pointer moves")
+            finally:
+                send("up", "right", "keyup", "super")
+
     def test_windows_are_rescued_and_come_back(self):
         state = self.add_second()
         second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")

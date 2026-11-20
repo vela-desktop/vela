@@ -187,20 +187,20 @@ static void finish_layout_change(
         wlr_output_layout_get_box(server->output_layout, entry->output, &new_box);
         double dx = (double)new_box.x - entry->x;
         double dy = (double)new_box.y - entry->y;
+        struct vela_view *view = entry->view;
+        if (server->cursor_mode == VELA_CURSOR_RESIZE && server->grabbed == view) {
+            struct vela_interaction *interaction = server->interaction;
+            interaction->grab_box.x += dx;
+            interaction->grab_box.y += dy;
+            // The pointer can move with a different output than the window.
+            interaction->grab_x += pointer_dx - dx;
+            interaction->grab_y += pointer_dy - dy;
+        }
         if (dx || dy) {
-            struct vela_view *view = entry->view;
             vela_node_set_position(&view->tree->node, view->tree->node.x + dx, view->tree->node.y + dy);
             if (view->restore.width > 0 && view->restore.height > 0) {
                 view->restore.x += dx;
                 view->restore.y += dy;
-            }
-            if (server->cursor_mode == VELA_CURSOR_RESIZE && server->grabbed == view) {
-                struct vela_interaction *interaction = server->interaction;
-                interaction->grab_box.x += dx;
-                interaction->grab_box.y += dy;
-                // The pointer can be on a different output than the window.
-                interaction->grab_x += pointer_dx - dx;
-                interaction->grab_y += pointer_dy - dy;
             }
             view->target_x += dx;
             view->target_y += dy;
@@ -475,9 +475,48 @@ static const struct wlr_output_head_v1_state *preference_anchor(const struct wlr
     return anchor;
 }
 
-// Use the original request for explicit drags, and the repaired geometry for
-// size changes. A disable or implicit enable may compact the live layout,
-// but the positions it moved must retain their previous preferences.
+static bool output_present(const char *key, void *data)
+{
+    const struct vela_server *server = data;
+    struct vela_output *output;
+    wl_list_for_each(output, &server->outputs, link)
+    {
+        char connected[256];
+        vela_output_key(output->wlr, connected, sizeof(connected));
+        if (strcmp(connected, key) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool layout_is_partial(struct vela_server *server, const struct wlr_output_configuration_v1 *before)
+{
+    bool have_origin = false;
+    int64_t origin_x = 0, origin_y = 0;
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each(head, &before->heads, link)
+    {
+        const struct vela_output *output = head->state.output->data;
+        if (!output->has_preferred_position) {
+            continue;
+        }
+        int64_t x = (int64_t)output->preferred_x - head->state.x;
+        int64_t y = (int64_t)output->preferred_y - head->state.y;
+        // A common translation leaves the layout intact. Different offsets
+        // indicate that at least one head has moved away from its saved slot.
+        if (!head->state.enabled || (have_origin && (x != origin_x || y != origin_y))) {
+            return true;
+        }
+        origin_x = x;
+        origin_y = y;
+        have_origin = true;
+    }
+    return server->session && vela_output_config_has_absent_output(output_present, server);
+}
+
+// Use the original positions for explicit drags and partial layouts. For a
+// size change with the full layout present, use the repaired spacing.
 static struct wlr_output_configuration_v1 *requested_preferences(struct vela_server *server,
     const struct wlr_output_configuration_v1 *before, const struct wlr_output_configuration_v1 *config,
     const char *implicit)
@@ -721,10 +760,11 @@ static void apply(struct vela_server *server, struct wlr_output_configuration_v1
     }
     struct wlr_output_configuration_v1 *before = !test_only && allowed ? vela_output_manager_snapshot(server) : NULL;
     bool resized = allowed && resize_without_moving(server, config);
+    bool save_repaired_positions = before && resized && !layout_is_partial(server, before);
     struct wlr_output_configuration_v1 *preferences =
-        before && !resized ? requested_preferences(server, before, config, implicit) : NULL;
+        before && !save_repaired_positions ? requested_preferences(server, before, config, implicit) : NULL;
     bool prepared = allowed && prepare_configuration(config, implicit != NULL, resized);
-    if (before && resized && prepared) {
+    if (save_repaired_positions && prepared) {
         preferences = requested_preferences(server, before, config, NULL);
     }
     bool ok = prepared && (test_only || commit_configuration(server, config, false));

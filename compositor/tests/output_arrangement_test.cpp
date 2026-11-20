@@ -26,6 +26,21 @@ TEST(OutputArrangement, ClosesMiddleGapAndKeepsSavedLayoutOnReconnect)
     EXPECT_EQ(reconnected[2].x, 2560);
 }
 
+TEST(OutputArrangement, ClosesAGapWithoutBreakingTheRightHandGroup)
+{
+    vela_output_rect rects[] = {
+        { 0, 0, 1920, 1080 },
+        { 3840, 0, 1920, 1080 },
+        { 3840, 1080, 1920, 1080 },
+    };
+    bool placed[3] = {};
+    vela_output_arrange_rects(rects, placed, 3);
+    EXPECT_EQ(rects[1].x, 1920);
+    EXPECT_EQ(rects[1].y, 0);
+    EXPECT_EQ(rects[2].x, rects[1].x);
+    EXPECT_EQ(rects[2].y, 1080);
+}
+
 TEST(OutputArrangement, ResolvesOverlappedSavedMonitorsAroundTheValidPair)
 {
     vela_output_rect rects[] = {

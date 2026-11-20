@@ -171,6 +171,8 @@ TEST_F(OutputConfig, PartialSaveKeepsTheUnpluggedMonitorsCoordinateSpace)
     ASSERT_TRUE(vela_output_config_load("Connected", &connected));
     const auto updated = entry("Connected", true, connected.x, connected.y);
     ASSERT_TRUE(vela_output_config_save(&updated, 1));
+    connected = {};
+    ASSERT_TRUE(vela_output_config_load("Connected", &connected));
     ASSERT_TRUE(vela_output_config_load("Unplugged", &unplugged));
     EXPECT_EQ(connected.x, 1920);
     EXPECT_EQ(unplugged.x, connected.x);

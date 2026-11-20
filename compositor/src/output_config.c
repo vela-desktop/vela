@@ -164,8 +164,7 @@ bool vela_output_config_load(const char *key, struct vela_saved_output *out)
 {
     struct file file;
     if (!read_file(&file)) {
-        // A partial read is no data: the position normalization below needs
-        // every enabled output, not the ones read before the error.
+        // Discard partial reads rather than using incomplete saved settings.
         free_file(&file);
         return false;
     }
@@ -197,6 +196,23 @@ bool vela_output_config_load(const char *key, struct vela_saved_output *out)
     }
     free_file(&file);
     return true;
+}
+
+bool vela_output_config_has_absent_output(bool (*present)(const char *key, void *data), void *data)
+{
+    struct file file;
+    bool read = read_file(&file);
+    bool absent = false;
+    for (int i = 0; read && i < file.count; ++i) {
+        const struct section *section = &file.sections[i];
+        if (section->has[POSITION] && (!section->has[ENABLED] || strcmp(section->values[ENABLED], "no") != 0)
+            && !present(section->name, data)) {
+            absent = true;
+            break;
+        }
+    }
+    free_file(&file);
+    return absent;
 }
 
 bool vela_output_config_save(const struct vela_output_config_entry *entries, int count)

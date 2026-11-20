@@ -698,6 +698,53 @@ private slots:
         QVERIFY(saved().contains("position=0,-1080"));
         QVERIFY(saved().contains("position=1920,0"));
     }
+    void resizingWithAnUnpluggedDisplayKeepsPreferredPositions_data()
+    {
+        QTest::addColumn<QString>("absent");
+        QTest::addColumn<QString>("survivor");
+        QTest::addColumn<int>("savedX");
+        QTest::newRow("middle-unplugged") << QString("HEADLESS-2") << QString("HEADLESS-3") << 3840;
+        QTest::newRow("right-unplugged") << QString("HEADLESS-3") << QString("HEADLESS-2") << 1920;
+    }
+    void resizingWithAnUnpluggedDisplayKeepsPreferredPositions()
+    {
+        QFETCH(QString, absent);
+        QFETCH(QString, survivor);
+        QFETCH(int, savedX);
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        command("add");
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3840);
+        QVERIFY(client->apply("HEADLESS-1", {}));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        command("remove " + absent.toUtf8());
+        QTRY_COMPARE(client->outputs().size(), 2);
+        QTRY_COMPARE(output(survivor)["x"].toInt(), 1920);
+
+        RawOutputClient request(socket);
+        request.prepare(false);
+        zwlr_output_configuration_v1_apply(request.configuration);
+        QVERIFY(request.sync());
+        QCOMPARE(request.result, 1);
+        QTRY_COMPARE(output("HEADLESS-1")["scale"].toDouble(), 2.0);
+        QTRY_COMPARE(output(survivor)["x"].toInt(), 960);
+
+        const QByteArray disk = saved();
+        const auto section = [&](const QString& name) {
+            const auto start = disk.indexOf("[" + name.toUtf8() + "]\n");
+            if (start < 0) return QByteArray();
+            const auto end = disk.indexOf("\n[", start);
+            return end < 0 ? disk.mid(start) : disk.mid(start, end - start);
+        };
+        QVERIFY(section("HEADLESS-1").contains("scale=2\n"));
+        QVERIFY(section(survivor).contains("position=" + QByteArray::number(savedX) + ",0"));
+        const int absentX = savedX == 3840 ? 1920 : 3840;
+        QVERIFY(section(absent).contains("position=" + QByteArray::number(absentX) + ",0"));
+    }
+
     void disablingMiddleDisplayKeepsThePreferredArrangement()
     {
         start();
@@ -927,7 +974,8 @@ int main(int argc, char** argv)
         });
         QObject::connect(&client, &Displays::confirmationRequested, &client, [] { puts("applied"); fflush(stdout); });
         if (!disable.isEmpty()) {
-            QObject::connect(&client, &Displays::confirmationFinished, &client, [&] { app.quit(); });
+            QObject::connect(
+                &client, &Displays::confirmationFinished, &client, [&] { app.exit(client.error().isEmpty() ? 0 : 1); });
         }
         check.start(10);
         return app.exec();

@@ -14,8 +14,9 @@ struct vela_output_rect {
 
 bool vela_output_rects_overlap(struct vela_output_rect a, struct vela_output_rect b);
 
-// Start with the first output and retain positions wherever possible. Move
-// disconnected or overlapping outputs to the nearest usable shared edge.
+// Anchor the first output and keep groups that already share edges together.
+// Move disconnected groups to a usable shared edge. Repair overlapping saved
+// layouts by placing their outputs individually.
 // The caller supplies zeroed scratch flags and normalizes the final origin.
 void vela_output_arrange_rects(struct vela_output_rect *rects, bool *placed, size_t count);
 
