@@ -27,6 +27,36 @@ under "Unreleased" in the pull request that makes a user-visible change.
 - Run (Win+R) is gone, with three Win+X entries that opened often-missing KDE
   tools and the network icon's always-disabled troubleshooter.
 
+- Themes: Settings > Personalization applies a theme in one click, with Undo.
+  Vela Official, Vela Floating, Window Glass and Vela Expressive are
+  installed, and the taskbar, Start, and quick settings with the notification
+  center each have their own styles. Your own themes and styles go in
+  `~/.config/vela/themes/` ([theme files](docs/configuration.md#theme-files)).
+- Vela Expressive, inspired by Material 3 Expressive: tonal colors from the
+  wallpaper or the accent, round shapes and lively motion in Vela's apps and
+  shell, notifications grouped by app, and a matching lock screen.
+- Personalization: an accent from the wallpaper or any HEX color; the taskbar
+  clock with or without the date and seconds, in 12 or 24 hours, and the
+  notification count; the Start button shows the sail, the distribution's logo
+  or a picture; Start's pinned apps and the desktop icons can be hidden.
+- Battery alerts when the PC or a peripheral (mouse, keyboard, headset) runs
+  low or critical, with the PC's low level set in Settings > System > Power.
+- While an app shares or records the screen, the taskbar says which app and
+  what it captures, and popups wait in the notification center (on by default,
+  Settings > System > Notifications).
+- Right-click a notification to dismiss it.
+- Settings > System > Updates chooses how often Vela checks (6 hours to 7 days)
+  and shows the next check; the updater shows the packaging recipe before it
+  installs.
+- Experimental virtual machines: QEMU/KVM guests with virtio-gpu and Vulkan
+  Venus ([virtual machines](docs/virtual-machines.md)).
+- Notifications keep only safe body markup and refuse malformed images, and
+  only the real credential programs get the system prompt's place above
+  full-screen windows.
+- Official packages need an x86-64-v3 CPU (AVX2, FMA, BMI1/2); the session
+  checks it before starting the desktop
+  ([hardware](docs/hardware.md#cpu-baseline-x86-64-v3)).
+
 ## 0.1.2 — 16 November 2026
 
 - Fedora 45 packages, beside Fedora 44.

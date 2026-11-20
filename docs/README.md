@@ -62,8 +62,9 @@ the current behavior.
 - [CI quality checks](ci-quality.md): sanitizers, static analysis, coverage and GPU CI.
 - [Code quality integrations](code-quality-integrations.md): labeler, Codecov, SonarQube Cloud and DCO.
 
-The repository root also has the [contribution guide](../CONTRIBUTING.md), the
-[security policy](../SECURITY.md) and the [contributors](../CONTRIBUTORS.md).
+The repository root also has the [changelog](../CHANGELOG.md), the
+[contribution guide](../CONTRIBUTING.md), the [code of conduct](../CODE_OF_CONDUCT.md),
+the [security policy](../SECURITY.md) and the [contributors](../CONTRIBUTORS.md).
 
 ## Status headers
 

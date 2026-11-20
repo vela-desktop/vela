@@ -142,7 +142,7 @@ Matrix homeserver works; no `velade.org` account is required.
   [keyboard shortcuts](docs/shortcuts.md) · [configuration](docs/configuration.md) ·
   [hardware coverage](docs/hardware.md) · [release channels](docs/release-channels.md) ·
   [virtual machines](docs/virtual-machines.md) ·
-  [roadmap](docs/roadmap.md)
+  [roadmap](docs/roadmap.md) · [changelog](CHANGELOG.md)
 - **Design:** [renderer](docs/renderer.md) · [taskbar](docs/taskbar.md) · [audio](docs/audio.md) ·
   [Bluetooth](docs/bluetooth.md) · [brightness](docs/brightness.md) ·
   [screen sharing](docs/screen-sharing.md) · [theme system](docs/theme-system.md) ·
