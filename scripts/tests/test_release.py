@@ -105,6 +105,9 @@ class Fixture(unittest.TestCase):
         (self.work / "CMakeLists.txt").write_text(
             f"cmake_minimum_required(VERSION 3.22)\nproject(vela\n    VERSION {version}\n    LANGUAGES C CXX)\n")
         (self.work / "CHANGELOG.md").write_text(CHANGELOG)
+        (self.work / "packaging/arch").mkdir(parents=True, exist_ok=True)
+        (self.work / "packaging/arch/PKGBUILD.beta").write_text(
+            "pkgname=vela\npkgver=${VELA_RELEASE_VERSION:-0.1.2}\npkgrel=1\n")
         (self.work / "change").write_text(message or version)
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", message or version)
@@ -411,6 +414,75 @@ class StatusAndTag(Fixture):
         result = self.release("tag", "0.2.1", "--yes")
         self.assertIn("delete it first", result.stderr)
         self.assertNotIn("v0.2.1", self.remote_tags())
+
+
+
+class Finish(Fixture):
+    ASSETS = [{"name": name} for name in ("SHA256SUMS", "SHA256SUMS-fedora", "SHA256SUMS-fedora-45",
+                                          "SHA256SUMS-ubuntu", "vela_0.2.1_amd64.deb")]
+
+    def publish(self, version, sha, **override):
+        self.git("push", "--quiet", "origin", f"{sha}:refs/tags/v{version}")
+        self.state.write_text(json.dumps({f"v{version}": {"isDraft": False, "assets": self.ASSETS, **override}}))
+
+    def head(self, branch):
+        return self.git("ls-remote", "origin", f"refs/heads/{branch}").split()[0]
+
+    def pr(self, head):
+        return next(c for c in self.gh_calls("pr", "create") if c[c.index("--head") + 1] == head)
+
+    def test_patch_release_moves_manual_builds_on_both_branches(self):
+        self.publish("0.2.1", self.patch)
+        result = self.release("finish", "0.2.1")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for base, head in (("release/0.2", "finish/v0.2.1-release-0.2"), ("main", "finish/v0.2.1-main")):
+            with self.subTest(base=base):
+                commit = self.head(head)
+                self.assertEqual(self.git("diff", "--name-only", f"{commit}^", commit), "packaging/arch/PKGBUILD.beta")
+                self.assertIn("pkgver=${VELA_RELEASE_VERSION:-0.2.1}",
+                              self.git("show", f"{commit}:packaging/arch/PKGBUILD.beta"))
+                self.assertIn("Signed-off-by: Test", self.git("log", "-1", "--format=%B", commit))
+                pr = self.pr(head)
+                self.assertEqual(pr[pr.index("--base") + 1], base)
+        self.assertEqual(self.git("rev-parse", f"{self.head('finish/v0.2.1-main')}^"),
+                         self.main_commit)
+        self.assertEqual(self.git("status", "--porcelain"), "")
+
+    def test_minor_release_creates_its_branch_and_moves_main_on(self):
+        self.git("push", "--quiet", "origin", ":refs/heads/release/0.2")
+        self.publish("0.2.0", self.main_commit)
+        result = self.release("finish", "0.2.0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.head("release/0.2"), self.main_commit)
+        branch = self.head("finish/v0.2.0-release-0.2")
+        self.assertEqual(self.git("diff", "--name-only", self.main_commit, branch), "packaging/arch/PKGBUILD.beta")
+        main = self.head("finish/v0.2.0-main")
+        self.assertEqual(sorted(self.git("diff", "--name-only", self.main_commit, main).split()),
+                         ["CMakeLists.txt", "packaging/arch/PKGBUILD.beta"])
+        self.assertIn("VERSION 0.3.0", self.git("show", f"{main}:CMakeLists.txt"))
+        pr = self.pr("finish/v0.2.0-main")
+        self.assertIn("start 0.3.0", pr[pr.index("--title") + 1])
+
+    def test_only_a_published_release_with_its_manifests_is_finished(self):
+        cases = {"not published": None, "draft": dict(isDraft=True),
+                 "missing manifest": dict(assets=self.ASSETS[1:])}
+        for name, override in cases.items():
+            with self.subTest(case=name):
+                if override is None:
+                    self.state.write_text("{}")
+                else:
+                    self.publish("0.2.1", self.patch, **override)
+                result = self.release("finish", "0.2.1")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.gh_calls("pr", "create"), [])
+                self.git("push", "--quiet", "origin", ":refs/tags/v0.2.1")
+
+    def test_a_patch_without_its_release_branch_stops(self):
+        self.git("push", "--quiet", "origin", ":refs/heads/release/0.2")
+        self.publish("0.2.1", self.patch)
+        result = self.release("finish", "0.2.1")
+        self.assertIn("is a patch release", result.stderr)
+        self.assertNotIn("release/0.2", self.git("ls-remote", "--heads", "origin"))
 
 
 if __name__ == "__main__":

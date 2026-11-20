@@ -12,6 +12,10 @@
   tag 0.2.1       sign v0.2.1 on the rehearsed commit with your key, push
                   it and remove the rehearsal
   clean 0.2.1     delete the rehearsal's draft and tag
+  finish 0.2.1    once v0.2.1 is published: open the pull requests that move
+                  manual builds (PKGBUILD.beta) to it; after a .0, create
+                  release/0.<minor> from the tag and move main to the next
+                  minor version
 
 The candidate is the tip of release/0.<minor> for a patch release and of
 main for a .0 release, unless --commit names a commit on that branch. Its
@@ -35,6 +39,10 @@ PROJECT_VERSION = re.compile(r"^(\s*VERSION\s+)([0-9][0-9.]*)", re.M)
 UNRELEASED = "## Unreleased\n"
 MONTHS = ("January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December")
+# Manual Arch builds fetch this tag when VELA_RELEASE_VERSION is unset.
+FALLBACK = re.compile(r"^(pkgver=\$\{VELA_RELEASE_VERSION:-)([0-9][0-9.]*)(\})", re.M)
+PKGBUILD_BETA = "packaging/arch/PKGBUILD.beta"
+MANIFESTS = ("SHA256SUMS", "SHA256SUMS-fedora", "SHA256SUMS-fedora-45", "SHA256SUMS-ubuntu")
 # A full suite keeps the workflow's plain name (run-name in each workflow).
 GPU_SUITES = {"gpu-amd.yml": "GPU CI - AMD (manual)", "gpu-nvidia.yml": "GPU CI - NVIDIA (manual)"}
 
@@ -257,6 +265,86 @@ def tag(version, remote, repo, yes=False, ask=input):
     print(f"Pushed the signed tag {name} on {sha}")
     print(f"Pipeline: https://github.com/{repo}/actions/workflows/build.yml?query=branch%3A{name}")
     clean(version, remote, repo)
+    print(f"Once it is published: scripts/release.py finish {version}")
+
+
+# --- finish ------------------------------------------------------------------
+
+def remote_branch(remote, branch):
+    out = run("git", "ls-remote", remote, f"refs/heads/{branch}").stdout.split()
+    return out[0] if out else None
+
+
+def open_change(remote, repo, base, head, title, body, edit):
+    """Commit edit(tree) on top of base in a temporary worktree, push head and
+    open a pull request; nothing when edit changes nothing."""
+    run("git", "fetch", "--quiet", remote, f"+refs/heads/{base}:refs/remotes/{remote}/{base}")
+    with tempfile.TemporaryDirectory(prefix="vela-finish-") as directory:
+        tree = Path(directory) / "tree"
+        run("git", "worktree", "add", "--quiet", "--detach", str(tree), f"refs/remotes/{remote}/{base}")
+        try:
+            edit(tree)
+            if not run("git", "status", "--porcelain", cwd=tree).stdout.strip():
+                print(f"{base} needs no change")
+                return
+            run("git", "commit", "--quiet", "-s", "-a", "-m", title, cwd=tree)
+            run("git", "push", "--quiet", remote, f"HEAD:refs/heads/{head}", cwd=tree)
+        finally:
+            run("git", "worktree", "remove", "--force", str(tree), check=False)
+    url = run("gh", "pr", "create", "--repo", repo, "--base", base, "--head", head,
+              "--title", title, "--body", body).stdout.strip()
+    print(f"Opened {url}")
+
+
+def set_fallback(tree, version):
+    path = tree / PKGBUILD_BETA
+    text = path.read_text()
+    if not FALLBACK.search(text):
+        raise ReleaseError(f"no pkgver fallback in {PKGBUILD_BETA}")
+    path.write_text(FALLBACK.sub(lambda m: m[1] + version + m[3], text, count=1))
+
+
+def finish(version, remote, repo):
+    minor, patch = parse_version(version)
+    name = f"v{version}"
+    view = run("gh", "release", "view", name, "--repo", repo, "--json", "isDraft,assets", check=False)
+    release = json.loads(view.stdout) if view.returncode == 0 else None
+    if not release or release["isDraft"]:
+        raise ReleaseError(f"{name} is not published yet: wait for its pipeline")
+    missing = set(MANIFESTS) - {asset["name"] for asset in release["assets"]}
+    if missing:
+        raise ReleaseError(f"{name} lacks {', '.join(sorted(missing))}: check its pipeline")
+    sha = remote_tag(remote, name)
+    if not sha:
+        raise ReleaseError(f"{name} is published but its tag is missing")
+    branch = f"release/0.{minor}"
+    if not remote_branch(remote, branch):
+        if patch:
+            raise ReleaseError(f"{branch} does not exist, but {name} is a patch release")
+        result = run("git", "push", "--quiet", remote, f"{sha}:refs/heads/{branch}", check=False)
+        if result.returncode != 0:
+            raise ReleaseError(f"could not create {branch} from {name} ({result.stderr.strip()}); "
+                               f"create it from the tag on GitHub, then run finish again")
+        print(f"Created {branch} from {name}")
+    body = (f"{name} is published. Manual Beta builds without VELA_RELEASE_VERSION now fetch it "
+            f"(`{PKGBUILD_BETA}`).")
+    open_change(remote, repo, branch, f"finish/{name}-release-0.{minor}",
+                f"packaging: manual Beta builds fetch {name}", body,
+                lambda tree: set_fallback(tree, version))
+    following = f"0.{minor + 1}.0"
+
+    def main_edit(tree):
+        set_fallback(tree, version)
+        cmake = tree / "CMakeLists.txt"
+        found = PROJECT_VERSION.search(cmake.read_text())
+        # Only the first finish after a .0 moves main on; a rerun finds it moved.
+        if not patch and found and found[2] == version:
+            cmake.write_text(bump_project_version(cmake.read_text(), following))
+
+    title = (f"release: start {following}; manual Beta builds fetch {name}" if not patch
+             else f"packaging: manual Beta builds fetch {name}")
+    main_body = body + (f" {branch} now carries 0.{minor}.x, and main moves to {following}." if not patch else "")
+    open_change(remote, repo, "main", f"finish/{name}-main", title, main_body, main_edit)
 
 
 def main(argv=None):
@@ -276,6 +364,7 @@ def main(argv=None):
     p.add_argument("version")
     p.add_argument("--yes", action="store_true", help="don't ask for confirmation")
     commands.add_parser("clean", help="delete the rehearsal draft release and tag").add_argument("version")
+    commands.add_parser("finish", help="pull requests after v<version> is published").add_argument("version")
     args = parser.parse_args(argv)
     try:
         parse_version(args.version)
@@ -287,6 +376,8 @@ def main(argv=None):
             return 0 if status(args.version, args.remote, args.repo)[0] else 1
         elif args.command == "tag":
             tag(args.version, args.remote, args.repo, args.yes)
+        elif args.command == "finish":
+            finish(args.version, args.remote, args.repo)
         else:
             clean(args.version, args.remote, args.repo)
     except ReleaseError as error:
