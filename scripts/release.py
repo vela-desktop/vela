@@ -151,25 +151,27 @@ def prepare(version, remote, repo, day=None):
         raise ReleaseError(f"{branch} is already at {current}")
     if not patch and current != version:
         raise ReleaseError(f"main is at {current}, not {version}: a .0 release is tagged on main as it is")
-    head = f"prepare/v{version}"
-    with tempfile.TemporaryDirectory(prefix="vela-prepare-") as directory:
-        tree = Path(directory) / "tree"
-        run("git", "worktree", "add", "--quiet", "--detach", str(tree), tip)
-        try:
-            cmake = tree / "CMakeLists.txt"
-            cmake.write_text(bump_project_version(cmake.read_text(), version))
-            changelog = tree / "CHANGELOG.md"
-            changelog.write_text(release_changelog(changelog.read_text(), version, day))
-            run("git", "add", "CMakeLists.txt", "CHANGELOG.md", cwd=tree)
-            run("git", "commit", "--quiet", "-s", "-m", f"release: prepare version {version}", cwd=tree)
-            run("git", "push", "--quiet", remote, f"HEAD:refs/heads/{head}", cwd=tree)
-        finally:
-            run("git", "worktree", "remove", "--force", str(tree), check=False)
+
+    def edit(tree, existing):
+        cmake = tree / "CMakeLists.txt"
+        cmake.write_text(bump_project_version(cmake.read_text(), version))
+        changelog = tree / "CHANGELOG.md"
+        # Keep the original heading date if the maintainer retries on another day.
+        prepared_day = day
+        if existing:
+            previous = run("git", "show", f"{existing}:CHANGELOG.md", check=False).stdout
+            heading = re.search(rf"(?m)^## {re.escape(version)} — (\d{{1,2}}) ({'|'.join(MONTHS)}) (\d{{4}})$", previous)
+            if heading:
+                try:
+                    prepared_day = datetime.date(int(heading[3]), MONTHS.index(heading[2]) + 1, int(heading[1]))
+                except ValueError:
+                    pass  # An invalid date will fail the tree comparison.
+        changelog.write_text(release_changelog(changelog.read_text(), version, prepared_day))
+
     body = (f"Sets `project(VERSION {version})` and moves the \"Unreleased\" CHANGELOG entries "
             f"under {version}. After it merges: `scripts/release.py rehearse {version}`.")
-    url = run("gh", "pr", "create", "--repo", repo, "--base", branch, "--head", head,
-              "--title", f"release: prepare version {version}", "--body", body).stdout.strip()
-    print(f"Opened {url}")
+    open_change(remote, repo, branch, f"prepare/v{version}", f"release: prepare version {version}", body,
+                edit, base_tip=tip)
 
 
 # --- rehearse, status, tag, clean -------------------------------------------
@@ -204,7 +206,7 @@ def rehearse(version, remote, repo, commit=None, gpu=True):
 
 def latest_run(repo, workflow, sha, branch=None, title=None):
     args = ["gh", "run", "list", "--repo", repo, "--workflow", workflow, "--limit", "100",
-            "--json", "headSha,displayTitle,status,conclusion,url"]
+            "--commit", sha, "--json", "headSha,displayTitle,status,conclusion,url"]
     if branch:
         args += ["--branch", branch]
     runs = [r for r in json.loads(run(*args).stdout)
@@ -254,14 +256,18 @@ def tag(version, remote, repo, yes=False, ask=input):
     name = f"v{version}"
     if not yes and ask(f"Type {name} to sign and push it on {sha[:12]} (it can't be undone): ").strip() != name:
         raise ReleaseError("not confirmed: nothing tagged")
-    local = run("git", "rev-parse", "--verify", "--quiet", f"refs/tags/{name}^{{commit}}", check=False).stdout.strip()
-    if local and local != sha:
-        raise ReleaseError(f"a local {name} points to {local[:12]}, not {sha[:12]}: delete it first")
+    ref = f"refs/tags/{name}"
+    local = run("git", "rev-parse", "--verify", "--quiet", ref, check=False).stdout.strip()
     if not local:
         run("git", "tag", "-s", "-m", f"Vela {version} Beta", name, sha)
-    if "-----BEGIN " not in run("git", "cat-file", "tag", name).stdout:
-        raise ReleaseError(f"{name} is not signed: configure a signing key for git tags")
-    run("git", "push", "--quiet", remote, f"refs/tags/{name}")
+        local = run("git", "rev-parse", "--verify", ref).stdout.strip()
+    target = run("git", "rev-parse", "--verify", f"{local}^{{commit}}").stdout.strip()
+    if target != sha:
+        raise ReleaseError(f"a local {name} points to {target[:12]}, not {sha[:12]}: delete it first")
+    verification = run("git", "verify-tag", local, check=False)
+    if verification.returncode != 0:
+        raise ReleaseError(f"{name} has no valid signature under the local Git configuration: {verification.stderr.strip()}")
+    run("git", "push", "--quiet", remote, f"{local}:{ref}")
     print(f"Pushed the signed tag {name} on {sha}")
     print(f"Pipeline: https://github.com/{repo}/actions/workflows/build.yml?query=branch%3A{name}")
     clean(version, remote, repo)
@@ -275,21 +281,23 @@ def remote_branch(remote, branch):
     return out[0] if out else None
 
 
-def open_change(remote, repo, base, head, title, body, edit):
+def open_change(remote, repo, base, head, title, body, edit, *, base_tip=None):
     """Open or reuse the pull request for an edit on top of the current base."""
-    base_ref = f"refs/remotes/{remote}/{base}"
-    run("git", "fetch", "--quiet", remote, f"+refs/heads/{base}:{base_ref}")
-    with tempfile.TemporaryDirectory(prefix="vela-finish-") as directory:
+    if base_tip is None:
+        base_tip = f"refs/remotes/{remote}/{base}"
+        run("git", "fetch", "--quiet", remote, f"+refs/heads/{base}:{base_tip}")
+    existing = remote_branch(remote, head)
+    if existing:
+        run("git", "fetch", "--quiet", remote, f"refs/heads/{head}")
+    with tempfile.TemporaryDirectory(prefix="vela-release-change-") as directory:
         tree = Path(directory) / "tree"
-        run("git", "worktree", "add", "--quiet", "--detach", str(tree), base_ref)
+        run("git", "worktree", "add", "--quiet", "--detach", str(tree), base_tip)
         try:
-            edit(tree)
+            edit(tree, existing)
             if not run("git", "status", "--porcelain", cwd=tree).stdout.strip():
                 print(f"{base} needs no change")
                 return
-            existing = remote_branch(remote, head)
             if existing:
-                run("git", "fetch", "--quiet", remote, f"refs/heads/{head}")
                 # Compare the proposed merge with the intended edit on today's base.
                 run("git", "add", "-u", cwd=tree)
                 expected = run("git", "write-tree", cwd=tree).stdout.strip()
@@ -349,10 +357,10 @@ def finish(version, remote, repo):
             f"`{PKGBUILD_BETA}` if it still points to an older release.")
     open_change(remote, repo, branch, f"finish/{name}-release-0.{minor}",
                 f"packaging: manual Beta builds fetch {name}", body,
-                lambda tree: set_fallback(tree, version))
+                lambda tree, _existing: set_fallback(tree, version))
     following = f"0.{minor + 1}.0"
 
-    def main_edit(tree):
+    def main_edit(tree, _existing):
         set_fallback(tree, version)
         cmake = tree / "CMakeLists.txt"
         found = PROJECT_VERSION.search(cmake.read_text())

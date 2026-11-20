@@ -147,12 +147,17 @@ four commands; between them, everything runs by itself:
 | `prepare 0.2.1` | From a temporary worktree of the branch tip, commits (signed off) `project(VERSION 0.2.1)` and a `## 0.2.1 — <date>` CHANGELOG section holding the "Unreleased" entries, pushes `prepare/v0.2.1` and opens the pull request against the branch. A `.0` only gets the CHANGELOG section: `main` is already at that version. | `v0.2.1` exists; the branch is already at or past 0.2.1; nothing is under "Unreleased"; the section exists |
 | `rehearse 0.2.1` | §4, then starts `gpu-amd.yml` and `gpu-nvidia.yml` on the rehearsal tag (`--no-gpu` to skip them). | as in §4 |
 | `status 0.2.1` | Prints each check for the rehearsed commit, and exits 0 only when all pass: still on the branch with the right version and no `v0.2.1`; the `build.yml` run of the rehearsal tag succeeded on it; the draft exists; a full AMD and a full NVIDIA suite succeeded on it. | — |
-| `tag 0.2.1` | Runs `status`, asks you to type `v0.2.1`, creates the tag with `git tag -s` on the rehearsed commit, checks the tag object carries a signature, pushes it and deletes the rehearsal. | any check fails; a different answer; an unsigned tag; a local `v0.2.1` on another commit |
+| `tag 0.2.1` | Runs `status`, asks you to type `v0.2.1`, creates the tag with `git tag -s` on the rehearsed commit, checks its signature with `git verify-tag`, pushes it and deletes the rehearsal. | any check fails; a different answer; a tag whose signature fails verification; a local `v0.2.1` on another commit |
 
 A GPU run counts as a full suite only when it has the workflow's plain
 name: both GPU workflows set `run-name` to append ` - only <regex>` when
 the `tests` input filters the suite. A later retry still running does not
 hide an earlier success on the same commit.
+
+If `prepare` already pushed the intended change, rerunning it keeps the
+original changelog date and reuses the branch and any open pull request.
+For SSH-signed tags, configure Git's `gpg.ssh.allowedSignersFile` with
+your public signing key so `git verify-tag` can verify the signature locally.
 
 ## 7. After publication
 

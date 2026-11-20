@@ -36,9 +36,11 @@ elif args[:2] == ["release", "delete"]:
     json.dump(releases, open(state, "w"))
 elif args[:2] == ["run", "list"]:
     runs = json.load(open(os.environ["TEST_GH_RUNS"])).get(args[args.index("--workflow") + 1], [])
+    if "--commit" in args:
+        runs = [r for r in runs if r["headSha"] == args[args.index("--commit") + 1]]
     if "--branch" in args:
         runs = [r for r in runs if r.get("headBranch") == args[args.index("--branch") + 1]]
-    print(json.dumps(runs))
+    print(json.dumps(runs[:int(args[args.index("--limit") + 1])]))
 elif args[:2] == ["workflow", "run"]:
     pass
 elif args[:2] == ["pr", "list"]:
@@ -327,6 +329,52 @@ class Prepare(Fixture):
         self.assertIn("already tagged", self.release("prepare", "0.2.2").stderr)
         self.assertEqual(self.gh_calls("pr", "create"), [])
 
+    def test_prepare_reuses_the_pushed_branch_and_then_the_open_pr(self):
+        head = "prepare/v0.2.2"
+        ref = f"refs/heads/{head}"
+        self.env["TEST_GH_FAIL_CREATE"] = head
+        failed = self.release("prepare", "0.2.2")
+        self.assertIn("could not create pull request", failed.stderr)
+        del self.env["TEST_GH_FAIL_CREATE"]
+        pushed = self.git("ls-remote", "origin", ref)
+        self.assertTrue(pushed)
+        self.commit("0.2.1", "advance the base")
+        self.git("push", "--quiet", "origin", "release/0.2")
+
+        retry = self.release("prepare", "0.2.2")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(self.git("ls-remote", "origin", ref), pushed)
+        creates = self.gh_calls("pr", "create")
+        again = self.release("prepare", "0.2.2")
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertIn("Already open:", again.stdout)
+        self.assertEqual(self.gh_calls("pr", "create"), creates)
+
+    def test_prepare_accepts_the_original_changelog_date(self):
+        self.git("switch", "--quiet", "-c", "prepare-fixture")
+        cmake = self.work / "CMakeLists.txt"
+        cmake.write_text(release.bump_project_version(cmake.read_text(), "0.2.2"))
+        changelog = self.work / "CHANGELOG.md"
+        changelog.write_text(release.release_changelog(changelog.read_text(), "0.2.2", datetime.date(2020, 1, 1)))
+        self.git("commit", "--quiet", "-sam", "prepare on an earlier day")
+        self.git("push", "--quiet", "origin", "HEAD:refs/heads/prepare/v0.2.2")
+
+        retry = self.release("prepare", "0.2.2")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/prepare/v0.2.2").split()[0],
+                         self.git("rev-parse", "HEAD"))
+
+    def test_prepare_refuses_to_overwrite_an_unrelated_remote_head(self):
+        ref = "refs/heads/prepare/v0.2.2"
+        self.git("switch", "--quiet", "-c", "unrelated")
+        other = self.commit("0.2.1", "unexpected change")
+        self.git("push", "--quiet", "origin", f"{other}:{ref}")
+        result = self.release("prepare", "0.2.2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("origin/prepare/v0.2.2 does not contain the intended change", result.stderr)
+        self.assertEqual(self.git("ls-remote", "origin", ref).split()[0], other)
+        self.assertEqual(self.gh_calls("pr", "create"), [])
+
 
 class StatusAndTag(Fixture):
     def setUp(self):
@@ -335,6 +383,9 @@ class StatusAndTag(Fixture):
         subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True)
         self.git("config", "gpg.format", "ssh")
         self.git("config", "user.signingkey", str(key) + ".pub")
+        allowed_signers = self.root / "allowed_signers"
+        allowed_signers.write_text(f"test@example.invalid {key.with_suffix('.pub').read_text()}")
+        self.git("config", "gpg.ssh.allowedSignersFile", str(allowed_signers))
         self.git("push", "--quiet", "origin", f"{self.patch}:refs/tags/rehearsal/v0.2.1")
         self.state.write_text(json.dumps({"rehearsal/v0.2.1": {"isDraft": True}}))
 
@@ -381,6 +432,16 @@ class StatusAndTag(Fixture):
                                       dict(r()[0], displayTitle="GPU CI - AMD (manual)")])
         self.assertEqual(self.release("status", "0.2.1").returncode, 0)
 
+    def test_run_limit_applies_after_filtering_by_commit(self):
+        self.green(gpu_amd=lambda runs: (
+            runs(title="GPU CI - AMD (manual)", sha="0" * 40) * 100
+            + runs(title="GPU CI - AMD (manual)")
+        ))
+        result = self.release("status", "0.2.1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for call in self.gh_calls("run", "list"):
+            self.assertEqual(call[call.index("--commit") + 1], self.patch)
+
     def test_without_a_rehearsal_there_is_no_status(self):
         self.git("push", "--quiet", "origin", ":refs/tags/rehearsal/v0.2.1")
         self.assertIn("rehearse 0.2.1 first", self.release("status", "0.2.1").stderr)
@@ -424,7 +485,23 @@ class StatusAndTag(Fixture):
         self.green()
         self.git("tag", "-a", "-m", "unsigned", "v0.2.1", self.patch)
         result = self.release("tag", "0.2.1", "--yes")
-        self.assertIn("is not signed", result.stderr)
+        self.assertIn("has no valid signature", result.stderr)
+        self.assertNotIn("v0.2.1", self.remote_tags())
+
+    def test_a_verified_local_tag_is_reused(self):
+        self.green()
+        self.git("tag", "-sm", "local release", "v0.2.1", self.patch)
+        local = self.git("rev-parse", "refs/tags/v0.2.1")
+        result = self.release("tag", "0.2.1", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.git("ls-remote", "--refs", "origin", "refs/tags/v0.2.1").split()[0], local)
+
+    def test_a_local_tag_with_an_untrusted_signature_is_not_pushed(self):
+        self.green()
+        self.git("tag", "-sm", "local release", "v0.2.1", self.patch)
+        self.git("config", "--unset", "gpg.ssh.allowedSignersFile")
+        result = self.release("tag", "0.2.1", "--yes")
+        self.assertIn("has no valid signature", result.stderr)
         self.assertNotIn("v0.2.1", self.remote_tags())
 
     def test_a_local_tag_on_another_commit_stops(self):
