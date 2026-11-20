@@ -140,7 +140,7 @@ release.
 | Stage | What | Pull request |
 |---|---|---|
 | **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
-| **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | — |
+| **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | [#307](https://github.com/vela-desktop/vela/pull/307) |
 | **R3** | `release.py prepare` (version bump pull request with its CHANGELOG section), `release.py status` (rehearsal, both GPU suites and upgrade tests on the exact commit, in one go/no-go summary; the GPU suites are dispatched by `rehearse`), `release.py tag` (refuses unless `status` is green, signs and pushes). | — |
 | **R4** | After publication: notes taken from the CHANGELOG section instead of `--generate-notes`, and the `PKGBUILD.beta` fallback pull requests opened by `release.py tag`. | — |
 
