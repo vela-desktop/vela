@@ -74,6 +74,13 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 3
+      # The notes come from CHANGELOG.md: stop before building a Beta that
+      # has none (scripts/release.py prepare writes the section).
+      - name: Check the Beta release notes
+        if: steps.release.outputs.beta_version != ''
+        env:
+          VERSION: ${{ steps.release.outputs.beta_version }}
+        run: python3 -I scripts/release-notes.py "$VERSION"
       - name: Skip costly jobs for documentation-only PRs
         id: detect
         shell: bash
@@ -716,6 +723,10 @@ jobs:
         with:
           name: vela-ubuntu-26.10-deb
           path: dist
+      - name: Write the release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.changes.outputs.beta_version }}
+        run: python3 -I scripts/release-notes.py "$VERSION" > release-notes.txt
       - name: Publish signed Beta release
         shell: bash
         env:
@@ -784,14 +795,17 @@ jobs:
                     "${fedora45_packages[0]}" SHA256SUMS-fedora-45
                     "${ubuntu_packages[0]}" SHA256SUMS-ubuntu)
             if [ "$draft" = true ]; then
+              # The same notes, to read before tagging, under a warning.
+              { printf 'Rehearsal of v%s on %s. Not a release: delete it with scripts/release.py clean %s.\n\n' \
+                  "$version" "$GITHUB_SHA" "$version"
+                cat ../release-notes.txt; } > ../rehearsal-notes.txt
               gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
                 --repo "$GITHUB_REPOSITORY" --verify-tag --draft --prerelease=false \
-                --title "Rehearsal of Vela $version Beta" \
-                --notes "Rehearsal of v$version on $GITHUB_SHA. Not a release: delete it with scripts/release.py clean $version."
+                --title "Rehearsal of Vela $version Beta" --notes-file ../rehearsal-notes.txt
             else
               gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
                 --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease=false \
-                --title "Vela $version Beta" --generate-notes
+                --title "Vela $version Beta" --notes-file ../release-notes.txt
             fi
           fi
 
