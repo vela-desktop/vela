@@ -5,10 +5,9 @@ few commands instead of a checklist. The release rules themselves do not
 change: numbered `v0.<minor>.<patch>` tags, the release branches and the
 validation in [release channels](release-channels.md).
 
-> **Status:** R1 (the rehearsal tag), R2 (upgrade tests) and R3 (the
-> commands) in progress.
+> **Status:** R1–R4 in progress, in stacked pull requests (§8).
 >
-> **Remaining:** R4 (§7).
+> **Remaining:** review and merge; the first real release made this way.
 
 ## 1. The problem
 
@@ -155,16 +154,40 @@ name: both GPU workflows set `run-name` to append ` - only <regex>` when
 the `tests` input filters the suite. A later retry still running does not
 hide an earlier success on the same commit.
 
-## 7. Stages
+## 7. After publication
+
+**Notes.** `scripts/release-notes.py 0.2.1` prints the CHANGELOG section
+`prepare` wrote, as plain text, because Settings shows release notes
+without Markdown ([Updates](updates.md)): a Markdown link becomes its
+text followed by the address in parentheses, a relative link points at the
+file in the tagged tree, and two lines at the end link the installation guide and the changelog. The
+`changes` job runs it first on every Beta tag, so a tag without a section
+stops before anything is built; `publish-beta` passes the same text to
+the release (`--generate-notes` gave only a changelog link). A
+rehearsal's draft carries the same notes under a warning line, to be read
+before tagging. Editing a published release's text later
+(`gh release edit`) still leaves its assets untouched.
+
+**`release.py finish 0.2.1`**, once `v0.2.1` is published with its four
+manifests, opens a pull request on `release/0.2` and one on `main` that
+move the `PKGBUILD.beta` fallback (what manual builds fetch without
+`VELA_RELEASE_VERSION`) to the new tag. After a `.0` it first creates
+`release/0.<minor>` from the tag, and the `main` pull request also moves
+`project(VERSION)` to the next minor version. If the release branch rules
+refuse the push, it says so; create the branch from the tag on GitHub and
+run it again. It refuses a draft, a release missing a manifest, and a
+patch release whose branch does not exist.
+
+## 8. Stages
 
 | Stage | What | Pull request |
 |---|---|---|
 | **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
 | **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | [#307](https://github.com/vela-desktop/vela/pull/307) |
 | **R3** | The commands (§6): `prepare`, GPU suites started by `rehearse`, `status`, `tag`. | [#308](https://github.com/vela-desktop/vela/pull/308) |
-| **R4** | After publication: notes taken from the CHANGELOG section instead of `--generate-notes`, and the `PKGBUILD.beta` fallback pull requests opened by `release.py tag`. | — |
+| **R4** | After publication (§7): notes from the CHANGELOG section, and `release.py finish`. | — |
 
-## 8. Not in scope
+## 9. Not in scope
 
 - Tags or releases created by CI on its own.
 - A second Beta channel or pre-release versions such as `v0.2.1-rc1`: the
@@ -173,7 +196,7 @@ hide an earlier success on the same commit.
 - 0.1.x: its updater only sees prereleases, and 0.1.x support ends with
   `v0.2.0`.
 
-## 9. Tests
+## 10. Tests
 
 - `packaging/tests/test_beta_publication.py` runs the real publication
   script with a fake `gh`: a real tag creates a normal release, a
@@ -199,4 +222,13 @@ hide an earlier success on the same commit.
   or missing or running GPU suite, no draft); and `tag` signing with a
   throwaway SSH key, asking for the exact name, and refusing an unsigned
   or misplaced local tag. A test ties the GPU suite names `status` expects
-  to the workflows' `name` and `run-name`.
+  to the workflows' `name` and `run-name`. `finish` is run for a patch (two
+  one-file pull requests) and for a `.0` (the new branch, and `main` moved to
+  the next minor version), and refuses a draft, a missing manifest and a
+  missing release branch.
+- `scripts/tests/test_release_notes.py` checks the section boundaries
+  (`0.2.1` never reads `0.2.10`), plain-text links pinned to the tag, the
+  footer, refusals of a missing or empty section, and that the real
+  CHANGELOG has every published version.
+- `packaging/tests/test_beta_publication.py` checks that a release takes its
+  notes from the file and a rehearsal puts its warning above them.
