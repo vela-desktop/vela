@@ -78,10 +78,17 @@ the only feature exception.
 
 **Feature freeze:** 0.1.x remains a maintenance series, without new
 user-facing features. The
-[0.1.2 tracker #225](https://github.com/vela-desktop/vela/issues/225)
-is separate from the next minor release. The
-[OOM policy #148](https://github.com/vela-desktop/vela/pull/148) has
-already merged into main as post-0.1 work, not an outstanding beta blocker.
+[`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
+shipped on 16 November 2026. It includes Fedora 45 packaging, keyring
+selection, desktop fixes, and backports for allocation recovery, bounded
+resources and security hardening. Backports also stabilized text during
+animation and scrolling ([#217](https://github.com/vela-desktop/vela/pull/217)),
+prevented background apps from stealing focus
+([#264](https://github.com/vela-desktop/vela/pull/264)), and reduced copying
+in shared-memory screen capture
+([#260](https://github.com/vela-desktop/vela/pull/260)). See the
+[completed release tracker #225](https://github.com/vela-desktop/vela/issues/225)
+for the backport inventory.
 
 ## 0.2 — Personalization, productivity and architectural hardening
 
@@ -92,40 +99,79 @@ Distinguish **merged on main**, **candidate for 0.2**, and
 
 **Already merged into main since the 0.1 branch split:**
 
+Some changes below were backported to the 0.1.2 maintenance Beta.
+
 - **Theme engine and personalization:** declarative themes, per-surface
-  styles, Window Glass and Vela Floating
-  ([#207](https://github.com/vela-desktop/vela/pull/207)); redesigned
-  personalization, one-click theme galleries, previews and Undo
-  ([#212](https://github.com/vela-desktop/vela/pull/212)); accent,
-  clock, taskbar and Start preferences
-  ([#216](https://github.com/vela-desktop/vela/pull/216)); expressive
-  controls ([#244](https://github.com/vela-desktop/vela/pull/244)) and
-  Vela Expressive with wallpaper-derived dynamic color, motion and
-  Start/Quick Settings/notification variants
-  ([#248](https://github.com/vela-desktop/vela/pull/248)).
-- **Daily desktop:** battery notifications for computers and peripherals
-  ([#215](https://github.com/vela-desktop/vela/pull/215));
-  screen-sharing indicator, capture attribution and automatic
-  Do Not Disturb ([#220](https://github.com/vela-desktop/vela/pull/220));
-  right-click notification dismissal
-  ([#188](https://github.com/vela-desktop/vela/pull/188));
-  a taskbar that pages its app buttons when space runs out
-  ([#219](https://github.com/vela-desktop/vela/issues/219),
-  [#266](https://github.com/vela-desktop/vela/pull/266)).
-  Expressive already implements a grouped-notification variant.
-- **Integration and compatibility:** update-check scheduling
-  ([#190](https://github.com/vela-desktop/vela/pull/190));
-  showing packaging recipes during updates
-  ([#247](https://github.com/vela-desktop/vela/pull/247));
-  Fedora 45 packaging ([#224](https://github.com/vela-desktop/vela/pull/224));
-  a temporary choice of secret backend pending Vela Secrets
+  styles for the taskbar, Start, Quick Settings and notifications, and live
+  reload for built-in and user-authored themes. The built-in themes include
+  Window Glass and Vela Floating
+  ([#207](https://github.com/vela-desktop/vela/pull/207)). Redesigned
+  personalization with one-click theme galleries, previews, and Undo
+  for applying or resetting themes landed in
+  [#212](https://github.com/vela-desktop/vela/pull/212).
+- **Personalization settings:** custom accent picker with exact hex input,
+  shared 12/24-hour format across Vela, optional date and seconds on the taskbar,
+  a notification count toggle, a Start icon chosen from the Vela sail,
+  distribution logo or a custom image, and visibility options for pinned
+  Start apps and desktop icons
+  ([#216](https://github.com/vela-desktop/vela/pull/216)).
+- **Vela Expressive:** optional shared controls and motion, a palette that
+  can follow the wallpaper, a themed lock screen, independent Start and Quick
+  Settings styles, and notifications grouped by app. Quick Settings tile
+  states and the Do Not Disturb toggle are exposed to screen readers
+  ([#244](https://github.com/vela-desktop/vela/pull/244),
+  [#248](https://github.com/vela-desktop/vela/pull/248)).
+- **Battery and screen sharing:** low and critical battery alerts for PCs
+  and peripherals, with a configurable low threshold for the PC
+  ([#215](https://github.com/vela-desktop/vela/pull/215)). The sharing
+  indicator identifies the app and the screen or window being captured.
+  Optional automatic Do Not Disturb holds back ordinary popups during
+  sharing or recording
+  ([#220](https://github.com/vela-desktop/vela/pull/220)). Notifications can
+  also be dismissed with a right-click
+  ([#188](https://github.com/vela-desktop/vela/pull/188)).
+- **Taskbar:** window filters by desktop and display, keyboard-accessible
+  previews on click, attention indicators, app badges and progress, a tray
+  drawer configurable per icon, drag-to-pin, drag-to-raise, and placement on
+  any screen edge. Super+number opens apps or switches virtual desktops.
+  In app mode, Shift launches a new instance and Alt opens the jump list
+  ([#299](https://github.com/vela-desktop/vela/pull/299)). App buttons page
+  when space runs out ([#266](https://github.com/vela-desktop/vela/pull/266)).
+- **Desktop and Files menus:** app-provided actions appear directly in the
+  main menu, with per-menu visibility controls in Settings. Start uses the
+  same menu for pinned apps and the full app list. The window menu can move
+  a window to another virtual desktop or show it on all desktops
+  ([#298](https://github.com/vela-desktop/vela/pull/298)).
+- **Updates:** configurable automatic check intervals, the next scheduled
+  check and a waiting-for-network status in Settings, and a manual recheck
+  while an update is available
+  ([#190](https://github.com/vela-desktop/vela/pull/190)). The updater shows
+  pinned packaging recipes before installing
+  ([#247](https://github.com/vela-desktop/vela/pull/247)) and discovers
+  numbered Betas published as normal GitHub releases. Users upgrading from
+  0.1.2 need the [one-time updater procedure](https://github.com/vela-desktop/vela/blob/main/docs/release-channels.md#updating-older-beta-installations)
+  ([#282](https://github.com/vela-desktop/vela/pull/282)).
+- **Integration and compatibility:** Fedora 45 packages alongside Fedora 44
+  ([#224](https://github.com/vela-desktop/vela/pull/224)). Settings offers
+  KWallet or GNOME Keyring for app passwords pending Vela Secrets. The
+  selected backend takes effect on the next login
   ([#222](https://github.com/vela-desktop/vela/issues/222),
-  [#255](https://github.com/vela-desktop/vela/pull/255)) and KWallet's Secret Service
-  started through `ksecretd`
-  ([#277](https://github.com/vela-desktop/vela/pull/277));
-  and experimental Vulkan Venus virtual-machine support
-  ([#251](https://github.com/vela-desktop/vela/pull/251)).
-  Experimental capabilities still need hardware validation.
+  [#255](https://github.com/vela-desktop/vela/pull/255)), and KWallet's Secret
+  Service starts through `ksecretd`
+  ([#277](https://github.com/vela-desktop/vela/pull/277)). The shell also
+  discovers installed XDG icon themes without KDE's Qt platform plugin
+  ([#259](https://github.com/vela-desktop/vela/pull/259)).
+- **Experimental virtual machines:** [QEMU/KVM with virtio-gpu and Vulkan
+  Venus](virtual-machines.md) landed in
+  [#251](https://github.com/vela-desktop/vela/pull/251) and supersedes the
+  [nested Distrobox proposal #203](https://github.com/vela-desktop/vela/pull/203)
+  as the way to try Vela on other hosts. Nested and full DRM/KMS sessions
+  were verified on one Fedora 44 KDE guest. More host and driver combinations
+  and the full GPU suites still need validation.
+- **CPU requirements:** official x86 builds target x86-64-v3, and the
+  session checks CPU support before starting the compositor. Local builds
+  can select a different CPU target at configure time
+  ([#245](https://github.com/vela-desktop/vela/pull/245)).
 - **Core improvements:** host allocation and OOM handling, renderer
   pass reuse and bounded GPU/icon memory
   ([#148](https://github.com/vela-desktop/vela/pull/148),
@@ -135,12 +181,20 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [#252](https://github.com/vela-desktop/vela/pull/252));
   compositor security hardening
   ([#258](https://github.com/vela-desktop/vela/pull/258));
-  Settings that keep the saved preference when a write fails
+  and Settings that keep the saved preference when a write fails
   ([#218](https://github.com/vela-desktop/vela/issues/218),
-  [#267](https://github.com/vela-desktop/vela/pull/267));
-  x86-64-v3 builds ([#245](https://github.com/vela-desktop/vela/pull/245));
-  and experimental Intel ANV GPU CI
-  ([#226](https://github.com/vela-desktop/vela/pull/226)).
+  [#267](https://github.com/vela-desktop/vela/pull/267)).
+- **Reliability and CI:** stricter handling of notification images and
+  markup, tighter rules for privileged system prompts, and parser fuzz
+  tests in CI
+  ([#288](https://github.com/vela-desktop/vela/pull/288),
+  [#289](https://github.com/vela-desktop/vela/pull/289),
+  [#290](https://github.com/vela-desktop/vela/pull/290),
+  [#294](https://github.com/vela-desktop/vela/pull/294)).
+  GPU CI now runs NVIDIA suites on rented Vast.ai hardware and has an
+  experimental Intel ANV workflow
+  ([#199](https://github.com/vela-desktop/vela/pull/199),
+  [#226](https://github.com/vela-desktop/vela/pull/226)).
 
 **Candidates to evaluate before 0.2, not automatically release blockers:**
 
@@ -150,22 +204,20 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [always-on-top #108](https://github.com/vela-desktop/vela/pull/108).
   Both are older draft PRs requiring compatibility work, review and tests;
   do not merge them solely to satisfy the roadmap.
-- Evaluate taskbar app shortcuts (Super+1 through Super+9) and configurable
-  initial NumLock state requested in
+- Evaluate configurable initial NumLock state requested in
   [community feedback #214](https://github.com/vela-desktop/vela/issues/214).
 - Finish the desktop configuration fix
   [#235](https://github.com/vela-desktop/vela/pull/235) /
   [#236](https://github.com/vela-desktop/vela/issues/236).
-- Optionally evaluate
-  [nested Distrobox #203](https://github.com/vela-desktop/vela/pull/203)
-  and, from the [backlog](#next--not-yet-assigned-to-a-release), taskbar
-  auto-hide and Start file/settings search, only if bounded and well
-  tested.
+- Optionally evaluate taskbar auto-hide and Start file/settings search from
+  the [backlog](#next--not-yet-assigned-to-a-release) if the work is scoped
+  and well tested.
 
 **Release gate:** decide the final shortlist, freeze user-facing work and
 validate the exact candidate commit with required AMD/NVIDIA GPU suites,
 real Wayland login sessions, security/lock/crash recovery, keyrings,
-themes, packaging and updater tests. Investigate
+themes, packaging and updater tests. Exercise the taskbar with physical
+multi-monitor setups and apps that publish badges and progress. Investigate
 [Ubuntu GPU failures #197](https://github.com/vela-desktop/vela/issues/197).
 Follow the signed-tag rehearsal and
 [release process](release-channels.md). There is **no fixed ship date**;
@@ -207,10 +259,10 @@ Possible milestone for a distinctive, coherent default Vela visual language
 across compositor-owned chrome, shell, Settings, Files and first-party
 tools. The theme system and Vela Expressive already in main are
 not themselves the coordinated default redesign. Candidate supporting UX
-work: Start's Recommended content and pinned-app folders, taskbar layouts
-(including vertical and uncombined buttons), app badges, system sounds,
-font/regional settings and printing/scanning integration. Which of these
-belongs in 0.4 is provisional.
+work includes Start's Recommended content and pinned-app folders, further
+taskbar layouts such as uncombined buttons, system sounds, font and regional
+settings, and printing/scanning integration. Which of these belongs in 0.4
+is provisional.
 
 **Design development is intentionally independent of release integration.**
 A dedicated long-lived branch may be used for gradual exploration and
@@ -316,8 +368,10 @@ Notable post-0.1 work includes the theme/personalization system
 [#248](https://github.com/vela-desktop/vela/pull/248)),
 battery notifications ([#215](https://github.com/vela-desktop/vela/pull/215)),
 screen-sharing indicator ([#220](https://github.com/vela-desktop/vela/pull/220)),
-update scheduling ([#190](https://github.com/vela-desktop/vela/pull/190)),
-memory policy and security hardening described under 0.2.
+the taskbar update ([#299](https://github.com/vela-desktop/vela/pull/299)),
+context menu improvements ([#298](https://github.com/vela-desktop/vela/pull/298)),
+update scheduling ([#190](https://github.com/vela-desktop/vela/pull/190)) and
+[experimental VM support](virtual-machines.md).
 
 - **Session**: login entry, systemd and D-Bus, portals, Xwayland, lock screen,
   idle, notifications, system tray, and Vela's own
