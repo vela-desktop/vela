@@ -237,6 +237,7 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
 | `appearance/accentSource` | `theme` | Where the accent comes from: `theme` (the theme's wish: its `color-source`), `wallpaper` (the wallpaper's color) or `chosen` (`appearance/accent`, the color chosen in Settings > Colors). A theme's own `accent` wins over all three ([Expressive look](#expressive-look)) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
+| `menus/hidden` | empty | The context-menu entries turned off in Settings → Personalization → Context menu, by key (`desktop.view`, `file.copy`, `service/<file>/<action>`...); the shell and Files hide them at once ([context menus](renderer.md#14-context-menus)) |
 
 ## Window activation
 
@@ -336,7 +337,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_OUTPUT_SIZE` | Resolution/refresh for nested or headless outputs, for example `1920x1080@144`. |
 | `VELA_NATURAL_SCROLL=0` | Force classic touchpad scrolling; this override wins over the stored natural-scrolling setting. |
 | `XKB_DEFAULT_LAYOUT` | Initial keyboard layout, for example `it`. |
-| `VELA_TERMINAL` | Terminal launched by Super+Enter. Default: `konsole`. |
+| `VELA_TERMINAL` | Terminal launched by Super+Enter, as a shell command. Default: the first of `konsole`, `foot`, `kitty`, `alacritty` and `xterm` that starts. |
 
 ### Presentation, VRR and power
 
@@ -391,10 +392,11 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_FILES_TIMING=1` | Make `vela-files` print startup timing data; used by `scripts/measure.sh`. |
 | `VELA_STILL=<date and time>` | For still pictures that don't change with when they are taken (`scripts/theme-pictures.py`): the shell's clock and calendar show this ISO date and time, such as `2026-01-14T10:30:00`, and text carets don't blink. |
 | `VELA_SCREEN_DUMP_OUTPUT` | Select which output `vela-screen-dump` captures by zero-based index. |
+| `VELA_ROUNDED_DUMP=<directory>` | Make any of Vela's Qt programs write, twice a second, every shown item with corners, its position and its radii, for `scripts/check-corners.py` ([visual coherence](visual-coherence.md#612-corners-inside-corners)). |
 
 ## Internal variables
 
-The supervisor, session launcher and test harness also use internal variables such as `VELA_WAYLAND_SOCKET_FD`, `VELA_WAYLAND_DISPLAY`, `VELA_BRIGHTNESS_FD`, `VELA_START_LOCKED`, `VELA_RESTARTED`, `VELA_BUILD` and `VELA_TEST_MARK`.
+The supervisor, session launcher and test harness also use internal variables such as `VELA_WAYLAND_SOCKET_FD`, `VELA_WAYLAND_DISPLAY`, `VELA_BRIGHTNESS_FD`, `VELA_START_LOCKED`, `VELA_RESTARTED`, `VELA_SECRET_BACKEND`, `VELA_SECRET_CONFIGURED`, `VELA_BUILD` and `VELA_TEST_MARK`.
 
 They are implementation details, are not intended as stable user configuration, and may change without notice.
 
