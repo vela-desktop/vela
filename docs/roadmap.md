@@ -161,6 +161,14 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   0.1.0–0.1.2 need the
   [one-time updater step](release-channels.md#updating-older-beta-installations)
   ([#282](https://github.com/vela-desktop/vela/pull/282)).
+- **Displays:** Display Settings and the compositor keep monitors from
+  overlapping, and unplugging a monitor closes gaps that would strand the
+  pointer, while the saved arrangement returns when the monitors reconnect
+  ([#303](https://github.com/vela-desktop/vela/pull/303), fixing
+  [#301](https://github.com/vela-desktop/vela/issues/301)). Closing a laptop
+  lid with an external display connected turns the built-in panel off and
+  reopening it restores the panel's settings; suspending on lid close
+  follows logind ([#302](https://github.com/vela-desktop/vela/pull/302)).
 - **Experimental virtual machines:** [QEMU/KVM with virtio-gpu and Vulkan
   Venus](virtual-machines.md) landed in
   [#251](https://github.com/vela-desktop/vela/pull/251) and supersedes the
@@ -211,7 +219,9 @@ Distinguish **merged on main**, **candidate for 0.2**, and
 validate the exact candidate commit with required AMD/NVIDIA GPU suites,
 real Wayland login sessions, security/lock/crash recovery, keyrings,
 themes, packaging and updater tests. Exercise the taskbar with physical
-multi-monitor setups and apps that publish badges and progress. Investigate
+multi-monitor setups and apps that publish badges and progress. Close and
+reopen a physical laptop lid with and without an external display, checking
+suspend and resume to the lock screen. Investigate
 [Ubuntu GPU failures #197](https://github.com/vela-desktop/vela/issues/197).
 Follow the signed-tag rehearsal and
 [release process](release-channels.md). There is **no fixed ship date**.
@@ -373,7 +383,8 @@ sections above record when work was integrated or published.
   latching, live acrylic blur, rounded corners and shadows, Vela's title bar,
   and a clean exit on [Vulkan device loss](vulkan-device-loss.md).
 - **Displays and gaming**: native display configuration with compositor-owned
-  rollback, multi-monitor hotplug with per-output scale, direct scanout, VRR,
+  rollback, multi-monitor hotplug with per-output scale and layouts that
+  never overlap, laptop lids with external displays, direct scanout, VRR,
   tearing control, explicit sync, X11 apps and games at native resolution,
   Night Light, and
   [brightness](brightness.md) per monitor over DDC/CI and the kernel backlight
