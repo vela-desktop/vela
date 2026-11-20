@@ -151,20 +151,18 @@ Then check:
 - a rerun of `publish-beta` keeps the draft's assets unchanged;
 - each package matches its manifest and its attestation names this
   repository, the rehearsal tag, the commit and the expected workflow;
-- in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers, the installed
-  `vela-update-beta` finds the release, replaces `vela-git` unattended,
-  then reports `up-to-date`; the verifier rejects the wrong repository,
-  the wrong commit and tampered bytes; and the way back to Experimental
-  works.
+- `beta-upgrade` upgraded the previous published Beta to the candidate
+  packages in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers
+  ([release automation §5](release-automation.md#5-upgrade-tests)).
 
-The updater cannot read a draft, so until the upgrade tests move into CI
-([release automation R2](release-automation.md#5-stages)) the container
-checks still need a published release: push the same tag to the public
-fork `BrandoDev/vela-release-rehearsal`, point `REPO` at it, and delete
-the fork's release and tag to try again
-(`gh release delete v0.x.y --repo BrandoDev/vela-release-rehearsal --yes`,
-then `git push <fork-remote> :refs/tags/v0.x.y`). Immutable releases are
-off on the fork; never enable them there.
+The updater cannot read a draft, so its own path is tried after the tag:
+once the release is published, `beta-update-check` lets the previous
+Beta's updater install it in the same four containers and requires it to
+report `up-to-date`. Run it again for any published Beta with
+`gh workflow run beta-update-check.yml -f version=0.x.y`. The updater's
+verifier, channel replacement and the way back to Experimental are
+covered offline by `packaging/tests` and the Fedora fixture jobs. The
+public fork once used for rehearsals is no longer needed.
 
 For `v0.1.0` (31 October 2026) the rehearsal found two pipeline bugs that
 only tag builds reach (`cosign` missing from the Arch package job, and the

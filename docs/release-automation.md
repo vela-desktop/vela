@@ -5,9 +5,9 @@ few commands instead of a checklist. The release rules themselves do not
 change: numbered `v0.<minor>.<patch>` tags, the release branches and the
 validation in [release channels](release-channels.md).
 
-> **Status:** R1 in progress: the rehearsal tag.
+> **Status:** R1 (the rehearsal tag) and R2 (upgrade tests) in progress.
 >
-> **Remaining:** R2–R4 (§5).
+> **Remaining:** R3–R4 (§6).
 
 ## 1. The problem
 
@@ -54,7 +54,10 @@ what a hotfix is for; what has to shrink is the work around it.
 - **The rehearsal runs in `vela-desktop/vela`,** not on a fork: a
   `rehearsal/v0.<minor>.<patch>` tag runs the Beta pipeline and publishes
   a *draft* release. No token for another repository is needed, and the
-  fork is retired after R2.
+  fork is retired with R2.
+- **No modified updater in the tests.** Before the tag the packages are
+  upgraded with the native package manager; the updater itself is tried,
+  unmodified, against the real release right after it is published (§5).
 - **Version numbers stay `v0.<minor>.<patch>`.** A hotfix is a patch
   release.
 
@@ -97,24 +100,51 @@ candidate is the tip of `origin/release/0.2`, or `origin/main` for a
 must be the version being rehearsed, and the real `v0.2.1` tag must not
 exist yet.
 
-## 5. Stages
+## 5. Upgrade tests
+
+`scripts/ci-beta-upgrade.py` starts from what users have: the newest
+published Beta older than the version under test, downloaded from its
+release and checked against the release's manifest. A release without that
+distribution's manifest (0.1.0 and 0.1.1 had no Fedora 45 package) is
+skipped; when nothing older exists, there is nothing to upgrade from and
+the test says so. It runs in clean Arch, Fedora 44, Fedora 45 and Ubuntu
+26.10 containers.
+
+**Before publication** (`beta-upgrade` in `build.yml`, on the release tag
+and on its rehearsal), the previous Beta is upgraded to the run's own
+packages with pacman, dnf or apt, the packages that publication would
+upload. Then the installed version must be the new one, the package's
+files must verify (`pacman -Qkk`, `rpm -V`, `dpkg --verify`) and
+`vela-update` must run. `publish-beta` waits for all four.
+
+**After publication** (`beta-update-check.yml`, called once `publish-beta`
+has published a real release, and runnable by hand for any published
+Beta), the previous Beta's own updater installs the release, as it does for
+users. From an updater before 0.2.0, which only sees prereleases, the test
+takes the documented one-time step, `packaging/vela-update` from the
+release's tree ([release channels](release-channels.md#updating-older-beta-installations)).
+Then `vela-update --check --json` must report the new release as
+`up-to-date`. It reads the JSON because plain `--check` also exits 1 when
+the check itself fails, and an updater that finds no release at all (0.1.x
+once its releases became normal ones) must not pass.
+
+What this does not cover before the tag is the updater's conversation with
+the real GitHub. The updater cannot read a draft, and a copy patched to
+read one (tag format, downloads, provenance reference) would need changing
+for every old updater. Its logic stays covered offline by
+`packaging/tests`, and a failure after publication is fixed by a patch
+release.
+
+## 6. Stages
 
 | Stage | What | Pull request |
 |---|---|---|
 | **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
-| **R2** | Upgrade tests in CI: the previous published Beta installed in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers, upgraded to the rehearsal's draft packages through the installed updater, then checked; the same test against the real release after the tag. Retires the fork. | — |
+| **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | — |
 | **R3** | `release.py prepare` (version bump pull request with its CHANGELOG section), `release.py status` (rehearsal, both GPU suites and upgrade tests on the exact commit, in one go/no-go summary; the GPU suites are dispatched by `rehearse`), `release.py tag` (refuses unless `status` is green, signs and pushes). | — |
 | **R4** | After publication: notes taken from the CHANGELOG section instead of `--generate-notes`, and the `PKGBUILD.beta` fallback pull requests opened by `release.py tag`. | — |
 
-R2 has one open question. The installed updater reads releases from the
-public API and skips drafts, so the upgrade test cannot point it at the
-draft unchanged. The proposal is to test a copy of the installed updater
-whose only changes are the repository, an accepted tag (`rehearsal/v0.x.y`)
-and an authenticated download, as the 0.1.1 container tests did with
-`REPO`; the unmodified updater is then exercised against the real release
-right after the tag.
-
-## 6. Not in scope
+## 7. Not in scope
 
 - Tags or releases created by CI on its own.
 - A second Beta channel or pre-release versions such as `v0.2.1-rc1`: the
@@ -123,7 +153,7 @@ right after the tag.
 - 0.1.x: its updater only sees prereleases, and 0.1.x support ends with
   `v0.2.0`.
 
-## 7. Tests
+## 8. Tests
 
 - `packaging/tests/test_beta_publication.py` runs the real publication
   script with a fake `gh`: a real tag creates a normal release, a
@@ -132,6 +162,14 @@ right after the tag.
   is refused.
 - `packaging/tests/test_ci_workflows.py` checks that both tags start the
   pipeline and that no job matches `refs/tags/v0.*` on its own.
+- `scripts/tests/test_ci_beta_upgrade.py` checks the choice of the
+  previous Beta (numeric order; drafts, rehearsals and other tags skipped;
+  a missing manifest), the supported systems, the candidate package names,
+  when the one-time step applies, refused downloads, and the final verdict:
+  only `up-to-date` for the new version passes, and a failed check does not.
+- `packaging/tests/test_ci_workflows.py` also checks that `beta-upgrade`
+  covers the four systems and gates `publish-beta`, and that the updater
+  check runs after real releases only.
 - `scripts/tests/test_release.py` runs `release.py` against a temporary
   Git repository with a fake `gh`: version mismatch, an existing real tag,
   replacing an earlier rehearsal, and `clean`.
