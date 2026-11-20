@@ -15,6 +15,7 @@
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
+//        vela-x11 --move XID X Y (a ConfigureRequest for the position alone)
 //        vela-x11 --root-size (current X11 root width height)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
@@ -152,7 +153,7 @@ int main(int argc, char** argv)
     int control = (argc == 4
                       && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
                           || !strcmp(argv[1], "--override-redirect") || !strcmp(argv[1], "--urgency")))
-        || (argc == 5 && !strcmp(argv[1], "--state"))
+        || (argc == 5 && (!strcmp(argv[1], "--state") || !strcmp(argv[1], "--move")))
         || (argc == 3
             && (!strcmp(argv[1], "--delete-wine-style") || !strcmp(argv[1], "--geometry")
                 || !strcmp(argv[1], "--activate")))
@@ -288,6 +289,12 @@ int main(int argc, char** argv)
             }
             cookie = xcb_change_property_checked(
                 connection, XCB_PROP_MODE_REPLACE, target, XCB_ATOM_WM_HINTS, XCB_ATOM_WM_HINTS, 32, 9, hints);
+        } else if (!strcmp(argv[1], "--move")) {
+            // Like an app moving itself (a dialog centering on another
+            // output): the size stays.
+            const int32_t position[2] = { atoi(argv[3]), atoi(argv[4]) };
+            cookie = xcb_configure_window_checked(
+                connection, target, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, (const uint32_t *)position);
         } else if (!strcmp(argv[1], "--override-redirect")) {
             if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
                 fprintf(stderr, "vela-x11: expected on or off\n");

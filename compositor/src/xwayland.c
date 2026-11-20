@@ -792,6 +792,8 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
         vela_surface_set_density(view->x11->surface, d);
     }
     vela_view_sync_x11(view);
+    // Moved to another output at the same size: no commit tells the taskbar.
+    vela_view_update_taskbar_output(view);
 }
 
 static void handle_request_move(struct wl_listener *listener, void *data)

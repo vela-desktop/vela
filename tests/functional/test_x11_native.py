@@ -279,6 +279,22 @@ class X11Native(unittest.TestCase):
                            and view not in self.vela.query("workspaces")["attention"],
                            what="explicit focus clears X11 attention")
 
+    def test_a_window_moving_itself_follows_on_the_taskbar(self):
+        # An app that moves itself to another output, at the same size and
+        # scale: the taskbar there gets its button, though no new frame
+        # says so.
+        self.vela.command("test-output add 2560x1440")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="second output")
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "2048,0", "--scale", "1.25")
+        self.vela.input("move", 500, 500)
+        view, xid, _ = self.open_x11(320, 240)
+        self.assertEqual(self.vela.state().window(view)["output"], "HEADLESS-1")
+        shell = self.vela.fake_shell()
+        x, y, _, _, _ = self.randr_outputs()["HEADLESS-2"]
+        self.x11("--move", xid, x + 200, y + 200)
+        self.vela.wait_for(lambda s: s.window(view)["output"] == "HEADLESS-2", what="moved to the second output")
+        shell.wait_for("workspaces ", containing=f'"{view}":"HEADLESS-2"')
+
     def test_initial_size_restores_in_the_pixels_it_was_asked_in(self):
         # A game opening fullscreen on the 100% output, rescued onto the
         # 125% one when that is unplugged: back to a window, it gets the
