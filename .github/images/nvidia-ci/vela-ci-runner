@@ -61,6 +61,45 @@ for ext in VK_EXT_image_drm_format_modifier VK_KHR_external_memory_fd VK_EXT_ext
     esac
 done
 
+# Vela's command socket accepts only peers it can verify outside a sandbox
+# (vela_peer_sandbox in compositor/src/security_policy.c): it needs
+# SO_PEERPIDFD (Linux 6.5) and /proc/<pid>/root of the peer. On a host where
+# that fails every functional test is refused, so check it the same way, as
+# the user the tests run as, and try another offer instead.
+if ! runuser -u runner -- python3 -c '
+import os, socket, struct, sys
+server = socket.socket(socket.AF_UNIX)
+server.bind("\0vela-ci-peer-probe")
+server.listen(1)
+child = os.fork()
+if child == 0:
+    peer = socket.socket(socket.AF_UNIX)
+    peer.connect("\0vela-ci-peer-probe")
+    peer.recv(1)
+    os._exit(0)
+connection, _ = server.accept()
+try:
+    pid = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[0]
+    pidfd = struct.unpack("i", connection.getsockopt(socket.SOL_SOCKET, 77, 4))[0]  # SO_PEERPIDFD
+    with open(f"/proc/self/fdinfo/{pidfd}") as info:
+        if f"Pid:\t{pid}\n" not in info.read():
+            sys.exit("the peer pidfd is not the peer")
+    root = os.open(f"/proc/{pid}/root", os.O_PATH | os.O_DIRECTORY)
+    try:
+        os.open(".flatpak-info", os.O_RDONLY, dir_fd=root)
+        sys.exit("the peer looks sandboxed")
+    except FileNotFoundError:
+        pass
+except OSError as error:
+    sys.exit(f"{error}")
+finally:
+    connection.close()
+    os.waitpid(child, 0)
+'; then
+    echo "vela-ci-runner: kernel $(uname -r) can't verify a command socket peer" >&2
+    exit 1
+fi
+
 dir=/home/runner/actions-runner
 mkdir -p "$dir"
 # Download to a file first: a truncated or tampered archive must never be

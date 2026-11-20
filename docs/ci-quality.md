@@ -169,7 +169,11 @@ The actual model and driver can vary between runs. During provisioning,
 an image that cannot start within six minutes is rejected; once the
 instance reports running, the JIT runner must register within 150 seconds.
 Known fatal image-pull errors (such as DNS failures) are rejected earlier,
-and the next eligible rental is tried. The GPU's proprietary
+and the next eligible rental is tried. The container also refuses to register a
+runner on a host where it has no NVIDIA render node, NVIDIA's Vulkan lacks
+the dmabuf extensions, or the kernel cannot verify a command socket peer the
+way the compositor does (`SO_PEERPIDFD`, Linux 6.5): there every functional
+test would be refused. The host is destroyed and the next offer tried. The GPU's proprietary
 driver, Vulkan ICD and DRM render nodes are provided by the rental host;
 build and test dependencies come from the
 [NVIDIA CI image](../.github/images/nvidia-ci/Dockerfile). The
