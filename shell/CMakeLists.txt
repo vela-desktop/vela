@@ -360,7 +360,9 @@ if(VELA_BUILD_TOOLS)
             src/config.cpp src/config.h src/batterysettings.h src/clockformat.h src/starticon.h src/defaults.h
             src/launcherentry.cpp src/launcherentry.h src/workspaces.cpp src/workspaces.h
             ${PROJECT_SOURCE_DIR}/common/tests/privatehome.h)
-        # The protocol code generated for vela-shell, in this same directory.
+        # The protocol code generated for vela-shell, in this same directory:
+        # after it, or Make compiles the test before the headers exist.
+        add_dependencies(vela-taskbarmodel-test vela-shell)
         foreach(protocol wlr-foreign-toplevel-management-unstable-v1 vela-toplevel-identifier-v1)
             target_sources(vela-taskbarmodel-test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/qwayland-${protocol}.cpp
                 ${CMAKE_CURRENT_BINARY_DIR}/wayland-${protocol}-protocol.c)
