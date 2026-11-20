@@ -17,45 +17,7 @@
 #include <QSignalSpy>
 #include <QTest>
 
-// The ToolTip property: (icon name, pictures, title, text).
-struct Picture {
-    int width = 0;
-    int height = 0;
-    QByteArray bytes;
-};
-Q_DECLARE_METATYPE(Picture)
-
-QDBusArgument& operator<<(QDBusArgument& argument, const Picture& picture)
-{
-    argument.beginStructure();
-    argument << picture.width << picture.height << picture.bytes;
-    argument.endStructure();
-    return argument;
-}
-const QDBusArgument& operator>>(const QDBusArgument& argument, Picture&)
-{
-    return argument;
-}
-
-struct ToolTip {
-    QString title;
-};
-Q_DECLARE_METATYPE(ToolTip)
-
-QDBusArgument& operator<<(QDBusArgument& argument, const ToolTip& tip)
-{
-    argument.beginStructure();
-    argument << QString();
-    argument.beginArray(QMetaType::fromType<Picture>());
-    argument.endArray();
-    argument << tip.title << QString();
-    argument.endStructure();
-    return argument;
-}
-const QDBusArgument& operator>>(const QDBusArgument& argument, ToolTip&)
-{
-    return argument;
-}
+#include "sniproperties.h"
 
 namespace {
 

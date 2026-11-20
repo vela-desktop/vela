@@ -230,8 +230,9 @@ if(VELA_BUILD_TOOLS)
     # The notification area's icons, from a fake watcher on a private bus.
     find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session)
     if(DBUS_RUN_SESSION_EXECUTABLE)
-        qt_add_executable(vela-trayicons-test tests/trayicons_test.cpp src/trayicons.cpp src/trayicons.h)
-        target_include_directories(vela-trayicons-test PRIVATE src)
+        qt_add_executable(vela-trayicons-test tests/trayicons_test.cpp src/trayicons.cpp src/trayicons.h
+            ${PROJECT_SOURCE_DIR}/common/tests/sniproperties.h)
+        target_include_directories(vela-trayicons-test PRIVATE src ${PROJECT_SOURCE_DIR}/common/tests)
         target_compile_options(vela-trayicons-test PRIVATE -Wall -Wextra)
         target_link_libraries(vela-trayicons-test PRIVATE Qt6::DBus Qt6::Test)
         add_test(NAME settings-trayicons COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-trayicons-test>)
