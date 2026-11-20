@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
+#include <wayland-server-protocol.h>
 #include <wlr/util/box.h>
 
 struct vela_brightness_output;
@@ -63,6 +64,12 @@ struct vela_output {
     // there and not over another output at (0, 0).
     bool has_last_position;
     int last_x, last_y;
+    // The layout to recover when a temporarily missing output returns.
+    bool has_preferred_position;
+    int preferred_x, preferred_y;
+    // Startup configuration for a connector that was saved as disabled.
+    struct wlr_output_mode *startup_mode;
+    enum wl_output_transform startup_transform;
     // Only when Vela runs in a window inside another session.
     struct vela_nested *nested;
     // Its brightness (brightness.h); NULL: none to drive.
