@@ -147,7 +147,7 @@ jobs:
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
       - name: Dependencies
-        run: pacman -Syu --noconfirm --needed $DEPENDENCIES xorg-server-xvfb xorg-xauth ttf-dejavu
+        run: pacman -Syu --noconfirm --needed $DEPENDENCIES openssh xorg-server-xvfb xorg-xauth ttf-dejavu
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
