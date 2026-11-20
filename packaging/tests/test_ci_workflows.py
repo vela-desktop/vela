@@ -5,9 +5,13 @@
 """Guard build job structure and ownership of the updater contract suite."""
 
 from collections import Counter
+import os
 from pathlib import Path
 import re
 import shlex
+import subprocess
+import tempfile
+import textwrap
 import unittest
 
 
@@ -54,9 +58,9 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         # release number should be embedded in the RPM or release asset names.
         build = (ROOT / ".github/workflows/build.yml").read_text()
         spec = (ROOT / "packaging/fedora/vela.spec").read_text()
-        self.assertIn("tags: ['v0.*']", build)
-        self.assertIn('version="${GITHUB_REF_NAME#v}"', build)
-        self.assertIn('test "$version" = "${GITHUB_REF_NAME#v}"', build)
+        self.assertIn("tags: ['v0.*', 'rehearsal/v0.*']", build)
+        self.assertIn('version="$VELA_BETA_VERSION"', build)
+        self.assertIn('test "$version" = "$VELA_BETA_VERSION"', build)
         self.assertIn("fedora44_packages=(vela-[0-9]*.fc44.x86_64.rpm)", build)
         self.assertIn("fedora45_packages=(vela-[0-9]*.fc45.x86_64.rpm)", build)
         self.assertIn("Version:        %{vela_version}", spec)
@@ -98,6 +102,57 @@ class CIUpdaterTestOwnership(unittest.TestCase):
         )
         self.assertEqual(fedora.count("ctest --test-dir build-fedora"), 1)
         self.assertNotIn("GITHUB_EVENT_NAME", fedora)
+
+
+
+class BetaVersionDerivation(unittest.TestCase):
+    """A release tag and its rehearsal take the same path through every job."""
+
+    WORKFLOWS = ("build.yml", "ubuntu.yml", "fedora.yml")
+
+    def derive(self, ref):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        step = build.split("- name: Derive the Beta version from a release or rehearsal tag\n", 1)[1]
+        script = textwrap.dedent(step.split("        run: |\n", 1)[1].split("\n      - ", 1)[0])
+        with tempfile.NamedTemporaryFile("r", prefix="vela-output-") as output:
+            result = subprocess.run(["bash", "-c", script], capture_output=True, text=True,
+                                    env={**os.environ, "REF": ref, "GITHUB_OUTPUT": output.name},
+                                    timeout=10)
+            return result.returncode, dict(line.split("=", 1) for line in output.read().split())
+
+    def test_release_and_rehearsal_tags_build_the_same_beta_version(self):
+        self.assertEqual(self.derive("refs/tags/v0.2.1"), (0, {"beta_version": "0.2.1"}))
+        self.assertEqual(self.derive("refs/tags/rehearsal/v0.2.1"), (0, {"beta_version": "0.2.1"}))
+
+    def test_branches_and_pull_requests_build_experimental(self):
+        for ref in ("refs/heads/main", "refs/heads/release/0.2", "refs/pull/305/merge"):
+            with self.subTest(ref=ref):
+                self.assertEqual(self.derive(ref), (0, {"beta_version": ""}))
+
+    def test_malformed_tags_stop_the_pipeline(self):
+        for ref in ("refs/tags/v0.2", "refs/tags/v0.2.1-rc1", "refs/tags/rehearsal/v0.2.1a",
+                    "refs/tags/rehearsal/0.2.1", "refs/tags/v1.0.0"):
+            with self.subTest(ref=ref):
+                self.assertNotEqual(self.derive(ref)[0], 0)
+
+    def test_no_job_matches_the_tag_ref_on_its_own(self):
+        for name in self.WORKFLOWS:
+            text = (ROOT / ".github/workflows" / name).read_text()
+            with self.subTest(workflow=name):
+                self.assertNotIn("refs/tags/v0.*", text)
+                self.assertNotIn("startsWith(github.ref, 'refs/tags/v0.')", text)
+                self.assertNotIn("${GITHUB_REF_NAME#v}", text.split("- name: Publish signed Beta release")[0])
+
+    def test_tag_only_jobs_read_the_derived_version(self):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        for job in ("ubuntu-beta", "publish-beta"):
+            body = build.split(f"\n  {job}:\n", 1)[1].split("\n  # ", 1)[0]
+            with self.subTest(job=job):
+                self.assertIn("needs.changes.outputs.beta_version != ''", body)
+        for job in ("package-smoke", "fedora-package-smoke"):
+            with self.subTest(job=job):
+                self.assertRegex(build, rf"(?m)^  {job}:\n    needs: \[changes, ")
+        self.assertIn("beta_version: ${{ needs.changes.outputs.beta_version }}", build)
 
 
 if __name__ == "__main__":

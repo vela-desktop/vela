@@ -2,6 +2,11 @@ name: Ubuntu 26.10 build
 
 on:
   workflow_call:
+    inputs:
+      beta_version:
+        description: The Beta version a v0.x.y or rehearsal/v0.x.y tag builds; empty for Experimental
+        type: string
+        default: ''
   pull_request:
   push:
     branches: [main, 'release/**']
@@ -26,6 +31,7 @@ jobs:
     container:
       image: ubuntu:26.10
     env:
+      VELA_BETA_VERSION: ${{ inputs.beta_version }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache-ubuntu
       CCACHE_MAXSIZE: 750M
     defaults:
@@ -67,7 +73,7 @@ jobs:
       - name: Configure all desktop components
         run: |
           channel=experimental
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then channel=beta; fi
+          if [[ -n "$VELA_BETA_VERSION" ]]; then channel=beta; fi
           cmake -S . -B build-ubuntu -G Ninja \
             -DVELA_PACKAGE_CHANNEL="$channel" \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -119,8 +125,8 @@ jobs:
           done
           # Verify the commit stamp without hard-coding the next project version.
           deb_version=$(dpkg-deb -f build-ubuntu/packages/*.deb Version)
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
-            test "$deb_version" = "${GITHUB_REF_NAME#v}"
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
+            test "$deb_version" = "$VELA_BETA_VERSION"
             test "$(dpkg-deb -f build-ubuntu/packages/*.deb Package)" = vela
           else
             case "$deb_version" in
@@ -130,7 +136,7 @@ jobs:
           fi
           # Both channels must replace each other without leaving file conflicts.
           other=vela
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then other=vela-git; fi
+          if [[ -n "$VELA_BETA_VERSION" ]]; then other=vela-git; fi
           for field in Conflicts Replaces; do
             dpkg-deb -f build-ubuntu/packages/*.deb "$field" |
               tr ',' '\n' | grep -Eq "^[[:space:]]*${other}([[:space:]]|$)" || {
@@ -175,7 +181,7 @@ jobs:
             exit 1
           }
       - name: Attest official Ubuntu Beta DEB provenance
-        if: startsWith(github.ref, 'refs/tags/v0.')
+        if: inputs.beta_version != ''
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-path: build-ubuntu/packages/*.deb
@@ -192,6 +198,8 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ubuntu:26.10
+    env:
+      VELA_BETA_VERSION: ${{ inputs.beta_version }}
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
@@ -206,7 +214,7 @@ jobs:
           apt-get install -y --no-install-recommends file dpkg-dev
           apt-get install -y --no-install-recommends ./deb/*.deb
           pkg=vela-git
-          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
+          [ -z "$VELA_BETA_VERSION" ] || pkg=vela
           dpkg-query -W -f='${Status}\n' "$pkg" | grep -Fx 'install ok installed'
           # --no-install-recommends must still pull in both runtime icon packages.
           for dependency in breeze-icon-theme qt6-svg-plugins; do
@@ -254,7 +262,7 @@ jobs:
         run: |
           set -eu
           pkg=vela-git
-          case "$GITHUB_REF" in refs/tags/v0.*) pkg=vela ;; esac
+          [ -z "$VELA_BETA_VERSION" ] || pkg=vela
           apt-get remove -y "$pkg"
           test ! -e /usr/bin/vela-compositor
           test ! -e /usr/bin/vela-update

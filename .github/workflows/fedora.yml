@@ -17,6 +17,10 @@ on:
         description: Run Fedora updater integration tests with local fixture RPMs
         type: boolean
         default: false
+      beta_version:
+        description: The Beta version a v0.x.y or rehearsal/v0.x.y tag builds; empty for Experimental
+        type: string
+        default: ''
   workflow_dispatch:
     inputs:
       audio_diagnostics:
@@ -111,11 +115,13 @@ jobs:
       - name: Exercise the updater and DNF with fixture RPMs
         if: inputs.updater_fixtures
         shell: bash
+        env:
+          VELA_BETA_VERSION: ${{ inputs.beta_version }}
         run: |
           set -euo pipefail
           dnf install -y rpm-build dnf5-plugins
           bash packaging/fedora/tests/ci-updater-local-build.sh
-          if [[ "$GITHUB_REF" != refs/tags/v0.* ]]; then
+          if [[ -z "$VELA_BETA_VERSION" ]]; then
             bash packaging/fedora/tests/ci-dnf-transactions.sh
           fi
 
