@@ -291,10 +291,19 @@ so the upper-left corner of the enabled display group is always at (0,0).
 For example, a 1920×1080 monitor physically **above** a 2048×1152 primary
 will appear as (0,0) and (0,1080) respectively. This avoids exposing
 negative monitor coordinates to XWayland/Wine while leaving the perceived
-screen arrangement unchanged. Existing saved configurations with negative
-positions are normalized when loaded; new positions are saved normalized.
+screen arrangement unchanged. Saved positions keep their own origin, so a
+save while a monitor is unplugged keeps that monitor in the same arrangement.
 Windows on a translated output move with it, including during Settings
-preview/revert.
+preview and revert. Settings snaps dragged displays to a free edge that keeps
+every monitor reachable. Changing a monitor's scale, resolution, or rotation
+can move its neighbors to make room. The compositor rejects explicitly
+positioned configurations with intersecting active displays.
+
+At startup and when monitors are plugged or unplugged, Vela moves overlapping
+or isolated displays to a shared edge so the pointer can still reach every
+screen. Disabling a monitor in Settings closes gaps within the preview, so
+Revert restores the prior positions. These temporary positions keep the saved
+arrangement available when the original set of monitors returns.
 
 Settings talks directly to `wlr-output-management`; no external display utility
 is required. Changes are previewed for 15 seconds. Vela's compositor keeps the
@@ -305,8 +314,8 @@ to `outputs.conf`.
 
 The preview uses `protocols/vela-output-preview-v1.xml`, bound on the same
 Wayland connection as the output configuration. While a preview is pending,
-competing display changes are rejected. If monitors are unplugged, restoration
-covers the surviving original outputs and leaves newly connected outputs alone.
+competing display changes are rejected. Plugging or unplugging an active
+monitor cancels the preview before Vela rearranges the current outputs.
 If a confirmed change cannot be saved, the active display configuration is
 kept, but Settings warns that it may be lost after a restart. A failed apply
 whose rollback also fails is reported distinctly.
