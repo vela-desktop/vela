@@ -142,8 +142,9 @@ Distinguish **merged on main**, **candidate for 0.2**, and
 - **Taskbar:** window filters by desktop and display, keyboard-accessible
   previews on click, attention indicators, app badges and progress, a tray
   drawer configurable per icon, drag-to-pin, drag-to-raise, and placement on
-  any screen edge. Super+number opens apps or switches virtual desktops.
-  In app mode, Shift launches a new instance and Alt opens the jump list
+  any screen edge. Super+1…9 and Super+0 open taskbar apps or switch virtual
+  desktops, and can be turned off. In app mode, Shift launches a new
+  instance and Alt opens the jump list
   ([#299](https://github.com/vela-desktop/vela/pull/299)).
 - **Desktop and Files menus:** app-provided actions appear directly in the
   main menu, with per-menu visibility controls in Settings. Start uses the
@@ -181,8 +182,11 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [#289](https://github.com/vela-desktop/vela/pull/289),
   [#290](https://github.com/vela-desktop/vela/pull/290),
   [#294](https://github.com/vela-desktop/vela/pull/294)).
-- **NVIDIA GPU CI** rents an NVIDIA RTX instance on Vast.ai for each run
-  ([#199](https://github.com/vela-desktop/vela/pull/199)).
+- **NVIDIA GPU CI**, which has rented an NVIDIA RTX instance on Vast.ai for
+  each run since 0.1.1 ([#199](https://github.com/vela-desktop/vela/pull/199)),
+  now runs on a weekly rebuilt, digest-pinned image with a verified runner
+  and an advisory gate for fixable package vulnerabilities
+  ([#300](https://github.com/vela-desktop/vela/pull/300)).
 - **Experimental Intel ANV CI** runs on a dedicated self-hosted Intel runner
   ([#226](https://github.com/vela-desktop/vela/pull/226)).
 
@@ -311,6 +315,7 @@ own design, cost/maintenance analysis and definition of done.
 | **Text input and IME** | reconcile with OSK | — | not implemented | 0.3 proposed |
 | **Touch, pen and tablet mode** | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design open, code pending | 0.3 proposed |
 | **On-screen keyboard** | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design open, code pending | 0.3 proposed |
+| **Experimental HDR** (renderer S7) | [renderer §11](renderer.md#11-stages) | — | not implemented | 0.3 candidate |
 | **Benchmark suite** | in PR | [#109](https://github.com/vela-desktop/vela/pull/109) | work/review ongoing | unassigned |
 
 ## Next — Not yet assigned to a release
