@@ -181,10 +181,10 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [#289](https://github.com/vela-desktop/vela/pull/289),
   [#290](https://github.com/vela-desktop/vela/pull/290),
   [#294](https://github.com/vela-desktop/vela/pull/294)).
-  GPU CI now runs NVIDIA suites on rented Vast.ai hardware and has an
-  experimental Intel ANV workflow
-  ([#199](https://github.com/vela-desktop/vela/pull/199),
-  [#226](https://github.com/vela-desktop/vela/pull/226)).
+- **NVIDIA GPU CI** rents an NVIDIA RTX instance on Vast.ai for each run
+  ([#199](https://github.com/vela-desktop/vela/pull/199)).
+- **Experimental Intel ANV CI** runs on a dedicated self-hosted Intel runner
+  ([#226](https://github.com/vela-desktop/vela/pull/226)).
 
 **Candidates to evaluate before 0.2, not automatically release blockers:**
 
