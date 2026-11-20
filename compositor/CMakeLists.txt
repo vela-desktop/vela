@@ -403,6 +403,7 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-display-test-server PRIVATE WLR_USE_UNSTABLE
         VELA_OUTPUT_PREVIEW_TIMEOUT_MS=1200)
     target_compile_options(vela-display-test-server PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_options(vela-display-test-server PRIVATE -Wl,--wrap=wlr_output_test_state)
     target_link_libraries(vela-display-test-server PRIVATE vela-pure PkgConfig::WLROOTS
         PkgConfig::WAYLAND_SERVER)
 

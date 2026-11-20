@@ -23,6 +23,19 @@ static char fail_name[64];
 static int failures_left;
 static int fixture_width = 1920, fixture_height = 1080;
 
+bool __real_wlr_output_test_state(struct wlr_output* wlr, const struct wlr_output_state* state);
+
+bool __wrap_wlr_output_test_state(struct wlr_output* wlr, const struct wlr_output_state* state)
+{
+    // Simulate a backend limit that applies only when modesetting the panel.
+    const struct vela_output* output = wlr->data;
+    if (output && output->internal_panel && state->enabled && (state->committed & WLR_OUTPUT_STATE_MODE)
+        && state->mode_type == WLR_OUTPUT_STATE_MODE_CUSTOM && state->custom_mode.width > 4096) {
+        return false;
+    }
+    return __real_wlr_output_test_state(wlr, state);
+}
+
 bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state *state)
 {
     if (failures_left > 0 && strcmp(fail_name, output->wlr->name) == 0) {

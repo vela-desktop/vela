@@ -88,6 +88,20 @@ static bool lid_hides_panels(const struct vela_server *server, const struct wlr_
     return false;
 }
 
+static bool test_head_state(const struct wlr_output_head_v1_state *head, bool hide)
+{
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    if (hide) {
+        wlr_output_state_set_enabled(&state, false);
+    } else {
+        wlr_output_head_v1_state_apply(head, &state);
+    }
+    bool ok = wlr_output_test_state(head->output, &state);
+    wlr_output_state_finish(&state);
+    return ok;
+}
+
 static bool test_configuration(
     const struct wlr_output_configuration_v1 *config, bool hide_panels, bool lid_only, int origin_x, int origin_y)
 {
@@ -108,16 +122,7 @@ static bool test_configuration(
             || (int64_t)head->state.y - origin_y > INT_MAX)) {
             return false;
         }
-        struct wlr_output_state state;
-        wlr_output_state_init(&state);
-        if (hide) {
-            wlr_output_state_set_enabled(&state, false);
-        } else {
-            wlr_output_head_v1_state_apply(&head->state, &state);
-        }
-        bool ok = wlr_output_test_state(head->state.output, &state);
-        wlr_output_state_finish(&state);
-        if (!ok) {
+        if (!test_head_state(&head->state, hide)) {
             return false;
         }
     }
@@ -257,23 +262,52 @@ static bool commit_configuration(
     return ok;
 }
 
-static void refresh_lid(void *data)
+static bool lid_restore_pending(struct vela_server *server, const struct wlr_output_configuration_v1 *config)
+{
+    if (lid_hides_panels(server, config)) {
+        return false;
+    }
+    struct vela_output *output;
+    wl_list_for_each(output, &server->outputs, link)
+    {
+        if (output->lid_saved.enabled) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static int refresh_lid(void *data)
 {
     struct vela_server *server = data;
-    // Keep the source set during commits so their layout notifications
-    // cannot schedule another pass, including after a failed modeset.
+    // Keep the source set while committing so layout notifications coalesce.
     struct wlr_output_configuration_v1 *config = snapshot(server, true);
-    if (!commit_configuration(server, config, false, true)) {
+    bool ok = commit_configuration(server, config, false, true);
+    bool retry = !ok && lid_restore_pending(server, config);
+    wlr_output_configuration_v1_destroy(config);
+    if (retry && wl_event_source_timer_update(server->lid_update, 1000) == 0) {
+        wlr_log(WLR_DEBUG, "Could not restore the built-in display, retrying");
+        return 0;
+    }
+    if (!ok) {
         wlr_log(WLR_ERROR, "Could not update the built-in display for the lid state");
     }
-    wlr_output_configuration_v1_destroy(config);
+    wl_event_source_remove(server->lid_update);
     server->lid_update = NULL;
+    return 0;
 }
 
 void vela_output_manager_schedule_lid_update(struct vela_server *server)
 {
-    if (!server->lid_update) {
-        server->lid_update = VELA_MUST(wl_event_loop_add_idle(server->loop, refresh_lid, server));
+    if (server->lid_update) {
+        return;
+    }
+    server->lid_update = VELA_MUST(wl_event_loop_add_timer(server->loop, refresh_lid, server));
+    // Defer modesets until the backend has finished notifying us of changes.
+    if (wl_event_source_timer_update(server->lid_update, 1) < 0) {
+        wlr_log_errno(WLR_ERROR, "Could not schedule a lid display update");
+        wl_event_source_remove(server->lid_update);
+        server->lid_update = NULL;
     }
 }
 
@@ -329,19 +363,32 @@ bool vela_output_manager_restore(struct vela_server *server, const struct wlr_ou
     return ok;
 }
 
-static void apply(struct vela_server *server, struct wlr_output_configuration_v1 *config, bool test_only)
+static bool prepare_client_configuration(struct vela_server *server, struct wlr_output_configuration_v1 *config)
 {
-    bool allowed = test_only || vela_output_preview_can_apply(server, config);
-    // Clients see the panel as disabled while closed and normally send that
-    // state back when editing external monitors. Keep its saved preference.
+    bool hide_panels = lid_hides_panels(server, config);
     struct wlr_output_configuration_head_v1 *head;
     wl_list_for_each(head, &config->heads, link)
     {
         const struct vela_output *output = head->state.output->data;
-        if (output && output->lid_saved.enabled && !head->state.enabled) {
+        if (!output) {
+            return false;
+        }
+        if (output->lid_saved.enabled && !head->state.enabled) {
+            // Clients see a hidden panel as disabled. Keep the previous preference.
             head->state = output->lid_saved;
+        } else if (hide_panels && output->internal_panel && head->state.enabled
+            && !test_head_state(&head->state, false)) {
+            // Check an explicit request as enabled before saving it for later.
+            return false;
         }
     }
+    return true;
+}
+
+static void apply(struct vela_server *server, struct wlr_output_configuration_v1 *config, bool test_only)
+{
+    bool allowed =
+        (test_only || vela_output_preview_can_apply(server, config)) && prepare_client_configuration(server, config);
     struct wlr_output_configuration_v1 *before = !test_only && allowed ? snapshot(server, true) : NULL;
     int origin_x, origin_y;
     configuration_origin(config, &origin_x, &origin_y);
