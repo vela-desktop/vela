@@ -274,7 +274,9 @@ The organization runner group must permit access to the public
 Initial test machine: Intel Alder Lake-UP3 UHD Graphics (PCI `8086:46b3`),
 Mesa ANV 26.2.5 on CachyOS, 8 GB RAM and 256 GB UFS. Vulkan 1.4,
 the expected driver and the necessary DRM/dma-buf extensions have been
-verified manually. This does **not** yet establish a passing GPU CI baseline.
+verified manually. The full GPU suites first passed on it (27 of 27, none
+skipped) on `main` at `10e43095` on 15 November 2026, and again on
+`release/0.1` on 16 November.
 
 Install the [normal build dependencies](development.md#distribution-dependencies)
 plus `vulkan-intel`, `vulkan-tools`, `vulkan-validation-layers`,
@@ -313,8 +315,7 @@ iGPU. Optional coverage (`gpu-intel`) and promo smoke tests
 mirror AMD; the coverage upload is performed by a separate
 GitHub-hosted job, not the self-hosted runner.
 
-The first run establishes the baseline. Integrated Intel graphics
-previously exposed timing-sensitive `test_ready` failures because
+Integrated Intel graphics previously exposed timing-sensitive `test_ready` failures because
 the client and compositor share the GPU engine
 ([C core notes](c-core.md)); investigate rather than silently
 skip or loosen assertions. Headless CI does not certify physical

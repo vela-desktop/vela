@@ -25,8 +25,8 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 
 > [!NOTE]
 > **Vela is beta software.** You can pick it at the login screen and use it every day,
-> but keep a working desktop or TTY available. It is tested on AMD and NVIDIA GPUs;
-> read the [hardware coverage and known limitations](docs/hardware.md) before
+> but keep a working desktop or TTY available. It is tested on AMD and NVIDIA GPUs,
+> and on Intel in experimental CI; read the [hardware coverage and known limitations](docs/hardware.md) before
 > installing. The interface is available in English and Italian.
 
 ## Why Vela

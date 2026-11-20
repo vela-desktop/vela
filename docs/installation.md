@@ -152,6 +152,14 @@ sh vela/packaging/vela-update --channel beta
 Beta downloads the release's DEB, verifies its checksum and signed
 provenance, and installs it with APT.
 
+Unlike the Arch and Fedora packages, the DEB does not pull in the portal
+backends. Install them for file choosers in sandboxed apps, screenshots and
+screen sharing ([integration services](hardware.md#integration-services)):
+
+```sh
+sudo apt install xdg-desktop-portal-gtk xdg-desktop-portal-wlr
+```
+
 Experimental (`sh vela/packaging/vela-update`) installs the Ubuntu build
 dependencies through APT, compiles the exact selected Git revision with
 CMake/CPack, and installs a native DEB.
