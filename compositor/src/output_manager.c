@@ -421,6 +421,9 @@ static bool commit_configuration(
 static const struct wlr_output_head_v1_state *find_head(
     const struct wlr_output_configuration_v1 *config, const struct wlr_output *output)
 {
+    if (!config) {
+        return NULL;
+    }
     struct wlr_output_configuration_head_v1 *head;
     wl_list_for_each(head, &config->heads, link)
     {
