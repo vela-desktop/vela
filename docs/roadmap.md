@@ -82,14 +82,23 @@ until the next minor Beta is published. When `v0.2.0` ships, support for
 See the [release branch policy](release-channels.md#release-branches).
 
 The [`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
-shipped on 16 November 2026. It includes Fedora 45 packaging, keyring
-selection, desktop fixes, and backports for allocation recovery, bounded
-resources and security hardening. Backports also stabilized text during
+shipped on 16 November 2026. Maintenance work included Fedora 45 packaging
+([#224](https://github.com/vela-desktop/vela/pull/224)) and a temporary
+choice between KWallet and GNOME Keyring for app passwords pending Vela
+Secrets ([#255](https://github.com/vela-desktop/vela/pull/255),
+[#277](https://github.com/vela-desktop/vela/pull/277)). Backported fixes
+improved allocation recovery, renderer pass reuse, resource limits and
+compositor security. They also stabilized text during
 animation and scrolling ([#217](https://github.com/vela-desktop/vela/pull/217)),
 prevented background apps from stealing focus
 ([#264](https://github.com/vela-desktop/vela/pull/264)), and reduced copying
 in shared-memory screen capture
-([#260](https://github.com/vela-desktop/vela/pull/260)). See the
+([#260](https://github.com/vela-desktop/vela/pull/260)). Other fixes kept
+crowded taskbars navigable, preserved settings when writes failed, and
+restored discovery of installed XDG icon themes
+([#266](https://github.com/vela-desktop/vela/pull/266),
+[#267](https://github.com/vela-desktop/vela/pull/267),
+[#259](https://github.com/vela-desktop/vela/pull/259)). See the
 [completed release tracker #225](https://github.com/vela-desktop/vela/issues/225)
 for the backport inventory.
 
@@ -100,9 +109,7 @@ Those projects are substantial and now provisionally target 0.3.
 Distinguish **merged on main**, **candidate for 0.2**, and
 **shipped in a tagged Beta**: these are not interchangeable statuses.
 
-**Already merged into main since the 0.1 branch split:**
-
-Some changes below were backported to the 0.1.2 maintenance Beta.
+**0.2 features already merged into `main`**
 
 - **Theme engine and personalization:** declarative themes, per-surface
   styles for the taskbar, Start, Quick Settings and notifications, and live
@@ -138,8 +145,7 @@ Some changes below were backported to the 0.1.2 maintenance Beta.
   drawer configurable per icon, drag-to-pin, drag-to-raise, and placement on
   any screen edge. Super+number opens apps or switches virtual desktops.
   In app mode, Shift launches a new instance and Alt opens the jump list
-  ([#299](https://github.com/vela-desktop/vela/pull/299)). App buttons page
-  when space runs out ([#266](https://github.com/vela-desktop/vela/pull/266)).
+  ([#299](https://github.com/vela-desktop/vela/pull/299)).
 - **Desktop and Files menus:** app-provided actions appear directly in the
   main menu, with per-menu visibility controls in Settings. Start uses the
   same menu for pinned apps and the full app list. The window menu can move
@@ -154,16 +160,6 @@ Some changes below were backported to the 0.1.2 maintenance Beta.
   numbered Betas published as normal GitHub releases. Users upgrading from
   0.1.2 need the [one-time updater procedure](https://github.com/vela-desktop/vela/blob/main/docs/release-channels.md#updating-older-beta-installations)
   ([#282](https://github.com/vela-desktop/vela/pull/282)).
-- **Integration and compatibility:** Fedora 45 packages alongside Fedora 44
-  ([#224](https://github.com/vela-desktop/vela/pull/224)). Settings offers
-  KWallet or GNOME Keyring for app passwords pending Vela Secrets. The
-  selected backend takes effect on the next login
-  ([#222](https://github.com/vela-desktop/vela/issues/222),
-  [#255](https://github.com/vela-desktop/vela/pull/255)), and KWallet's Secret
-  Service starts through `ksecretd`
-  ([#277](https://github.com/vela-desktop/vela/pull/277)). The shell also
-  discovers installed XDG icon themes without KDE's Qt platform plugin
-  ([#259](https://github.com/vela-desktop/vela/pull/259)).
 - **Experimental virtual machines:** [QEMU/KVM with virtio-gpu and Vulkan
   Venus](virtual-machines.md) landed in
   [#251](https://github.com/vela-desktop/vela/pull/251) and supersedes the
@@ -171,22 +167,13 @@ Some changes below were backported to the 0.1.2 maintenance Beta.
   as the way to try Vela on other hosts. Nested and full DRM/KMS sessions
   were verified on one Fedora 44 KDE guest. More host and driver combinations
   and the full GPU suites still need validation.
+
+**Build, hardening and CI on `main`**
+
 - **CPU requirements:** official x86 builds target x86-64-v3, and the
   session checks CPU support before starting the compositor. Local builds
   can select a different CPU target at configure time
   ([#245](https://github.com/vela-desktop/vela/pull/245)).
-- **Core improvements:** host allocation and OOM handling, renderer
-  pass reuse and bounded GPU/icon memory
-  ([#148](https://github.com/vela-desktop/vela/pull/148),
-  [#243](https://github.com/vela-desktop/vela/pull/243),
-  [#246](https://github.com/vela-desktop/vela/pull/246),
-  [#250](https://github.com/vela-desktop/vela/pull/250),
-  [#252](https://github.com/vela-desktop/vela/pull/252));
-  compositor security hardening
-  ([#258](https://github.com/vela-desktop/vela/pull/258));
-  and Settings that keep the saved preference when a write fails
-  ([#218](https://github.com/vela-desktop/vela/issues/218),
-  [#267](https://github.com/vela-desktop/vela/pull/267)).
 - **Reliability and CI:** stricter handling of notification images and
   markup, tighter rules for privileged system prompts, and parser fuzz
   tests in CI
