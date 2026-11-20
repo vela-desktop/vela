@@ -4,6 +4,8 @@
 
 """Run release.py against a temporary repository, a bare remote and a fake gh."""
 
+import datetime
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -14,6 +16,9 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/release.py"
+spec = importlib.util.spec_from_file_location("release", SCRIPT)
+release = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(release)
 # Releases live in a JSON file: {tag: {"isDraft": bool}}.
 GH_STUB = r'''#!/usr/bin/env python3
 import json, os, sys
@@ -29,12 +34,37 @@ if args[:2] == ["release", "view"]:
 elif args[:2] == ["release", "delete"]:
     del releases[args[2]]
     json.dump(releases, open(state, "w"))
+elif args[:2] == ["run", "list"]:
+    runs = json.load(open(os.environ["TEST_GH_RUNS"])).get(args[args.index("--workflow") + 1], [])
+    if "--branch" in args:
+        runs = [r for r in runs if r.get("headBranch") == args[args.index("--branch") + 1]]
+    print(json.dumps(runs))
+elif args[:2] == ["workflow", "run"]:
+    pass
+elif args[:2] == ["pr", "create"]:
+    print("https://github.com/vela-desktop/vela/pull/999")
 else:
     sys.exit("Unexpected gh call: " + repr(args))
 '''
 
 
-class Release(unittest.TestCase):
+CHANGELOG = """# Changelog
+
+Intro.
+
+## Unreleased
+
+- The taskbar can sit on any edge.
+
+- Context menus lost "Show more options".
+
+## 0.1.2 — 16 November 2026
+
+- Fedora 45.
+"""
+
+
+class Fixture(unittest.TestCase):
     def setUp(self):
         directory = tempfile.TemporaryDirectory(prefix="vela-release-")
         self.addCleanup(directory.cleanup)
@@ -49,8 +79,11 @@ class Release(unittest.TestCase):
         self.state.write_text("{}")
         self.log = self.root / "gh.jsonl"
         self.log.touch()
+        self.runs = self.root / "runs.json"
+        self.runs.write_text("{}")
         self.env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}",
                     "TEST_GH_STATE": str(self.state), "TEST_GH_LOG": str(self.log),
+                    "TEST_GH_RUNS": str(self.runs),
                     "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
                     "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
                     "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
@@ -71,6 +104,7 @@ class Release(unittest.TestCase):
     def commit(self, version, message=None):
         (self.work / "CMakeLists.txt").write_text(
             f"cmake_minimum_required(VERSION 3.22)\nproject(vela\n    VERSION {version}\n    LANGUAGES C CXX)\n")
+        (self.work / "CHANGELOG.md").write_text(CHANGELOG)
         (self.work / "change").write_text(message or version)
         self.git("add", ".")
         self.git("commit", "--quiet", "-m", message or version)
@@ -82,11 +116,35 @@ class Release(unittest.TestCase):
 
     def remote_tags(self):
         out = self.git("ls-remote", "--tags", "origin")
-        return {ref.removeprefix("refs/tags/"): sha for sha, ref in
-                (line.split("\t") for line in out.splitlines())}
+        tags = {}
+        for sha, ref in (line.split("\t") for line in out.splitlines()):
+            name = ref.removeprefix("refs/tags/")
+            # An annotated tag's commit is the peeled ^{} line.
+            if name.endswith("^{}"):
+                tags[name[:-3]] = sha
+            else:
+                tags.setdefault(name, sha)
+        return tags
 
     def releases(self):
         return json.loads(self.state.read_text())
+
+    def gh_calls(self, *prefix):
+        calls = [json.loads(line) for line in self.log.read_text().splitlines()]
+        return [c for c in calls if c[:len(prefix)] == list(prefix)]
+
+
+class Release(Fixture):
+    def test_rehearsal_starts_both_gpu_suites_on_the_tag(self):
+        self.assertEqual(self.release("rehearse", "0.2.1").returncode, 0)
+        started = self.gh_calls("workflow", "run")
+        self.assertEqual(sorted(c[2] for c in started), ["gpu-amd.yml", "gpu-nvidia.yml"])
+        for call in started:
+            self.assertEqual(call[call.index("--ref") + 1], "rehearsal/v0.2.1")
+
+    def test_rehearsal_without_gpu(self):
+        self.assertEqual(self.release("rehearse", "0.2.1", "--no-gpu").returncode, 0)
+        self.assertEqual(self.gh_calls("workflow", "run"), [])
 
     def test_patch_rehearsal_tags_the_release_branch_tip(self):
         result = self.release("rehearse", "0.2.1")
@@ -167,12 +225,192 @@ class Release(unittest.TestCase):
 
     def test_malformed_versions_are_refused(self):
         for version in ("0.2", "v0.2.1", "0.2.1a", "1.0.0", "0.2.1-rc1"):
-            for command in ("rehearse", "clean"):
+            for command in ("prepare", "rehearse", "status", "tag", "clean"):
                 with self.subTest(version=version, command=command):
                     result = self.release(command, version)
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("not a Beta version", result.stderr)
         self.assertEqual(self.remote_tags(), {})
+
+
+
+class Changelog(unittest.TestCase):
+    DAY = datetime.date(2026, 12, 3)
+
+    def test_unreleased_entries_move_under_the_version(self):
+        text = release.release_changelog(CHANGELOG, "0.2.1", self.DAY)
+        self.assertEqual(text, CHANGELOG.replace(
+            "## Unreleased\n\n", "## Unreleased\n\n## 0.2.1 — 3 December 2026\n\n"))
+
+    def test_unreleased_as_the_last_section(self):
+        text = release.release_changelog("# Changelog\n\n## Unreleased\n\n- One.\n", "0.2.0", self.DAY)
+        self.assertEqual(text, "# Changelog\n\n## Unreleased\n\n## 0.2.0 — 3 December 2026\n\n- One.\n")
+
+    def test_nothing_unreleased_or_already_released_is_refused(self):
+        for text, error in (("# C\n\n## Unreleased\n\n## 0.2.0 — 1 December 2026\n", "nothing under"),
+                            ("# C\n\n## 0.2.0 — 1 December 2026\n", "no \"## Unreleased\""),
+                            (CHANGELOG, "already has")):
+            version = "0.1.2" if error == "already has" else "0.2.1"
+            with self.subTest(error=error), self.assertRaisesRegex(release.ReleaseError, error):
+                release.release_changelog(text, version, self.DAY)
+
+    def test_project_version_is_the_only_line_changed(self):
+        cmake = "cmake_minimum_required(VERSION 3.22)\nproject(vela\n    VERSION 0.2.0\n    LANGUAGES C)\n"
+        self.assertEqual(release.bump_project_version(cmake, "0.2.1"), cmake.replace("0.2.0", "0.2.1"))
+
+
+class GpuSuiteNames(unittest.TestCase):
+    def test_full_suites_keep_the_name_status_expects(self):
+        for workflow, title in release.GPU_SUITES.items():
+            text = (ROOT / ".github/workflows" / workflow).read_text()
+            with self.subTest(workflow=workflow):
+                self.assertIn(f"\nname: {title}\n", text)
+                # With no test filter the run is titled exactly like the
+                # workflow; a filter appends " - only <regex>".
+                self.assertIn(f"\nrun-name: {title}${{{{ inputs.tests && format(' - only {{0}}', inputs.tests) || '' }}}}\n",
+                              text)
+                self.assertIn("      tests:\n", text)
+
+
+class Prepare(Fixture):
+    def test_patch_bump_opens_a_pull_request_on_the_release_branch(self):
+        self.git("switch", "--quiet", "release/0.2")
+        result = self.release("prepare", "0.2.2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        branch = self.git("ls-remote", "origin", "refs/heads/prepare/v0.2.2").split()[0]
+        self.assertEqual(self.git("rev-parse", f"{branch}^"), self.patch)
+        changed = self.git("diff", "--name-only", self.patch, branch).split()
+        self.assertEqual(sorted(changed), ["CHANGELOG.md", "CMakeLists.txt"])
+        self.assertIn("VERSION 0.2.2", self.git("show", f"{branch}:CMakeLists.txt"))
+        self.assertIn("## 0.2.2 — ", self.git("show", f"{branch}:CHANGELOG.md"))
+        self.assertIn("Signed-off-by: Test", self.git("log", "-1", "--format=%B", branch))
+        created = self.gh_calls("pr", "create")
+        self.assertEqual(len(created), 1)
+        self.assertEqual(created[0][created[0].index("--base") + 1], "release/0.2")
+        self.assertEqual(created[0][created[0].index("--head") + 1], "prepare/v0.2.2")
+        # The maintainer's own checkout is left alone.
+        self.assertEqual(self.git("status", "--porcelain"), "")
+        self.assertEqual(self.git("worktree", "list").count("\n"), 0)
+
+    def test_minor_release_keeps_mains_version(self):
+        result = self.release("prepare", "0.2.0")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        branch = self.git("ls-remote", "origin", "refs/heads/prepare/v0.2.0").split()[0]
+        self.assertEqual(self.git("diff", "--name-only", self.main_commit, branch), "CHANGELOG.md")
+
+    def test_no_bump_backwards_or_onto_a_published_version(self):
+        self.assertIn("already at 0.2.1", self.release("prepare", "0.2.1").stderr)
+        self.assertIn("main is at 0.2.0", self.release("prepare", "0.3.0").stderr)
+        self.git("push", "--quiet", "origin", f"{self.patch}:refs/tags/v0.2.2")
+        self.assertIn("already tagged", self.release("prepare", "0.2.2").stderr)
+        self.assertEqual(self.gh_calls("pr", "create"), [])
+
+
+class StatusAndTag(Fixture):
+    def setUp(self):
+        super().setUp()
+        key = self.root / "key"
+        subprocess.run(["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-f", str(key)], check=True)
+        self.git("config", "gpg.format", "ssh")
+        self.git("config", "user.signingkey", str(key) + ".pub")
+        self.git("push", "--quiet", "origin", f"{self.patch}:refs/tags/rehearsal/v0.2.1")
+        self.state.write_text(json.dumps({"rehearsal/v0.2.1": {"isDraft": True}}))
+
+    def green(self, **override):
+        def runs(conclusion="success", title=None, sha=None, branch=None):
+            return [{"headSha": sha or self.patch, "headBranch": branch, "status": "completed",
+                     "conclusion": conclusion, "displayTitle": title or "", "url": "https://example.invalid/run"}]
+        state = {"build.yml": runs(branch="rehearsal/v0.2.1"),
+                 "gpu-amd.yml": runs(title="GPU CI - AMD (manual)"),
+                 "gpu-nvidia.yml": runs(title="GPU CI - NVIDIA (manual)")}
+        for workflow, value in override.items():
+            state[workflow.replace("_", "-") + ".yml"] = value(runs)
+        self.runs.write_text(json.dumps(state))
+
+    def test_status_is_green_with_every_check(self):
+        self.green()
+        result = self.release("status", "0.2.1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("v0.2.1 can be tagged", result.stdout)
+
+    def test_each_missing_check_blocks(self):
+        cases = {
+            "failed pipeline": dict(build=lambda r: r(conclusion="failure", branch="rehearsal/v0.2.1")),
+            "pipeline on another commit": dict(build=lambda r: r(sha="0" * 40, branch="rehearsal/v0.2.1")),
+            "filtered AMD suite": dict(gpu_amd=lambda r: r(title="GPU CI - AMD (manual) - only functional-shell")),
+            "no NVIDIA run": dict(gpu_nvidia=lambda r: []),
+            "NVIDIA still running": dict(gpu_nvidia=lambda r: [dict(r(title="GPU CI - NVIDIA (manual)")[0],
+                                                                    status="in_progress", conclusion="")]),
+        }
+        for name, override in cases.items():
+            with self.subTest(case=name):
+                self.green(**override)
+                result = self.release("status", "0.2.1")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("FAIL", result.stdout)
+
+    def test_a_missing_draft_blocks(self):
+        self.green()
+        self.state.write_text("{}")
+        self.assertNotEqual(self.release("status", "0.2.1").returncode, 0)
+
+    def test_a_retry_after_a_success_still_counts(self):
+        self.green(gpu_amd=lambda r: [dict(r()[0], status="in_progress", conclusion="", displayTitle="GPU CI - AMD (manual)"),
+                                      dict(r()[0], displayTitle="GPU CI - AMD (manual)")])
+        self.assertEqual(self.release("status", "0.2.1").returncode, 0)
+
+    def test_without_a_rehearsal_there_is_no_status(self):
+        self.git("push", "--quiet", "origin", ":refs/tags/rehearsal/v0.2.1")
+        self.assertIn("rehearse 0.2.1 first", self.release("status", "0.2.1").stderr)
+
+    def test_tag_signs_pushes_and_removes_the_rehearsal(self):
+        self.green()
+        result = self.release("tag", "0.2.1", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.remote_tags(), {"v0.2.1": self.patch})
+        self.assertIn("-----BEGIN SSH SIGNATURE-----", self.git("cat-file", "tag", "v0.2.1"))
+        self.assertEqual(self.releases(), {})
+
+    def test_tag_needs_a_green_status(self):
+        self.green(gpu_nvidia=lambda r: [])
+        result = self.release("tag", "0.2.1", "--yes")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertNotIn("v0.2.1", self.remote_tags())
+        self.assertEqual(self.git("tag", "--list", "v0.2.1"), "")
+
+    def test_tag_asks_for_the_exact_name(self):
+        self.green()
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), "tag", "0.2.1"], cwd=self.work, env=self.env,
+                                input="yes\n", capture_output=True, text=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("not confirmed", result.stderr)
+        self.assertNotIn("v0.2.1", self.remote_tags())
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), "tag", "0.2.1"], cwd=self.work, env=self.env,
+                                input="v0.2.1\n", capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("v0.2.1", self.remote_tags())
+
+    def test_unsigned_tags_are_never_pushed(self):
+        self.green()
+        self.git("config", "--unset", "user.signingkey")
+        self.git("config", "gpg.format", "openpgp")
+        self.git("config", "gpg.program", "false")
+        self.assertNotEqual(self.release("tag", "0.2.1", "--yes").returncode, 0)
+        self.assertNotIn("v0.2.1", self.remote_tags())
+
+    def test_an_unsigned_local_tag_on_the_commit_is_not_pushed(self):
+        self.green()
+        self.git("tag", "-a", "-m", "unsigned", "v0.2.1", self.patch)
+        result = self.release("tag", "0.2.1", "--yes")
+        self.assertIn("is not signed", result.stderr)
+        self.assertNotIn("v0.2.1", self.remote_tags())
+
+    def test_a_local_tag_on_another_commit_stops(self):
+        self.green()
+        self.git("tag", "v0.2.1", self.old_patch)
+        result = self.release("tag", "0.2.1", "--yes")
+        self.assertIn("delete it first", result.stderr)
+        self.assertNotIn("v0.2.1", self.remote_tags())
 
 
 if __name__ == "__main__":
