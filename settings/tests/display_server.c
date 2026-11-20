@@ -62,12 +62,15 @@ static void destroyed(struct wl_listener *listener, void *data)
     output->wlr->data = NULL;
     free(output);
 }
-static void add_output(struct vela_server *server)
+static void add_output(struct vela_server* server, bool drm_connector, bool internal_panel)
 {
     struct wlr_output *wlr = wlr_headless_add_output(server->backend, fixture_width, fixture_height);
     struct vela_output *output = calloc(1, sizeof(*output));
     output->server = server;
     output->wlr = wlr;
+    output->powered = true;
+    output->drm_connector = drm_connector;
+    output->internal_panel = internal_panel;
     wlr->data = output;
     struct wlr_output_state state;
     wlr_output_state_init(&state);
@@ -85,6 +88,9 @@ static void layout_changed(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, layout_change);
     vela_output_manager_update(server);
+    if (server->lid_closed) {
+        vela_output_manager_schedule_lid_update(server);
+    }
 }
 static int command(int fd, uint32_t mask, void *data)
 {
@@ -93,8 +99,14 @@ static int command(int fd, uint32_t mask, void *data)
     ssize_t n = read(fd, line, sizeof(line) - 1);
     if (n <= 0) { wl_display_terminate(server->display); return 0; }
     line[strcspn(line, "\n")] = '\0';
-    if (!strcmp(line, "add")) add_output(server);
-    else if (!strncmp(line, "enable ", 7) || !strncmp(line, "disable ", 8)) {
+    if (!strcmp(line, "add"))
+        add_output(server, false, false);
+    else if (!strcmp(line, "add external"))
+        add_output(server, true, false);
+    else if (!strcmp(line, "lid close") || !strcmp(line, "lid open")) {
+        server->lid_closed = !strcmp(line, "lid close");
+        vela_output_manager_schedule_lid_update(server);
+    } else if (!strncmp(line, "enable ", 7) || !strncmp(line, "disable ", 8)) {
         bool on = !strncmp(line, "enable ", 7);
         struct vela_output *output = vela_output_named(server, line + (on ? 7 : 8));
         if (output) {
@@ -115,7 +127,8 @@ static int command(int fd, uint32_t mask, void *data)
     } else if (!strncmp(line, "fail ", 5)) {
         snprintf(fail_name, sizeof(fail_name), "%s", line + 5);
         failures_left = 1;
-    } else if (!strcmp(line, "quit")) wl_display_terminate(server->display);
+    } else if (!strcmp(line, "quit"))
+        wl_display_terminate(server->display);
     puts("ok"); fflush(stdout);
     return 0;
 }
@@ -137,8 +150,9 @@ int main(int argc, char **argv)
     server.layout_change.notify = layout_changed;
     wl_signal_add(&server.output_layout->events.change, &server.layout_change);
     if (!wlr_backend_start(server.backend)) return 1;
-    add_output(&server);
-    add_output(&server);
+    const bool laptop = argc > 1 && !strcmp(argv[1], "laptop");
+    add_output(&server, laptop, laptop);
+    add_output(&server, laptop, false);
     const char *socket = wl_display_add_socket_auto(server.display);
     if (!socket) return 1;
     struct wl_event_source *commands = wl_event_loop_add_fd(server.loop, STDIN_FILENO, WL_EVENT_READABLE, command, &server);

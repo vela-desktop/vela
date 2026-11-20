@@ -246,6 +246,60 @@ private slots:
         QVERIFY(output("HEADLESS-2").isEmpty());
         QVERIFY(!output("HEADLESS-3").isEmpty());
     }
+    void laptopLidFollowsExternalDisplayAvailability()
+    {
+        start({ "laptop" });
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        QVERIFY(client->apply("HEADLESS-1", { { "scale", 1.25 }, { "transform", "180" } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        const auto panel = output("HEADLESS-1");
+        const auto before = saved();
+        QVERIFY(!before.isEmpty());
+
+        command("lid close");
+        QTRY_COMPARE(output("HEADLESS-1")["enabled"].toBool(), false);
+        QVERIFY(output("HEADLESS-2")["enabled"].toBool());
+        QCOMPARE(saved(), before);
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        QTRY_VERIFY(client->confirming());
+        client->revert();
+        QTRY_VERIFY(!client->pending());
+        QCOMPARE(saved(), before);
+        QVERIFY(!output("HEADLESS-1")["enabled"].toBool());
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QVERIFY(saved().contains("[HEADLESS-1]\nenabled=yes"));
+        QVERIFY(saved().contains("rotation=180"));
+
+        command("lid open");
+        QTRY_COMPARE(output("HEADLESS-1"), panel);
+
+        command("lid close");
+        QTRY_COMPARE(output("HEADLESS-1")["enabled"].toBool(), false);
+        command("remove HEADLESS-2");
+        QTRY_COMPARE(output("HEADLESS-1"), panel);
+        command("add external");
+        QTRY_COMPARE(output("HEADLESS-1")["enabled"].toBool(), false);
+        QVERIFY(output("HEADLESS-3")["enabled"].toBool());
+
+        command("lid open");
+        QTRY_COMPARE(output("HEADLESS-1"), panel);
+        QVERIFY(client->apply("HEADLESS-1", { { "enabled", false } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        command("lid close");
+        command("lid open");
+        QTRY_VERIFY(!output("HEADLESS-1")["enabled"].toBool());
+        QVERIFY(saved().contains("[HEADLESS-1]\nenabled=no"));
+    }
     void primaryDisplaySelectionAndHotplug()
     {
         start();

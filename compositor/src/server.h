@@ -112,6 +112,8 @@ struct vela_server {
     struct wlr_output_layout *output_layout;
     struct vela_scene *scene;
     struct wl_list outputs; // vela_output.link
+    bool lid_closed;
+    struct wl_event_source *lid_update;
     // Variable refresh rate (VRR): 0 never, 1 with a fullscreen app (games), 2
     // always. vela.conf "variable-refresh".
     int vrr_mode;

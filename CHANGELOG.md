@@ -10,6 +10,10 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Closing a laptop lid with an active external display temporarily turns off
+  the built-in panel. Reopening the lid restores its display settings.
+  System suspend on lid close follows the system's logind policy.
+
 - The taskbar filters windows by desktop and display, opens keyboard-accessible
   previews on click, and adds Super+number shortcuts, attention indicators,
   app badges and progress, a tray drawer chosen icon by icon (drag an icon in

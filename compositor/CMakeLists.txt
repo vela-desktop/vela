@@ -226,11 +226,11 @@ target_compile_definitions(vela-compositor-objects PRIVATE WLR_USE_UNSTABLE
 target_compile_options(vela-compositor-objects PRIVATE -Wall -Wextra -Wno-unused-parameter
     -Wno-missing-field-initializers)
 set_target_properties(vela-compositor-objects PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-# logind lock hints are best-effort when libsystemd is available.
-pkg_check_modules(VELA_LOCK_SYSTEMD IMPORTED_TARGET libsystemd)
-if(VELA_LOCK_SYSTEMD_FOUND)
-    target_compile_definitions(vela-compositor-objects PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
-    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::VELA_LOCK_SYSTEMD)
+# Logind lock hints and initial lid state are best-effort.
+pkg_check_modules(VELA_COMPOSITOR_SYSTEMD IMPORTED_TARGET libsystemd)
+if(VELA_COMPOSITOR_SYSTEMD_FOUND)
+    target_compile_definitions(vela-compositor-objects PRIVATE VELA_HAVE_LOGIND=1)
+    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::VELA_COMPOSITOR_SYSTEMD)
 endif()
 
 target_link_libraries(vela-compositor-objects PUBLIC

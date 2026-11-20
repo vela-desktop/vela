@@ -228,6 +228,8 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     output->server = server;
     output->wlr = wlr;
     output->powered = true;
+    output->drm_connector = wlr_output_is_drm(wlr);
+    output->internal_panel = output->drm_connector && vela_is_internal_panel(wlr->name);
     output->latch_fd = -1;
     output->vblank_fd = -1;
     wl_list_init(&output->link);
@@ -327,9 +329,13 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 static void handle_output_commit(struct wl_listener *listener, void *data)
 {
     struct vela_output *output = wl_container_of(listener, output, commit);
-    (void)data;
+    const struct wlr_output_event_commit *event = data;
     if (!output->wlr->enabled) {
         output->cursor_setup_attempted = false;
+        if (event->state->committed & WLR_OUTPUT_STATE_ENABLED) {
+            // A blanked output counts as black for an in-flight screen lock.
+            vela_server_output_rendered(output->server, output);
+        }
     } else if (!output->cursor_setup_attempted) {
         output->cursor_setup_attempted = true;
         prepare_cursor_swapchain(output->server, output->wlr);
@@ -441,7 +447,7 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
 
 void vela_output_set_powered(struct vela_output *output, bool on)
 {
-    if (on == output->powered) {
+    if (on == output->powered || !wlr_output_layout_get(output->server->output_layout, output->wlr)) {
         return;
     }
     struct wlr_output *wlr = output->wlr;

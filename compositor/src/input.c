@@ -14,6 +14,7 @@
 #include "keyboard.h"
 #include "output.h"
 #include "nested.h"
+#include "output_manager.h"
 #include "scene/scene.h"
 #include "scene/surface.h"
 #include "server.h"
@@ -48,6 +49,10 @@
 #if WLR_HAS_LIBINPUT_BACKEND
 #include <libinput.h>
 #include <wlr/backend/libinput.h>
+#include <wlr/types/wlr_switch.h>
+#ifdef VELA_HAVE_LOGIND
+#include <systemd/sd-bus.h>
+#endif
 #endif
 
 // How far to move (touchpad units) for a gesture to count.
@@ -261,6 +266,73 @@ static void add_pointer(struct vela_input *input, struct wlr_input_device *devic
     load_pointer_settings(input);
 }
 
+#if WLR_HAS_LIBINPUT_BACKEND
+struct vela_lid_switch {
+    struct vela_server *server;
+    struct wl_list link;
+    struct wl_listener toggle, destroy;
+};
+
+static void lid_switch_destroy(struct wl_listener *listener, void *data)
+{
+    struct vela_lid_switch *lid = wl_container_of(listener, lid, destroy);
+    wl_list_remove(&lid->toggle.link);
+    wl_list_remove(&lid->destroy.link);
+    wl_list_remove(&lid->link);
+    free(lid);
+}
+
+static void set_lid_closed(struct vela_server *server, bool closed)
+{
+    bool opened = server->lid_closed && !closed;
+    server->lid_closed = closed;
+    vela_output_manager_schedule_lid_update(server);
+    if (opened) {
+        vela_lock_note_activity(server->lock);
+    }
+}
+
+static void lid_switch_toggle(struct wl_listener *listener, void *data)
+{
+    struct vela_lid_switch *lid = wl_container_of(listener, lid, toggle);
+    const struct wlr_switch_toggle_event *event = data;
+    if (event->switch_type == WLR_SWITCH_TYPE_LID) {
+        // logind handles suspend and signals the shell to lock before sleeping.
+        set_lid_closed(lid->server, event->switch_state == WLR_SWITCH_STATE_ON);
+    }
+}
+
+static void add_lid_switch(struct vela_input *input, struct wlr_input_device *device)
+{
+    struct vela_server *server = input->server;
+    if (!server->session || !wlr_input_device_is_libinput(device)
+        || libinput_device_switch_has_switch(wlr_libinput_get_device_handle(device), LIBINPUT_SWITCH_LID) <= 0) {
+        return;
+    }
+    struct vela_lid_switch *lid = VELA_NEW(struct vela_lid_switch);
+    lid->server = server;
+    wl_list_insert(&input->lid_switches, &lid->link);
+    vela_listen(&wlr_switch_from_input_device(device)->events.toggle, &lid->toggle, lid_switch_toggle);
+    vela_listen(&device->events.destroy, &lid->destroy, lid_switch_destroy);
+
+#ifdef VELA_HAVE_LOGIND
+    // Read the current level at startup and when libinput reopens the seat.
+    // Subsequent changes arrive as switch events, independently of logind.
+    sd_bus *bus = NULL;
+    if (sd_bus_open_system(&bus) >= 0) {
+        int closed = 0;
+        sd_bus_set_method_call_timeout(bus, 200000);
+        if (sd_bus_get_property_trivial(bus, "org.freedesktop.login1", "/org/freedesktop/login1",
+                "org.freedesktop.login1.Manager", "LidClosed", NULL, 'b', &closed)
+            >= 0) {
+            set_lid_closed(server, closed);
+        }
+        sd_bus_unref(bus);
+    }
+#endif
+}
+#endif
+
 static void add_device(struct vela_input *input, struct wlr_input_device *device)
 {
     struct vela_server *server = input->server;
@@ -272,6 +344,9 @@ static void add_device(struct vela_input *input, struct wlr_input_device *device
         add_pointer(input, device);
         wlr_cursor_attach_input_device(server->cursor, device);
         break;
+#if WLR_HAS_LIBINPUT_BACKEND
+    case WLR_INPUT_DEVICE_SWITCH: add_lid_switch(input, device); break;
+#endif
     default:
         break;
     }
@@ -815,6 +890,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
     struct vela_input *input = VELA_NEW(struct vela_input);
     input->server = server;
     wl_list_init(&input->pointers);
+    wl_list_init(&input->lid_switches);
     wl_list_init(&input->keyboards);
     input->wheel_factor = 1.0;
     input->three_fingers = VELA_SWIPE_APP;
@@ -892,6 +968,13 @@ void vela_input_destroy(struct vela_input *input)
     wl_list_for_each_safe (pointer, next_pointer, &input->pointers, link) {
         pointer_destroy(pointer);
     }
+#if WLR_HAS_LIBINPUT_BACKEND
+    struct vela_lid_switch *lid, *next_lid;
+    wl_list_for_each_safe(lid, next_lid, &input->lid_switches, link)
+    {
+        lid_switch_destroy(&lid->destroy, NULL);
+    }
+#endif
     drag_icon_destroy(input->drag_icon);
     if (input->super_timer) {
         wl_event_source_remove(input->super_timer);
