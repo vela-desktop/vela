@@ -1,14 +1,18 @@
 # Lower-cost screen capture
 
-> **Status:** Accepted. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Accepted. **Checked:** 20 November 2026, `215337ef`.
 >
-> **Remaining:** the one-pass opaque-alpha copy is on `main`; the three "Next changes" are not implemented (SHM capture still copies the full image). The Intel SHM throughput and presentation failure is not confirmed resolved: the Intel full-suite baseline is not established yet ([hardware](hardware.md#evidence-not-a-compatibility-guarantee)).
+> **Remaining:** the one-pass opaque-alpha copy is on `main`; the three "Next changes" are not implemented (SHM capture still copies the full image).
 
 Intel GPU [run #5](https://github.com/vela-desktop/vela/actions/runs/43619532573)
 completed all captures but failed SHM throughput and presentation budgets.
-Capture is inherently work: the first choice is which consumers actually need
-CPU pixels. The existing SHM checks remain unchanged and must still pass on
-the exact Intel candidate before declaring that failure resolved.
+The full Intel suite, `functional-capture` and its throughput floors included,
+has since passed on `main` at `10e43095`
+([run](https://github.com/vela-desktop/vela/actions/runs/43666831186),
+15 November 2026; see [hardware](hardware.md#evidence-not-a-compatibility-guarantee)).
+Capture is still inherently work: the first choice is which consumers actually
+need CPU pixels. The existing SHM checks remain unchanged and must keep passing
+on Intel.
 
 ## Paths already available
 
