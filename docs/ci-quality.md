@@ -181,8 +181,14 @@ identify source configuration, not dependency versions: a scheduled weekly
 rebuild intentionally refreshes Arch packages even if the Dockerfile has not
 changed. Each publication also receives a unique run tag, and `latest` is
 updated only from `main`. The publish job saves package versions, an SPDX
-SBOM and a Trivy vulnerability report as artifacts, and blocks publication
-when fixable high/critical vulnerabilities are detected.
+SBOM, an `arch-audit` report and a Trivy report as artifacts, and blocks
+publication when either finds a fixable high or critical vulnerability. Trivy
+has no Arch Linux driver and cannot see pacman packages, so those are checked
+by `arch-audit --upgradable` against the
+[Arch security tracker](https://security.archlinux.org/) and
+[scripts/ci-arch-audit-gate.py](../scripts/ci-arch-audit-gate.py); Trivy then
+covers only packages installed outside pacman. If the tracker cannot be
+reached or its report cannot be read, publication fails too.
 
 The image qualification step checks both the mandatory Vulkan/CTest tools
 and optional promo recording prerequisites before publication. In particular,

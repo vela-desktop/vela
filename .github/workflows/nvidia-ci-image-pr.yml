@@ -12,6 +12,7 @@ on:
       - '.github/workflows/nvidia-ci-image-pr.yml'
       - '.github/workflows/gpu-nvidia.yml'
       - 'scripts/vast-runner.py'
+      - 'scripts/ci-arch-audit-gate.py'
       - 'scripts/tests/test_nvidia_gpu_ci.py'
   workflow_dispatch:
 
@@ -30,7 +31,7 @@ jobs:
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.13'
-      - name: Unit-test rental and digest checks
+      - name: Unit-test rental, digest and advisory checks
         run: |
           python3 -m unittest discover -s scripts/tests -p 'test_nvidia_gpu_ci.py' -v
           python3 -m unittest discover -s scripts/tests -p 'test_vast_runner.py' -v
@@ -52,3 +53,10 @@ jobs:
             test ! -e /etc/sudoers.d/runner
             pkg-config --modversion wlroots-0.20 vulkan
           '
+      - name: Audit pacman packages as publication will
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint arch-audit vela-nvidia-ci-preflight \
+            --upgradable --json > nvidia-ci-arch-audit.json
+          python3 scripts/ci-arch-audit-gate.py nvidia-ci-arch-audit.json

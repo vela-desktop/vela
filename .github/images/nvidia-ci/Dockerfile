@@ -24,6 +24,8 @@ RUN pacman -Syu --noconfirm --needed \
         vulkan-tools vulkan-validation-layers libxext libglvnd egl-wayland egl-wayland2 egl-gbm egl-x11 \
     # The workflow's options: coverage and the promo smoke test.
         gcovr ffmpeg util-linux \
+    # Trivy cannot see pacman packages; nvidia-ci-image.yml audits them with this.
+        arch-audit \
     # The GitHub Actions runner (.NET): its install script doesn't know pacman.
         icu krb5 openssl lttng-ust \
     && pacman -Scc --noconfirm

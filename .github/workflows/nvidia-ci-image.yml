@@ -13,6 +13,7 @@ on:
     paths:
       - .github/images/nvidia-ci/**
       - .github/workflows/nvidia-ci-image.yml
+      - scripts/ci-arch-audit-gate.py
   workflow_dispatch:
   # Refresh rolling Arch packages even when the Dockerfile has not changed.
   schedule:
@@ -83,7 +84,18 @@ jobs:
           format: spdx-json
           output-file: nvidia-ci.spdx.json
           upload-artifact: false
-      - name: Scan image for fixable high/critical vulnerabilities
+      - name: Audit pacman packages for fixable high/critical advisories
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Trivy has no Arch Linux driver, so its scan below covers only
+          # non-pacman packages. arch-audit reads the image's own pacman
+          # database against security.archlinux.org and exits non-zero when
+          # the tracker cannot be reached, so this fails closed.
+          docker run --rm --entrypoint arch-audit "$IMAGE:$BUILD_TAG" \
+            --upgradable --json > nvidia-ci-arch-audit.json
+          python3 scripts/ci-arch-audit-gate.py nvidia-ci-arch-audit.json
+      - name: Scan non-pacman packages for fixable high/critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -102,6 +114,7 @@ jobs:
           path: |
             nvidia-ci-packages.txt
             nvidia-ci.spdx.json
+            nvidia-ci-arch-audit.json
             nvidia-ci-trivy.json
           if-no-files-found: warn
           retention-days: 30
