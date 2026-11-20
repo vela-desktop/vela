@@ -4,6 +4,7 @@
 #pragma once
 
 #include <QObject>
+#include <QSet>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -31,6 +32,8 @@ public:
     int count() const { return int(m_names.size()); }
     QStringList names() const { return m_names; }
     QVariantMap windows() const { return m_windows; }
+    QString outputOf(const QString& window) const { return m_outputs.value(window).toString(); }
+    bool needsAttention(const QString& window) const { return m_attention.contains(window); }
     QStringList stickyApps() const { return m_stickyApps; }
     QVariantList snapGroups() const { return m_snapGroups; }
 
@@ -59,6 +62,8 @@ private:
     QStringList m_names;
     int m_current = 0;
     QVariantMap m_windows;
+    QVariantMap m_outputs;
+    QSet<QString> m_attention;
     QStringList m_stickyApps;
     QVariantList m_snapGroups;
 };

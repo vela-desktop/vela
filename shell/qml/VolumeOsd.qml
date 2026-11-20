@@ -23,6 +23,9 @@ Window {
     // meets the taskbar (docs/visual-coherence.md §6.9): the pill rests 12
     // units above it.
     readonly property real room: shadow.reach
+    // Below a top taskbar; above a bottom one, or at the bottom beside a
+    // vertical one (main.cpp anchors it, docs/taskbar.md §11.3).
+    readonly property bool fromTop: Styles.taskbar.position === "top"
     width: room + 232 + room
     height: room + 52 + 12
     color: "transparent"
@@ -117,10 +120,10 @@ Window {
     PanelMotion {
         id: motion
         x: root.room
-        y: root.room
+        y: root.fromTop ? 12 : root.room
         width: 232
         height: 52
-        offset: Qt.point(0, 12)
+        offset: Qt.point(0, root.fromTop ? -12 : 12)
         onClosed: root.visible = false
         onVisibleAreaChanged: Effects.setBlur(root, [visibleArea]) // the travel while it moves, the pill at rest
 

@@ -51,7 +51,7 @@ Window {
             root.visible = true
             root.openLevel(0, entries, {
                 anchorX: x, anchorY: y,
-                above: !!options.above, centered: !!options.centered,
+                above: !!options.above, centered: !!options.centered, before: !!options.before,
                 minWidth: options.minWidth || 0,
                 keyboardMode: !!options.keyboard
             }, !!options.keyboard)

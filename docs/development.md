@@ -512,6 +512,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   a11y.c            night light, color filters, magnifier and sticky keys
   input.c           seat, pointer, touchpad, gestures, pointer constraints
   keyboard.c        keyboards, layouts and key handling
+  super_numbers.c   Super+number: which taskbar app or desktop, kept keys
   shell.c           the supervised Qt shell and messages to it
   lock.c            session lock and idle handling
 

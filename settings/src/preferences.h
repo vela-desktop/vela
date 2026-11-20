@@ -44,8 +44,19 @@ class Preferences : public QObject {
     // Settings itself is light (it follows the apps' mode).
     Q_PROPERTY(bool light READ light NOTIFY appThemeChanged)
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarPosition READ taskbarPosition WRITE setTaskbarPosition NOTIFY taskbarChanged)
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom WRITE setTaskbarWindowsFrom NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn WRITE setTaskbarAppsOn NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive WRITE setTaskbarClickActive NOTIFY taskbarChanged)
+    // The notification area icons on the taskbar, by key (docs/taskbar.md §8).
+    Q_PROPERTY(QStringList taskbarTrayShown READ taskbarTrayShown NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarAttention READ taskbarAttention WRITE setTaskbarAttention NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarBadges READ taskbarBadges WRITE setTaskbarBadges NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarProgress READ taskbarProgress WRITE setTaskbarProgress NOTIFY taskbarChanged)
+    Q_PROPERTY(QString superNumberKeys READ superNumberKeys WRITE setSuperNumberKeys NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarNumberHints READ taskbarNumberHints WRITE setTaskbarNumberHints NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
     // The taskbar clock: its date (taskbar/showDate).
@@ -184,10 +195,31 @@ public:
 
     QString taskbarAlignment() const { return m_taskbarAlignment; }
     void setTaskbarAlignment(const QString& alignment);
+    QString taskbarPosition() const { return m_taskbarPosition; }
+    void setTaskbarPosition(const QString& position);
     bool endTask() const { return m_endTask; }
     void setEndTask(bool on);
     bool taskView() const { return m_taskView; }
     void setTaskView(bool on);
+    QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
+    void setTaskbarWindowsFrom(const QString& value);
+    QString taskbarAppsOn() const { return m_taskbarAppsOn; }
+    void setTaskbarAppsOn(const QString& value);
+    QString taskbarClickActive() const { return m_taskbarClickActive; }
+    void setTaskbarClickActive(const QString& value);
+    QStringList taskbarTrayShown() const { return m_taskbarTrayShown; }
+    // On the taskbar (at its end) or in the drawer.
+    Q_INVOKABLE void setTrayIconShown(const QString& key, bool shown);
+    bool taskbarAttention() const { return m_taskbarAttention; }
+    void setTaskbarAttention(bool value);
+    bool taskbarBadges() const { return m_taskbarBadges; }
+    void setTaskbarBadges(bool value);
+    bool taskbarProgress() const { return m_taskbarProgress; }
+    void setTaskbarProgress(bool value);
+    QString superNumberKeys() const { return m_superNumberKeys; }
+    void setSuperNumberKeys(const QString& mode);
+    bool taskbarNumberHints() const { return m_taskbarNumberHints; }
+    void setTaskbarNumberHints(bool value);
     bool taskbarAllScreens() const { return m_taskbarAllScreens; }
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
@@ -426,8 +458,18 @@ private:
     QString m_appTheme;
     QString m_shellTheme;
     QString m_taskbarAlignment;
+    QString m_taskbarPosition = QStringLiteral("bottom");
     bool m_endTask = true;
     bool m_taskView = true;
+    QString m_taskbarWindowsFrom = QStringLiteral("desktop");
+    QString m_taskbarAppsOn = QStringLiteral("all");
+    QString m_taskbarClickActive = QStringLiteral("previews");
+    QStringList m_taskbarTrayShown;
+    bool m_taskbarAttention = true;
+    bool m_taskbarBadges = true;
+    bool m_taskbarProgress = true;
+    QString m_superNumberKeys = QStringLiteral("apps");
+    bool m_taskbarNumberHints = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_desktopIcons = true;

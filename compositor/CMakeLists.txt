@@ -70,6 +70,7 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-toplevel-identifier-v1.xml vela-toplevel-identifier-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
     ext-image-capture-source-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml
@@ -138,6 +139,7 @@ add_library(vela-pure STATIC
     src/path_security.c
     src/security_policy.c
     src/sun.c
+    src/super_numbers.c
     src/supervisor_child.c
     src/sync.c
     src/util.c
@@ -674,6 +676,7 @@ if(VELA_BUILD_TOOLS)
             tests/lock_state_test.cpp
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
+            tests/super_numbers_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)

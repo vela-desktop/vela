@@ -242,6 +242,59 @@ class X11Native(unittest.TestCase):
         self.vela.wait_for(lambda s: s.window(view)["fullscreen"], what="fullscreen at 125%")
         self.wait_geometry(xid, (0, 1350, 2560, 1440))
 
+    def test_urgency_tool_keeps_the_other_hints(self):
+        # vela-x11 --urgency changes the flag alone: the window's input
+        # hint (flags bit 0, input 1) stays through on and off.
+        self.needs("xprop")
+        _, xid, _ = self.open_x11(400, 300)
+        subprocess.run(["xprop", "-id", xid, "-f", "WM_HINTS", "32i", "-set", "WM_HINTS", "1,1,0,0,0,0,0,0,0"],
+                       env=self.env, check=True)
+
+        def hints():
+            return subprocess.check_output(["xprop", "-id", xid, "WM_HINTS"], env=self.env, text=True)
+
+        self.x11("--urgency", xid, "on")
+        self.assertIn("accepts input or input focus: True", hints())
+        self.assertIn("urgency hint bit is set", hints())
+        self.x11("--urgency", xid, "off")
+        self.assertIn("accepts input or input focus: True", hints())
+        self.assertNotIn("urgency hint bit is set", hints())
+
+    def test_urgency_marks_the_background_window_until_focus_or_clear(self):
+        view, xid, _ = self.open_x11(400, 300)
+        foreground = self.vela.open_window()
+        self.x11("--urgency", xid, "on")
+        self.vela.wait_for(lambda _: view in self.vela.query("workspaces")["attention"],
+                           what="X11 urgency in taskbar state")
+        self.assertEqual(self.vela.state()["focused"], foreground)
+        self.x11("--urgency", xid, "off")
+        self.vela.wait_for(lambda _: view not in self.vela.query("workspaces")["attention"],
+                           what="withdrawn X11 urgency")
+        self.x11("--activate", xid)
+        self.vela.wait_for(lambda _: view in self.vela.query("workspaces")["attention"],
+                           what="refused X11 activation marks attention")
+        self.assertEqual(self.vela.state()["focused"], foreground)
+        self.vela.command(f"window {view} activate")
+        self.vela.wait_for(lambda s: s["focused"] == view
+                           and view not in self.vela.query("workspaces")["attention"],
+                           what="explicit focus clears X11 attention")
+
+    def test_a_window_moving_itself_follows_on_the_taskbar(self):
+        # An app that moves itself to another output, at the same size and
+        # scale: the taskbar there gets its button, though no new frame
+        # says so.
+        self.vela.command("test-output add 2560x1440")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="second output")
+        self.vela.randr("--output", "HEADLESS-2", "--pos", "2048,0", "--scale", "1.25")
+        self.vela.input("move", 500, 500)
+        view, xid, _ = self.open_x11(320, 240)
+        self.assertEqual(self.vela.state().window(view)["output"], "HEADLESS-1")
+        shell = self.vela.fake_shell()
+        x, y, _, _, _ = self.randr_outputs()["HEADLESS-2"]
+        self.x11("--move", xid, x + 200, y + 200)
+        self.vela.wait_for(lambda s: s.window(view)["output"] == "HEADLESS-2", what="moved to the second output")
+        shell.wait_for("workspaces ", containing=f'"{view}":"HEADLESS-2"')
+
     def test_initial_size_restores_in_the_pixels_it_was_asked_in(self):
         # A game opening fullscreen on the 100% output, rescued onto the
         # 125% one when that is unplugged: back to a window, it gets the

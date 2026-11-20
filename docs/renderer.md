@@ -1185,8 +1185,9 @@ remaining space; Start and Task View stay fixed. The space is recalculated when
 the output width, clock format, tray or indicators change. Scrolled buttons keep
 their activation, middle click, jump lists, previews, volume wheel and drag
 reordering. An app activated elsewhere is brought into view. Hidden apps minimize
-towards the corresponding navigation button. A large tray also scrolls its
-icons, leaving space for app navigation and the clock and status controls.
+towards the corresponding navigation button. The notification area keeps the
+icons the user didn't put on the taskbar in a four-column drawer behind "^". The [taskbar design](taskbar.md)
+describes the window filters, previews, shortcuts and drag targets.
 
 The menu rising from the button, from top to bottom:
 

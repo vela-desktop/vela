@@ -300,6 +300,18 @@ void ShellController::handleCommand(const QByteArray& command)
         emit switcherHidden();
     } else if (command == "winx") {
         emit winXRequested();
+    } else if (parts.first() == "taskbar-app" && parts.size() >= 3) {
+        const int number = parts.at(1).toInt();
+        if (number >= 1 && number <= 10) {
+            emit taskbarAppRequested(
+                number - 1, QString::fromLatin1(parts.at(2)), QString::fromUtf8(parts.mid(3).join(' ')));
+        }
+    } else if (command == "super-held") {
+        emit superHeld();
+    } else if (command == "super-hints-hidden") {
+        emit superHintsHidden();
+    } else if (command == "super-released") {
+        emit superReleased();
     } else if (command == "show-desktop") {
         emit showDesktopRequested();
     } else if (command == "quick-settings") {
@@ -406,6 +418,30 @@ void ShellController::placeAbove(QWindow* window, int left)
     }
     if (margins != wanted) {
         layer->setMargins(wanted);
+    }
+}
+
+void ShellController::placeAnchored(QWindow* window, int edges, int left, int top)
+{
+    auto* layer = window ? LayerShellQt::Window::get(window) : nullptr;
+    if (!layer) {
+        return;
+    }
+    const auto anchors = LayerShellQt::Window::Anchors::fromInt(edges & 15);
+    const QMargins wanted((edges & 4) ? left : 0, (edges & 1) ? top : 0, 0, 0);
+    if (layer->anchors() != anchors) {
+        layer->setAnchors(anchors);
+    }
+    if (layer->margins() != wanted) {
+        layer->setMargins(wanted);
+    }
+}
+
+void ShellController::setPanelKeyboard(QWindow* window, bool on)
+{
+    if (window) {
+        LayerShellQt::Window::get(window)->setKeyboardInteractivity(
+            on ? LayerShellQt::Window::KeyboardInteractivityOnDemand : LayerShellQt::Window::KeyboardInteractivityNone);
     }
 }
 

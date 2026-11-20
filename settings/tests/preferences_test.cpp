@@ -145,6 +145,73 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
+    void taskbarSettings()
+    {
+        write("[appearance]\nappTheme=dark\n"
+              "[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayShown=discord,,discord\n"
+              "attention=unknown\n");
+        Preferences prefs;
+        QCOMPARE(prefs.taskbarWindowsFrom(), QStringLiteral("desktop"));
+        QCOMPARE(prefs.taskbarPosition(), QStringLiteral("bottom"));
+        QCOMPARE(prefs.taskbarAppsOn(), QStringLiteral("all"));
+        QCOMPARE(prefs.taskbarClickActive(), QStringLiteral("previews"));
+        QCOMPARE(prefs.taskbarTrayShown(), QStringList { QStringLiteral("discord") });
+        QVERIFY(prefs.taskbarAttention());
+
+        prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarPosition(QStringLiteral("diagonal"));
+        prefs.setTaskbarPosition(QStringLiteral("left"));
+        prefs.setTaskbarAppsOn(QStringLiteral("window"));
+        prefs.setTaskbarClickActive(QStringLiteral("next"));
+        prefs.setTrayIconShown(QStringLiteral("steam"), true);
+        prefs.setTrayIconShown(QStringLiteral("discord"), false);
+        prefs.setTrayIconShown(QStringLiteral("telegram"), true);
+        prefs.setTaskbarAttention(false);
+        prefs.setTaskbarBadges(false);
+        prefs.setTaskbarProgress(false);
+        prefs.setTaskbarNumberHints(false);
+        expectFreshShell({
+            { "taskbar/windowsFrom", "all" },
+            { "taskbar/position", "left" },
+            { "taskbar/appsOn", "window" },
+            { "taskbar/clickActive", "next" },
+            { "taskbar/trayShown", QStringList { QStringLiteral("steam"), QStringLiteral("telegram") } },
+            { "taskbar/attention", false },
+            { "taskbar/badges", false },
+            { "taskbar/progress", false },
+            { "taskbar/numberHints", false },
+        });
+        // Unknown values, and the values already chosen, write nothing.
+        QSignalSpy taskbar(&prefs, &Preferences::taskbarChanged);
+        prefs.setTaskbarPosition(QStringLiteral("left"));
+        prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarWindowsFrom(QStringLiteral("everywhere"));
+        prefs.setTaskbarAppsOn(QStringLiteral("window"));
+        prefs.setTaskbarAppsOn(QStringLiteral("nowhere"));
+        prefs.setTaskbarClickActive(QStringLiteral("next"));
+        prefs.setTaskbarClickActive(QStringLiteral("twice"));
+        prefs.setTrayIconShown(QStringLiteral("steam"), true);
+        prefs.setTrayIconShown(QStringLiteral("discord"), false);
+        prefs.setTrayIconShown(QString(), true);
+        prefs.setTaskbarAttention(false);
+        prefs.setTaskbarBadges(false);
+        prefs.setTaskbarProgress(false);
+        prefs.setTaskbarNumberHints(false);
+        prefs.setSuperNumberKeys(QStringLiteral("apps"));
+        prefs.setSuperNumberKeys(QStringLiteral("letters"));
+        QCOMPARE(taskbar.count(), 0);
+        prefs.setSuperNumberKeys(QStringLiteral("desktops"));
+        QCOMPARE(taskbar.count(), 1);
+        Preferences reread;
+        QCOMPARE(reread.superNumberKeys(), QStringLiteral("desktops"));
+
+        BlockedDirectory blocker;
+        QVERIFY(blocker.block());
+        prefs.setTrayIconShown(QStringLiteral("steam"), false);
+        QCOMPARE(prefs.taskbarTrayShown(), (QStringList { QStringLiteral("steam"), QStringLiteral("telegram") }));
+        QVERIFY(blocker.restore());
+    }
+
     /** Missing desktop helpers must produce a diagnostic without opening another app. */
     void missingFolderOpener()
     {
@@ -535,6 +602,14 @@ private slots:
             { "taskView", "taskbar/taskView", false },
             { "taskbarAllScreens", "taskbar/allScreens", false },
             { "showDesktopCorner", "taskbar/showDesktopCorner", false },
+            { "taskbarPosition", "taskbar/position", QStringLiteral("top") },
+            { "taskbarWindowsFrom", "taskbar/windowsFrom", QStringLiteral("all") },
+            { "taskbarAppsOn", "taskbar/appsOn", QStringLiteral("window") },
+            { "taskbarClickActive", "taskbar/clickActive", QStringLiteral("next") },
+            { "taskbarAttention", "taskbar/attention", false },
+            { "taskbarBadges", "taskbar/badges", false },
+            { "taskbarProgress", "taskbar/progress", false },
+            { "taskbarNumberHints", "taskbar/numberHints", false },
             { "desktopIcons", "desktop/showIcons", false },
             { "startPinned", "start/showPinned", false },
             { "clockDate", "taskbar/showDate", false },
@@ -546,7 +621,7 @@ private slots:
             { "batteryNotify", "battery/notify", false },
             { "batteryLowLevel", "battery/lowLevel", 10 },
             { "deviceBatteryNotify", "battery/devices", false },
-            { "clipboardHistory", "clipboard/history", true }
+            { "clipboardHistory", "clipboard/history", true },
         };
         for (const auto& choice : choices) {
             for (bool present : { false, true }) {

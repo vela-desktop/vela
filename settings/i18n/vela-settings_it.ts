@@ -3616,9 +3616,89 @@ Specifiche sistema
         <source>Left</source>
         <translation>A sinistra</translation>
     </message>
+    <message>
+        <source>Top</source>
+        <translation>In alto</translation>
+    </message>
 </context>
 <context>
     <name>TaskbarPage</name>
+    <message>
+        <source>Show windows from</source>
+        <translation>Mostra le finestre di</translation>
+    </message>
+    <message>
+        <source>This desktop</source>
+        <translation>Questo desktop</translation>
+    </message>
+    <message>
+        <source>All desktops</source>
+        <translation>Tutti i desktop</translation>
+    </message>
+    <message>
+        <source>Show apps on</source>
+        <translation>Mostra le app su</translation>
+    </message>
+    <message>
+        <source>All taskbars</source>
+        <translation>Tutte le barre delle applicazioni</translation>
+    </message>
+    <message>
+        <source>The taskbar where the window is open</source>
+        <translation>La barra dello schermo in cui è aperta la finestra</translation>
+    </message>
+    <message>
+        <source>When I click the app in front with several windows</source>
+        <translation>Al clic sull’app in primo piano con più finestre</translation>
+    </message>
+    <message>
+        <source>Show its windows</source>
+        <translation>Mostra le sue finestre</translation>
+    </message>
+    <message>
+        <source>Switch to the next one</source>
+        <translation>Passa alla finestra successiva</translation>
+    </message>
+    <message>
+        <source>Badges and attention</source>
+        <translation>Badge e richieste di attenzione</translation>
+    </message>
+    <message>
+        <source>Flash apps that need attention</source>
+        <translation>Fai lampeggiare le app che richiedono attenzione</translation>
+    </message>
+    <message>
+        <source>Show badges on apps</source>
+        <translation>Mostra i badge sulle app</translation>
+    </message>
+    <message>
+        <source>Show progress on apps</source>
+        <translation>Mostra l’avanzamento sulle app</translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Super+1…9, 0</source>
+        <translation>Super+1…9, 0</translation>
+    </message>
+    <message>
+        <source>Taskbar apps</source>
+        <translation>App della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Virtual desktops</source>
+        <translation>Desktop virtuali</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Show numbers while holding Super</source>
+        <translation>Mostra i numeri mentre tieni premuto Super</translation>
+    </message>
     <message>
         <source>Taskbar items</source>
         <translation>Elementi della barra delle applicazioni</translation>
@@ -3658,6 +3738,46 @@ Specifiche sistema
     <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Notification area</source>
+        <translation>Area di notifica</translation>
+    </message>
+    <message>
+        <source>Icons on the taskbar</source>
+        <translation>Icone sulla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>The others wait in the drawer behind ^. New icons start there; the icons of apps that aren&apos;t running show here once they start.</source>
+        <translation>Le altre aspettano nel cassetto dietro ^. Le icone nuove partono da lì; quelle delle app non aperte compaiono qui quando le app si avviano.</translation>
+    </message>
+    <message>
+        <source>No app shows an icon in the notification area right now. Icons show here once their apps start.</source>
+        <translation>Nessuna app mostra un&apos;icona nell&apos;area di notifica in questo momento. Le icone compaiono qui quando le loro app si avviano.</translation>
+    </message>
+    <message>
+        <source>Show %1 on the taskbar</source>
+        <translation>Mostra %1 sulla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Taskbar position</source>
+        <translation>Posizione della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Bottom</source>
+        <translation>In basso</translation>
+    </message>
+    <message>
+        <source>Top</source>
+        <translation>In alto</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>A sinistra</translation>
+    </message>
+    <message>
+        <source>Right</source>
+        <translation>A destra</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>
