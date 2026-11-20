@@ -198,6 +198,24 @@ Distinguish **merged on main**, **candidate for 0.2**, and
 - **Experimental Intel ANV CI** runs on a dedicated self-hosted Intel runner
   ([#226](https://github.com/vela-desktop/vela/pull/226)).
 
+**0.2 targets still in draft pull requests:**
+
+- **Vulkan for the shell:** `vela-shell` renders Qt Quick with Vulkan, as
+  the compositor does, instead of the OpenGL it got from Qt's default; an
+  explicit `QSG_RHI_BACKEND` still wins, and apps the shell launches don't
+  inherit it ([#286](https://github.com/vela-desktop/vela/pull/286)). Before
+  merging: `functional-shell` and the AMD, NVIDIA and Intel GPU suites, and the
+  shell's memory measured against the idle figure in
+  [performance](performance.md). Files, Settings and the authorization
+  prompt stay on OpenGL.
+- **Shell memory:** five places where `vela-shell` keeps memory the screen
+  doesn't need: clipboard images kept both decoded and as PNG, full-size
+  notification images, the calendar's 42 day controls, glibc arenas after
+  startup, and the desktop icons' permanent label shadows
+  ([#285](https://github.com/vela-desktop/vela/pull/285)). Each change must
+  show a `Pss`/`Private_Dirty` saving with no frame-time regression; the
+  document lands with the first of them.
+
 **Candidates to evaluate before 0.2, not automatically release blockers:**
 
 - Finish or deliberately defer the existing
@@ -321,6 +339,8 @@ own design, cost/maintenance analysis and definition of done.
 |---|---|---|---|---|
 | **Snipping Tool extensions**: OCR, delay, color picker and recording | in PR | [#118](https://github.com/vela-desktop/vela/pull/118) | draft; rebase, review and test | 0.2 candidate |
 | **Always-on-top** | in PR | [#108](https://github.com/vela-desktop/vela/pull/108) | draft; review and test | 0.2 candidate |
+| **Vulkan for the shell** | in PR | [#286](https://github.com/vela-desktop/vela/pull/286) | draft; shell and GPU suites, memory | 0.2 target |
+| **Shell memory** | [#285](https://github.com/vela-desktop/vela/pull/285) | — | design open, code pending | 0.2 target |
 | **Desktop preferences** | [#236](https://github.com/vela-desktop/vela/issues/236) | [#235](https://github.com/vela-desktop/vela/pull/235) | open fix PR | 0.2 stabilization candidate |
 | **Text input and IME** | reconcile with OSK | — | not implemented | 0.3 proposed |
 | **Touch, pen and tablet mode** | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design open, code pending | 0.3 proposed |
