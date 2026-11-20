@@ -5,7 +5,7 @@
 
 Trivy has no Arch Linux driver, so it cannot see pacman packages; the
 publication workflow runs `arch-audit --upgradable --json` inside the image
-instead and passes the output here. `--upgradable` keeps only the advisory
+instead and pipes the saved output to this script's standard input. `--upgradable` keeps only the advisory
 groups whose fix is already in the repos, i.e. the fixable ones. Output that
 is not the shape arch-audit prints fails too: an assessment that could not
 be read must not count as a clean one.
@@ -41,14 +41,10 @@ def describe(group):
             f"{', '.join(group['packages'])}: fixed in {group['fixed']} [{issues}]")
 
 
-def main(argv):
-    if len(argv) != 2:
-        print(f"usage: {argv[0]} ARCH_AUDIT_JSON", file=sys.stderr)
-        return 2
+def main(report):
     try:
-        with open(argv[1], encoding="utf-8") as report:
-            found = blocking_groups(json.load(report))
-    except (OSError, ValueError) as error:
+        found = blocking_groups(json.load(report))
+    except ValueError as error:
         print(f"::error::cannot assess pacman packages: {error}")
         return 2
     for group in found:
@@ -60,4 +56,4 @@ def main(argv):
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv))
+    sys.exit(main(sys.stdin))

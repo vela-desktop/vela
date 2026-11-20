@@ -6,7 +6,6 @@ import importlib.util
 import io
 import json
 from pathlib import Path
-import tempfile
 import unittest
 from unittest import mock
 
@@ -157,11 +156,8 @@ def advisory(severity, *, name="AVG-1", packages=("openssl",)):
 
 class ArchAuditGateTests(unittest.TestCase):
     def run_gate(self, text):
-        with tempfile.TemporaryDirectory() as directory:
-            report = Path(directory) / "arch-audit.json"
-            report.write_text(text, encoding="utf-8")
-            with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
-                status = arch_audit_gate.main(["gate", str(report)])
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            status = arch_audit_gate.main(io.StringIO(text))
         return status, out.getvalue()
 
     def test_clean_report_passes(self):
@@ -185,9 +181,6 @@ class ArchAuditGateTests(unittest.TestCase):
                      json.dumps([advisory("High", packages=())])):
             with self.subTest(text=text):
                 self.assertEqual(self.run_gate(text)[0], 2)
-
-    def test_missing_report_fails_closed(self):
-        self.assertEqual(arch_audit_gate.main(["gate", "/nonexistent/report.json"]), 2)
 
 
 class BuildSizingTests(unittest.TestCase):

@@ -59,4 +59,4 @@ jobs:
           set -euo pipefail
           docker run --rm --entrypoint arch-audit vela-nvidia-ci-preflight \
             --upgradable --json > nvidia-ci-arch-audit.json
-          python3 scripts/ci-arch-audit-gate.py nvidia-ci-arch-audit.json
+          python3 scripts/ci-arch-audit-gate.py < nvidia-ci-arch-audit.json

@@ -94,7 +94,7 @@ jobs:
           # the tracker cannot be reached, so this fails closed.
           docker run --rm --entrypoint arch-audit "$IMAGE:$BUILD_TAG" \
             --upgradable --json > nvidia-ci-arch-audit.json
-          python3 scripts/ci-arch-audit-gate.py nvidia-ci-arch-audit.json
+          python3 scripts/ci-arch-audit-gate.py < nvidia-ci-arch-audit.json
       - name: Scan non-pacman packages for fixable high/critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
