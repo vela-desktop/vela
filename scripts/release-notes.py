@@ -16,6 +16,7 @@ import re
 import sys
 
 REPO = "https://github.com/vela-desktop/vela"
+CHANGELOG = Path(__file__).resolve().parents[1] / "CHANGELOG.md"
 LINK = re.compile(r"\[([^\]]+)\]\(([^)\s]+)\)")
 
 
@@ -44,11 +45,10 @@ def notes(text, version):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("version")
-    parser.add_argument("--changelog", default=str(Path(__file__).resolve().parents[1] / "CHANGELOG.md"))
     args = parser.parse_args(argv)
     if not re.fullmatch(r"0\.\d+\.\d+", args.version):
         raise SystemExit(f"release-notes: not a Beta version: {args.version}")
-    sys.stdout.write(notes(Path(args.changelog).read_text(encoding="utf-8"), args.version))
+    sys.stdout.write(notes(CHANGELOG.read_text(encoding="utf-8"), args.version))
     return 0
 
 

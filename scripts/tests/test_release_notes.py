@@ -6,6 +6,7 @@
 
 import importlib.util
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -59,15 +60,38 @@ class Notes(unittest.TestCase):
         self.assertEqual(notes.plain("[https://a.invalid](https://a.invalid)", "0.2.1"), "https://a.invalid")
 
     def test_missing_or_empty_sections_stop_the_pipeline(self):
-        for text, version in ((CHANGELOG, "0.2.2"), ("## 0.2.2 — 3 December 2026\n\n## 0.2.1\n", "0.2.2"),
-                              (CHANGELOG, "0.2")):
-            with self.subTest(version=version, text=text[:20]), tempfile.NamedTemporaryFile("w") as f:
-                f.write(text)
-                f.flush()
-                result = subprocess.run([sys.executable, "-I", str(SCRIPT), version, "--changelog", f.name],
-                                        capture_output=True, text=True, timeout=10)
-                self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(result.stdout, "")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            script = Path(shutil.copyfile(SCRIPT, scripts / SCRIPT.name))
+            for text, version, error in (
+                (CHANGELOG, "0.2.2", "no CHANGELOG.md entries"),
+                ("## 0.2.2 — 3 December 2026\n\n## 0.2.1\n", "0.2.2", "no CHANGELOG.md entries"),
+                (CHANGELOG, "0.2", "not a Beta version"),
+            ):
+                with self.subTest(version=version, text=text[:20]):
+                    (root / "CHANGELOG.md").write_text(text, encoding="utf-8")
+                    result = subprocess.run([sys.executable, "-I", str(script), version],
+                                            cwd=scripts, capture_output=True, text=True, timeout=10)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertEqual(result.stdout, "")
+                    self.assertIn(error, result.stderr)
+
+    def test_cli_reads_the_repository_changelog_from_another_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result = subprocess.run([sys.executable, "-I", str(SCRIPT), "0.1.2"],
+                                    cwd=directory, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+        self.assertEqual(result.stdout, notes.notes(text, "0.1.2"))
+
+    def test_cli_refuses_a_changelog_override(self):
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), "0.1.2", "--changelog", "CHANGELOG.md"],
+                                capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("unrecognized arguments: --changelog", result.stderr)
 
     def test_a_version_prefix_is_not_its_section(self):
         # 0.2.1 must not pick up a 0.2.10 section.
