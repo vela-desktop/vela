@@ -17,6 +17,8 @@ import json
 import sys
 
 BLOCKING = {"High", "Critical"}
+# What the Arch security tracker assigns; anything else is not a report.
+SEVERITIES = BLOCKING | {"Medium", "Low", "Unknown"}
 FIELDS = ("name", "packages", "severity", "fixed", "issues")
 
 
@@ -30,6 +32,8 @@ def blocking_groups(groups):
             raise ValueError(f"malformed advisory group: {group!r}")
         if not isinstance(group["packages"], list) or not group["packages"]:
             raise ValueError(f"advisory group without packages: {group['name']}")
+        if group["severity"] not in SEVERITIES:
+            raise ValueError(f"unknown severity {group['severity']!r} in {group['name']}")
         if group["severity"] in BLOCKING:
             found.append(group)
     return found

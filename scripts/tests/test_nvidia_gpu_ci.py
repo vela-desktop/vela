@@ -178,7 +178,9 @@ class ArchAuditGateTests(unittest.TestCase):
 
     def test_unreadable_reports_fail_closed(self):
         for text in ("", "not json", "{}", "[1]", '[{"name": "AVG-1"}]',
-                     json.dumps([advisory("High", packages=())])):
+                     json.dumps([advisory("High", packages=())]),
+                     json.dumps([advisory(None)]), json.dumps([advisory("high")]),
+                     json.dumps([advisory("Severe")])):
             with self.subTest(text=text):
                 self.assertEqual(self.run_gate(text)[0], 2)
 
