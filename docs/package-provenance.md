@@ -92,16 +92,13 @@ Fedora uses the same verification flags, replacing the input with
 packages are published atomically under the same `v<version>` release,
 following successful package smoke checks on each distribution.
 
-## Required repository setting: immutable releases
+## Immutable releases
 
-**A repository administrator must enable this in GitHub.** A workflow cannot
-silently configure the repository-level setting. Navigate to:
-
-**Repository → Settings → General → Releases → Enable release immutability.**
-
-This prevents modification of release tags and assets after publication.
-It affects only releases published after it is enabled.
-See [GitHub's instructions](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
+Release immutability is enabled for the repository (**Repository → Settings →
+General → Releases**), and every Beta from `v0.1.0` on is immutable: neither
+its tag nor its assets can change after publication. The setting covers only
+releases published after it was enabled, so keep it on. See
+[GitHub's instructions](https://docs.github.com/en/code-security/how-tos/secure-your-supply-chain/establish-provenance-and-integrity/prevent-release-changes).
 
 The Beta publisher attaches the four packages and their checksum manifests
 when creating the release. Deleted immutable releases cannot have their tag

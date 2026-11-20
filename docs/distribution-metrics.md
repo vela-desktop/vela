@@ -1,7 +1,9 @@
 # GitHub distribution metrics
 
-Daily (03:17 UTC) and manually triggered GitHub-side aggregate statistics, with no
-Vela runtime telemetry. Pull requests run collector tests with read-only access.
+Daily and manually triggered GitHub-side aggregate statistics, with no
+Vela runtime telemetry. The schedule asks for 03:17 UTC; GitHub starts scheduled
+runs late when it is busy, often by hours, so `collected_at` is the real time.
+Pull requests run collector tests with read-only access.
 
 ## Sources and interpretation
 
@@ -40,13 +42,17 @@ and `complete`. When days are missing, a count is partial, never interpreted
 as a complete period. Growth is null unless both seven-day windows are complete
 and the previous count is nonzero. Unique visitors are not summed across days.
 
-## Setup after merge
+## Setup
+
+The collector is configured: `data/latest.json` on the `metrics` branch
+reports `traffic_status: ok`. To set it up again, for example after the token
+expires:
 
 1. Create a fine-grained PAT scoped to **vela-desktop/vela** with repository
    **Administration: Read-only** (organization approval may be necessary).
 2. Store it in Actions secrets as `VELA_TRAFFIC_TOKEN`.
 3. Allow `contents: write` to the generated `metrics` branch in applicable rulesets.
-4. Trigger Actions → Distribution metrics → Run workflow to record the baseline.
+4. Trigger Actions → Distribution metrics → Run workflow and check `traffic_status`.
 
 Only the built-in `GITHUB_TOKEN` writes data. Without the PAT, release metrics
 are still collected but traffic is marked `not_configured` rather than zero;

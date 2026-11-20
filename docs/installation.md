@@ -58,12 +58,11 @@ Fedora 44 and 45 (x86_64) have distinct native Beta `vela` and Experimental
 derivatives. The same updater installs Vela and handles subsequent updates
 through DNF.
 
-**Fedora 45 Beta release requirement:** Installing or rolling back to a Beta
-release on Fedora 45 requires that release to publish a Fedora 45 RPM and its
-`SHA256SUMS-fedora-45` manifest. The `v0.1.1` release does not contain these
-assets, so `vela-update` cannot install it or select it for rollback on
-Fedora 45. If no Beta release includes Fedora 45 assets yet, wait for one;
-do not substitute a Fedora 44 RPM.
+**Fedora 45 Beta releases:** Installing or rolling back to a Beta release on
+Fedora 45 requires that release to publish a Fedora 45 RPM and its
+`SHA256SUMS-fedora-45` manifest. `v0.1.2` is the first Beta with them;
+`v0.1.0` and `v0.1.1` have none, so `vela-update` cannot install them or roll
+back to them on Fedora 45. Never substitute a Fedora 44 RPM.
 
 **Fedora verification prerequisite:** Fedora 44 does not currently ship
 `cosign` in its default repositories. Install the official upstream Cosign RPM

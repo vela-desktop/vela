@@ -1,8 +1,16 @@
 # Code quality and contribution integrations
 
-Vela uses GitHub Actions for build, CodeQL, clang static analysis, clang-tidy,
-cppcheck, OSV, sanitizers and GPU tests. These integrations add **different**
-signals rather than duplicating that existing analysis.
+Vela's own GitHub Actions checks (build, sanitizers, CodeQL, static analysis,
+formatting, fuzzing, OSV, GPU tests and the rest) are listed in
+[CI quality checks](ci-quality.md#checks-at-a-glance). The integrations here add
+**different** signals rather than duplicating that analysis.
+
+| Integration | State |
+| --- | --- |
+| Labeler | Running: pull requests get `area:` labels. |
+| Codecov | Running: CPU coverage on every pull request (`codecov/patch`), GPU coverage on request. |
+| SonarQube Cloud | Running: automatic analysis of `main` and pull requests. No quality gate is required. |
+| DCO | Not installed: nothing checks sign-offs automatically yet. |
 
 ## GitHub Labeler (fully configured in-repository)
 
@@ -12,8 +20,7 @@ mapping in [`.github/labeler.yml`](../.github/labeler.yml). It labels PRs
 without checking out untrusted code; only PR metadata and the trusted base
 branch configuration are read. It needs the token's `issues: write` permission
 to create any as-yet missing labels, and `pull-requests: write` to apply them.
-Existing manual labels are preserved. It starts working after the workflow is
-merged to the default branch; the PR introducing it is not labeled retroactively.
+Existing manual labels are preserved.
 
 ## Codecov (first-party C/C++ coverage: CPU and optional GPUs)
 
@@ -87,19 +94,13 @@ independent reason to evaluate it. Keep CodeQL, cppcheck, scan-build and
 clang-tidy enabled; compare the first batch of Sonar findings for noise
 before setting a mandatory quality gate.
 
-**Owner action:** install
 [SonarQube Cloud's GitHub App](https://github.com/marketplace/sonarcloud)
-for `vela-desktop/vela`, create/import the **public** project in
-[SonarQube Cloud](https://sonarcloud.io/), select the free OSS plan, and use
-**Automatic analysis** for C/C++. No additional GitHub Actions scan,
-`SONAR_TOKEN` or compilation-database job is added here because that would
-duplicate analysis and CI work. If automatic analysis proves unsuitable,
-revisit CI-based analysis deliberately, not in parallel.
-
-SonarQube's [OSS plan](https://docs.sonarsource.com/sonarqube-cloud/administering-sonarcloud/managing-subscription/subscription-plans)
-supports free public project analysis and pull request analysis.
-Installation and organization authorization cannot be completed by a repository
-commit alone.
+is installed for `vela-desktop/vela`, with the **public** project on the free
+OSS plan and **Automatic analysis** for C/C++: pull requests show the
+`SonarCloud Code Analysis` check. No GitHub Actions scan, `SONAR_TOKEN` or
+compilation-database job is added, because that would duplicate analysis and
+CI work. If automatic analysis proves unsuitable, revisit CI-based analysis
+deliberately, not in parallel.
 
 ## DCO Bot (commit origin attestation)
 
@@ -116,17 +117,14 @@ PRs with missing sign-offs. Keep it out of required branch-protection checks
 until their authors have signed off or supplied the documented remediation.
 Do not enable third-party sign-off or disable member verification by default.
 
-## Rollout and verification
+## Rollout
 
-1. Merge the workflow/configuration PR. Labeler will run automatically for
-   subsequent PR events; confirm a changed `compositor/**` file receives
-   `area: compositor`, including for a forked PR.
-2. Link the public Codecov project and confirm a baseline XML artifact plus
-   an accepted OIDC upload; check the measured files and coverage scope.
-3. Install SonarQube Cloud, verify automatic C/C++ analysis on `main` and
-   pull requests, and compare its unique findings with existing scanners.
-4. Install DCO and reconcile existing unsigned PRs. Only after that should
+The labeler, Codecov and SonarQube Cloud are in place. What is left:
+
+1. Install DCO and reconcile existing unsigned PRs. Only after that should
    the DCO check be required by GitHub branch protection.
+2. Compare SonarQube Cloud's unique findings with the existing scanners
+   before making its quality gate mandatory.
 
 Installing third-party apps or authorizing their access requires an
 organization owner's explicit action on GitHub or the service website.
