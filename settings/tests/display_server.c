@@ -71,9 +71,9 @@ static void destroyed(struct wl_listener *listener, void *data)
     output->wlr->data = NULL;
     free(output);
 }
-static void add_output(struct vela_server *server)
+static void add_output(struct vela_server* server, int width, int height)
 {
-    struct wlr_output *wlr = wlr_headless_add_output(server->backend, fixture_width, fixture_height);
+    struct wlr_output* wlr = wlr_headless_add_output(server->backend, width, height);
     struct vela_output *output = calloc(1, sizeof(*output));
     output->server = server;
     output->wlr = wlr;
@@ -81,7 +81,7 @@ static void add_output(struct vela_server *server)
     struct wlr_output_state state;
     wlr_output_state_init(&state);
     wlr_output_state_set_enabled(&state, true);
-    wlr_output_state_set_custom_mode(&state, fixture_width, fixture_height, 60000);
+    wlr_output_state_set_custom_mode(&state, width, height, 60000);
     if (!wlr_output_commit_state(wlr, &state)) abort();
     wlr_output_state_finish(&state);
     wl_list_insert(server->outputs.prev, &output->link);
@@ -103,7 +103,8 @@ static int command(int fd, uint32_t mask, void *data)
     ssize_t n = read(fd, line, sizeof(line) - 1);
     if (n <= 0) { wl_display_terminate(server->display); return 0; }
     line[strcspn(line, "\n")] = '\0';
-    if (!strcmp(line, "add")) add_output(server);
+    if (!strcmp(line, "add"))
+        add_output(server, fixture_width, fixture_height);
     else if (!strncmp(line, "enable ", 7) || !strncmp(line, "disable ", 8)) {
         bool on = !strncmp(line, "enable ", 7);
         struct vela_output *output = vela_output_named(server, line + (on ? 7 : 8));
@@ -147,8 +148,9 @@ int main(int argc, char **argv)
     server.layout_change.notify = layout_changed;
     wl_signal_add(&server.output_layout->events.change, &server.layout_change);
     if (!wlr_backend_start(server.backend)) return 1;
-    add_output(&server);
-    add_output(&server);
+    bool mixed = argc > 1 && !strcmp(argv[1], "mixed");
+    add_output(&server, fixture_width, mixed ? 1200 : fixture_height);
+    add_output(&server, mixed ? 2560 : fixture_width, mixed ? 1440 : fixture_height);
     const char *socket = wl_display_add_socket_auto(server.display);
     if (!socket) return 1;
     struct wl_event_source *commands = wl_event_loop_add_fd(server.loop, STDIN_FILENO, WL_EVENT_READABLE, command, &server);

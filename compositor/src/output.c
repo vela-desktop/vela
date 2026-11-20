@@ -314,11 +314,11 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
         output->last_x = saved->x;
         output->last_y = saved->y;
     }
+    vela_output_manager_hotplug(server);
     if (!enabled) {
         // Out of the layout until someone turns it back on.
         vela_output_manager_update(server);
     } else {
-        vela_output_manager_hotplug(server);
         wlr_output_layout_add_auto(server->output_layout, wlr);
     }
     if (wlr_output_is_wl(wlr)) {
@@ -351,9 +351,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
     // for black on this output.
     vela_server_output_destroyed(server, output);
     wl_list_remove(&output->link);
-    if (wlr_output_layout_get(server->output_layout, output->wlr)) {
-        vela_output_manager_hotplug(server);
-    }
+    vela_output_manager_hotplug(server);
     vela_output_manager_update(server);
     output->wlr->data = NULL;
     wl_list_remove(&output->frame_event.link);

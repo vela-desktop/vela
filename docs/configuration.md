@@ -291,11 +291,13 @@ so the upper-left corner of the enabled display group is always at (0,0).
 For example, a 1920×1080 monitor physically **above** a 2048×1152 primary
 will appear as (0,0) and (0,1080) respectively. This avoids exposing
 negative monitor coordinates to XWayland/Wine while leaving the perceived
-screen arrangement unchanged. Existing saved configurations with negative
-positions are normalized when loaded; new positions are saved normalized.
+screen arrangement unchanged. Saved positions keep their own origin, so a
+save while a monitor is unplugged keeps that monitor in the same arrangement.
 Windows on a translated output move with it, including during Settings
-preview/revert. Settings snaps dragged displays to a free edge, and the
-compositor rejects configurations with intersecting active displays.
+preview and revert. Settings snaps dragged displays to a free edge that keeps
+every monitor reachable. Changing a monitor's scale, resolution, or rotation
+can move its neighbors to make room. The compositor rejects explicitly
+positioned configurations with intersecting active displays.
 
 At startup and when monitors are plugged or unplugged, Vela moves overlapping
 or isolated displays to a shared edge so the pointer can still reach every

@@ -165,7 +165,8 @@ static struct vela_tracked_view *track_views(struct vela_server *server, int *co
     return tracked;
 }
 
-static void finish_layout_change(struct vela_server *server, struct vela_tracked_view *tracked, int n)
+static void finish_layout_change(
+    struct vela_server *server, struct vela_tracked_view *tracked, int n, double pointer_dx, double pointer_dy)
 {
     // Windows must travel with their output when we shift the coordinate
     // origin. Restore boxes are *absolute* frame coordinates as well.
@@ -188,6 +189,14 @@ static void finish_layout_change(struct vela_server *server, struct vela_tracked
                 view->restore.x += dx;
                 view->restore.y += dy;
             }
+            if (server->cursor_mode == VELA_CURSOR_RESIZE && server->grabbed == view) {
+                struct vela_interaction *interaction = server->interaction;
+                interaction->grab_box.x += dx;
+                interaction->grab_box.y += dy;
+                // The pointer can be on a different output than the window.
+                interaction->grab_x += pointer_dx - dx;
+                interaction->grab_y += pointer_dy - dy;
+            }
             view->target_x += dx;
             view->target_y += dy;
             vela_view_sync_x11(view);
@@ -207,6 +216,36 @@ static void finish_layout_change(struct vela_server *server, struct vela_tracked
     vela_scene_changed(server->scene);
     // Scale/rotation alone may not cause a layout-change notification.
     vela_output_manager_update(server);
+}
+
+static void remember_new_output_position(struct vela_output *output, struct wlr_box box)
+{
+    // wlroots initially places new outputs to the right of the live layout.
+    // Use that neighbor's saved origin when the desktop has been rebased.
+    int64_t x = box.x, y = box.y;
+    int64_t rightmost = INT64_MIN;
+    struct vela_server *server = output->server;
+    struct vela_output *neighbor;
+    wl_list_for_each(neighbor, &server->outputs, link)
+    {
+        if (!neighbor->has_preferred_position) {
+            continue;
+        }
+        struct wlr_output_layout_output *layout = wlr_output_layout_get(server->output_layout, neighbor->wlr);
+        if (!layout || layout->auto_configured) {
+            continue;
+        }
+        struct wlr_box other = vela_output_box(neighbor);
+        int64_t right = (int64_t)other.x + other.width;
+        if (right <= box.x && right > rightmost) {
+            rightmost = right;
+            x = (int64_t)neighbor->preferred_x + box.x - other.x;
+            y = (int64_t)neighbor->preferred_y + box.y - other.y;
+        }
+    }
+    output->has_preferred_position = true;
+    output->preferred_x = x >= INT_MIN && x <= INT_MAX ? (int)x : box.x;
+    output->preferred_y = y >= INT_MIN && y <= INT_MAX ? (int)y : box.y;
 }
 
 static void arrange_after_hotplug(void *data)
@@ -229,9 +268,7 @@ static void arrange_after_hotplug(void *data)
             continue;
         }
         if (!output->has_preferred_position) {
-            output->has_preferred_position = true;
-            output->preferred_x = box.x;
-            output->preferred_y = box.y;
+            remember_new_output_position(output, box);
         }
         rects[n] = (struct vela_output_rect) { output->preferred_x, output->preferred_y, box.width, box.height };
         outputs[n] = output;
@@ -275,19 +312,21 @@ static void arrange_after_hotplug(void *data)
     struct vela_tracked_view *tracked = NULL;
     struct vela_output *pointed = NULL;
     double cursor_x = 0.0, cursor_y = 0.0;
+    double old_pointer_x = 0.0, old_pointer_y = 0.0;
     if (moved) {
         // Rescue windows on a removed output before another output takes
         // over its coordinates. Track the surviving windows for translation.
         vela_views_check_outputs(server);
         tracked = track_views(server, &tracked_count);
         if (server->cursor) {
-            struct wlr_output *wlr =
-                wlr_output_layout_output_at(server->output_layout, server->cursor->x, server->cursor->y);
+            old_pointer_x = server->cursor->x;
+            old_pointer_y = server->cursor->y;
+            struct wlr_output *wlr = wlr_output_layout_output_at(server->output_layout, old_pointer_x, old_pointer_y);
             pointed = wlr ? wlr->data : NULL;
             if (pointed) {
                 struct wlr_box box = vela_output_box(pointed);
-                cursor_x = server->cursor->x - box.x;
-                cursor_y = server->cursor->y - box.y;
+                cursor_x = old_pointer_x - box.x;
+                cursor_y = old_pointer_y - box.y;
             }
         }
     }
@@ -298,11 +337,16 @@ static void arrange_after_hotplug(void *data)
         }
     }
     if (moved) {
+        double pointer_dx = 0, pointer_dy = 0;
         if (pointed) {
             struct wlr_box box = vela_output_box(pointed);
             wlr_cursor_warp_closest(server->cursor, NULL, box.x + cursor_x, box.y + cursor_y);
         }
-        finish_layout_change(server, tracked, tracked_count);
+        if (server->cursor) {
+            pointer_dx = server->cursor->x - old_pointer_x;
+            pointer_dy = server->cursor->y - old_pointer_y;
+        }
+        finish_layout_change(server, tracked, tracked_count, pointer_dx, pointer_dy);
         if (server->cursor) {
             vela_interact_rebase(server);
         }
@@ -365,7 +409,7 @@ static bool commit_configuration(
             break;
         }
     }
-    finish_layout_change(server, tracked, n);
+    finish_layout_change(server, tracked, n, 0, 0);
     return ok;
 }
 
@@ -382,45 +426,89 @@ static const struct wlr_output_head_v1_state *find_head(
     return NULL;
 }
 
-// Capture preference changes from the request before any automatic compaction.
-// Pure rebases and software disables leave the existing preferred layout intact.
-static struct wlr_output_configuration_v1 *requested_preferences(
-    struct vela_server *server, const struct wlr_output_configuration_v1 *config, const char *implicit)
+static bool position_changed(const struct wlr_output_head_v1_state *old, const struct wlr_output_head_v1_state *want)
+{
+    return !old->enabled || old->x != want->x || old->y != want->y;
+}
+
+// Prefer a shared edge with an unchanged head. If there is no shared edge,
+// use the nearest unchanged head as the reference for the saved coordinates.
+static const struct wlr_output_head_v1_state *preference_anchor(const struct wlr_output_configuration_v1 *before,
+    const struct wlr_output_configuration_v1 *config, const struct wlr_output_head_v1_state *want)
+{
+    struct vela_output_rect rect;
+    if (!head_rect(want, &rect)) {
+        return NULL;
+    }
+    const struct wlr_output_head_v1_state *anchor = NULL;
+    int64_t best_gap = INT64_MAX, best_shared = 0;
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each(head, &config->heads, link)
+    {
+        const struct wlr_output_head_v1_state *neighbor = &head->state;
+        if (!neighbor->enabled || neighbor == want) {
+            continue;
+        }
+        const struct wlr_output_head_v1_state *old = find_head(before, neighbor->output);
+        struct vela_output_rect other;
+        if (!old || position_changed(old, neighbor) || !head_rect(neighbor, &other)) {
+            continue;
+        }
+        int64_t overlap_x = (rect.x + rect.width < other.x + other.width ? rect.x + rect.width : other.x + other.width)
+            - (rect.x > other.x ? rect.x : other.x);
+        int64_t overlap_y =
+            (rect.y + rect.height < other.y + other.height ? rect.y + rect.height : other.y + other.height)
+            - (rect.y > other.y ? rect.y : other.y);
+        int64_t gap = (overlap_x < 0 ? -overlap_x : 0) + (overlap_y < 0 ? -overlap_y : 0);
+        int64_t shared = overlap_x == 0 && overlap_y > 0 ? overlap_y : overlap_y == 0 && overlap_x > 0 ? overlap_x : 0;
+        if (gap < best_gap || (gap == best_gap && shared > best_shared)) {
+            anchor = old;
+            best_gap = gap;
+            best_shared = shared;
+        }
+    }
+    return anchor;
+}
+
+// Use the original request for explicit drags, and the repaired geometry for
+// size changes. A disable or implicit enable may compact the live layout,
+// but the positions it moved must retain their previous preferences.
+static struct wlr_output_configuration_v1 *requested_preferences(struct vela_server *server,
+    const struct wlr_output_configuration_v1 *before, const struct wlr_output_configuration_v1 *config,
+    const char *implicit)
 {
     struct wlr_output_configuration_v1 *preferences = vela_output_manager_snapshot(server);
-    bool temporary = false, requested_move = false;
+    const struct wlr_output_head_v1_state *reference = NULL;
     struct wlr_output_configuration_head_v1 *head;
-    wl_list_for_each(head, &preferences->heads, link)
+    wl_list_for_each(head, &before->heads, link)
     {
-        const struct wlr_output_head_v1_state *want = find_head(config, head->state.output);
-        const struct vela_output *output = head->state.output->data;
-        temporary |= head->state.enabled && output->has_preferred_position
-            && (head->state.x != output->preferred_x || head->state.y != output->preferred_y);
-        requested_move |= want && want->enabled
-            && (head->state.enabled ? head->state.x != want->x || head->state.y != want->y
-                                    : !implicit || strcmp(want->output->name, implicit) != 0);
-    }
-    int origin_x = 0, origin_y = 0;
-    if (requested_move && !temporary) {
-        configuration_origin(config, &origin_x, &origin_y);
+        if (head->state.enabled) {
+            reference = &head->state;
+            break;
+        }
     }
     wl_list_for_each(head, &preferences->heads, link)
     {
+        const struct wlr_output_head_v1_state *old = find_head(before, head->state.output);
         const struct wlr_output_head_v1_state *want = find_head(config, head->state.output);
         const struct vela_output *output = head->state.output->data;
-        int64_t x = output->has_preferred_position ? output->preferred_x : head->state.x;
-        int64_t y = output->has_preferred_position ? output->preferred_y : head->state.y;
-        if (requested_move && want && want->enabled) {
-            if (!temporary) {
-                x = (int64_t)want->x - origin_x;
-                y = (int64_t)want->y - origin_y;
-            } else if (head->state.enabled) {
-                x += (int64_t)want->x - head->state.x;
-                y += (int64_t)want->y - head->state.y;
-            } else if (!implicit || strcmp(want->output->name, implicit) != 0) {
-                x = want->x;
-                y = want->y;
-            }
+        if (output->has_preferred_position) {
+            head->state.x = output->preferred_x;
+            head->state.y = output->preferred_y;
+        }
+        if (!want || !want->enabled || !position_changed(old, want)
+            || (implicit && strcmp(want->output->name, implicit) == 0)) {
+            continue;
+        }
+        int64_t x = want->x, y = want->y;
+        const struct wlr_output_head_v1_state *anchor = preference_anchor(before, config, want);
+        if (!anchor) {
+            anchor = reference;
+        }
+        const struct vela_output *neighbor = anchor ? anchor->output->data : NULL;
+        if (neighbor && neighbor->has_preferred_position) {
+            x += (int64_t)neighbor->preferred_x - anchor->x;
+            y += (int64_t)neighbor->preferred_y - anchor->y;
         }
         if (x >= INT_MIN && x <= INT_MAX && y >= INT_MIN && y <= INT_MAX) {
             head->state.x = (int)x;
@@ -489,15 +577,14 @@ bool vela_output_manager_restore(struct vela_server *server, const struct wlr_ou
     return ok;
 }
 
-// Use the same geometry repair for software disable and an implicit enable
-// whose old slot is no longer usable. Keep it inside the preview transaction.
-static bool arrange_configuration(struct wlr_output_configuration_v1 *config, bool only_if_overlapping)
+// Repair geometry inside the preview transaction so Revert restores it all.
+static bool arrange_configuration(struct wlr_output_configuration_v1 *config)
 {
     size_t count = (size_t)wl_list_length(&config->heads);
     struct wlr_output_head_v1_state **heads = VELA_NEW_N(struct wlr_output_head_v1_state *, count + 1);
     struct vela_output_rect *rects = VELA_NEW_N(struct vela_output_rect, count + 1);
     bool *placed = VELA_NEW_N(bool, count + 1);
-    bool ok = true, overlaps = false;
+    bool ok = true;
     size_t n = 0;
     struct wlr_output_configuration_head_v1 *head;
     wl_list_for_each(head, &config->heads, link)
@@ -509,12 +596,9 @@ static bool arrange_configuration(struct wlr_output_configuration_v1 *config, bo
             ok = false;
             goto done;
         }
-        for (size_t i = 0; i < n; ++i) {
-            overlaps |= vela_output_rects_overlap(rects[n], rects[i]);
-        }
         heads[n++] = &head->state;
     }
-    if (!n || (only_if_overlapping && !overlaps)) {
+    if (!n) {
         goto done;
     }
     // Match the hotplug path: anchor the leftmost output.
@@ -571,7 +655,31 @@ static bool implicit_enable_matches(
     return reenabled;
 }
 
-static bool prepare_configuration(struct wlr_output_configuration_v1 *config, bool implicit)
+static bool resize_without_moving(struct vela_server *server, const struct wlr_output_configuration_v1 *config)
+{
+    bool resized = false;
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each(head, &config->heads, link)
+    {
+        const struct wlr_output_head_v1_state *want = &head->state;
+        const struct vela_output *output = want->output->data;
+        if (!output || output->wlr->enabled != want->enabled) {
+            return false;
+        }
+        if (!want->enabled) {
+            continue;
+        }
+        struct wlr_box current = vela_output_box(output);
+        struct vela_output_rect next;
+        if (current.x != want->x || current.y != want->y || !head_rect(want, &next)) {
+            return false;
+        }
+        resized |= current.width != next.width || current.height != next.height;
+    }
+    return resized;
+}
+
+static bool prepare_configuration(struct wlr_output_configuration_v1 *config, bool implicit, bool resized)
 {
     bool disabled = false;
     struct wlr_output_configuration_head_v1 *head;
@@ -583,21 +691,17 @@ static bool prepare_configuration(struct wlr_output_configuration_v1 *config, bo
         }
         disabled |= output->wlr->enabled && !head->state.enabled;
         if (implicit && head->state.enabled && output->has_preferred_position) {
-            // Translate every head back to the same preferred coordinate
-            // space. Disabling a head may have moved some of the survivors.
+            // Survivors and the re-enabled head share the saved origin.
             head->state.x = output->preferred_x;
             head->state.y = output->preferred_y;
         }
     }
-    if (implicit && !arrange_configuration(config, !disabled)) {
-        return false;
+    if (implicit || resized) {
+        return arrange_configuration(config) && test_configuration(config, false);
     }
-    // Explicit intersecting positions are rejected before a disable can
-    // move the survivors. A software disable repairs gaps in this request.
-    if (!test_configuration(config, false)) {
-        return false;
-    }
-    return !disabled || implicit || (arrange_configuration(config, false) && test_configuration(config, false));
+    // Reject overlapping explicit positions before repairing a software disable.
+    return test_configuration(config, false)
+        && (!disabled || (arrange_configuration(config) && test_configuration(config, false)));
 }
 
 static void apply(struct vela_server *server, struct wlr_output_configuration_v1 *config, bool test_only)
@@ -608,8 +712,13 @@ static void apply(struct vela_server *server, struct wlr_output_configuration_v1
         implicit = NULL;
     }
     struct wlr_output_configuration_v1 *before = !test_only && allowed ? vela_output_manager_snapshot(server) : NULL;
-    struct wlr_output_configuration_v1 *preferences = before ? requested_preferences(server, config, implicit) : NULL;
-    bool prepared = allowed && prepare_configuration(config, implicit != NULL);
+    bool resized = allowed && resize_without_moving(server, config);
+    struct wlr_output_configuration_v1 *preferences =
+        before && !resized ? requested_preferences(server, before, config, implicit) : NULL;
+    bool prepared = allowed && prepare_configuration(config, implicit != NULL, resized);
+    if (before && resized && prepared) {
+        preferences = requested_preferences(server, before, config, NULL);
+    }
     bool ok = prepared && (test_only || commit_configuration(server, config, false));
     bool restored = true;
     if (!ok && prepared && before && !vela_output_manager_restore(server, before)) {
@@ -626,7 +735,9 @@ static void apply(struct vela_server *server, struct wlr_output_configuration_v1
         wlr_output_configuration_v1_send_failed(config);
     }
     if (before && !protected) {
-        wlr_output_configuration_v1_destroy(preferences);
+        if (preferences) {
+            wlr_output_configuration_v1_destroy(preferences);
+        }
         wlr_output_configuration_v1_destroy(before);
     }
     wlr_output_configuration_v1_destroy(config);

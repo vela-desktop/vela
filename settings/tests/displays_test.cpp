@@ -318,7 +318,7 @@ private slots:
         QTRY_VERIFY(!client->pending());
         QVERIFY(saved().contains("scale=1.5"));
         QVERIFY(saved().contains("rotation=90"));
-        QVERIFY(saved().contains("position=1280,100"));
+        QVERIFY(saved().contains("position=-1280,-100"));
         QVERIFY(saved().contains("position=0,0"));
         const auto confirmed = saved();
         QTest::qWait(1400);
@@ -411,28 +411,40 @@ private slots:
         // Whether the compositor accepts zero effective pixels is its decision;
         // the regression is an early rejection by positionForSize().
     }
-    void sizeChangeCannotOverlapTwoUnchangedNeighbors()
+    void scalingTheMiddleQhdDisplayMakesRoomForItsNeighbors()
     {
-        start();
+        start({ "mixed" });
         QVERIFY(client);
         QTRY_VERIFY(client->available());
-        QVERIFY(client->apply("HEADLESS-2", { { "x", 1920 }, { "y", 0 }, { "transform", "90" } }));
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.25 } }));
         QTRY_VERIFY(client->confirming());
         client->confirm();
         QTRY_VERIFY(!client->pending());
         command("add");
-        QTRY_COMPARE(client->outputs().size(), 3);
-        QVERIFY(client->apply("HEADLESS-3", { { "x", 3000 }, { "y", 0 } }));
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3968);
+        QCOMPARE(output("HEADLESS-2")["logicalWidth"].toInt(), 2048);
+        const auto before = client->outputs();
+        const auto disk = saved();
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.0 } }));
+        QTRY_VERIFY(client->confirming());
+        QTRY_COMPARE(output("HEADLESS-2")["logicalWidth"].toInt(), 2560);
+        QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 1920);
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 4480);
+        QCOMPARE(saved(), disk);
+        client->revert();
+        QTRY_VERIFY(!client->pending());
+        QTRY_COMPARE(client->outputs(), before);
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.0 } }));
         QTRY_VERIFY(client->confirming());
         client->confirm();
         QTRY_VERIFY(!client->pending());
-        const auto before = client->outputs();
-        const auto disk = saved();
-        QVERIFY(!client->apply("HEADLESS-2", { { "transform", "normal" } }));
-        QVERIFY(!client->pending());
-        QVERIFY(!client->error().isEmpty());
-        QCOMPARE(client->outputs(), before);
-        QCOMPARE(saved(), disk);
+        QVERIFY(saved().contains("position=4480,0"));
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.25 } }));
+        QTRY_VERIFY(client->confirming());
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3968);
     }
     void revertRestoresAllPropertiesAndSavedFile()
     {
@@ -611,6 +623,44 @@ private slots:
         QTRY_COMPARE(output("HEADLESS-1")["scale"].toDouble(), 1.0);
         QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
         QVERIFY(saved().isEmpty());
+    }
+    void unpluggingTheDisabledDisplayCancelsItsPreview()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        command("add");
+        QTRY_COMPARE(client->outputs().size(), 3);
+        QVERIFY(client->apply("HEADLESS-2", { { "enabled", false } }));
+        QTRY_VERIFY(client->confirming());
+        QTRY_VERIFY(!output("HEADLESS-2")["enabled"].toBool());
+        command("remove HEADLESS-2");
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QTRY_COMPARE(client->outputs().size(), 2);
+        QCOMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
+        QVERIFY(saved().isEmpty());
+    }
+    void movingAfterUnplugUsesTheNewNeighborsSavedOrigin()
+    {
+        start();
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        command("add");
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 3840);
+        // Save the full layout before the middle output goes away.
+        QVERIFY(client->apply("HEADLESS-1", {}));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        command("remove HEADLESS-2");
+        QTRY_COMPARE(output("HEADLESS-3")["x"].toInt(), 1920);
+        QVERIFY(client->apply("HEADLESS-3", { { "x", 0 }, { "y", -1080 } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QVERIFY(saved().contains("position=0,-1080"));
+        QVERIFY(saved().contains("position=1920,0"));
     }
     void disablingMiddleDisplayKeepsThePreferredArrangement()
     {
@@ -829,11 +879,20 @@ int main(int argc, char** argv)
     }
     if (args.value(1) == "--preview-client") {
         Displays client(wl_display_connect(args.value(2).toUtf8().constData()), nullptr);
+        const QString disable = args.value(3);
         QTimer check;
         QObject::connect(&check, &QTimer::timeout, &client, [&] {
-            if (client.available()) { check.stop(); client.apply("HEADLESS-1", { { "scale", 1.5 } }); }
+            if (client.available()) {
+                check.stop();
+                const bool applied = disable.isEmpty() ? client.apply("HEADLESS-1", { { "scale", 1.5 } })
+                                                       : client.apply(disable, { { "enabled", false } });
+                if (!applied) app.exit(2);
+            }
         });
         QObject::connect(&client, &Displays::confirmationRequested, &client, [] { puts("applied"); fflush(stdout); });
+        if (!disable.isEmpty()) {
+            QObject::connect(&client, &Displays::confirmationFinished, &client, [&] { app.quit(); });
+        }
         check.start(10);
         return app.exec();
     }

@@ -11,6 +11,7 @@ import Vela.Controls
 Page {
     id: page
     property string selectedName: ""
+    property bool arrangementWouldIsolateDisplay: false
     readonly property int selected: Math.max(0, outputs.findIndex(o => o.name === selectedName))
     function selectOutput(index) {
         if (outputs[index]) selectedName = outputs[index].name
@@ -29,6 +30,7 @@ Page {
     // Confirmation starts only after the compositor has applied the change.
     // Its timer and previous configuration survive this page and client.
     function change(changes) {
+        arrangementWouldIsolateDisplay = false
         if (output && Displays.available && !Displays.pending)
             Displays.apply(output.name, changes)
     }
@@ -37,6 +39,7 @@ Page {
         function onConfirmationRequested() { confirm.open() }
         function onConfirmationFinished() { confirm.close() }
         function onOutputsChanged() {
+            page.arrangementWouldIsolateDisplay = false
             if (!page.outputs.some(o => o.name === page.selectedName)) page.selectOutput(0)
         }
     }
@@ -134,7 +137,10 @@ Page {
                     anchors.fill: parent
                     drag.target: page.enabledOutputs.length > 1 ? monitor : null
                     drag.threshold: 4
-                    onPressed: page.selectOutput(monitor.index)
+                    onPressed: {
+                        page.arrangementWouldIsolateDisplay = false
+                        page.selectOutput(monitor.index)
+                    }
                     onReleased: {
                         if (!drag.active && monitor.x === monitor.homeX && monitor.y === monitor.homeY) {
                             return
@@ -162,26 +168,50 @@ Page {
         const cy = toLogicalY(py) + h / 2
         const neighbors = outputs.filter((o, i) => i !== index && o.enabled && o.logicalWidth > 0 && o.logicalHeight > 0)
             .map(o => ({ x: o.x, y: o.y, w: o.logicalWidth, h: o.logicalHeight }))
-        const clear = (x, y) => !neighbors.some(o => x < o.x + o.w && o.x < x + w &&
-                                                     y < o.y + o.h && o.y < y + h)
+        let nearestDisconnected = Infinity
+        function connected(x, y) {
+            if (neighbors.some(o => x < o.x + o.w && o.x < x + w && y < o.y + o.h && o.y < y + h))
+                return false
+            const reached = [{ x: x, y: y, w: w, h: h }]
+            const remaining = neighbors.slice()
+            for (let i = 0; i < reached.length && remaining.length; ++i) {
+                const a = reached[i]
+                for (let j = remaining.length - 1; j >= 0; --j) {
+                    const b = remaining[j]
+                    const vertical = (a.x + a.w === b.x || b.x + b.w === a.x) &&
+                                     a.y < b.y + b.h && b.y < a.y + a.h
+                    const horizontal = (a.y + a.h === b.y || b.y + b.h === a.y) &&
+                                       a.x < b.x + b.w && b.x < a.x + a.w
+                    if (vertical || horizontal)
+                        reached.push(remaining.splice(j, 1)[0])
+                }
+            }
+            if (remaining.length === 0)
+                return true
+            nearestDisconnected = Math.min(nearestDisconnected, Math.hypot(x + w / 2 - cx, y + h / 2 - cy))
+            return false
+        }
         let best = null
         function considerEdge(fixed, target, start, size, length, vertical) {
             const min = start - length + 1
             const max = start + size - 1
             const projected = Math.round(Math.max(min, Math.min(max, target)))
             const aligned = Math.abs(projected - start) < size * 0.1 ? start : projected
-            const free = pos => vertical ? clear(fixed, pos) : clear(pos, fixed)
+            const usable = pos => vertical ? connected(fixed, pos) : connected(pos, fixed)
             let closest = aligned
-            if (!free(aligned)) {
+            if (!usable(aligned)) {
                 let distance = Infinity
-                const positions = [projected]
+                const positions = [projected, min, max]
                 for (const neighbor of neighbors) {
                     const near = vertical ? neighbor.y : neighbor.x
-                    positions.push(near - length, near + (vertical ? neighbor.h : neighbor.w))
+                    const far = near + (vertical ? neighbor.h : neighbor.w)
+                    // A candidate can become usable where it stops overlapping
+                    // a neighbor or starts sharing a positive-length edge.
+                    positions.push(near - length, near - length + 1, far - 1, far)
                 }
                 for (const pos of positions) {
                     const offset = Math.abs(pos - target)
-                    if (pos >= min && pos <= max && offset < distance && free(pos)) {
+                    if (pos >= min && pos <= max && offset < distance && usable(pos)) {
                         closest = pos
                         distance = offset
                     }
@@ -202,6 +232,9 @@ Page {
         if (best && (best.x !== moving.x || best.y !== moving.y)) {
             selectOutput(index)
             change({ x: best.x, y: best.y })
+        } else {
+            arrangementWouldIsolateDisplay = Number.isFinite(nearestDisconnected) &&
+                                             (!best || nearestDisconnected < best.distance)
         }
     }
 
@@ -228,10 +261,12 @@ Page {
     }
 
     Card {
-        visible: Displays.error !== ""
+        visible: page.arrangementWouldIsolateDisplay || Displays.error !== ""
         icon: "dialog-warning"
         title: qsTr("Could not change display settings")
-        description: Displays.error
+        description: page.arrangementWouldIsolateDisplay
+            ? qsTr("This move would leave a display unreachable. Keep all displays connected along their edges.")
+            : Displays.error
     }
 
     Binding {

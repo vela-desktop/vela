@@ -89,10 +89,14 @@ struct Displays::Client {
             const QSize size = logicalSize(head->current, head->scale, head->transform);
             if (!size.isEmpty()) neighbors.emplace_back(QPointF(head->x, head->y), size);
         }
-        const auto clear = [&](QPoint point) {
+        const auto shareEdge = [](const QRectF& a, const QRectF& b) {
+            return ((a.right() == b.left() || b.right() == a.left()) && a.top() < b.bottom() && b.top() < a.bottom())
+                || ((a.bottom() == b.top() || b.bottom() == a.top()) && a.left() < b.right() && b.left() < a.right());
+        };
+        const auto fits = [&](QPoint point) {
             const QRectF after(point, newSize);
-            return std::none_of(neighbors.begin(), neighbors.end(), [&](const QRectF& other) {
-                return after.intersects(other);
+            return std::all_of(neighbors.begin(), neighbors.end(), [&](const QRectF& other) {
+                return !after.intersects(other) && (!shareEdge(before, other) || shareEdge(after, other));
             });
         };
         std::optional<QPoint> best;
@@ -102,7 +106,7 @@ struct Displays::Client {
             if (x < std::numeric_limits<int>::min() || x > std::numeric_limits<int>::max()
                 || y < std::numeric_limits<int>::min() || y > std::numeric_limits<int>::max()) return;
             const QPoint point(static_cast<int>(std::lround(x)), static_cast<int>(std::lround(y)));
-            if (!clear(point)) return;
+            if (!fits(point)) return;
             const double dx = x - before.x(), dy = y - before.y();
             const double movement = dx * dx + dy * dy;
             if (gap < bestGap || (gap == bestGap && movement < bestMove)) {
@@ -131,7 +135,7 @@ struct Displays::Client {
             if (before.left() >= other.right())
                 consider(before.left(), y, before.left() - other.right());
         }
-        if (!best && clear(QPoint(target->x, target->y))) best = QPoint(target->x, target->y);
+        if (!best && fits(QPoint(target->x, target->y))) best = QPoint(target->x, target->y);
         return best;
     }
 
@@ -456,11 +460,8 @@ bool Displays::apply(const QString& name, const QVariantMap& changes)
     std::optional<QPoint> resizedPosition;
     if (enabled && target->enabled && target->current && !changes.contains("x") && !changes.contains("y")) {
         resizedPosition = c.positionForSize(target, selected ? selected : target->current, scale, transform);
-        if (!resizedPosition) {
-            c.error = tr("Move this display to make room before changing its size or orientation.");
-            emit stateChanged();
-            return false;
-        }
+        // If moving this head alone cannot keep its neighbors connected,
+        // leave positions implicit and let the compositor make room.
     }
     c.error.clear();
     c.configuration = zwlr_output_manager_v1_create_configuration(c.manager, c.serial);
