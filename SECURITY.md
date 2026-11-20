@@ -7,18 +7,24 @@ and software configuration is secure.
 
 ## Supported versions
 
-Vela does not maintain parallel stable release branches. Security fixes land on `main`
-and ship in the next Beta release.
+Only the latest published Beta series is supported. Security fixes land on `main`
+first and are backported to that series' maintenance branch, `release/0.<minor>`,
+which ships them in a patch release. Publishing a new minor Beta ends support for
+the previous series: for example, `v0.2.0` ends security updates and backports for
+0.1.x ([release branches](docs/release-channels.md#release-branches)).
 
 | Version | Security support |
 |---|---|
-| Latest Beta release (`vela` package) | Yes: fixes ship in a new Beta release |
-| Older Beta releases | No backports: update to the latest Beta |
+| Latest patch release of the latest Beta series (`vela` package) | Yes |
+| Older patch releases of that series | No: update to its latest patch release |
+| Earlier Beta series | No backports: update to the latest Beta |
 | Current `main` (Experimental, `vela-git`) | Yes |
 | Older development commits, historical alpha builds and test branches | No guaranteed security backports |
 
 When a fix is released, update with `vela-update` (or Settings → System → Updates) rather
-than expect an older release or snapshot to be patched in place.
+than expect an older release or snapshot to be patched in place. Installations on
+0.1.0–0.1.2 reach `v0.2.0` through a
+[one-time updater step](docs/release-channels.md#updating-older-beta-installations).
 
 ## Reporting a vulnerability
 
