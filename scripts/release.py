@@ -276,21 +276,38 @@ def remote_branch(remote, branch):
 
 
 def open_change(remote, repo, base, head, title, body, edit):
-    """Commit edit(tree) on top of base in a temporary worktree, push head and
-    open a pull request; nothing when edit changes nothing."""
-    run("git", "fetch", "--quiet", remote, f"+refs/heads/{base}:refs/remotes/{remote}/{base}")
+    """Open or reuse the pull request for an edit on top of the current base."""
+    base_ref = f"refs/remotes/{remote}/{base}"
+    run("git", "fetch", "--quiet", remote, f"+refs/heads/{base}:{base_ref}")
     with tempfile.TemporaryDirectory(prefix="vela-finish-") as directory:
         tree = Path(directory) / "tree"
-        run("git", "worktree", "add", "--quiet", "--detach", str(tree), f"refs/remotes/{remote}/{base}")
+        run("git", "worktree", "add", "--quiet", "--detach", str(tree), base_ref)
         try:
             edit(tree)
             if not run("git", "status", "--porcelain", cwd=tree).stdout.strip():
                 print(f"{base} needs no change")
                 return
-            run("git", "commit", "--quiet", "-s", "-a", "-m", title, cwd=tree)
-            run("git", "push", "--quiet", remote, f"HEAD:refs/heads/{head}", cwd=tree)
+            existing = remote_branch(remote, head)
+            if existing:
+                run("git", "fetch", "--quiet", remote, f"refs/heads/{head}")
+                # Compare the proposed merge with the intended edit on today's base.
+                run("git", "add", "-u", cwd=tree)
+                expected = run("git", "write-tree", cwd=tree).stdout.strip()
+                merged = run("git", "merge-tree", "--write-tree", "HEAD", existing, cwd=tree, check=False)
+                if merged.returncode != 0 or merged.stdout.strip() != expected:
+                    raise ReleaseError(f"{remote}/{head} does not contain the intended change for {base}: review it before retrying")
+            else:
+                run("git", "commit", "--quiet", "-s", "-a", "-m", title, cwd=tree)
+                run("git", "push", "--quiet", remote, f"HEAD:refs/heads/{head}", cwd=tree)
         finally:
             run("git", "worktree", "remove", "--force", str(tree), check=False)
+    if existing:
+        result = run("gh", "pr", "list", "--repo", repo, "--base", base, "--head", head,
+                     "--state", "open", "--json", "url,isCrossRepository")
+        for pr in json.loads(result.stdout):
+            if not pr["isCrossRepository"]:
+                print(f"Already open: {pr['url']}")
+                return
     url = run("gh", "pr", "create", "--repo", repo, "--base", base, "--head", head,
               "--title", title, "--body", body).stdout.strip()
     print(f"Opened {url}")
@@ -299,9 +316,11 @@ def open_change(remote, repo, base, head, title, body, edit):
 def set_fallback(tree, version):
     path = tree / PKGBUILD_BETA
     text = path.read_text()
-    if not FALLBACK.search(text):
+    match = FALLBACK.search(text)
+    if not match:
         raise ReleaseError(f"no pkgver fallback in {PKGBUILD_BETA}")
-    path.write_text(FALLBACK.sub(lambda m: m[1] + version + m[3], text, count=1))
+    if parse_version(match[2]) < parse_version(version):
+        path.write_text(text[:match.start(2)] + version + text[match.end(2):])
 
 
 def finish(version, remote, repo):
@@ -326,8 +345,8 @@ def finish(version, remote, repo):
             raise ReleaseError(f"could not create {branch} from {name} ({result.stderr.strip()}); "
                                f"create it from the tag on GitHub, then run finish again")
         print(f"Created {branch} from {name}")
-    body = (f"{name} is published. Manual Beta builds without VELA_RELEASE_VERSION now fetch it "
-            f"(`{PKGBUILD_BETA}`).")
+    body = (f"{name} is published. Advance the fallback for manual Beta builds in "
+            f"`{PKGBUILD_BETA}` if it still points to an older release.")
     open_change(remote, repo, branch, f"finish/{name}-release-0.{minor}",
                 f"packaging: manual Beta builds fetch {name}", body,
                 lambda tree: set_fallback(tree, version))

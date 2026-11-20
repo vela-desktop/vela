@@ -41,8 +41,25 @@ elif args[:2] == ["run", "list"]:
     print(json.dumps(runs))
 elif args[:2] == ["workflow", "run"]:
     pass
+elif args[:2] == ["pr", "list"]:
+    head = args[args.index("--head") + 1]
+    base = args[args.index("--base") + 1]
+    prs = json.load(open(os.environ["TEST_GH_PRS"]))
+    print(json.dumps(prs.get(f"{base}:{head}", [])))
 elif args[:2] == ["pr", "create"]:
-    print("https://github.com/vela-desktop/vela/pull/999")
+    head = args[args.index("--head") + 1]
+    base = args[args.index("--base") + 1]
+    if os.environ.get("TEST_GH_FAIL_CREATE") == head:
+        sys.exit("could not create pull request")
+    prs_path = os.environ["TEST_GH_PRS"]
+    prs = json.load(open(prs_path))
+    key = f"{base}:{head}"
+    if key in prs:
+        sys.exit("a pull request already exists")
+    url = "https://github.com/vela-desktop/vela/pull/999"
+    prs[key] = [{"url": url, "isCrossRepository": False}]
+    json.dump(prs, open(prs_path, "w"))
+    print(url)
 else:
     sys.exit("Unexpected gh call: " + repr(args))
 '''
@@ -81,9 +98,11 @@ class Fixture(unittest.TestCase):
         self.log.touch()
         self.runs = self.root / "runs.json"
         self.runs.write_text("{}")
+        prs = self.root / "pulls.json"
+        prs.write_text("{}")
         self.env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}",
                     "TEST_GH_STATE": str(self.state), "TEST_GH_LOG": str(self.log),
-                    "TEST_GH_RUNS": str(self.runs),
+                    "TEST_GH_RUNS": str(self.runs), "TEST_GH_PRS": str(prs),
                     "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
                     "GIT_AUTHOR_NAME": "Test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
                     "GIT_COMMITTER_NAME": "Test", "GIT_COMMITTER_EMAIL": "test@example.invalid"}
@@ -462,6 +481,57 @@ class Finish(Fixture):
         self.assertIn("VERSION 0.3.0", self.git("show", f"{main}:CMakeLists.txt"))
         pr = self.pr("finish/v0.2.0-main")
         self.assertIn("start 0.3.0", pr[pr.index("--title") + 1])
+
+    def test_finish_reuses_the_pushed_branch_and_then_the_open_pr(self):
+        self.publish("0.2.1", self.patch)
+        head = "finish/v0.2.1-release-0.2"
+        self.env["TEST_GH_FAIL_CREATE"] = head
+        first = self.release("finish", "0.2.1")
+        self.assertNotEqual(first.returncode, 0)
+        self.assertIn("could not create pull request", first.stderr)
+        pushed = self.head(head)
+        del self.env["TEST_GH_FAIL_CREATE"]
+
+        # An unrelated change to the base must not require rewriting the head.
+        self.git("switch", "--quiet", "release/0.2")
+        self.commit("0.2.1", "advance the base")
+        self.git("push", "--quiet", "origin", "release/0.2")
+        retry = self.release("finish", "0.2.1")
+        self.assertEqual(retry.returncode, 0, retry.stderr)
+        self.assertEqual(self.head(head), pushed)
+        self.pr("finish/v0.2.1-main")
+
+        creates = self.gh_calls("pr", "create")
+        again = self.release("finish", "0.2.1")
+        self.assertEqual(again.returncode, 0, again.stderr)
+        self.assertEqual(again.stdout.count("Already open:"), 2)
+        self.assertEqual(self.gh_calls("pr", "create"), creates)
+
+    def test_finish_does_not_reuse_an_unrelated_remote_head(self):
+        self.publish("0.2.1", self.patch)
+        head = "finish/v0.2.1-release-0.2"
+        other = self.commit("0.2.1", "unexpected change")
+        self.git("push", "--quiet", "origin", f"{other}:refs/heads/{head}")
+        result = self.release("finish", "0.2.1")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("does not contain the intended change", result.stderr)
+        self.assertEqual(self.head(head), other)
+        self.assertEqual(self.gh_calls("pr", "create"), [])
+
+    def test_finish_keeps_equal_and_newer_fallbacks(self):
+        self.publish("0.2.2", self.patch)
+        for base, fallback in (("release/0.2", "0.2.10"), ("main", "0.2.2")):
+            self.git("switch", "--quiet", base)
+            path = self.work / release.PKGBUILD_BETA
+            path.write_text(path.read_text().replace("0.1.2", fallback))
+            self.git("commit", "--quiet", "-am", "set existing fallback")
+            self.git("push", "--quiet", "origin", base)
+
+        result = self.release("finish", "0.2.2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("needs no change"), 2)
+        self.assertEqual(self.gh_calls("pr", "create"), [])
+        self.assertEqual(self.git("ls-remote", "origin", "refs/heads/finish/*"), "")
 
     def test_only_a_published_release_with_its_manifests_is_finished(self):
         cases = {"not published": None, "draft": dict(isDraft=True),

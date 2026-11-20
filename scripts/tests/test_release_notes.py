@@ -59,6 +59,10 @@ class Notes(unittest.TestCase):
     def test_a_link_whose_label_is_its_url(self):
         self.assertEqual(notes.plain("[https://a.invalid](https://a.invalid)", "0.2.1"), "https://a.invalid")
 
+    def test_fragment_links_point_to_the_tagged_changelog(self):
+        self.assertEqual(notes.plain("[Earlier release](#012)", "0.2.1"),
+                         "Earlier release (https://github.com/vela-desktop/vela/blob/v0.2.1/CHANGELOG.md#012)")
+
     def test_missing_or_empty_sections_stop_the_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

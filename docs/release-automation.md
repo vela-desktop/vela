@@ -171,11 +171,13 @@ before tagging. Editing a published release's text later
 **`release.py finish 0.2.1`**, once `v0.2.1` is published with its four
 manifests, opens a pull request on `release/0.2` and one on `main` that
 move the `PKGBUILD.beta` fallback (what manual builds fetch without
-`VELA_RELEASE_VERSION`) to the new tag. After a `.0` it first creates
+`VELA_RELEASE_VERSION`) to the new tag when the fallback is older. After a `.0` it first creates
 `release/0.<minor>` from the tag, and the `main` pull request also moves
 `project(VERSION)` to the next minor version. If the release branch rules
 refuse the push, it says so; create the branch from the tag on GitHub and
-run it again. It refuses a draft, a release missing a manifest, and a
+run it again. A retry reuses a previously pushed head that contains the
+intended change and reports its pull request if it is already open.
+It refuses a draft, a release missing a manifest, and a
 patch release whose branch does not exist.
 
 ## 8. Stages

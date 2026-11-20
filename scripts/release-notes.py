@@ -30,7 +30,9 @@ def section(text, version):
 def plain(text, version):
     def link(match):
         label, url = match[1], match[2]
-        if not re.match(r"[a-z]+:", url):
+        if url.startswith("#"):
+            url = f"{REPO}/blob/v{version}/CHANGELOG.md{url}"
+        elif not re.match(r"[a-z]+:", url):
             url = f"{REPO}/blob/v{version}/{url.removeprefix('./')}"
         return label if label == url else f"{label} ({url})"
     return LINK.sub(link, text)
