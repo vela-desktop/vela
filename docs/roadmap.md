@@ -1,19 +1,12 @@
 # Roadmap
 
-Where Vela is now, which capabilities are next, and how the desktop may
-evolve. This is **a direction, not a calendar**: there are no release dates.
-The 0.1 history is fixed. The **0.2 plan now reflects major work already
-merged into main** plus a small list of possible finishing features.
-Targets for **0.3–0.6 remain estimates** and can change with design,
-validation and feedback. There is no committed release calendar.
-
-Vela **0.1 is the first beta**, released as
-[`v0.1.0`](https://github.com/vela-desktop/vela/releases/tag/v0.1.0) on
-31 October 2026. "Done" means implemented on **main**, not
-necessarily available in the latest tagged Beta or validated on every GPU
-and driver: see [hardware coverage](hardware.md) for current limits. Larger
-changes get their own design documents; the roadmap records intent rather
-than replacing those specifications.
+The current Beta is
+[`v0.1.2`](https://github.com/vela-desktop/vela/releases/tag/v0.1.2).
+[Vela 0.2](#02--personalization-productivity-and-architectural-hardening)
+is next, with most of its features merged into `main` and release validation
+ahead. The targets for 0.3–0.6 are provisional. Changes on `main` reach the
+Beta channel through a tagged release. See [hardware coverage](hardware.md)
+for the GPU and driver combinations tested so far.
 
 ## 0.1 — First beta: stability, integration, release readiness
 
@@ -212,10 +205,12 @@ multi-monitor setups and apps that publish badges and progress. Investigate
 Follow the signed-tag rehearsal and
 [release process](release-channels.md). There is **no fixed ship date**.
 
-## 0.3 — Touch, pen, input methods and on-screen keyboard (indicative)
+<a id="03--touch-pen-input-methods-and-on-screen-keyboard-indicative"></a>
 
-This moves the original 0.2 input work here as a **proposed** feature
-scope; none of these features is implied to be implemented yet:
+## 0.3 — Input and experimental HDR (indicative)
+
+The proposed input scope covers touch, pen, input methods and the on-screen
+keyboard.
 
 - **Wayland text input and IMEs:** text-input-v3, input-method-v2,
   focus and preedit/commit correctness, real fcitx5/IBus interoperability.
@@ -238,9 +233,14 @@ rotation/scaling and gestures, touch-only unlock and password entry,
 IME/Xwayland interoperability; no regressions for existing desktop
 input, compositor or GPU behavior.
 
-Further everyday-desktop features need an explicit scope decision.
-The former 0.3 completeness wishlist is preserved as an **unassigned
-backlog** below, not silently committed to this release.
+**Experimental HDR** is a parallel candidate for 0.3. The initial scope of
+[renderer stage S7](renderer.md#11-stages) is 10-bit HDR output on compatible
+DRM/KMS displays, with Wayland `color-management-v1` support for parametric
+color descriptions and correct composition of SDR and HDR content. Define
+reference white and brightness behavior, and verify SDR fallback, mixed
+SDR/HDR displays and capture on physical hardware before shipping. The
+input milestone can ship independently. Per-display ICC profiles remain a
+later candidate under 0.5.
 
 ## 0.4 — Coordinated visual redesign (highly indicative)
 
@@ -272,8 +272,7 @@ ideas, not a commitment to imitate another desktop.
 
 Candidate larger systems work:
 
-- HDR and 10-bit output support, `color-management-v1`, per-display ICC
-  profiles and clearly defined color/brightness behavior.
+- Per-display ICC profiles and broader color-management support.
 - Hybrid/multi-GPU rendering and device selection, plus optional
   per-monitor virtual desktops where the architecture permits.
 - Battery health/charge thresholds, ambient-light and adaptive
@@ -309,10 +308,8 @@ own design, cost/maintenance analysis and definition of done.
 
 ## Next — Not yet assigned to a release
 
-This unscheduled backlog includes the previous 0.3 everyday-completeness
-candidates. Do not treat them as promises for the new input-focused 0.3.
-A row may also be named as a candidate in a release section above; it stays
-here until it is merged.
+These ideas are open for evaluation. The release sections above record any
+provisional targets.
 
 | Candidate | Status |
 |---|---|
@@ -349,25 +346,15 @@ Decisions already taken. Each design document explains why.
 
 ## Done
 
-**Done means integrated in main, not necessarily published in 0.1 Beta.**
-Notable post-0.1 work includes the theme/personalization system
-([#207](https://github.com/vela-desktop/vela/pull/207),
-[#212](https://github.com/vela-desktop/vela/pull/212),
-[#216](https://github.com/vela-desktop/vela/pull/216),
-[#248](https://github.com/vela-desktop/vela/pull/248)),
-battery notifications ([#215](https://github.com/vela-desktop/vela/pull/215)),
-screen-sharing indicator ([#220](https://github.com/vela-desktop/vela/pull/220)),
-the taskbar update ([#299](https://github.com/vela-desktop/vela/pull/299)),
-context menu improvements ([#298](https://github.com/vela-desktop/vela/pull/298)),
-update scheduling ([#190](https://github.com/vela-desktop/vela/pull/190)) and
-[experimental VM support](virtual-machines.md).
+This is an overview of capabilities implemented on `main`. The release
+sections above record when work was integrated or published.
 
 - **Session**: login entry, systemd and D-Bus, portals, Xwayland, lock screen,
   idle, notifications, system tray, and Vela's own
   [polkit agent](polkit-agent.md) (User Account Control).
 - **Updates**: the [Updates page](updates.md) in Settings, background checks
   and notifications, over `vela-update-daemon`; Beta and Experimental
-  [release channels](release-channels.md) on Arch, Fedora 44 and Ubuntu 26.10.
+  [release channels](release-channels.md) on Arch, Fedora 44 and 45, and Ubuntu 26.10.
 - **Compositor and renderer**: a [C core](c-core.md), Vela's own scene and
   [Vulkan renderer](renderer.md), pixel-exact fractional scaling, late
   latching, live acrylic blur, rounded corners and shadows, Vela's title bar,
@@ -407,7 +394,7 @@ update scheduling ([#190](https://github.com/vela-desktop/vela/pull/190)) and
 This page changes in the same pull request as the work it describes:
 
 - A new design document adds its row to **In progress**.
-- The pull request that finishes the last stage moves that work to **Done**.
+- The pull request that finishes a feature records it in the relevant release section.
 - Update the supported Beta series in this roadmap when a new minor Beta ships.
 - Distinguish merged main changes, proposed release candidates and
   actually published Beta features.
@@ -416,9 +403,7 @@ This page changes in the same pull request as the work it describes:
 - Mark all unreleased targets as estimates and revise them after testing.
 - Work on a future redesign branch or independent font/icon repositories
   may begin early without merging unfinished designs into `main`.
-- When a capability is merged into `main`, move it to **Done** and keep only
-  its missing increment in **Next**. Never re-list implemented features
-  such as clipboard history as future work.
+- Keep **Done** as a summary of existing capabilities. List remaining work in **Next**.
 
 To propose a feature, open an issue that describes the behavior first
 (see [CONTRIBUTING](../CONTRIBUTING.md)).
