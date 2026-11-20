@@ -273,13 +273,18 @@ struct vela_lid_switch {
     struct wl_listener toggle, destroy;
 };
 
-static void lid_switch_destroy(struct wl_listener *listener, void *data)
+static void lid_switch_destroy(struct vela_lid_switch *lid)
 {
-    struct vela_lid_switch *lid = wl_container_of(listener, lid, destroy);
     wl_list_remove(&lid->toggle.link);
     wl_list_remove(&lid->destroy.link);
     wl_list_remove(&lid->link);
     free(lid);
+}
+
+static void handle_lid_switch_destroy(struct wl_listener *listener, void *data)
+{
+    struct vela_lid_switch *lid = wl_container_of(listener, lid, destroy);
+    lid_switch_destroy(lid);
 }
 
 static void set_lid_closed(struct vela_server *server, bool closed)
@@ -313,7 +318,7 @@ static void add_lid_switch(struct vela_input *input, struct wlr_input_device *de
     lid->server = server;
     wl_list_insert(&input->lid_switches, &lid->link);
     vela_listen(&wlr_switch_from_input_device(device)->events.toggle, &lid->toggle, lid_switch_toggle);
-    vela_listen(&device->events.destroy, &lid->destroy, lid_switch_destroy);
+    vela_listen(&device->events.destroy, &lid->destroy, handle_lid_switch_destroy);
 
 #ifdef VELA_HAVE_LOGIND
     // Read the current level at startup and when libinput reopens the seat.
@@ -969,10 +974,10 @@ void vela_input_destroy(struct vela_input *input)
         pointer_destroy(pointer);
     }
 #if WLR_HAS_LIBINPUT_BACKEND
-    struct vela_lid_switch *lid, *next_lid;
-    wl_list_for_each_safe(lid, next_lid, &input->lid_switches, link)
-    {
-        lid_switch_destroy(&lid->destroy, NULL);
+    struct wl_list *switches = &input->lid_switches;
+    while (switches->next != switches) {
+        struct vela_lid_switch *lid = wl_container_of(switches->next, lid, link);
+        lid_switch_destroy(lid);
     }
 #endif
     drag_icon_destroy(input->drag_icon);
