@@ -254,8 +254,9 @@ buttons.
 
 While Super is held for 500 ms with no other key, the first ten buttons
 show their number in a small pill in a corner away from the screen's
-edge, clear of the open-app indicator and of the app's count. They go when Super is released or another key is
-pressed. A Super tap still opens Start on release, held or not. The
+edge, clear of the open-app indicator and of the app's count. On a button
+too small for both (24 units wide), the number takes the count's place while
+Super is held. They go when Super is released or another key is pressed. A Super tap still opens Start on release, held or not. The
 compositor sends `super-held` and `super-released` to the shell (only with
 `apps`, and only while the taskbar is visible).
 

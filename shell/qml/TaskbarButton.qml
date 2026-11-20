@@ -132,7 +132,10 @@ Item {
 
     // The count at the corner away from the screen's edge.
     Rectangle {
-        visible: root.countBadge !== ""
+        id: count
+        objectName: "countBadge"
+        // Hidden while Super's number takes its place (below).
+        visible: root.countBadge !== "" && !number.onCount
         x: root.edge === "right" ? 2 : parent.width - width - 2
         y: root.edge === "top" ? parent.height - height - 2 : 2
         width: Math.max(16, countLabel.implicitWidth + 6)
@@ -149,12 +152,20 @@ Item {
     }
 
     // Super's number (docs/taskbar.md §7.4): the other corner away from the
-    // screen's edge, clear of the open-app indicator and of the count.
+    // screen's edge, clear of the open-app indicator and of the count. On a
+    // button too small for both it shows in the count's place, for as long
+    // as Super is held.
     Rectangle {
+        id: number
         objectName: "shortcutNumber"
         visible: root.shortcutNumber !== ""
-        x: root.edge === "left" ? parent.width - width - 3 : 3
-        y: root.vertical || root.edge === "top" ? parent.height - height - 3 : 3
+        readonly property real cornerX: root.edge === "left" ? parent.width - width - 3 : 3
+        readonly property real cornerY: root.vertical || root.edge === "top" ? parent.height - height - 3 : 3
+        readonly property bool onCount: visible && root.countBadge !== ""
+            && cornerX < count.x + count.width + 1 && count.x < cornerX + width + 1
+            && cornerY < count.y + count.height + 1 && count.y < cornerY + height + 1
+        x: onCount ? count.x + count.width - width : cornerX
+        y: onCount ? count.y : cornerY
         width: 16
         height: 16
         radius: height / 2

@@ -13,6 +13,7 @@ Item {
 
     Component { id: barComponent; Taskbar { visible: true; primary: true } }
     Component { id: overflowComponent; TrayOverflow {} }
+    Component { id: buttonComponent; TaskbarButton {} }
 
     TestCase {
         name: "TaskbarOverflow"
@@ -165,6 +166,39 @@ Item {
                 const t = time.mapToItem(clockItem, 0, 0)
                 verify(badge.y + badge.height <= t.y, "the badge above the time")
             }
+        }
+
+        // Super's number and the count never cover each other: side by side
+        // when the button has room, the number in the count's place when not.
+        function test_number_and_count_on_small_buttons_data() {
+            const rows = []
+            for (const edge of ["bottom", "top", "left", "right"]) {
+                rows.push({ tag: edge + " small", edge: edge, size: 24, apart: false })
+                rows.push({ tag: edge + " default", edge: edge, size: 44, apart: true })
+            }
+            return rows
+        }
+        function test_number_and_count_on_small_buttons(data) {
+            Styles.taskbar.position = data.edge
+            const button = createTemporaryObject(buttonComponent, null,
+                { width: data.size, height: data.size, countBadge: "3", shortcutNumber: "1" })
+            verify(button)
+            const number = findChild(button, "shortcutNumber")
+            const count = findChild(button, "countBadge")
+            const overlap = (a, c) => a.x < c.x + c.width && c.x < a.x + a.width && a.y < c.y + c.height && c.y < a.y + a.height
+            verify(number.visible)
+            compare(count.visible, data.apart)
+            if (data.apart) {
+                verify(!overlap(number, count), JSON.stringify([number.x, number.y, count.x, count.y]))
+            } else {
+                compare(number.x + number.width, count.x + count.width)
+                compare(number.y, count.y)
+            }
+            verify(number.x >= 0 && number.x + number.width <= button.width)
+            verify(number.y >= 0 && number.y + number.height <= button.height)
+            // Super let go: the count is back.
+            button.shortcutNumber = ""
+            verify(count.visible)
         }
 
         // A vertical bar gives AM/PM a line of its own, still on a 12-hour
