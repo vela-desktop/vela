@@ -271,8 +271,21 @@ int main(int argc, char** argv)
                 xcb_disconnect(connection);
                 return 2;
             }
-            // WM_HINTS is nine 32-bit fields. XUrgencyHint is bit 8 of flags.
-            const uint32_t hints[9] = { !strcmp(argv[3], "on") ? 1u << 8 : 0 };
+            // WM_HINTS is nine 32-bit fields. XUrgencyHint is bit 8 of flags:
+            // only that bit changes, the window's other hints stay.
+            uint32_t hints[9] = { 0 };
+            xcb_get_property_reply_t *current = xcb_get_property_reply(connection,
+                xcb_get_property(connection, 0, target, XCB_ATOM_WM_HINTS, XCB_GET_PROPERTY_TYPE_ANY, 0, 9), NULL);
+            if (current && current->format == 32) {
+                int length = xcb_get_property_value_length(current) / 4;
+                memcpy(hints, xcb_get_property_value(current), (size_t)(length < 9 ? length : 9) * 4);
+            }
+            free(current);
+            if (!strcmp(argv[3], "on")) {
+                hints[0] |= 1u << 8;
+            } else {
+                hints[0] &= ~(1u << 8);
+            }
             cookie = xcb_change_property_checked(
                 connection, XCB_PROP_MODE_REPLACE, target, XCB_ATOM_WM_HINTS, XCB_ATOM_WM_HINTS, 32, 9, hints);
         } else if (!strcmp(argv[1], "--override-redirect")) {
