@@ -1,9 +1,10 @@
 # Features
 
-What Vela 0.1 does today, area by area. The [README](../README.md) keeps only the
-overview; this page is the detailed list and changes as the desktop evolves. For the
-complete key reference see [keyboard shortcuts](shortcuts.md), and for what is planned
-see the [roadmap](roadmap.md).
+What Vela does today on `main`, area by area. Some of it is newer than the latest
+Beta: the [roadmap](roadmap.md) says which release carries what, and what is planned.
+The [README](../README.md) keeps only the overview; this page is the detailed list and
+changes as the desktop evolves. For the complete key reference see
+[keyboard shortcuts](shortcuts.md).
 
 ## Screenshots
 
@@ -47,7 +48,8 @@ see the [roadmap](roadmap.md).
   with the app icon and a wallpaper-tinted translucent surface. Apps that draw their own
   title bar, such as Chromium with tabs on top, keep theirs.
 - Invisible resize borders, Super+drag to move, Super+right-drag to resize, and a window
-  menu (Alt+Space) with keyboard move and resize.
+  menu (Alt+Space) with keyboard move and resize, and entries to move the window to
+  another desktop or show it on all of them.
 
 ## Shell
 - **[Taskbar](taskbar.md)**: per-desktop and per-monitor window filters, jump
@@ -64,7 +66,13 @@ see the [roadmap](roadmap.md).
 - **Media, volume and microphone keys** that work whatever has the focus, with an
   indicator; the wheel over an app's taskbar button sets that app's volume.
 - **Notifications** with actions, a **notification center** with a calendar (Super+N),
-  and Do Not Disturb.
+  and Do Not Disturb. Right-click a notification to dismiss it; Vela Expressive groups
+  them by app.
+- **[Battery alerts](battery-notifications.md)** when the PC or a peripheral (mouse,
+  keyboard, headset, game controller) runs low or critical. Settings chooses the PC's
+  low level and can turn the peripherals' alerts off.
+- **[Screen-sharing indicator](screen-sharing.md)** that names the app and the screen or
+  window it captures, with optional Do Not Disturb while you share or record.
 - **Clipboard history** (Super+V): text and images, pinned items that survive a reboot,
   and one-click paste into the focused app.
 - **Snipping tool** (Super+Shift+S or PrtSc): capture a rectangle, a window or a full
@@ -79,7 +87,8 @@ see the [roadmap](roadmap.md).
 
 ## Files (`vela-files`)
 - Tabs, breadcrumb address bar, search in subfolders, Details and icon views (remembered
-  per folder), and a **preview pane** (images, text, video and PDF thumbnails).
+  per folder), a **preview pane** (images, text, video and PDF thumbnails), and a
+  **quick preview** on Space for pictures, PDFs, text, videos and sounds.
 - Background copy and move with progress and conflict resolution, drag and drop
   everywhere, ZIP/7z/TAR, shortcuts, Favorites, Trash with restore.
 - **Atomic file replacement and staged copies.** Each file is written to a hidden temporary
@@ -91,18 +100,33 @@ see the [roadmap](roadmap.md).
 ## Settings (`vela-settings`)
 - **Displays**: drag-and-drop arrangement, scale, resolution, refresh rate, rotation, and
   "Keep these settings?" with compositor-owned revert on timeout or a Settings crash.
-  Native Wayland configuration requires no external display utility. Also **Night light**, variable refresh
-  rate and tearing.
-- **Sound, Notifications, Power, Clipboard**, **mouse and touchpad** (tap to click,
-  scroll direction, three- and four-finger gestures), and Network.
+  Native Wayland configuration requires no external display utility. Monitors snap
+  together and never overlap; unplugging one moves the others so the pointer can still
+  reach them, and the saved arrangement returns when it is plugged back in. Closing a
+  laptop's lid with an external display connected turns the built-in panel off until
+  the lid opens. Also **Night light**, variable refresh rate, tearing, and
+  [brightness](brightness.md) for each monitor over DDC/CI or the backlight.
+- **Sound** (outputs, inputs, per-app levels, device profiles, codecs and sample
+  rates), **Notifications, Clipboard**, **mouse and touchpad** (tap to click, scroll
+  direction, three- and four-finger gestures), and Network.
+- **Power**: energy saver, balanced and performance modes where
+  `power-profiles-daemon` offers them, when the screen turns off and whether it locks,
+  and the low battery level.
 - **Bluetooth**: Vela's own `vela-bluetooth` daemon pairs, connects and forgets
   devices, and answers pairing questions (PIN, passkey, confirmation) from the shell,
   even after Settings is closed ([design](bluetooth.md)).
 - **Updates**: the installed and newest version, what's new, the Beta or Experimental
-  channel, and an update that runs in a terminal. Vela checks in the background and
-  sends a notification when an update is available ([design](updates.md)).
-- **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
-  **Time and language**: date and time, keyboard layouts.
+  channel, and an update that runs in a terminal, after showing the packaging recipe it
+  will build. Vela checks in the background at an interval you choose, shows when the
+  next check is due, and sends a notification when an update is available
+  ([design](updates.md)).
+- **Personalization**: themes in one click with previews and Undo, a style for each
+  surface on its own page, wallpaper, an accent from the wallpaper or any HEX color, the
+  taskbar (position, filters, badges, tray icons), Start (its icon and pinned apps),
+  desktop icons, the clock (date, seconds, 12 or 24 hours) and which entries the context
+  menus show.
+- **Apps**: installed and default apps. **Time and language**: date and time, keyboard
+  layouts, and the interface language (English or Italian), switched live.
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming
@@ -116,6 +140,8 @@ see the [roadmap](roadmap.md).
   direct scanout. It can follow sunset and sunrise, computed offline from your time zone.
 - Picks the **highest refresh rate** at native resolution, even when the monitor
   advertises 60 Hz as "preferred".
+- **Virtual machines** (experimental): [QEMU/KVM guests](virtual-machines.md) with
+  virtio-gpu and Vulkan Venus.
 - **Xwayland** on demand for Steam, games and older apps. X11 apps run 1:1 in the
   monitor's pixels, so a fullscreen game gets the native resolution even at 125%, stays
   sharp and can use direct scanout; `Xft.dpi` follows the scale.
