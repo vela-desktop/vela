@@ -5,9 +5,10 @@ few commands instead of a checklist. The release rules themselves do not
 change: numbered `v0.<minor>.<patch>` tags, the release branches and the
 validation in [release channels](release-channels.md).
 
-> **Status:** R1 (the rehearsal tag) and R2 (upgrade tests) in progress.
+> **Status:** R1 (the rehearsal tag), R2 (upgrade tests) and R3 (the
+> commands) in progress.
 >
-> **Remaining:** R3–R4 (§6).
+> **Remaining:** R4 (§7).
 
 ## 1. The problem
 
@@ -135,16 +136,35 @@ for every old updater. Its logic stays covered offline by
 `packaging/tests`, and a failure after publication is fixed by a patch
 release.
 
-## 6. Stages
+## 6. The commands
+
+`scripts/release.py` runs on the maintainer's machine, with their git
+remote, signing key and `gh` login, so CI never holds a key that signs
+tags and the pull requests it opens run CI like any other. A release is
+four commands; between them, everything runs by itself:
+
+| Command | What it does | Refuses when |
+|---|---|---|
+| `prepare 0.2.1` | From a temporary worktree of the branch tip, commits (signed off) `project(VERSION 0.2.1)` and a `## 0.2.1 — <date>` CHANGELOG section holding the "Unreleased" entries, pushes `prepare/v0.2.1` and opens the pull request against the branch. A `.0` only gets the CHANGELOG section: `main` is already at that version. | `v0.2.1` exists; the branch is already at or past 0.2.1; nothing is under "Unreleased"; the section exists |
+| `rehearse 0.2.1` | §4, then starts `gpu-amd.yml` and `gpu-nvidia.yml` on the rehearsal tag (`--no-gpu` to skip them). | as in §4 |
+| `status 0.2.1` | Prints each check for the rehearsed commit, and exits 0 only when all pass: still on the branch with the right version and no `v0.2.1`; the `build.yml` run of the rehearsal tag succeeded on it; the draft exists; a full AMD and a full NVIDIA suite succeeded on it. | — |
+| `tag 0.2.1` | Runs `status`, asks you to type `v0.2.1`, creates the tag with `git tag -s` on the rehearsed commit, checks the tag object carries a signature, pushes it and deletes the rehearsal. | any check fails; a different answer; an unsigned tag; a local `v0.2.1` on another commit |
+
+A GPU run counts as a full suite only when it has the workflow's plain
+name: both GPU workflows set `run-name` to append ` - only <regex>` when
+the `tests` input filters the suite. A later retry still running does not
+hide an earlier success on the same commit.
+
+## 7. Stages
 
 | Stage | What | Pull request |
 |---|---|---|
 | **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
 | **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | [#307](https://github.com/vela-desktop/vela/pull/307) |
-| **R3** | `release.py prepare` (version bump pull request with its CHANGELOG section), `release.py status` (rehearsal, both GPU suites and upgrade tests on the exact commit, in one go/no-go summary; the GPU suites are dispatched by `rehearse`), `release.py tag` (refuses unless `status` is green, signs and pushes). | — |
+| **R3** | The commands (§6): `prepare`, GPU suites started by `rehearse`, `status`, `tag`. | — |
 | **R4** | After publication: notes taken from the CHANGELOG section instead of `--generate-notes`, and the `PKGBUILD.beta` fallback pull requests opened by `release.py tag`. | — |
 
-## 7. Not in scope
+## 8. Not in scope
 
 - Tags or releases created by CI on its own.
 - A second Beta channel or pre-release versions such as `v0.2.1-rc1`: the
@@ -153,7 +173,7 @@ release.
 - 0.1.x: its updater only sees prereleases, and 0.1.x support ends with
   `v0.2.0`.
 
-## 8. Tests
+## 9. Tests
 
 - `packaging/tests/test_beta_publication.py` runs the real publication
   script with a fake `gh`: a real tag creates a normal release, a
@@ -171,5 +191,12 @@ release.
   covers the four systems and gates `publish-beta`, and that the updater
   check runs after real releases only.
 - `scripts/tests/test_release.py` runs `release.py` against a temporary
-  Git repository with a fake `gh`: version mismatch, an existing real tag,
-  replacing an earlier rehearsal, and `clean`.
+  Git repository with a bare remote and a fake `gh`: version mismatch, an
+  existing real tag, replacing an earlier rehearsal, and `clean`; the
+  `prepare` pull request (its two-file commit, sign-off, base branch, and
+  the maintainer's checkout left untouched) and its refusals; `status` with
+  each check failing in turn (failed or other-commit pipeline, a filtered
+  or missing or running GPU suite, no draft); and `tag` signing with a
+  throwaway SSH key, asking for the exact name, and refusing an unsigned
+  or misplaced local tag. A test ties the GPU suite names `status` expects
+  to the workflows' `name` and `run-name`.

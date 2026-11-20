@@ -18,15 +18,22 @@ Drafts and tags outside that format are ignored.
 
 ## Maintainer release process
 
-1. Prepare the exact release commit, update `project(VERSION ...)` in
-   `CMakeLists.txt`, and complete reviews and required test suites,
-   including both GPU suites on that commit.
+1. Prepare: `scripts/release.py prepare 0.x.y` opens the pull request
+   that sets `project(VERSION 0.x.y)` on the release branch (`main` for a
+   `.0`, whose version is already set) and moves the CHANGELOG's
+   "Unreleased" entries under `0.x.y`. Review and merge it.
 2. Rehearse: `scripts/release.py rehearse 0.x.y` pushes
-   `rehearsal/v0.x.y` on that commit, which runs the whole pipeline and
-   publishes a draft release (see [Rollout validation](#rollout-validation)).
+   `rehearsal/v0.x.y` on the branch tip, which runs the whole pipeline and
+   publishes a draft release (see [Rollout validation](#rollout-validation)),
+   and starts both full GPU suites on that commit.
    `v0.*` tags in this repository can be neither moved nor deleted, so a tag
    whose pipeline fails burns that version number.
-3. Create a signed, protected Git tag `v0.x.y` pointing to that commit.
+3. Check and tag: `scripts/release.py status 0.x.y` lists what the commit
+   still lacks: the pipeline, the draft and both full GPU suites, all
+   green on that exact commit. When it is all green,
+   `scripts/release.py tag 0.x.y` asks you to type `v0.x.y`, signs the tag
+   with your own key (never a key in CI), pushes it and removes the
+   rehearsal.
 4. GitHub Actions builds Arch/CachyOS, Fedora 44/45 and Ubuntu 26.10 packages
    for the **tagged** commit, verifies package installs and their runtime
    requirements, then publishes a normal GitHub Release titled `Vela 0.x.y Beta`.
