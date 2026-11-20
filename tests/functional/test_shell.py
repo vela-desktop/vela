@@ -159,6 +159,30 @@ class TaskbarShortcuts(RealShell):
             self.vela.wait_for(lambda s: s["focused"] == first and not self.mapped(s, "vela-taskbar-preview"),
                                what="the next taskbar result")
 
+    def test_taskbar_cycling_keeps_the_chosen_window_when_another_closes(self):
+        first = self.vela.open_window(app_id="taskbar-cycle-close")
+        second = self.vela.open_window(app_id="taskbar-cycle-close")
+        third = self.vela.open_window(app_id="taskbar-cycle-close")
+        self.vela.wait_for(lambda s: s["focused"] == third, what="the last window in front")
+        with self.input_session() as send:
+            # Cycling from the one in front: the first, then the second.
+            send("keydown", "super", "key", "1")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                               what="the taskbar window chooser")
+            send("key", "1")
+            time.sleep(0.3)
+            # The first closes before Super is let go: the choice stays on
+            # the second, not on the card that slid into its place.
+            self.vela.command(f"window {first} close")
+            self.vela.wait_for(lambda s: not s.has(first),
+                               what="the first window closed")
+            time.sleep(0.5)
+            send("keyup", "super")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar-preview"),
+                               what="the chooser closed")
+        state = self.vela.wait_for(lambda s: s["focused"] in (second, third), what="a window chosen")
+        self.assertEqual(state["focused"], second, {"first": first, "second": second, "third": third})
+
     def test_taskbar_number_toggles_a_single_window(self):
         window = self.vela.open_window(app_id="taskbar-toggle")
         self.vela.wait_for(lambda s: s["focused"] == window, what="the app in front")
@@ -394,6 +418,34 @@ class TaskbarDrag(RealShell):
                            read_state=False, what="the source drag ended")
         self.assertNotRegex(self.vela.log_text()[mark:], r"wl_data_offer#\d+\.finish")
         self.assertTrue(os.path.isfile(source))
+
+    def test_taskbar_drop_on_a_preview_card_raises_nothing(self):
+        source = os.path.join(self.vela.directory, "Desktop", "drag-card.txt")
+        with open(source, "w") as file:
+            file.write("Dropped on a preview card.")
+        first = self.vela.open_window(app_id="taskbar-drop-cards")
+        second = self.vela.open_window(app_id="taskbar-drop-cards")
+        other = self.vela.open_window(app_id="taskbar-drop-cards-other")
+        self.assertEqual(self.vela.state().windows[0]["id"], other)
+        self.vela.wait_still(second)
+        taskbar = self.layer(self.vela.state(), "vela-taskbar")
+        with self.input_session() as send:
+            # A second move on the button: the drag may start after the first.
+            send("move", 45, 127, "down", "sleep", "100", "move", 74, 134, "sleep", "200",
+                 "move", taskbar["x"] + 120, taskbar["y"] + 24, "sleep", "200",
+                 "move", taskbar["x"] + 122, taskbar["y"] + 24)
+            state = self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                                       what="the previews of the hovered app")
+            preview = self.layer(state, "vela-taskbar-preview")
+            # On a card, let go before its raise (600 ms): the drop is
+            # refused, the previews close, and no window comes up after.
+            send("move", preview["x"] + preview["w"] // 2 - 110, preview["y"] + preview["h"] // 2, "sleep", "200", "up")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar-preview"), what="the previews closed")
+        for _ in range(10):
+            time.sleep(0.1)
+            self.assertEqual(self.vela.state().windows[0]["id"], other)
+        self.assertTrue(os.path.isfile(source))
+        self.assertNotEqual(first, second)
 
     def test_taskbar_drag_pins_a_start_tile(self):
         with self.input_session() as send:

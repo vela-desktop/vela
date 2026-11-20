@@ -110,7 +110,14 @@ Window {
         }
     }
 
-    function collect(info) {
+    // `fresh`: a preview just opened, nothing chosen yet.
+    function collect(info, fresh) {
+        // The card chosen, by what it shows: a window closing before it must
+        // not move the choice onto its neighbour.
+        const wasWindow = selected < windows.length
+        const chosenId = !fresh && wasWindow ? windows[selected].id : undefined
+        const chosenGroup = !fresh && !wasWindow && groups[selected - windows.length]
+            ? groups[selected - windows.length].windows.map(m => m.id).join(" ") : undefined
         const idsToShow = info.button ? info.button.windowIds : []
         const captured = Capture.windowList()
         const list = Array.from(idsToShow).map(id => captured.find(w => w.id === id)).filter(w => w !== undefined)
@@ -127,7 +134,15 @@ Window {
         // Cycling with Super held picks only windows: on release, a group
         // card would activate nothing.
         const choices = info.cycling ? windows.length : windows.length + groups.length
-        selected = Math.max(0, Math.min(selected, choices - 1))
+        let index = selected
+        if (chosenId !== undefined && ids.indexOf(chosenId) >= 0) {
+            index = ids.indexOf(chosenId)
+        } else if (chosenGroup !== undefined) {
+            const at = groups.findIndex(g => g.windows.map(m => m.id).join(" ") === chosenGroup)
+            if (at >= 0) index = windows.length + at
+        }
+        // Gone: the card now in its place, else the last one.
+        selected = Math.max(0, Math.min(index, choices - 1))
         if (windows.length === 0) {
             Menus.preview = null
         }
@@ -137,7 +152,7 @@ Window {
         hideTimer.stop()
         selected = 0
         viewport.contentX = 0
-        collect(info)
+        collect(info, true)
         if (windows.length === 0) return
         if (info.cycling) {
             selected = (windows.findIndex(w => w.id === info.startingWindow) + 1) % windows.length
@@ -349,6 +364,7 @@ Window {
                             onCloseRequested: Shell.windowAction(modelData.id, "close")
 
                             DropArea {
+                                id: springArea
                                 anchors.fill: parent
                                 enabled: !!(Menus.preview && Menus.preview.spring)
                                 onEntered: {
@@ -360,13 +376,16 @@ Window {
                                     springRaise.stop()
                                 }
                                 onDropped: drop => {
+                                    // A drop clears containsDrag without
+                                    // exited: the raise goes with the drag.
+                                    springRaise.stop()
                                     drop.accepted = false
                                     Menus.preview = null
                                 }
                                 Timer {
                                     id: springRaise
                                     interval: 600
-                                    onTriggered: windowCard.activated()
+                                    onTriggered: if (springArea.containsDrag) windowCard.activated()
                                 }
                             }
 
