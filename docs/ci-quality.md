@@ -1,10 +1,34 @@
 # Additional CI quality checks
 
-The main Build workflow runs on pushes to `main`, pull requests and manual dispatch; it also invokes the Fedora build and test workflow to gate public releases.
-Sanitizer Tests and Static Analysis run separately on pull requests and manual dispatch;
+The main Build workflow runs on pushes to `main` and release branches, Beta
+tags, pull requests and manual dispatch; it also invokes the Fedora build and
+test workflow to gate public releases. Sanitizer Tests and Static Analysis run
+separately on pull requests and manual dispatch, and Sanitizer Tests also runs
+on pushes to prime its cache.
 Standalone Package Test is now manual-only because Build already performs the
 same Arch package build and smoke test on PRs. Documentation-only PRs skip the
 expensive Build jobs after an inexpensive source-change check.
+
+## Checks at a glance
+
+| Workflow | What it checks | When it runs |
+|---|---|---|
+| [Build](../.github/workflows/build.yml) | Arch build and CTest, a `qmllint` report (not blocking), Arch and Fedora packages with clean-install smoke tests, `packaging/tests` | Pull requests, pushes to `main` and `release/**`, `v0.*` tags (Beta publication), manual |
+| [Ubuntu 26.10 build](../.github/workflows/ubuntu.yml) | Full source build and the non-GPU CTest suite; installs the DEB on a clean system | Pull requests, pushes to `main` and `release/**` |
+| [Static Analysis](../.github/workflows/static-analysis.yml) | ShellCheck on every tracked shell script, `.clang-format` on the changed C/C++ lines (clang-format 18), Clang Static Analyzer, cppcheck and clang-tidy | Pull requests, manual |
+| [Sanitizer Tests](../.github/workflows/sanitizers.yml) | ASan and UBSan on the CPU-only suites | Pull requests, pushes to `main` and `release/**` (cache), manual |
+| [Fuzzing](../.github/workflows/fuzz.yml) | libFuzzer on the `vela.conf`, `.desktop` and DDC/CI parsers ([testing](testing.md)) | Pull requests that touch the parsers (one minute per target), nightly (ten minutes), manual |
+| [Python checks](../.github/workflows/ruff.yml) | Ruff, and the CPU Python suites on Python 3.13 | Pull requests, pushes to `main` and `release/**` |
+| [Documentation checks](../.github/workflows/documentation.yml) | `scripts/check-docs.py`: links, anchors, and build dependencies that drift from the docs | Pull requests that touch the documentation |
+| [CodeQL](../.github/workflows/codeql.yml) | C/C++, Python and GitHub Actions | Pull requests and pushes to `main` and `release/**`, weekly |
+| [OSV dependency scan](../.github/workflows/osv-scanner.yml) | Known vulnerable dependencies | Pull requests and pushes to `main` and `release/**`, weekly |
+| [GitHub Actions security](../.github/workflows/zizmor.yml) | zizmor on the workflows | Changes under `.github/`, weekly |
+| [OpenSSF Scorecard](../.github/workflows/scorecard.yml) | Supply-chain practices | Pushes to `main`, weekly |
+| [Code coverage](../.github/workflows/coverage.yml) | First-party coverage uploaded to Codecov ([below](#first-party-cpugpu-code-coverage)) | Pull requests and pushes to `main` and `release/**`, manual |
+| GPU CI ([AMD](../.github/workflows/gpu-amd.yml), [NVIDIA](../.github/workflows/gpu-nvidia.yml), [Intel](../.github/workflows/gpu-intel.yml)) | Functional and sharpness suites on real GPUs ([policy](#gpu-ci-policy)) | Manual |
+
+Codecov, SonarQube Cloud, the labeler and DCO are described in
+[code quality integrations](code-quality-integrations.md).
 
 ## Package and updater contracts
 
