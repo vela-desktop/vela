@@ -15,6 +15,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <wlr/backend/headless.h>
+#include <wlr/interfaces/wlr_output.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
@@ -91,6 +92,57 @@ static void add_output(struct vela_server* server, int width, int height)
     wlr_output_layout_add_auto(server->output_layout, wlr);
     vela_output_manager_update(server);
 }
+// Unlike headless outputs, a disabled DRM connector has advertised modes
+// but may have no current mode. The fixture accepts fixed-mode commits.
+struct inactive_output {
+    struct wlr_output wlr;
+    struct wlr_output_mode modes[2];
+};
+
+static bool inactive_commit(struct wlr_output* wlr, const struct wlr_output_state* state)
+{
+    return true;
+}
+
+static void inactive_destroy(struct wlr_output* wlr)
+{
+    struct inactive_output* fixture = wl_container_of(wlr, fixture, wlr);
+    wlr_output_finish(wlr);
+    free(fixture);
+}
+
+static const struct wlr_output_impl inactive_impl = { .commit = inactive_commit, .destroy = inactive_destroy };
+
+static void add_inactive_output(struct vela_server* server)
+{
+    struct inactive_output* fixture = calloc(1, sizeof(*fixture));
+    struct vela_output* output = calloc(1, sizeof(*output));
+    struct wlr_output* wlr = &fixture->wlr;
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, false);
+    wlr_output_state_set_scale(&state, 1.25f);
+    wlr_output_init(wlr, server->backend, &inactive_impl, server->loop, &state);
+    wlr_output_state_finish(&state);
+    wlr_output_set_name(wlr, "DRM-QHD");
+    fixture->modes[0] = (struct wlr_output_mode) { .width = 2560, .height = 1440, .refresh = 60000, .preferred = true };
+    fixture->modes[1] = (struct wlr_output_mode) { .width = 2560, .height = 1440, .refresh = 143981 };
+    wl_list_insert(wlr->modes.prev, &fixture->modes[0].link);
+    wl_list_insert(wlr->modes.prev, &fixture->modes[1].link);
+    output->server = server;
+    output->wlr = wlr;
+    output->startup_mode = &fixture->modes[1];
+    output->startup_transform = WL_OUTPUT_TRANSFORM_180;
+    output->has_preferred_position = true;
+    output->preferred_x = 1920;
+    wlr->data = output;
+    wl_list_insert(server->outputs.prev, &output->link);
+    output->destroy.notify = destroyed;
+    wl_signal_add(&wlr->events.destroy, &output->destroy);
+    vela_output_manager_hotplug(server);
+    vela_output_manager_update(server);
+}
+
 static void layout_changed(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, layout_change);
@@ -150,7 +202,12 @@ int main(int argc, char **argv)
     if (!wlr_backend_start(server.backend)) return 1;
     bool mixed = argc > 1 && !strcmp(argv[1], "mixed");
     add_output(&server, fixture_width, mixed ? 1200 : fixture_height);
-    add_output(&server, mixed ? 2560 : fixture_width, mixed ? 1440 : fixture_height);
+    bool inactive = argc > 1 && !strcmp(argv[1], "inactive");
+    if (inactive) {
+        add_inactive_output(&server);
+    } else {
+        add_output(&server, mixed ? 2560 : fixture_width, mixed ? 1440 : fixture_height);
+    }
     const char *socket = wl_display_add_socket_auto(server.display);
     if (!socket) return 1;
     struct wl_event_source *commands = wl_event_loop_add_fd(server.loop, STDIN_FILENO, WL_EVENT_READABLE, command, &server);
@@ -160,6 +217,10 @@ int main(int argc, char **argv)
     vela_output_manager_finish(&server);
     wl_list_remove(&server.layout_change.link);
     wl_event_source_remove(commands);
+    if (inactive) {
+        struct vela_output* output = vela_output_named(&server, "DRM-QHD");
+        if (output) wlr_output_destroy(output->wlr);
+    }
     wlr_backend_destroy(server.backend);
     wlr_output_layout_destroy(server.output_layout);
     wl_display_destroy(server.display);

@@ -36,6 +36,11 @@ struct wlr_output_configuration_v1 *vela_output_manager_snapshot(struct vela_ser
         struct wlr_box box = { 0 };
         wlr_output_layout_get_box(server->output_layout, output->wlr, &box);
         head->state.enabled = output->wlr->enabled && !wlr_box_empty(&box);
+        if (!head->state.enabled && output->startup_mode) {
+            // enable_head inherits these defaults when the client sets only enabled.
+            head->state.mode = output->startup_mode;
+            head->state.transform = output->startup_transform;
+        }
         bool remembered = !head->state.enabled && output->has_last_position;
         head->state.x = remembered ? output->last_x : box.x;
         head->state.y = remembered ? output->last_y : box.y;
@@ -525,6 +530,9 @@ bool vela_output_manager_save(struct vela_server *server, const struct wlr_outpu
     wl_list_for_each(head, &config->heads, link)
     {
         struct vela_output *output = head->state.output->data;
+        if (head->state.enabled) {
+            output->startup_mode = NULL;
+        }
         const struct wlr_output_head_v1_state *preferred = find_head(preferences, output->wlr);
         if (preferred) {
             output->has_preferred_position = true;

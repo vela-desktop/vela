@@ -562,6 +562,42 @@ private slots:
         QTRY_COMPARE(output("HEADLESS-2")["x"].toInt(), 1920);
         QCOMPARE(output("HEADLESS-2")["y"].toInt(), 0);
     }
+    void reenableAnOutputThatWasDetectedWithoutACurrentMode()
+    {
+        start({ "inactive" });
+        QTRY_VERIFY(client->available());
+        const auto disabled = output("DRM-QHD");
+        QVERIFY(!disabled["enabled"].toBool());
+        QVERIFY(disabled["current"].toMap().isEmpty());
+
+        // The button only supplies enabled. The manager supplies the saved
+        // mode instead of the connector's unconfigured current mode.
+        QVERIFY(client->apply("DRM-QHD", { { "enabled", true } }));
+        QTRY_VERIFY(client->confirming());
+        QTRY_VERIFY(output("DRM-QHD")["enabled"].toBool());
+        const auto preview = output("DRM-QHD");
+        const auto mode = preview["current"].toMap();
+        QCOMPARE(mode["width"].toInt(), 2560);
+        QCOMPARE(mode["height"].toInt(), 1440);
+        QCOMPARE(mode["refresh"].toDouble(), 143.981);
+        QCOMPARE(preview["scale"].toDouble(), 1.25);
+        QCOMPARE(preview["transform"].toString(), QStringLiteral("180"));
+        QCOMPARE(preview["x"].toInt(), 1920);
+        QCOMPARE(preview["y"].toInt(), 0);
+        QVERIFY(saved().isEmpty());
+
+        client->revert();
+        QTRY_VERIFY(!client->pending());
+        QTRY_VERIFY(!output("DRM-QHD")["enabled"].toBool());
+        QVERIFY(saved().isEmpty());
+
+        QVERIFY(client->apply("DRM-QHD", { { "enabled", true } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QVERIFY(saved().contains(
+            "[DRM-QHD]\nenabled=yes\nmode=2560x1440@143.981\nscale=1.25\nrotation=180\nposition=1920,0"));
+    }
     void failedCommitRestoresPartialChanges()
     {
         start();
