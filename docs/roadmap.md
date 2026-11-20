@@ -75,12 +75,16 @@ until the next minor Beta is published. When `v0.2.0` ships, support for
 The updater in 0.1.0–0.1.2 cannot see `v0.2.0`, so those installations need
 the [one-time updater step](release-channels.md#updating-older-beta-installations).
 See the [release branch policy](release-channels.md#release-branches).
+Maintenance releases take fixes only, without new user-facing features: new
+work waits for the next minor release.
 
 The [`v0.1.2` maintenance Beta](https://github.com/vela-desktop/vela/releases/tag/v0.1.2)
-shipped on 16 November 2026. Maintenance work included Fedora 45 packaging
-([#224](https://github.com/vela-desktop/vela/pull/224)) and a temporary
-choice between KWallet and GNOME Keyring for app passwords pending Vela
-Secrets ([#255](https://github.com/vela-desktop/vela/pull/255),
+shipped on 16 November 2026. It made two explicit exceptions: Fedora 45
+packaging ([#224](https://github.com/vela-desktop/vela/pull/224)), accepted
+as a packaging extension, and a temporary choice between KWallet and GNOME
+Keyring for app passwords pending Vela Secrets, backported as the fix for
+[#222](https://github.com/vela-desktop/vela/issues/222)
+([#255](https://github.com/vela-desktop/vela/pull/255),
 [#277](https://github.com/vela-desktop/vela/pull/277)). Backported fixes
 improved allocation recovery, renderer pass reuse, resource limits and
 compositor security. They also stabilized text during
