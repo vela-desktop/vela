@@ -101,7 +101,7 @@ exist yet.
 
 | Stage | What | Pull request |
 |---|---|---|
-| **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | this design |
+| **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
 | **R2** | Upgrade tests in CI: the previous published Beta installed in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers, upgraded to the rehearsal's draft packages through the installed updater, then checked; the same test against the real release after the tag. Retires the fork. | — |
 | **R3** | `release.py prepare` (version bump pull request with its CHANGELOG section), `release.py status` (rehearsal, both GPU suites and upgrade tests on the exact commit, in one go/no-go summary; the GPU suites are dispatched by `rehearse`), `release.py tag` (refuses unless `status` is green, signs and pushes). | — |
 | **R4** | After publication: notes taken from the CHANGELOG section instead of `--generate-notes`, and the `PKGBUILD.beta` fallback pull requests opened by `release.py tag`. | — |
