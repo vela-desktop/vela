@@ -22,10 +22,11 @@ namespace {
 struct Keymap {
     xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
     xkb_keymap *keymap = nullptr;
-    explicit Keymap(const char *layout)
+    explicit Keymap(const char *layout, const char *options = nullptr)
     {
         xkb_rule_names names {};
         names.layout = layout;
+        names.options = options;
         keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
     }
     ~Keymap()
@@ -42,7 +43,39 @@ std::string read(const std::string &path)
     return std::string(std::istreambuf_iterator<char>(file), {});
 }
 
+// Caps Lock after a tap of the key `keycode` (xkb), from nothing locked.
+bool capsAfterTap(const Keymap &map, xkb_keycode_t keycode)
+{
+    xkb_state *state = xkb_state_new(map.keymap);
+    xkb_state_update_key(state, keycode, XKB_KEY_DOWN);
+    xkb_state_update_key(state, keycode, XKB_KEY_UP);
+    bool caps = false;
+    bool num = false;
+    vela_locks_read(map.keymap, xkb_state_serialize_mods(state, XKB_STATE_MODS_LOCKED), &caps, &num);
+    xkb_state_unref(state);
+    return caps;
+}
+
 } // namespace
+
+// The Caps Lock display follows the Lock state, not the key (§8.3): with
+// the key mapped to something else Lock never changes, so nothing shows;
+// with another key mapped to Caps Lock, it does.
+TEST(LockKeys, TheDisplayFollowsLockNotTheKey)
+{
+    const xkb_keycode_t capsKey = 66; // KEY_CAPSLOCK + 8
+    const xkb_keycode_t escKey = 9; // KEY_ESC + 8
+    EXPECT_TRUE(capsAfterTap(Keymap("us"), capsKey));
+    for (const char *options : { "caps:ctrl_modifier", "caps:escape", "caps:backspace", "caps:none", "compose:caps" }) {
+        Keymap map("us", options);
+        ASSERT_NE(map.keymap, nullptr) << options;
+        EXPECT_FALSE(capsAfterTap(map, capsKey)) << options;
+    }
+    Keymap swapped("us", "caps:swapescape");
+    ASSERT_NE(swapped.keymap, nullptr);
+    EXPECT_FALSE(capsAfterTap(swapped, capsKey));
+    EXPECT_TRUE(capsAfterTap(swapped, escKey));
+}
 
 TEST(LockKeys, ParsesTheSetting)
 {

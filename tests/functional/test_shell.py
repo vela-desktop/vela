@@ -472,6 +472,33 @@ class TaskbarDrag(RealShell):
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class CapsLockDisplay(RealShell):
+    """The Caps Lock display (docs/keyboard.md §8.3): each change of Caps
+    Lock by a key shows it for a moment, other keys don't, and
+    caps-lock-osd=no turns it off."""
+
+    def caps_shown(self, state):
+        return self.mapped(state, "vela-caps-lock-osd")
+
+    def test_each_toggle_shows_it_until_turned_off(self):
+        with self.input_session() as send:
+            for what in ("on", "off"):
+                send("key", "Caps_Lock")
+                self.vela.wait_for(self.caps_shown, what=f"the display for Caps Lock {what}")
+                self.vela.wait_for(lambda s: not self.caps_shown(s), timeout=10,
+                                   what=f"the display for Caps Lock {what} gone by itself")
+            send("key", "a", "key", "shift+b")
+            time.sleep(1.0 * TIME_SCALE)
+            self.assertFalse(self.caps_shown(self.vela.state()), "other keys show nothing")
+            os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+            with open(self.vela.config_path(), "a") as conf:
+                conf.write("caps-lock-osd=no\n")
+            self.vela.command("reload-config")
+            send("key", "Caps_Lock")
+            time.sleep(1.0 * TIME_SCALE)
+            self.assertFalse(self.caps_shown(self.vela.state()), "caps-lock-osd=no")
+
+
 class QtShell(RealShell):
     def secondary_output(self, transform="90", scale=1, side="above", size=(1920, 1080)):
         """Configure a real Qt desktop at any side of the main output. Above or

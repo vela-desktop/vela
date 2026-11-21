@@ -100,6 +100,7 @@ struct vela_input {
     bool caps_locked;
     bool num_locked;
     enum vela_numlock numlock; // numlock= in vela.conf
+    bool caps_lock_osd; // caps-lock-osd= in vela.conf (§8.3)
     // Num Lock's state to keep for numlock=last, written a second after the
     // last change and at exit.
     struct wl_event_source *numlock_timer;

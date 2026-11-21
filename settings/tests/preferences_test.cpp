@@ -1059,9 +1059,15 @@ private slots:
         QVERIFY(conf().contains("numlock=last\n"));
         prefs.setNumLock(QStringLiteral("sometimes"));
         QCOMPARE(prefs.numLock(), QStringLiteral("last"));
+        // The Caps Lock display: on until turned off.
+        QVERIFY(prefs.capsLockOsd());
+        QVERIFY(!conf().contains("caps-lock-osd="));
+        prefs.setCapsLockOsd(false);
+        QVERIFY(conf().contains("caps-lock-osd=no\n"));
         // A fresh read gives the same.
         Preferences again;
         QCOMPARE(again.numLock(), QStringLiteral("last"));
+        QVERIFY(!again.capsLockOsd());
         QCOMPARE(again.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp"));
         QCOMPARE(again.capsKey(), QStringLiteral("capslock"));
     }

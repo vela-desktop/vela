@@ -4,8 +4,9 @@
 import QtQuick
 import Vela.Controls
 
-// Keyboard > Typing: key repeat, and what the Caps Lock, Compose,
-// bottom-left and keypad keys do (docs/keyboard.md §4, §6).
+// Keyboard > Typing: key repeat, what the Caps Lock, Compose, bottom-left
+// and keypad keys do, Num Lock at startup and the Caps Lock display
+// (docs/keyboard.md §4, §6, §7, §8.3).
 Page {
     id: page
     // The layouts in use: Settings', or the system's.
@@ -119,6 +120,16 @@ Page {
                 value: Prefs.numLock
                 usable: Prefs.numpadKeys !== "digits"
                 onPicked: value => Prefs.numLock = value
+            }
+        }
+        Card {
+            icon: "input-keyboard"
+            title: qsTr("Show Caps Lock on screen")
+            description: qsTr("For a moment, each time Caps Lock turns on or off")
+            trailing: Switch {
+                objectName: "capsLockOsd"
+                checked: Prefs.capsLockOsd
+                onToggled: Prefs.capsLockOsd = checked
             }
         }
     }

@@ -3,11 +3,13 @@
 
 import QtQuick
 
-// The shell's controller, as far as its windows place themselves: the
-// tests' `Shell` (shell_test.cpp). It records where a window was put.
+// The shell's controller, as far as its windows place themselves and hear
+// the compositor: the tests' `Shell` (shell_test.cpp). It records where a
+// window was put.
 QtObject {
     property string primaryScreen: "test-output"
     property var placed: []
+    signal capsLockChanged(bool on)
 
     function placeOnScreen(window, name) { placed = placed.concat([name]) }
 }

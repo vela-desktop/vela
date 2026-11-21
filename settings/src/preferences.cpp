@@ -351,6 +351,7 @@ void Preferences::reloadCompositor()
     }
     const QString numLock = value(QStringLiteral("numlock"), QStringLiteral("off"));
     m_numLock = numLock == QLatin1String("on") || numLock == QLatin1String("last") ? numLock : QStringLiteral("off");
+    m_capsLockOsd = flag(QStringLiteral("caps-lock-osd"), true);
     m_repeatDelay = value(QStringLiteral("keyboard-repeat-delay"), QStringLiteral("400")).toInt();
     m_repeatRate = value(QStringLiteral("keyboard-repeat-rate"), QStringLiteral("30")).toInt();
     emit keyboardChanged();
@@ -1136,6 +1137,8 @@ bool Preferences::saveCompositorKeys(const QStringList& keys)
             changes.append({ key, values.join(u',') });
         } else if (key == QLatin1String("numlock")) {
             changes.append({ key, m_numLock });
+        } else if (key == QLatin1String("caps-lock-osd")) {
+            changes.append({ key, m_capsLockOsd ? QStringLiteral("yes") : QStringLiteral("no") });
         } else if (key == QLatin1String("keyboard-options")) {
             changes.append({ key, m_keyboardOptions.join(u',') });
         } else if (key == QLatin1String("keyboard-repeat-delay")) {
@@ -1497,6 +1500,17 @@ void Preferences::setNumLock(const QString& mode)
     const QString previous = m_numLock;
     m_numLock = mode;
     keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("numlock") }), m_numLock, previous);
+    emit keyboardChanged();
+}
+
+void Preferences::setCapsLockOsd(bool on)
+{
+    if (on == m_capsLockOsd) {
+        return;
+    }
+    const bool previous = m_capsLockOsd;
+    m_capsLockOsd = on;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("caps-lock-osd") }), m_capsLockOsd, previous);
     emit keyboardChanged();
 }
 

@@ -261,6 +261,17 @@
     </message>
 </context>
 <context>
+    <name>CapsLockOsd</name>
+    <message>
+        <source>Caps Lock on</source>
+        <translation>Bloc Maiusc attivo</translation>
+    </message>
+    <message>
+        <source>Caps Lock off</source>
+        <translation>Bloc Maiusc disattivato</translation>
+    </message>
+</context>
+<context>
     <name>ClipboardPanel</name>
     <message>
         <source>Clipboard</source>

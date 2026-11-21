@@ -41,6 +41,11 @@ under "Unreleased" in the pull request that makes a user-visible change.
   the authorization dialog now reads Caps Lock's real state instead of
   guessing it from the letters typed.
 
+- Turning Caps Lock on or off shows *Caps Lock on* or *Caps Lock off* at
+  the bottom of the screen for a moment, on the lock screen too, unless
+  the key does something else. *Show Caps Lock on screen* in Settings >
+  Keyboard > Typing turns it off.
+
 - Closing a laptop lid with an active external display temporarily turns off
   the built-in panel. Reopening the lid restores its display settings.
   System suspend on lid close follows the system's logind policy.

@@ -16,6 +16,14 @@
         <translation>Il blocco maiuscole è attivo.</translation>
     </message>
     <message>
+        <source>Caps Lock on</source>
+        <translation>Bloc Maiusc attivo</translation>
+    </message>
+    <message>
+        <source>Caps Lock off</source>
+        <translation>Bloc Maiusc disattivato</translation>
+    </message>
+    <message>
         <source>The password is incorrect. Try again.</source>
         <translation>La password non è corretta. Riprova.</translation>
     </message>

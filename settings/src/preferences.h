@@ -139,6 +139,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString keyboardOptions READ keyboardOptions NOTIFY keyboardChanged)
     // Num Lock when Vela starts: "off", "on" or "last" (docs/keyboard.md §7).
     Q_PROPERTY(QString numLock READ numLock WRITE setNumLock NOTIFY keyboardChanged)
+    // caps-lock-osd=: the Caps Lock display on every toggle (docs/keyboard.md §8.3).
+    Q_PROPERTY(bool capsLockOsd READ capsLockOsd WRITE setCapsLockOsd NOTIFY keyboardChanged)
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
     // Kelvin, 1700-6500 (night-light-temperature; the older strength without it).
@@ -334,6 +336,8 @@ public:
     void setNumpadKeys(const QString& value);
     QString keyboardOptions() const { return m_keyboardOptions.join(u','); }
     QString numLock() const { return m_numLock; }
+    bool capsLockOsd() const { return m_capsLockOsd; }
+    void setCapsLockOsd(bool on);
     void setNumLock(const QString& mode);
     void setRepeatDelay(int ms);
     int repeatRate() const { return m_repeatRate; }
@@ -521,6 +525,7 @@ private:
     // vela.conf's keyboard-options, or the system's while it has none.
     QStringList m_keyboardOptions;
     QString m_numLock = QStringLiteral("off");
+    bool m_capsLockOsd = true;
     void setKeyChoice(int control, const QString& value);
     int m_repeatRate = 30;
     bool m_nightLight = false;

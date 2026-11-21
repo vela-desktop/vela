@@ -252,6 +252,8 @@ const Panel panels[] = {
     // mouse (drag, mute, wheel). The window touches the taskbar, the pill
     // rests 12 units above it.
     { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone },
+    // Caps Lock on or off, where the volume appears; the mouse goes through.
+    { "CapsLockOsd", "vela-caps-lock-osd", layerOverlay, bottom, 0, keysNone, {}, true },
     // The whole output, transparent: a click outside the panel closes it.
     // The keyboard for Win+Z.
     { "SnapLayouts", "vela-snap-layouts", layerOverlay, fill, -1, keysOnDemand },
@@ -318,14 +320,14 @@ void placeStartMenu(
 }
 
 // The panels whose corner follows the bar's edge and stays there: the
-// notifications in the clock's corner, the volume indicator against the bar
-// (or at the bottom, beside a vertical one).
+// notifications in the clock's corner, the volume indicator and the Caps Lock
+// display against the bar (or at the bottom, beside a vertical one).
 void placeForPosition(QQuickWindow* window, const char* qml, const QString& position)
 {
     LayerWindow* layer = LayerWindow::get(window);
     if (qstrcmp(qml, "NotificationPopups") == 0 || qstrcmp(qml, "ClipboardPanel") == 0) {
         layer->setAnchors(trayCorner(position));
-    } else if (qstrcmp(qml, "VolumeOsd") == 0) {
+    } else if (qstrcmp(qml, "VolumeOsd") == 0 || qstrcmp(qml, "CapsLockOsd") == 0) {
         layer->setAnchors(position == QLatin1String("top") ? LayerWindow::AnchorTop : LayerWindow::AnchorBottom);
     }
 }

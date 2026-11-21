@@ -332,6 +332,8 @@ void ShellController::handleCommand(const QByteArray& command)
         emit clipboardClearRequested();
     } else if (parts.first() == "volume" && parts.size() == 2) {
         emit volumeKeyPressed(QString::fromLatin1(parts.at(1)));
+    } else if (command == "caps-lock on" || command == "caps-lock off") {
+        emit capsLockChanged(command == "caps-lock on");
     } else if (parts.first() == "media" && parts.size() == 2) {
         emit mediaKeyPressed(QString::fromLatin1(parts.at(1)));
     } else if (command == "task-view") {

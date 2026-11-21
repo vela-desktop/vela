@@ -24,10 +24,12 @@
 #include "clockformat.h"
 #include "defaults.h"
 #include "language.h"
+#include "velaconf.h"
 
 #include <QCoreApplication>
 #include <QAbstractEventDispatcher>
 #include <QDateTime>
+#include <QElapsedTimer>
 #include <QFont>
 #include <QFontMetricsF>
 #include <QGuiApplication>
@@ -101,6 +103,17 @@ qint64 lastInputMs = 0;
 bool unlocked = false;
 
 bool capsLock = false;
+// The Caps Lock display (docs/keyboard.md §8.3): the first modifiers event
+// says where Caps Lock starts; each change after it shows the display, for
+// `capsHoldMs` then fading in `capsFadeMs`, unless caps-lock-osd=no.
+bool capsKnown = false;
+bool capsDisplayEnabled = true;
+bool capsDisplayOn = false;
+double capsDisplay = 0;
+qint64 capsHoldMs = 1500;
+qint64 capsFadeMs = 200;
+QElapsedTimer capsShown;
+QTimer* capsFrames = nullptr;
 QString userName;
 QString displayName;
 // 24-hour or 12-hour, as the taskbar shows it (shell/src/clockformat.h).
@@ -185,6 +198,8 @@ void draw(Screen& screen)
         scene.passwordChars = vela::lock::passwordCharacters(password);
         scene.message = message;
         scene.capsLock = capsLock;
+        scene.capsDisplay = capsDisplay;
+        scene.capsDisplayOn = capsDisplayOn;
         vela::lock::paint(image, screen.background, screen.backgroundBlurred, QSizeF(screen.width, screen.height),
             screen.scale120, look, scene);
     }
@@ -372,7 +387,15 @@ void onModifiers(void*, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t lat
         xkb_state_update_mask(xkbState, depressed, latched, locked, 0, 0, group);
         // Caps Lock from the keyboard's real state, not guessed from letters.
         const bool caps = xkb_state_mod_name_is_active(xkbState, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_LOCKED) > 0;
-        if (caps != capsLock) {
+        const bool changed = capsKnown && caps != capsLock;
+        capsKnown = true;
+        if (changed && capsDisplayEnabled && capsFrames) {
+            capsDisplayOn = caps;
+            capsDisplay = 1;
+            capsShown.start();
+            capsFrames->start();
+        }
+        if (caps != capsLock || changed) {
             capsLock = caps;
             redrawAll();
         }
@@ -599,6 +622,30 @@ int main(int argc, char* argv[])
         }
     });
     tick.start(1000);
+
+    // The Caps Lock display: a second and a half at Vela's durations, then
+    // the shell's exit fade (Theme.normal), at once without animations.
+    {
+        const QHash<QString, QString> conf = vela::conf::read(vela::language::configPath());
+        capsDisplayEnabled = vela::conf::flag(conf, QStringLiteral("caps-lock-osd"), true);
+        const vela::conf::Motion motion = vela::conf::motion(conf);
+        capsHoldMs = qRound(1500 * (motion.effects ? motion.duration : 1.0));
+        capsFadeMs = motion.effects ? qRound(200 * motion.duration) : 0;
+    }
+    // Redrawn while it fades, still while it holds.
+    QTimer frames;
+    frames.setInterval(33);
+    capsFrames = &frames;
+    QObject::connect(&frames, &QTimer::timeout, [] {
+        const double opacity = vela::lock::capsDisplayOpacity(capsShown.elapsed(), capsHoldMs, capsFadeMs);
+        if (opacity != capsDisplay) {
+            capsDisplay = opacity;
+            redrawAll();
+        }
+        if (opacity <= 0) {
+            capsFrames->stop();
+        }
+    });
 
     const int result = app.exec();
     wl_display_disconnect(display);

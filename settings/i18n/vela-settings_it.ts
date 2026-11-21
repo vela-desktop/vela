@@ -2103,6 +2103,14 @@ Specifiche sistema
         <comment>Num Lock</comment>
         <translation>Com&apos;era</translation>
     </message>
+    <message>
+        <source>Show Caps Lock on screen</source>
+        <translation>Mostra Bloc Maiusc sullo schermo</translation>
+    </message>
+    <message>
+        <source>For a moment, each time Caps Lock turns on or off</source>
+        <translation>Per un attimo, ogni volta che Bloc Maiusc si attiva o si disattiva</translation>
+    </message>
 </context>
 <context>
     <name>Main</name>

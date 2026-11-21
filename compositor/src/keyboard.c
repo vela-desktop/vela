@@ -200,6 +200,16 @@ static void schedule_numlock_save(struct vela_input *input)
     }
 }
 
+// Caps Lock turned on or off by a key: the shell shows it for a moment
+// (docs/keyboard.md §8.3). Not while the screen is locked: the shell's
+// layers are hidden then, and vela-lock shows it itself.
+static void show_caps_lock(struct vela_input *input, bool on)
+{
+    if (input->caps_lock_osd && !input->server->locked) {
+        vela_shell_send(input->server, on ? "caps-lock on" : "caps-lock off");
+    }
+}
+
 // A physical keyboard's locks changed (a key, or its own LED request): they
 // become the seat's, and every other physical keyboard takes them.
 static void share_locks(struct vela_keyboard *keyboard)
@@ -216,6 +226,7 @@ static void share_locks(struct vela_keyboard *keyboard)
         return;
     }
     const bool num_changed = num != input->num_locked;
+    const bool caps_changed = caps != input->caps_locked;
     input->caps_locked = caps;
     input->num_locked = num;
     struct vela_keyboard *other;
@@ -227,6 +238,26 @@ static void share_locks(struct vela_keyboard *keyboard)
     }
     if (num_changed) {
         schedule_numlock_save(input);
+    }
+    if (caps_changed) {
+        show_caps_lock(input, caps);
+    }
+}
+
+// A virtual keyboard's own Caps Lock (an on-screen keyboard, a remote
+// desktop, vela-input): not the seat's, but shown when it changes too.
+static void show_virtual_caps_lock(struct vela_keyboard *keyboard)
+{
+    struct wlr_keyboard *wlr = keyboard->wlr;
+    if (!keyboard->is_virtual || !wlr->keymap) {
+        return;
+    }
+    bool caps = false;
+    bool num = false;
+    vela_locks_read(wlr->keymap, wlr->modifiers.locked, &caps, &num);
+    if (caps != keyboard->virtual_caps) {
+        keyboard->virtual_caps = caps;
+        show_caps_lock(keyboard->input, caps);
     }
 }
 
@@ -296,6 +327,7 @@ static void handle_modifiers(struct wl_listener *listener, void *data)
     wlr_seat_set_keyboard(server->seat, wlr);
     wlr_seat_keyboard_notify_modifiers(server->seat, &wlr->modifiers);
     share_locks(keyboard);
+    show_virtual_caps_lock(keyboard);
 }
 
 static void stop_repeat(struct vela_keyboard *keyboard)

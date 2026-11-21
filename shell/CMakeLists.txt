@@ -156,6 +156,7 @@ set(VELA_QML_FILES
     qml/SmallButton.qml
     qml/NotificationList.qml
     qml/TaskView.qml
+    qml/CapsLockOsd.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml
     qml/SnapLayouts.qml

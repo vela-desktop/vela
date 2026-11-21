@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP7 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP8 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
 >
-> **Remaining:** stages KP8–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP9–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -396,20 +396,33 @@ under the error message when there is one.
 When the shared Lock state changes because of a key press, the compositor
 sends the shell `caps-lock on` or `caps-lock off`. The shell shows a
 small translucent pill, at the bottom in the middle like the volume
-display (it takes the volume display's place if both are up), with the
-Caps Lock icon and *Caps Lock on* or *Caps Lock off*. It ignores the
-pointer, is announced to screen readers, and fades after 1.5 seconds
-(scaled with Vela's animation duration).
+display (`shell/qml/CapsLockOsd.qml`), on the primary output, with
+Breeze's `keyboard-caps-locked` or `keyboard-caps-disabled` icon and
+*Caps Lock on* or *Caps Lock off*. The two take each other's place: the
+one that appears closes the other. It ignores the pointer, is an alert for
+screen readers, and fades after 1.5 seconds (scaled with Vela's animation
+duration).
 
 - It follows the **Lock state, not the key**: with Caps Lock mapped to
   Ctrl, Esc, Backspace, Compose or nothing, Lock never changes and no
   display appears; with a key mapped *to* Caps Lock, it does.
-- Restoring state (§7) and syncing keyboards (§8.1) never show it.
+- Restoring state (§7) and syncing keyboards (§8.1) never show it: they
+  go through `set_locks()`, whose `syncing` re-entry shares nothing.
+- A **virtual keyboard** (an on-screen keyboard, a remote desktop,
+  `vela-input`) doesn't share its locks (§8.1), but a change of its own
+  Caps Lock shows the display too: its user pressed a key.
 - **On the lock screen** the shell's layers are hidden by design
-  (`compositor/src/lock.c`), so `vela-lock` draws the same pill on its
-  own surface.
-- A switch, *Show Caps Lock on screen* (`caps-lock-osd=yes`), turns it
-  off.
+  (`compositor/src/lock.c`), so the compositor sends nothing and
+  `vela-lock` draws the same pill on its own surface, on the clock and on
+  the password, 48 from the bottom (no taskbar there): it takes the first
+  `wl_keyboard.modifiers` as where Caps Lock starts and shows each change
+  after it, whole for 1.5 seconds, then fading in the shell's exit
+  duration (200 ms), both times `animation-duration`; without animation
+  effects it disappears at once after 1.5 seconds.
+- A switch, *Show Caps Lock on screen* in Keyboard > Typing
+  (`caps-lock-osd=yes`), turns it off. The compositor reads it with the
+  other keyboard keys when Settings asks it to reload; `vela-lock` when it
+  starts.
 
 ## 9. Custom shortcuts
 
@@ -601,7 +614,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP5 | Key behavior (§6). Done. |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). Done. |
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). Done. |
-| KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). |
+| KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). Done. |
 | KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). |
 | KP10 | The Win key alone (§10). |
 | KP11 | The terminal lookup and Default apps > Terminal (§11). |

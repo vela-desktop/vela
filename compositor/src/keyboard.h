@@ -32,6 +32,9 @@ struct vela_keyboard {
     // A virtual keyboard (tests, remote desktop): it sends its own
     // modifiers and doesn't share the locks.
     bool is_virtual;
+    // A virtual keyboard's own Caps Lock, last seen: when it changes, the
+    // Caps Lock display shows it (§8.3).
+    bool virtual_caps;
     // A shortcut held down that repeats (the volume keys): the app doesn't get
     // the key, so it can't repeat it. With the keyboard's delay and rate.
     struct wl_event_source *repeat;

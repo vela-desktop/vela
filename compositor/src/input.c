@@ -198,6 +198,7 @@ static void load_super_numbers(struct vela_input *input, const struct vela_confi
 static void load_numlock(struct vela_input *input, const struct vela_config *settings)
 {
     input->numlock = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
+    input->caps_lock_osd = vela_config_flag(settings, "caps-lock-osd", true);
 }
 
 void vela_input_hide_super_hints(struct vela_input *input)
