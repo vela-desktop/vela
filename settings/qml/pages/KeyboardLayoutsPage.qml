@@ -53,7 +53,7 @@ Page {
                 id: layoutCard
                 required property var modelData
                 required property int index
-                icon: "input-keyboard"
+                icon: Layouts.flag(modelData.layout, modelData.variant) || "input-keyboard"
                 title: Layouts.name(modelData.layout, modelData.variant, Layouts.revision)
                 description: index === 0 ? qsTr("Default") : ""
                 trailing: Row {
@@ -129,6 +129,7 @@ Page {
                         layout: group.modelData.layout
                         variant: ""
                         label: group.modelData.name
+                        flag: group.modelData.flag
                         count: group.modelData.variants.length
                         open: group.open
                         onToggled: addDialog.toggle(group.modelData.layout)
@@ -141,6 +142,7 @@ Page {
                             layout: group.modelData.layout
                             variant: modelData.variant
                             label: modelData.name
+                            flag: modelData.flag
                             indent: 28
                         }
                     }
@@ -165,6 +167,7 @@ Page {
         property string layout
         property string variant
         property string label
+        property string flag // a URL, or "": the generic icon
         property int count: 0
         property bool open: false
         property real indent: 0
@@ -178,8 +181,27 @@ Page {
         Keys.onRightPressed: if (count > 0 && !open) toggled()
         Keys.onLeftPressed: if (open) toggled()
         contentItem: Item {
-            Text {
+            Image {
+                id: flagImage
+                objectName: "flag"
                 x: row.indent + 4
+                anchors.verticalCenter: parent.verticalCenter
+                width: 20
+                height: 15
+                visible: row.flag !== ""
+                source: row.flag
+                sourceSize.width: width
+                fillMode: Image.PreserveAspectFit
+            }
+            Icon {
+                x: row.indent + 4
+                anchors.verticalCenter: parent.verticalCenter
+                visible: row.flag === ""
+                name: "input-keyboard"
+                size: 20
+            }
+            Text {
+                x: row.indent + 32
                 width: parent.width - x - (expander.visible ? expander.width + 8 : 0) - addedLabel.width - 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.label

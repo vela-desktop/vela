@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP2 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP3 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** stages KP3–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP4–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -166,19 +166,21 @@ to the matching variants.
 
 ### 5.3 Flags
 
-Each entry shows its country's flag: the first `iso3166Id` of the variant,
-else of its layout. Layouts with no single country (Braille, Esperanto,
-APL, BQN, IPA, *ancient*, *custom*) and those that list several (`latam`,
-`ara`) show the generic `input-keyboard` icon. The flag marks the
+Each entry shows its country's flag when it has a single `iso3166Id`
+(libxkbregistry gives a variant that names none its layout's). Layouts
+with no country (Braille, Esperanto, APL, BQN, IPA, *ancient*, *custom*)
+and those that list several (`latam`, `ara`) show the generic
+`input-keyboard` icon. The flag marks the
 layout's country, which is how XKB names layouts; it is not a statement
 about the language.
 
 The flags are the SVGs of [flag-icons](https://github.com/lipis/flag-icons)
-(MIT), the 4×3 set, in `settings/flags/` with the project's licence and
-version, compiled into Settings' resources. Only the countries that
-xkeyboard-config names are kept; a country without a file falls back to
-the generic icon. The size of the set is measured when it lands, and the
-SVGs are optimized if needed.
+v7.6.0 (MIT), the 4×3 set, unmodified, in `settings/flags/` with the
+project's licence, version and update steps, compiled into Settings'
+resources. Only the 129 countries that xkeyboard-config 2.49 names are
+kept, 1.0 MB before the resource compression, so the SVGs are not
+optimized further; a country without a file falls back to the generic
+icon. They hold no script, image or external link.
 
 ### 5.4 Try before adding
 
@@ -555,7 +557,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 |---|---|
 | KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). Done. |
 | KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). Done. |
-| KP3 | Flags (§5.3). |
+| KP3 | Flags (§5.3). Done. |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). |
 | KP5 | Key behavior (§6). |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). |

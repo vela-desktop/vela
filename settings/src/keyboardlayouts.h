@@ -25,8 +25,9 @@ public:
 
     explicit KeyboardLayouts(QObject* parent = nullptr);
     // For the tests: the registry from `includePaths` only, translations
-    // from `localeDir`/<language>/LC_MESSAGES.
-    KeyboardLayouts(const QStringList& includePaths, const QString& localeDir, QObject* parent = nullptr);
+    // from `localeDir`/<language>/LC_MESSAGES, flags from `flagDir`.
+    KeyboardLayouts(const QStringList& includePaths, const QString& localeDir, const QString& flagDir = QString(),
+        QObject* parent = nullptr);
 
     int revision() const { return m_revision; }
     int maxLayouts() const { return MaxLayouts; }
@@ -36,12 +37,17 @@ public:
 
     // The groups matching `query` (every word, ignoring case and accents, in
     // the translated or English name, the code, or the languages' and
-    // countries' names), sorted by name: [{layout, name, matches, variants:
-    // [{variant, name}]}]. A group whose own entry matches has all its
-    // variants and `matches` true; otherwise only the matching variants.
+    // countries' names), sorted by name: [{layout, name, flag, matches,
+    // variants: [{variant, name, flag}]}]. A group whose own entry matches
+    // has all its variants and `matches` true; otherwise only the matching
+    // variants.
     Q_INVOKABLE QVariantList groups(const QString& query, int revision = 0);
     // The name to show ("Italiana", "English (US, intl.)...").
     Q_INVOKABLE QString name(const QString& layout, const QString& variant, int revision = 0);
+    // The URL of its country's flag (docs/keyboard.md §5.3): the entry's
+    // single country (a variant inherits its layout's); "" when there is
+    // none, several, or no file for it.
+    Q_INVOKABLE QString flag(const QString& layout, const QString& variant);
 
     // Where the layout in use comes from when Settings has none, in the
     // compositor's order (compositor/src/keyboard.c, docs/keyboard.md §5.5):
@@ -71,6 +77,7 @@ private:
         QString name;
         QStringList countries; // ISO 3166 alpha-2
         QStringList languages; // ISO 639-3
+        QString flag; // a URL, or empty
         QString search; // folded: names, codes, languages, countries
     };
     struct Group {
@@ -84,6 +91,7 @@ private:
 
     QStringList m_includePaths; // empty: libxkbcommon's defaults
     QString m_localeDir;
+    QString m_flagDir; // ":/flags" or a directory
     QString m_language = QStringLiteral("en");
     bool m_loaded = false;
     int m_revision = 0;

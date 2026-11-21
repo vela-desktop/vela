@@ -104,8 +104,8 @@ see the [roadmap](roadmap.md).
 - **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
   **Time and language**: date, time and language.
 - **Keyboard**: every layout the system has (extras and the user's own
-  included), named in Vela's language and found by name, language or
-  country; where the layout in use comes from when none is chosen; key
+  included), with its country's flag, named in Vela's language and found
+  by name, language or country; where the layout in use comes from when none is chosen; key
   repeat ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
