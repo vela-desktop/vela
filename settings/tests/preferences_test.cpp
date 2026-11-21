@@ -854,8 +854,8 @@ private slots:
         QVERIFY(prefs.desktopThemesAvailable());
         const QString current = prefs.systemFont();
         const auto families = QFontDatabase::families();
-        const auto alternative = std::find_if(families.cbegin(), families.cend(),
-            [&](const QString& family) { return family != current; });
+        const auto alternative =
+            std::find_if(families.cbegin(), families.cend(), [&](const QString& family) { return family != current; });
         if (alternative == families.cend()) QSKIP("No alternative font family is installed.");
 
         prefs.setSystemFont(*alternative);

@@ -163,8 +163,8 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const Motion motion = configuredMotion();
-    QSettings kdeGlobals(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-                             + QStringLiteral("/kdeglobals"),
+    QSettings kdeGlobals(
+        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/kdeglobals"),
         QSettings::IniFormat);
     kdeGlobals.sync();
     const QString iconTheme = kdeGlobals.value(QStringLiteral("Icons/Theme")).toString();
@@ -207,7 +207,8 @@ void Appearance::reload()
     const QColor otherSource = schemeSource(!light);
     const bool otherChanged = otherSource != m_otherTonalSource;
     m_otherTonalSource = otherSource;
-    if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive && !iconThemeChanged) {
+    if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive
+        && !iconThemeChanged) {
         // Only the theme, the palette, the wallpaper's color (Settings shows
         // it) or the motion: the icons stay as they are.
         if (themeChanged || tonalChanged || otherChanged || wallpaperChanged || motion.effects != m_animationEffects

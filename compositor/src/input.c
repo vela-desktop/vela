@@ -93,16 +93,17 @@ static char *configured_cursor_theme(void)
     }
     char *line = NULL;
     size_t capacity = 0;
+    ssize_t length;
     bool mouse = false;
     char *theme = NULL;
-    while (getline(&line, &capacity, file) >= 0) {
+    while (vela_read_line(file, &line, &capacity, &length) > 0) {
         if (line[0] == '[') {
             mouse = strcmp(line, "[Mouse]\n") == 0 || strcmp(line, "[Mouse]\r\n") == 0;
         } else if (mouse && strncmp(line, "cursorTheme=", 12) == 0) {
             char *save = NULL;
             char *value = strtok_r(line + 12, "\r\n", &save);
             if (valid_cursor_theme(value)) {
-                theme = strdup(value);
+                theme = vela_strdup(value);
             }
             break;
         }
@@ -1083,8 +1084,7 @@ void vela_input_reload_cursor(struct vela_input *input, const char *theme)
         return;
     }
     struct vela_server *server = input->server;
-    struct wlr_xcursor_manager *manager
-        = wlr_xcursor_manager_create(theme, (uint32_t)vela_env_int("XCURSOR_SIZE", 24));
+    struct wlr_xcursor_manager *manager = wlr_xcursor_manager_create(theme, (uint32_t)vela_env_int("XCURSOR_SIZE", 24));
     if (!manager) {
         wlr_log(WLR_ERROR, "Settings: could not load cursor theme %s", theme);
         return;
@@ -1092,8 +1092,7 @@ void vela_input_reload_cursor(struct vela_input *input, const char *theme)
     struct wlr_xcursor_manager *old = server->cursor_manager;
     server->cursor_manager = manager;
     const char *shape = input->cursor_shape
-        ? (server->interaction && server->interaction->cursor
-                ? server->interaction->cursor : input->cursor_shape)
+        ? (server->interaction && server->interaction->cursor ? server->interaction->cursor : input->cursor_shape)
         : NULL;
     if (shape) {
         wlr_cursor_set_xcursor(server->cursor, manager, shape);

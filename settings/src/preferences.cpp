@@ -98,9 +98,11 @@ bool writeKdeValue(const QString& file, const QString& group, const QString& key
 {
     const QString writer = QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6"));
     if (!writer.isEmpty()) {
-        return QProcess::execute(writer,
+        vela::process::ExternalProcess process;
+        process.start(writer,
             { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
-                QStringLiteral("--key"), key, value }) == 0;
+                QStringLiteral("--key"), key, value });
+        return process.waitForFinished(-1) && process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
     }
     QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
     settings.setValue(group + u'/' + key, value);
@@ -112,9 +114,11 @@ void deleteKdeValue(const QString& file, const QString& group, const QString& ke
 {
     const QString writer = QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6"));
     if (!writer.isEmpty()) {
-        QProcess::execute(writer,
+        vela::process::ExternalProcess process;
+        process.start(writer,
             { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
                 QStringLiteral("--key"), key, QStringLiteral("--delete") });
+        process.waitForFinished(-1);
     } else {
         QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
         settings.remove(group + u'/' + key);
@@ -780,7 +784,8 @@ void Preferences::setIconTheme(const QString& theme)
 
 QString Preferences::cursorTheme() const
 {
-    const QString configured = kdeValue(QStringLiteral("kcminputrc"), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"));
+    const QString configured =
+        kdeValue(QStringLiteral("kcminputrc"), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"));
     return configured.isEmpty() ? qEnvironmentVariable("XCURSOR_THEME", QStringLiteral("default")) : configured;
 }
 
@@ -797,7 +802,8 @@ QStringList Preferences::cursorThemes() const
 void Preferences::setCursorTheme(const QString& theme)
 {
     if (!desktopThemesAvailable() || theme == cursorTheme() || !cursorThemes().contains(theme)
-        || !writeKdeValue(QStringLiteral("kcminputrc"), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"), theme)) {
+        || !writeKdeValue(
+            QStringLiteral("kcminputrc"), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"), theme)) {
         emit desktopThemesChanged();
         return;
     }
