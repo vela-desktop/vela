@@ -23,6 +23,7 @@
 #include "server.h"
 #include "snap.h"
 #include "switcher.h"
+#include "text.h"
 #include "util.h"
 #include "view.h"
 #include "workspace.h"
@@ -579,6 +580,13 @@ static void run_command(struct vela_server *server, const char *line)
         vela_brightness_probe(server, line + 17); // Settings is showing this output
     } else if (starts_with(line, "brightness ")) {
         brightness(server, line + 11);
+    } else if (starts_with(line, "reload-cursor ")) {
+        vela_input_reload_cursor(server->input, line + 14);
+    } else if (strcmp(line, "reload-font") == 0) {
+        vela_text_destroy(server->text);
+        server->text = NULL;
+        server->text_loaded = false;
+        vela_views_refresh_decoration_text(server);
     } else if (starts_with(line, "workspace ")) {
         workspace(server, line);
     } else if (strcmp(line, "reload-config") == 0) {

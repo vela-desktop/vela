@@ -79,7 +79,7 @@ Rectangle {
                 width: 16
                 height: 16
                 anchors.verticalCenter: parent.verticalCenter
-                source: toast.icon
+                source: Theme.versionedIcon(toast.icon)
                 sourceSize: Qt.size(width, height)
                 smooth: true
             }

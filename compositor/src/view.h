@@ -298,6 +298,7 @@ void vela_view_unmapped(struct vela_view *view);
 void vela_view_committed(struct vela_view *view);
 void vela_view_destroy(struct vela_view *view);
 void vela_view_title_changed(struct vela_view *view);
+void vela_views_refresh_decoration_text(struct vela_server *server);
 void vela_view_app_id_changed(struct vela_view *view);
 void vela_view_parent_changed(struct vela_view *view);
 // X11 apps (xwayland.c).
