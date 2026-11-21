@@ -131,11 +131,16 @@ def download_previous(version, name, directory):
     return path
 
 
-def run(*cmd, stdin=None):
+def run(*cmd, stdin=None, expect_silent=False):
     print("+ " + " ".join(map(str, cmd)), flush=True)
-    result = subprocess.run(list(map(str, cmd)), input=stdin, text=True)
+    result = subprocess.run(list(map(str, cmd)), input=stdin, text=True,
+                            stdout=subprocess.PIPE if expect_silent else None)
     if result.returncode != 0:
+        if result.stdout:
+            print(result.stdout, end="", flush=True)
         raise UpgradeError(f"{cmd[0]} failed with {result.returncode}")
+    if result.stdout:
+        raise UpgradeError(f"{cmd[0]} reported verification differences:\n{result.stdout.rstrip()}")
 
 
 def output(*cmd):
@@ -172,7 +177,8 @@ def check_installed(name, version):
     elif name.startswith("fedora"):
         run("rpm", "-V", "vela")
     else:
-        run("dpkg", "--verify", "vela")
+        # dpkg can report mismatches on stdout with an exit status of zero.
+        run("dpkg", "--verify", "vela", expect_silent=True)
     run("vela-update", "--channel", "beta", "--help")
     print(f":: vela {version} is installed and its files match the package", flush=True)
 

@@ -164,13 +164,19 @@ Then check:
 - each package matches its manifest and its attestation names this
   repository, the rehearsal tag, the commit and the expected workflow;
 - `beta-upgrade` upgraded the previous published Beta to the candidate
-  packages in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers
+  packages in each clean container with an older package available.
+  For 0.1.1 → 0.1.2, it runs in Arch, Fedora 44 and Ubuntu 26.10 and
+  skips Fedora 45 because 0.1.1 has no package for it
   ([release automation §5](release-automation.md#5-upgrade-tests)).
 
-The updater cannot read a draft, so its own path is tried after the tag:
-once the release is published, `beta-update-check` lets the previous
-Beta's updater install it in the same four containers and requires it to
-report `up-to-date`. Run it again for any published Beta with
+The updater cannot read a draft, so its own path is tried after publication.
+`beta-update-check` uses the previous Beta's installed updater in each
+container with an older package available. For a previous Beta earlier
+than 0.2.0, it uses `packaging/vela-update` from the release tree.
+For 0.1.1 → 0.1.2, the check runs in Arch, Fedora 44 and Ubuntu 26.10
+and skips Fedora 45 because 0.1.1 has no package for it.
+After the upgrade, the installed updater must report `up-to-date`.
+Run the check manually only for the newest published Beta with
 `gh workflow run beta-update-check.yml -f version=0.x.y`. The updater's
 verifier, channel replacement and the way back to Experimental are
 covered offline by `packaging/tests` and the Fedora fixture jobs. The

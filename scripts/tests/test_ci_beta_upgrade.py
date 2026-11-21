@@ -9,6 +9,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -126,6 +127,32 @@ class Updater(unittest.TestCase):
     def test_no_json_fails(self):
         with self.assertRaisesRegex(upgrade.UpgradeError, "no JSON"):
             self.check(None, 1)
+
+
+class InstalledPackage(unittest.TestCase):
+    def test_ubuntu_package_verification_requires_no_output_and_zero_exit(self):
+        command = ["dpkg", "--verify", "vela"]
+        for status, output, error in (
+            (0, "??5??????   /usr/bin/vela\n", "reported verification differences"),
+            (2, "", "dpkg failed with 2"),
+            (0, "", None),
+        ):
+            with (
+                self.subTest(status=status, output=output),
+                mock.patch.object(upgrade, "installed_version", return_value="0.2.1"),
+                mock.patch.object(upgrade.subprocess, "run") as run,
+            ):
+                run.side_effect = [subprocess.CompletedProcess(command, status, stdout=output),
+                                   subprocess.CompletedProcess([], 0)]
+                if error:
+                    with self.assertRaisesRegex(upgrade.UpgradeError, error):
+                        upgrade.check_installed("ubuntu", "0.2.1")
+                    self.assertEqual(run.call_count, 1)
+                else:
+                    upgrade.check_installed("ubuntu", "0.2.1")
+                    self.assertEqual(run.call_args.args[0], ["vela-update", "--channel", "beta", "--help"])
+                self.assertEqual(run.call_args_list[0].args[0], command)
+                self.assertEqual(run.call_args_list[0].kwargs["stdout"], subprocess.PIPE)
 
 
 class Downloads(unittest.TestCase):

@@ -118,11 +118,12 @@ files must verify (`pacman -Qkk`, `rpm -V`, `dpkg --verify`) and
 `vela-update` must run. `publish-beta` waits for all four.
 
 **After publication** (`beta-update-check.yml`, called once `publish-beta`
-has published a real release, and runnable by hand for any published
-Beta), the previous Beta's own updater installs the release, as it does for
-users. From an updater before 0.2.0, which only sees prereleases, the test
-takes the documented one-time step, `packaging/vela-update` from the
-release's tree ([release channels](release-channels.md#updating-older-beta-installations)).
+has published a real release, and runnable by hand only for the newest
+published Beta), the previous Beta's own updater installs the release, as
+it does for users. For Betas before 0.2.0, the installed updater only sees
+prereleases, so the test follows the documented one-time procedure and runs
+`packaging/vela-update` from the release tree
+([release channels](release-channels.md#updating-older-beta-installations)).
 Then `vela-update --check --json` must report the new release as
 `up-to-date`. It reads the JSON because plain `--check` also exits 1 when
 the check itself fails, and an updater that finds no release at all (0.1.x
