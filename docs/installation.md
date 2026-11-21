@@ -19,6 +19,9 @@ channel, and Settings → System → Updates can switch it.
 The Beta needs **Cosign** on every distribution: installation stops if it
 is missing, rather than trusting an unverified binary.
 
+After installing, sign out, choose **Vela** from the session menu on the
+login screen, and sign back in.
+
 ## Arch Linux, CachyOS, EndeavourOS
 
 Install `git`, `curl`, `base-devel` and `cosign` (GitHub CLI is not required):
@@ -112,24 +115,27 @@ updates.
 ### After upgrading Fedora 44 to Fedora 45
 
 An updater installed from an older Fedora 44 RPM may reject Fedora 45 before
-it can download a replacement. Use a **fresh Vela checkout** with Fedora 45
-support to bootstrap the update, explicitly preserving your installed channel:
+it can download a replacement. Get a **fresh Vela checkout** for the
+Fedora 45 updater and its Beta helper.
 
 ```sh
 git clone https://github.com/vela-desktop/vela.git vela-fedora-45
-# If `vela` (Beta) is installed, and a Fedora 45 Beta release is available:
-sh vela-fedora-45/packaging/vela-update --channel beta
-# If `vela-git` (Experimental) is installed, run this INSTEAD:
-sh vela-fedora-45/packaging/vela-update --channel experimental
 ```
 
-Run **only one** of the two updater commands, matching your installed package.
-The checkout supplies the Fedora 45-capable updater and its Beta helper;
-calling the old installed `/usr/bin/vela-update` will not bootstrap it.
-The Beta command requires a published Fedora 45 RPM and
-`SHA256SUMS-fedora-45` as explained above. If they are not yet available,
-keep the installed Beta and wait rather than switching channels or using a
-Fedora 44 RPM.
+Run only the command for your installed package.
+
+**Beta (`vela`)** — Wait until the release provides both a Fedora 45 RPM
+and its `SHA256SUMS-fedora-45` manifest, then run
+
+```sh
+sh vela-fedora-45/packaging/vela-update --channel beta
+```
+
+**Experimental (`vela-git`)**
+
+```sh
+sh vela-fedora-45/packaging/vela-update --channel experimental
+```
 
 ## Ubuntu 26.10
 
