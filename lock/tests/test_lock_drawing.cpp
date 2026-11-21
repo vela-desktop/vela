@@ -231,8 +231,17 @@ void testCapsDisplay()
         check(near(at(with, 400, 503), over(QColor(32, 32, 32), 230, at(without, 400, 503)), 3), "on a dark pill");
         check(near(at(with, 400, 549), over(QColor(32, 32, 32), 230, at(without, 400, 549)), 3), "52 tall");
         check(near(at(with, 400, 554), at(without, 400, 554)), "48 from the bottom");
-        check(near(at(with, 305, 526), at(without, 305, 526)) && !near(at(with, 315, 526), at(without, 315, 526), 20),
-            "180 wide, in the middle");
+        // At least 180 wide and in the middle; a wider font widens it.
+        int left = -1;
+        int right = -1;
+        for (int x = 0; x < 800; ++x) {
+            if (!near(at(with, x, 526), at(without, x, 526), 20)) {
+                left = left < 0 ? x : left;
+                right = x;
+            }
+        }
+        check(left >= 0 && right - left + 1 >= 179 && std::abs((left + right + 1) - 800) <= 2,
+            "at least 180 wide, in the middle");
     }
     // Expressive: the field's surface container highest, its ink.
     Scene scene = loginScene();
