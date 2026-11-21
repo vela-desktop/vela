@@ -238,8 +238,14 @@ QtObject {
     readonly property color link: expressive ? primary : light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
     // Icons of the theme matching the mode ("image://icon/l/<name>"; the
     // prefix reloads them when the mode changes). Always white on the accent.
-    readonly property string icons: "image://icon/" + Style.iconMode
-    readonly property string iconsOnAccent: Style.iconMode === "l/" ? "image://icon/w/" : icons
+    readonly property string icons: "image://icon/" + Style.iconMode[0] + "@" + Style.iconRevision + "/"
+    readonly property string iconsOnAccent: Style.iconMode[0] === "l" ? "image://icon/w@" + Style.iconRevision + "/" : icons
+    readonly property int iconRevision: Style.iconRevision
+    function versionedIcon(source) {
+        return source && source.startsWith("image://icon/")
+            ? "image://icon/v" + iconRevision + "/" + source.slice("image://icon/".length)
+            : source
+    }
 
     // --- shapes and type ---
     // A theme's radii are clamped (controls to 0-24 px, cards and overlays

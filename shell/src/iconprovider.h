@@ -14,6 +14,7 @@
 #include <QPixmap>
 #include <QPixmapCache>
 #include <QQuickImageProvider>
+#include <QSettings>
 #include <QStandardPaths>
 #include <QUrl>
 
@@ -55,13 +56,14 @@ inline void applyIconTheme(bool light)
         QGuiApplication::setPalette(palette);
     }
 
-    static const QString base = [] {
-        QString theme = QIcon::themeName();
-        if (theme.isEmpty() || theme == QLatin1String("hicolor")) {
-            theme = qEnvironmentVariable("VELA_ICON_THEME", QStringLiteral("breeze-dark"));
-        }
-        return theme;
-    }();
+    QSettings kdeGlobals(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                             + QStringLiteral("/kdeglobals"),
+        QSettings::IniFormat);
+    kdeGlobals.sync();
+    QString base = kdeGlobals.value(QStringLiteral("Icons/Theme"), QIcon::themeName()).toString();
+    if (base.isEmpty() || base == QLatin1String("hicolor")) {
+        base = qEnvironmentVariable("VELA_ICON_THEME", QStringLiteral("breeze-dark"));
+    }
     auto exists = [](const QString& name) {
         const QStringList paths = QIcon::themeSearchPaths();
         return std::any_of(paths.begin(), paths.end(),
@@ -78,12 +80,13 @@ inline void applyIconTheme(bool light)
     } else if (!light && dark != base && exists(dark)) {
         chosen = dark;
     }
-    if (QIcon::themeName() != chosen) {
+    const bool themeChanged = QIcon::themeName() != chosen;
+    if (themeChanged) {
         QIcon::setThemeName(chosen);
     } else if (changed) {
         QIcon::setThemeName(chosen);
     }
-    if (changed) {
+    if (changed || themeChanged) {
         // Already loaded icons have the old colors: they're reloaded.
         // KIconLoader (KDE's platform) empties its cache when it gets the
         // signal KDE's icon module sends.
@@ -124,18 +127,29 @@ public:
         const int extent = requestedSize.isValid()
             ? std::max({ requestedSize.width(), requestedSize.height(), 8 })
             : 64;
-        QString name = QUrl::fromPercentEncoding(id.toUtf8());
+        QString key = id;
+        if (key.startsWith(u'v')) {
+            const qsizetype slash = key.indexOf(u'/');
+            if (slash > 1) {
+                key = key.mid(slash + 1);
+            }
+        }
+        QString name = QUrl::fromPercentEncoding(key.toUtf8());
         QColor tint;
-        if (id.size() > 2 && id[1] == u'/' && (id[0] == u'l' || id[0] == u'd' || id[0] == u'w')) {
-            if (id[0] == u'w') {
+        if (key.size() > 2 && (key[0] == u'l' || key[0] == u'd' || key[0] == u'w')
+            && (key[1] == u'/' || key[1] == u'@')) {
+            if (key[0] == u'w') {
                 tint = Qt::white;
             }
-            name = QUrl::fromPercentEncoding(id.mid(2).toUtf8());
-        } else if (id.size() > 8 && id[0] == u't' && id[7] == u'/') {
-            const QColor asked = QColor::fromString(u'#' + id.mid(1, 6));
+            const qsizetype slash = key[1] == u'/' ? 1 : key.indexOf(u'/');
+            if (slash >= 0) {
+                name = QUrl::fromPercentEncoding(key.mid(slash + 1).toUtf8());
+            }
+        } else if (key.size() > 8 && key[0] == u't' && key[7] == u'/') {
+            const QColor asked = QColor::fromString(u'#' + key.mid(1, 6));
             if (asked.isValid()) {
                 tint = asked;
-                name = QUrl::fromPercentEncoding(id.mid(8).toUtf8());
+                name = QUrl::fromPercentEncoding(key.mid(8).toUtf8());
             }
         }
 

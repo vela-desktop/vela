@@ -496,6 +496,13 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     decoration->drawn = true;
 }
 
+void vela_decoration_refresh_text(struct vela_decoration *decoration, const struct vela_decoration_state *state)
+{
+    free(decoration->title_text);
+    decoration->title_text = NULL;
+    vela_decoration_update(decoration, state);
+}
+
 struct vela_decoration *vela_decoration_create(struct vela_server *server, struct vela_tree *parent,
     const struct vela_decoration_state *state)
 {
