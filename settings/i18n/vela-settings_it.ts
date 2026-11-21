@@ -1462,6 +1462,10 @@ Specifiche sistema
         <translation>Impossibile modificare le impostazioni degli schermi</translation>
     </message>
     <message>
+        <source>This move would leave a display unreachable. Keep all displays connected along their edges.</source>
+        <translation>Con questo spostamento uno schermo diventerebbe irraggiungibile. Mantieni tutti gli schermi collegati lungo i bordi.</translation>
+    </message>
+    <message>
         <source>Brightness &amp; color</source>
         <translation>Luminosità e colore</translation>
     </message>

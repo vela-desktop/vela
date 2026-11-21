@@ -14,6 +14,13 @@ under "Unreleased" in the pull request that makes a user-visible change.
   the built-in panel. Reopening the lid restores its display settings.
   System suspend on lid close follows the system's logind policy.
 
+- The Ubuntu package recommends the GTK and wlr portal backends, so file
+  choosers in sandboxed apps, screenshots and screen sharing work after a
+  normal installation.
+
+- Display layouts keep monitors from overlapping. Unplugging a monitor closes
+  gaps that would otherwise trap the pointer on one screen.
+
 - The taskbar filters windows by desktop and display, opens keyboard-accessible
   previews on click, and adds Super+number shortcuts, attention indicators,
   app badges and progress, a tray drawer chosen icon by icon (drag an icon in

@@ -8,11 +8,14 @@ struct vela_server;
 struct wlr_output_configuration_v1;
 
 void vela_output_preview_init(struct vela_server *server);
+void vela_output_preview_hotplug(struct vela_server *server);
 void vela_output_preview_finish(struct vela_server *server);
 // Reject competing, expired or abandoned protected configurations.
-bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output_configuration_v1 *config);
-// Takes ownership of the snapshot only when this is a protected apply.
+bool vela_output_preview_can_apply(
+    struct vela_server *server, struct wlr_output_configuration_v1 *config, const char **implicit_position);
+// Takes ownership of both snapshots only when this is a protected apply.
 bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_configuration_v1 *config,
-    struct wlr_output_configuration_v1 *before, bool succeeded, bool restored);
+    struct wlr_output_configuration_v1 *before, struct wlr_output_configuration_v1 *preferences, bool succeeded,
+    bool restored);
 
 #endif

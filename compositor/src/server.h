@@ -233,6 +233,7 @@ struct vela_server {
     // wlr-output-management (output_manager.h).
     struct wlr_output_manager_v1 *output_manager;
     struct vela_output_previews *output_previews;
+    struct wl_event_source *output_rearrange;
     struct wl_listener output_manager_apply;
     struct wl_listener output_manager_test;
     struct wl_listener new_output;
