@@ -126,6 +126,9 @@ static void handle_layout_change(struct wl_listener *listener, void *data)
     vela_output_manager_update(server);
     vela_lock_update_layout(server->lock);
     vela_views_check_outputs_later(server);
+    if (server->lid_closed) {
+        vela_output_manager_schedule_lid_update(server);
+    }
 }
 
 // The frame loop must wake at the right moment even with the CPU busy (a

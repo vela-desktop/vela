@@ -24,6 +24,19 @@ static char fail_name[64];
 static int failures_left;
 static int fixture_width = 1920, fixture_height = 1080;
 
+bool __real_wlr_output_test_state(struct wlr_output* wlr, const struct wlr_output_state* state);
+
+bool __wrap_wlr_output_test_state(struct wlr_output* wlr, const struct wlr_output_state* state)
+{
+    // Simulate a backend limit that applies only when modesetting the panel.
+    const struct vela_output* output = wlr->data;
+    if (output && output->internal_panel && state->enabled && (state->committed & WLR_OUTPUT_STATE_MODE)
+        && state->mode_type == WLR_OUTPUT_STATE_MODE_CUSTOM && state->custom_mode.width > 4096) {
+        return false;
+    }
+    return __real_wlr_output_test_state(wlr, state);
+}
+
 bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state *state)
 {
     if (failures_left > 0 && strcmp(fail_name, output->wlr->name) == 0) {
@@ -72,12 +85,15 @@ static void destroyed(struct wl_listener *listener, void *data)
     output->wlr->data = NULL;
     free(output);
 }
-static void add_output(struct vela_server* server, int width, int height)
+static void add_output(struct vela_server* server, int width, int height, bool drm_connector, bool internal_panel)
 {
     struct wlr_output* wlr = wlr_headless_add_output(server->backend, width, height);
     struct vela_output *output = calloc(1, sizeof(*output));
     output->server = server;
     output->wlr = wlr;
+    output->powered = true;
+    output->drm_connector = drm_connector;
+    output->internal_panel = internal_panel;
     wlr->data = output;
     struct wlr_output_state state;
     wlr_output_state_init(&state);
@@ -147,6 +163,9 @@ static void layout_changed(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, layout_change);
     vela_output_manager_update(server);
+    if (server->lid_closed) {
+        vela_output_manager_schedule_lid_update(server);
+    }
 }
 static int command(int fd, uint32_t mask, void *data)
 {
@@ -156,8 +175,13 @@ static int command(int fd, uint32_t mask, void *data)
     if (n <= 0) { wl_display_terminate(server->display); return 0; }
     line[strcspn(line, "\n")] = '\0';
     if (!strcmp(line, "add"))
-        add_output(server, fixture_width, fixture_height);
-    else if (!strncmp(line, "enable ", 7) || !strncmp(line, "disable ", 8)) {
+        add_output(server, fixture_width, fixture_height, false, false);
+    else if (!strcmp(line, "add external"))
+        add_output(server, fixture_width, fixture_height, true, false);
+    else if (!strcmp(line, "lid close") || !strcmp(line, "lid open")) {
+        server->lid_closed = !strcmp(line, "lid close");
+        vela_output_manager_schedule_lid_update(server);
+    } else if (!strncmp(line, "enable ", 7) || !strncmp(line, "disable ", 8)) {
         bool on = !strncmp(line, "enable ", 7);
         struct vela_output *output = vela_output_named(server, line + (on ? 7 : 8));
         if (output) {
@@ -178,7 +202,8 @@ static int command(int fd, uint32_t mask, void *data)
     } else if (!strncmp(line, "fail ", 5)) {
         snprintf(fail_name, sizeof(fail_name), "%s", line + 5);
         failures_left = 1;
-    } else if (!strcmp(line, "quit")) wl_display_terminate(server->display);
+    } else if (!strcmp(line, "quit"))
+        wl_display_terminate(server->display);
     puts("ok"); fflush(stdout);
     return 0;
 }
@@ -201,12 +226,13 @@ int main(int argc, char **argv)
     wl_signal_add(&server.output_layout->events.change, &server.layout_change);
     if (!wlr_backend_start(server.backend)) return 1;
     bool mixed = argc > 1 && !strcmp(argv[1], "mixed");
-    add_output(&server, fixture_width, mixed ? 1200 : fixture_height);
+    bool laptop = argc > 1 && !strcmp(argv[1], "laptop");
+    add_output(&server, fixture_width, mixed ? 1200 : fixture_height, laptop, laptop);
     bool inactive = argc > 1 && !strcmp(argv[1], "inactive");
     if (inactive) {
         add_inactive_output(&server);
     } else {
-        add_output(&server, mixed ? 2560 : fixture_width, mixed ? 1440 : fixture_height);
+        add_output(&server, mixed ? 2560 : fixture_width, mixed ? 1440 : fixture_height, laptop, false);
     }
     const char *socket = wl_display_add_socket_auto(server.display);
     if (!socket) return 1;
