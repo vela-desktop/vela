@@ -40,7 +40,7 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
             ca-certificates git build-essential cmake ninja-build ccache pkgconf \
-            libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+            libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev libxkbregistry-dev \
             libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
             libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
             libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \

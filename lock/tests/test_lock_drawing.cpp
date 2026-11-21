@@ -184,6 +184,97 @@ void testMessage()
     check(anyPixel(image, below, over(Qt::white, 220, behind), 30), "the message below the field");
 }
 
+void testCapsLock()
+{
+    const QColor caution(0xfc, 0xe1, 0x00);
+    Scene scene = loginScene();
+    const QRect below(0, 466, 800, 30);
+    // The message's own line, and the ones under it: the warning starts a
+    // line of the font plus 6 further down, wherever the font puts its
+    // glyphs.
+    const QRect messageLine(0, 466, 800, 16);
+    const QRect further(0, 486, 800, 40);
+    check(!anyPixel(paint(defaultLook(), scene), below, caution, 40), "Caps Lock off: no warning");
+    scene.capsLock = true;
+    check(anyPixel(paint(defaultLook(), scene), below, caution, 40), "Caps Lock on: the warning under the field");
+    check(anyPixel(paint(expressiveLook(), scene), below, caution, 40), "in the expressive look too");
+    // With a message, below it.
+    scene.message = QStringLiteral("The password is incorrect. Try again.");
+    QImage image = paint(defaultLook(), scene);
+    check(!anyPixel(image, messageLine, caution, 40), "the message keeps its place");
+    check(anyPixel(image, further, caution, 40), "the warning under the message");
+    // Not while signing in, nor on the clock.
+    scene.message.clear();
+    scene.mode = Mode::Checking;
+    check(!anyPixel(paint(defaultLook(), scene), below, caution, 40), "not while signing in");
+    Scene clock = clockScene();
+    clock.capsLock = true;
+    check(!anyPixel(paint(defaultLook(), clock), QRect(0, 0, 800, 600), caution, 40), "not on the clock");
+}
+
+// The Caps Lock display (docs/keyboard.md §8.3): a pill at the bottom in
+// the middle, in every mode, the arrow filled when Caps Lock is on.
+void testCapsDisplay()
+{
+    const QRect pillBox(300, 500, 200, 52); // 48 from the bottom, 52 tall
+    // A light wallpaper, for the dark pill to show.
+    const QColor light(200, 160, 120);
+    // With a password typed too: the dots leave a white brush behind.
+    for (Scene scene : { loginScene(), loginScene(3), clockScene() }) {
+        const QImage without = paint(defaultLook(), scene, { 800, 600 }, 120, light, light);
+        scene.capsDisplay = 1;
+        scene.capsDisplayOn = true;
+        const QImage with = paint(defaultLook(), scene, { 800, 600 }, 120, light, light);
+        check(without.copy(0, 0, 800, 498) == with.copy(0, 0, 800, 498), "nothing else changes");
+        check(!anyPixel(without, pillBox, Qt::white, 40), "no display, nothing at the bottom");
+        check(anyPixel(with, pillBox, Qt::white, 40), "the display at the bottom, in white");
+        check(near(at(with, 400, 503), over(QColor(32, 32, 32), 230, at(without, 400, 503)), 3), "on a dark pill");
+        check(near(at(with, 400, 549), over(QColor(32, 32, 32), 230, at(without, 400, 549)), 3), "52 tall");
+        check(near(at(with, 400, 554), at(without, 400, 554)), "48 from the bottom");
+        check(near(at(with, 305, 526), at(without, 305, 526)) && !near(at(with, 315, 526), at(without, 315, 526), 20),
+            "180 wide, in the middle");
+    }
+    // Expressive: the field's surface container highest, its ink.
+    Scene scene = loginScene();
+    scene.capsDisplay = 1;
+    const Look look = expressiveLook();
+    QImage image = paint(look, scene);
+    check(near(at(image, 400, 503), look.surfaceContainerHighest, 3), "expressive: surface container highest");
+    check(anyPixel(image, pillBox, look.onSurface, 30), "expressive: the text in on surface");
+    // Half faded: halfway to what is behind.
+    const QColor behind = at(paint(look, loginScene()), 400, 503);
+    scene.capsDisplay = 0.5;
+    image = paint(look, scene);
+    check(near(at(image, 400, 503), over(look.surfaceContainerHighest, 128, behind), 4), "half faded");
+
+    // The arrow: filled with a bar when on, an outline when off.
+    QImage arrow(48, 48, QImage::Format_RGB32);
+    for (const bool on : { true, false }) {
+        arrow.fill(Qt::black);
+        QPainter p(&arrow);
+        p.setRenderHint(QPainter::Antialiasing);
+        vela::lock::paintCapsArrow(p, QRectF(0, 0, 48, 48), Qt::white, on);
+        p.end();
+        check(near(at(arrow, 24, 28), Qt::white, 10) == on, on ? "on: a filled arrow" : "off: an outline");
+        if (on) {
+            check(near(at(arrow, 24, 35), Qt::black, 10) && near(at(arrow, 24, 40), Qt::white, 10),
+                "on: a bar under it, apart");
+        } else {
+            check(near(at(arrow, 24, 41), Qt::white, 10) && near(at(arrow, 24, 46), Qt::black, 10),
+                "off: the outline closed at the bottom, no bar");
+        }
+        check(near(at(arrow, 24, 0), Qt::black, 10) && anyPixel(arrow, QRect(20, 2, 9, 6), Qt::white, 60),
+            "the arrow's tip at the top");
+    }
+
+    // Whole for the hold, then down to nothing; at once without a fade.
+    check(vela::lock::capsDisplayOpacity(0, 1500, 200) == 1, "whole when shown");
+    check(vela::lock::capsDisplayOpacity(1499, 1500, 200) == 1, "whole until the hold ends");
+    check(qFuzzyCompare(vela::lock::capsDisplayOpacity(1600, 1500, 200), 0.5), "half way through the fade");
+    check(vela::lock::capsDisplayOpacity(1700, 1500, 200) == 0, "gone after the fade");
+    check(vela::lock::capsDisplayOpacity(1500, 1500, 0) == 0, "no fade: gone at once");
+}
+
 // The clock: the default look's white, the expressive primary on a dark
 // wallpaper and white where nothing lighter reads.
 void testClock()
@@ -269,6 +360,8 @@ int main(int argc, char** argv)
     testExpressiveLogin();
     testPasswordDots();
     testMessage();
+    testCapsLock();
+    testCapsDisplay();
     testClock();
     testNarrowOutput();
     testScale();

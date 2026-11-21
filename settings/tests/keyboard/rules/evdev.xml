@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Brando Giuffrida -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- A small XKB registry for settings/tests/keyboardlayouts_test.cpp. -->
+<xkbConfigRegistry version="1.1">
+  <modelList/>
+  <layoutList>
+    <layout>
+      <configItem>
+        <name>it</name>
+        <shortDescription>it</shortDescription>
+        <description>Italian</description>
+        <countryList><iso3166Id>IT</iso3166Id></countryList>
+        <languageList><iso639Id>ita</iso639Id></languageList>
+      </configItem>
+      <variantList>
+        <variant><configItem><name>us</name><description>Italian (US)</description></configItem></variant>
+        <variant><configItem><name>nodeadkeys</name><description>Italian (no dead keys)</description></configItem></variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>us</name>
+        <shortDescription>en</shortDescription>
+        <description>English (US)</description>
+        <countryList><iso3166Id>US</iso3166Id></countryList>
+        <languageList><iso639Id>eng</iso639Id></languageList>
+      </configItem>
+      <variantList>
+        <variant><configItem><name>intl</name><description>English (US, intl., with dead keys)</description></configItem></variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>de</name>
+        <shortDescription>de</shortDescription>
+        <description>German</description>
+        <countryList><iso3166Id>DE</iso3166Id></countryList>
+        <languageList><iso639Id>deu</iso639Id></languageList>
+      </configItem>
+      <variantList>
+        <variant><configItem><name>nodeadkeys</name><description>German (no dead keys)</description></configItem></variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>ru</name>
+        <shortDescription>ru</shortDescription>
+        <description>Russian</description>
+        <countryList><iso3166Id>RU</iso3166Id></countryList>
+        <languageList><iso639Id>rus</iso639Id></languageList>
+      </configItem>
+      <variantList>
+        <variant><configItem><name>phonetic</name><description>Russian (phonetic)</description></configItem></variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>latam</name>
+        <shortDescription>es</shortDescription>
+        <description>Spanish (Latin American)</description>
+        <countryList><iso3166Id>AR</iso3166Id><iso3166Id>MX</iso3166Id></countryList>
+        <languageList><iso639Id>spa</iso639Id></languageList>
+      </configItem>
+      <variantList>
+        <variant>
+          <configItem>
+            <name>mx</name>
+            <description>Spanish (Mexico)</description>
+            <countryList><iso3166Id>MX</iso3166Id></countryList>
+          </configItem>
+        </variant>
+      </variantList>
+    </layout>
+    <layout>
+      <configItem>
+        <name>zz</name>
+        <description>Nowhere</description>
+        <countryList><iso3166Id>ZZ</iso3166Id></countryList>
+      </configItem>
+    </layout>
+    <layout>
+      <configItem>
+        <name>ancient</name>
+        <shortDescription>ancient</shortDescription>
+        <description>Ancient</description>
+        <languageList><iso639Id>got</iso639Id><iso639Id>uga</iso639Id></languageList>
+      </configItem>
+    </layout>
+    <layout>
+      <configItem>
+        <name>epo</name>
+        <shortDescription>eo</shortDescription>
+        <description>Esperanto</description>
+        <languageList><iso639Id>epo</iso639Id></languageList>
+      </configItem>
+    </layout>
+  </layoutList>
+  <optionList/>
+</xkbConfigRegistry>

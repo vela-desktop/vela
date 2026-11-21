@@ -11,15 +11,15 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "shortcuts.h"
+
 struct vela_server;
 struct vela_view;
 
-// The key `sym` with the modifiers held before it: true if it was a shortcut
-// (and must not reach the app).
-bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32_t sym);
-
-// The shortcuts that repeat while their key is held: volume up and down.
-bool vela_bindings_repeats(uint32_t sym);
+// A pressed key (common/shortcuts/shortcuts.h), matched against Vela's
+// shortcut table: true if it was a shortcut (and must not reach the app).
+// *repeats: it repeats while held (volume up and down).
+bool vela_bindings_handle(struct vela_server *server, const struct vela_press *press, bool *repeats);
 
 // The window menu (docs/renderer.md §14.8), drawn by the shell at (lx, ly) in
 // the layout. keyboard: opened from the keyboard (Alt+Space).

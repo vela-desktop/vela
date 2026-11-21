@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Brando Giuffrida -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- The exotic rules of the test registry: a layout and a variant of one in evdev.xml. -->
+<xkbConfigRegistry version="1.1">
+  <layoutList>
+    <layout>
+      <configItem>
+        <name>eu</name>
+        <shortDescription>eu</shortDescription>
+        <description>EurKEY (US)</description>
+        <countryList><iso3166Id>US</iso3166Id></countryList>
+        <languageList><iso639Id>eng</iso639Id><iso639Id>ita</iso639Id></languageList>
+      </configItem>
+    </layout>
+    <layout>
+      <configItem>
+        <name>it</name>
+      </configItem>
+      <variantList>
+        <variant><configItem><name>ibm</name><description>Italian (IBM 142)</description></configItem></variant>
+      </variantList>
+    </layout>
+  </layoutList>
+</xkbConfigRegistry>

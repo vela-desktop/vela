@@ -41,6 +41,7 @@ Each design document opens with a status header (see [below](#status-headers)).
   - [Screen sharing](screen-sharing.md): the indicator and Do not disturb while sharing.
   - [Authorization prompt](polkit-agent.md): Vela's polkit agent and dialog.
   - [Updates](updates.md): the update daemon, Settings page and notifications.
+  - [Keyboard](keyboard.md): the Keyboard settings, the layout picker and its preview, key behavior, Num Lock and Caps Lock, custom shortcuts, the terminal.
 
 ## Change notes
 

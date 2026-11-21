@@ -64,6 +64,7 @@ endif()
 # The allocation helpers, in every build: the C code allocates through them,
 # and every C++ program installs their new handler (alloc/new_handler.h).
 add_subdirectory(common/alloc)
+add_subdirectory(common/shortcuts)
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)

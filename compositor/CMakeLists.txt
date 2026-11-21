@@ -131,7 +131,9 @@ add_library(vela-pure STATIC
     src/frame_clock.c
     src/geometry.c
     src/icon_cache.c
+    src/keymap_options.c
     src/legacy_names.c
+    src/lock_keys.c
     src/lock_state.c
     src/motion.c
     src/output_arrangement.c
@@ -140,7 +142,6 @@ add_library(vela-pure STATIC
     src/path_security.c
     src/security_policy.c
     src/sun.c
-    src/super_numbers.c
     src/supervisor_child.c
     src/sync.c
     src/util.c
@@ -149,7 +150,7 @@ target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-pure PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(vela-pure PUBLIC vela-alloc)
+target_link_libraries(vela-pure PUBLIC vela-alloc vela-shortcuts PkgConfig::XKBCOMMON)
 find_library(MATH_LIBRARY m)
 if(MATH_LIBRARY)
     target_link_libraries(vela-pure PUBLIC ${MATH_LIBRARY})
@@ -680,13 +681,17 @@ if(VELA_BUILD_TOOLS)
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
             tests/super_numbers_test.cpp
+            tests/shortcuts_test.cpp
+            tests/keymap_options_test.cpp
+            tests/lock_keys_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)
         target_compile_options(vela-compositor-tests PRIVATE -Wall -Wextra)
         target_include_directories(vela-compositor-tests PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
         target_compile_definitions(vela-compositor-tests PRIVATE
-            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
+            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures"
+            VELA_DOCS_DIR="${PROJECT_SOURCE_DIR}/docs")
         target_link_libraries(vela-compositor-tests PRIVATE vela-pure GTest::gtest_main)
         include(GoogleTest)
         gtest_discover_tests(vela-compositor-tests TEST_PREFIX "compositor.")

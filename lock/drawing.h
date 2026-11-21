@@ -38,7 +38,100 @@ struct Scene {
     bool passwordEmpty = true;
     qsizetype passwordChars = 0;
     QString message;
+    // Caps Lock is on (the keyboard's locked modifiers): said under the
+    // field while the password is asked (docs/keyboard.md §8.2).
+    bool capsLock = false;
+    // The Caps Lock display (§8.3): a pill at the bottom for a moment after
+    // Caps Lock changes, in every mode. 0 is hidden; it fades to 0.
+    double capsDisplay = 0;
+    bool capsDisplayOn = false;
 };
+
+// The Caps Lock display's opacity `elapsed` ms after Caps Lock changed: whole
+// for `hold` ms, then down to nothing in `fade` ms (at once if 0).
+inline double capsDisplayOpacity(qint64 elapsed, qint64 hold, qint64 fade)
+{
+    if (elapsed < hold) {
+        return 1;
+    }
+    if (fade <= 0 || elapsed >= hold + fade) {
+        return 0;
+    }
+    return 1.0 - double(elapsed - hold) / double(fade);
+}
+
+// The Caps Lock key's arrow, in `box`: filled with a bar under it when
+// Caps Lock is on, an outline when it is off (Breeze's
+// keyboard-caps-locked and keyboard-caps-disabled, which the shell's
+// display shows).
+inline void paintCapsArrow(QPainter& p, const QRectF& box, const QColor& color, bool on)
+{
+    const double w = box.width();
+    const double h = box.height();
+    const double cx = box.center().x();
+    const double arrowBottom = box.top() + h * (on ? 0.68 : 0.86);
+    QPainterPath arrow;
+    arrow.moveTo(cx, box.top() + h * 0.08);
+    arrow.lineTo(box.left() + w * 0.92, box.top() + h * 0.48);
+    arrow.lineTo(cx + w * 0.2, box.top() + h * 0.48);
+    arrow.lineTo(cx + w * 0.2, arrowBottom);
+    arrow.lineTo(cx - w * 0.2, arrowBottom);
+    arrow.lineTo(cx - w * 0.2, box.top() + h * 0.48);
+    arrow.lineTo(box.left() + w * 0.08, box.top() + h * 0.48);
+    arrow.closeSubpath();
+    p.save();
+    if (on) {
+        p.setPen(Qt::NoPen);
+        p.fillPath(arrow, color);
+        p.fillRect(QRectF(cx - w * 0.2, box.top() + h * 0.78, w * 0.4, h * 0.1), color);
+    } else {
+        p.setPen(QPen(color, std::max(1.0, w / 12), Qt::SolidLine, Qt::SquareCap, Qt::MiterJoin));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(arrow);
+    }
+    p.restore();
+}
+
+// The Caps Lock display at the bottom in the middle, where the shell shows
+// it (CapsLockOsd.qml) with no taskbar under it: 52 tall, 48 from the
+// bottom. Expressive: a full pill on surface container highest, as the
+// field; otherwise the field's translucent white over a dark pill.
+inline void paintCapsDisplay(QPainter& p, QFont font, double lw, double lh, const Look& look, const Scene& scene)
+{
+    if (scene.capsDisplay <= 0) {
+        return;
+    }
+    font.setPixelSize(15);
+    font.setWeight(QFont::Normal);
+    const QString text = scene.capsDisplayOn ? QCoreApplication::translate("Lock", "Caps Lock on")
+                                             : QCoreApplication::translate("Lock", "Caps Lock off");
+    const double icon = 18;
+    const double gap = 10;
+    const double textWidth = QFontMetricsF(font).horizontalAdvance(text);
+    const double width = std::max(180.0, icon + gap + textWidth + 40);
+    const QRectF pill(lw / 2 - width / 2, lh - 48 - 52, width, 52);
+    p.save();
+    p.setOpacity(std::min(1.0, scene.capsDisplay));
+    QPainterPath path;
+    if (look.expressive) {
+        path.addRoundedRect(pill, pill.height() / 2, pill.height() / 2);
+        p.fillPath(path, look.surfaceContainerHighest);
+    } else {
+        path.addRoundedRect(pill, 8, 8);
+        p.fillPath(path, QColor(32, 32, 32, 230));
+        p.setPen(QPen(QColor(255, 255, 255, 50), 1));
+        p.setBrush(Qt::NoBrush); // the password's dots leave theirs
+        p.drawPath(path);
+    }
+    const QColor ink = look.expressive ? look.onSurface : QColor(Qt::white);
+    const double left = pill.center().x() - (icon + gap + textWidth) / 2;
+    paintCapsArrow(p, QRectF(left, pill.center().y() - icon / 2, icon, icon), ink, scene.capsDisplayOn);
+    p.setFont(font);
+    p.setPen(ink);
+    p.drawText(
+        QRectF(left + icon + gap, pill.top(), textWidth + 1, pill.height()), Qt::AlignVCenter | Qt::AlignLeft, text);
+    p.restore();
+}
 
 // The characters of a UTF-8 password (multibyte ones count as one).
 inline qsizetype passwordCharacters(const std::string& password)
@@ -176,7 +269,18 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
             p.setPen(QColor(255, 255, 255, 220));
             p.drawText(QRectF(0, field.bottom() + 16, lw, 30), Qt::AlignHCenter | Qt::AlignTop, scene.message);
         }
+        // Below the message, if there is one, a line of the font further
+        // down, in the caution color of the dark theme: the lock is always
+        // drawn over a darkened wallpaper.
+        if (scene.capsLock && scene.mode == Mode::Login) {
+            const double line = QFontMetricsF(font).lineSpacing() + 6;
+            const double y = field.bottom() + 16 + (scene.message.isEmpty() ? 0 : line);
+            p.setPen(QColor(0xfc, 0xe1, 0x00));
+            p.drawText(QRectF(0, y, lw, 30), Qt::AlignHCenter | Qt::AlignTop,
+                QCoreApplication::translate("Lock", "Caps Lock is on."));
+        }
     }
+    paintCapsDisplay(p, QGuiApplication::font(), lw, lh, look, scene);
 }
 
 } // namespace vela::lock

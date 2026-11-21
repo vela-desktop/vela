@@ -104,8 +104,11 @@ Fill {
             anchors.verticalCenter: parent.verticalCenter
             width: 20
             height: 20
-            source: card.icon !== "" ? (card.icon.indexOf("://") >= 0 ? card.icon : Theme.icons + encodeURIComponent(card.icon)) : ""
-            sourceSize: Qt.size(width, height)
+            source: card.icon !== "" ? (card.icon.indexOf(":/") >= 0 ? card.icon : Theme.icons + encodeURIComponent(card.icon)) : ""
+            // A picture that isn't square (a layout's 4:3 flag) keeps its
+            // shape, centered in the icon's box.
+            sourceSize.width: width
+            fillMode: Image.PreserveAspectFit
         }
         Column {
             id: textColumn
