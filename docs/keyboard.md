@@ -2,7 +2,7 @@
 
 Design of Vela's keyboard settings: a Keyboard section of its own in
 Settings, a layout picker that lists every layout the system has, in the
-user's language, with flags and a way to try a layout before adding it,
+user's language, with a way to try a layout before adding it,
 what the Caps Lock, Compose, Ctrl, Alt and Win keys do, Num Lock at
 startup, Caps Lock you can see, custom shortcuts, the Win key alone, and
 the terminal that Win+Enter opens. Windows is one reference among KDE
@@ -39,7 +39,7 @@ Plasma, GNOME, macOS and COSMIC, never the rule.
 | Where | A **Keyboard** section at the top level of Settings; the layouts move there from Time & language. | GNOME: Keyboard panel; KDE: Input Devices > Keyboard; macOS: Keyboard; Windows: Time & language. |
 | Catalogue | libxkbregistry, with the extras and the user's own rules, grouped by layout, no cap on the list. | GNOME and KDE read the same registry; KDE offers extras behind a switch. |
 | Names | Translated with xkeyboard-config's own translations, searchable in English too. | GNOME and KDE translate the same way. |
-| Flags | The layout's country flag, bundled SVGs, generic keyboard icon when there is no single country. | macOS shows flags; KDE optional in its indicator; GNOME, Windows none. |
+| Flags | None: every layout has the generic keyboard icon. | macOS shows flags; KDE optional in its indicator; GNOME, Windows none. |
 | Trying | A drawing of the keyboard and a field typed through the candidate layout, before *Add*. | GNOME and KDE show a drawing; macOS a Keyboard Viewer of the active source; none lets you type with a layout you haven't added. |
 | Key behavior | Four curated choices; the rest of XKB stays in `vela.conf`. A full option list is deferred to 0.3. | macOS: Modifier Keys dialog; GNOME: Compose and alternate characters; KDE: the full list. |
 | Num Lock | Off (today's behavior), on, or as it was at the end of the last session. | KDE: on, off, unchanged; GNOME remembers; Windows: a registry value. |
@@ -163,23 +163,15 @@ The search box matches, case- and accent-insensitively, any of:
 A group is shown when its layout or any of its variants matches, expanded
 to the matching variants.
 
-### 5.3 Flags
+### 5.3 No flags
 
-Each entry shows its country's flag when it has a single `iso3166Id`
-(libxkbregistry gives a variant that names none its layout's). Layouts
-with no country (Braille, Esperanto, APL, BQN, IPA, *ancient*, *custom*)
-and those that list several (`latam`, `ara`) show the generic
-`input-keyboard` icon. The flag marks the
-layout's country, which is how XKB names layouts; it is not a statement
-about the language.
-
-The flags are the SVGs of [flag-icons](https://github.com/lipis/flag-icons)
-v7.6.0 (MIT), the 4×3 set, unmodified, in `settings/flags/` with the
-project's licence, version and update steps, compiled into Settings'
-resources. Only the 129 countries that xkeyboard-config 2.49 names are
-kept, 1.0 MB before the resource compression, so the SVGs are not
-optimized further; a country without a file falls back to the generic
-icon. They hold no script, image or external link.
+Layouts show the generic `input-keyboard` icon, not a flag. A flag marks a
+country, while a layout serves a language: the English layout isn't the
+United States', Arabic, Latin American Spanish, Esperanto and Braille
+have no single country, and which flag a layout gets is a political
+choice Vela has no reason to make. Flags would also have bundled 129 SVGs
+(1.4 MB, 5,800 lines) for a picture the name already says. They were
+implemented as KP3 and dropped in the review of PR #311.
 
 ### 5.4 Try before adding
 
@@ -237,7 +229,7 @@ The installed layouts (§5.5) open the same preview, alone and with
 ### 5.5 The installed layouts
 
 As today: the list in Win+Space order, the first one the default, with
-*Move up* and *Remove*, and the flag and translated name of each.
+*Move up* and *Remove*, and the translated name of each.
 
 The card on top names where the layout in use comes from, following the
 compositor's order (§5.6), so Settings never shows a layout Vela isn't
@@ -641,7 +633,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 |---|---|
 | KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). Done. |
 | KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). Done. |
-| KP3 | Flags (§5.3). Done. |
+| KP3 | Flags (§5.3). Dropped. |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). Done. |
 | KP5 | Key behavior (§6). Done. |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). Done. |
@@ -676,8 +668,6 @@ Proposed for 0.3 in the [roadmap](roadmap.md):
   the four-layout limit.
 - Names and search: translated and English names, codes, languages,
   countries, accents; a group expands to its matching variants.
-- Flags: the variant's country, then the layout's; none or several →
-  the generic icon.
 - Drawing: each shape's rows are 15 units wide; the usual shape of
   `it`, `us`, `jp` and `br`; a letter's capital alone, names on modifier
   keys, AltGr detected (not for `us`); options move the names (Ctrl on

@@ -8,7 +8,6 @@
 #include <QFile>
 #include <QLocale>
 #include <QRegularExpression>
-#include <QUrl>
 #include <QVariantMap>
 #include <QtEndian>
 
@@ -18,16 +17,13 @@
 KeyboardLayouts::KeyboardLayouts(QObject* parent)
     : QObject(parent)
     , m_localeDir(QStringLiteral("/usr/share/locale"))
-    , m_flagDir(QStringLiteral(":/flags"))
 {
 }
 
-KeyboardLayouts::KeyboardLayouts(
-    const QStringList& includePaths, const QString& localeDir, const QString& flagDir, QObject* parent)
+KeyboardLayouts::KeyboardLayouts(const QStringList& includePaths, const QString& localeDir, QObject* parent)
     : QObject(parent)
     , m_includePaths(includePaths)
     , m_localeDir(localeDir)
-    , m_flagDir(flagDir)
 {
 }
 
@@ -163,18 +159,6 @@ void KeyboardLayouts::load()
     // A layout listed only through its variants has no entry of its own:
     // its group is left out.
     m_groups.removeIf([](const Group& group) { return group.layout < 0; });
-    // Flags: the entry's single country (the registry gives a variant that
-    // names none its layout's). Several countries (latam, ara) or none
-    // (Esperanto, Braille): no flag, the generic icon.
-    for (Entry& entry : m_entries) {
-        if (entry.countries.size() != 1 || m_flagDir.isEmpty()) {
-            continue;
-        }
-        const QString file = m_flagDir + u'/' + entry.countries.first().toLower() + QStringLiteral(".svg");
-        if (QFile::exists(file)) {
-            entry.flag = file.startsWith(u':') ? QStringLiteral("qrc") + file : QUrl::fromLocalFile(file).toString();
-        }
-    }
     translate();
 }
 
@@ -257,8 +241,7 @@ QVariantList KeyboardLayouts::groups(const QString& query, int)
             words.cbegin(), words.cend(), [&](const QString& word) { return entry.search.contains(word); });
     };
     const auto item = [](const Entry& entry) {
-        return QVariantMap { { QStringLiteral("variant"), entry.variant }, { QStringLiteral("name"), entry.name },
-            { QStringLiteral("flag"), entry.flag } };
+        return QVariantMap { { QStringLiteral("variant"), entry.variant }, { QStringLiteral("name"), entry.name } };
     };
     QVariantList list;
     for (const Group& group : std::as_const(m_groups)) {
@@ -273,8 +256,7 @@ QVariantList KeyboardLayouts::groups(const QString& query, int)
         }
         if (groupMatches || !variants.isEmpty()) {
             list.append(QVariantMap { { QStringLiteral("layout"), own.layout }, { QStringLiteral("name"), own.name },
-                { QStringLiteral("flag"), own.flag }, { QStringLiteral("matches"), groupMatches },
-                { QStringLiteral("variants"), variants } });
+                { QStringLiteral("matches"), groupMatches }, { QStringLiteral("variants"), variants } });
         }
     }
     return list;
@@ -291,12 +273,6 @@ const KeyboardLayouts::Entry* KeyboardLayouts::find(const QString& layout, const
         }
     }
     return nullptr;
-}
-
-QString KeyboardLayouts::flag(const QString& layout, const QString& variant)
-{
-    const Entry* entry = find(layout, variant);
-    return entry ? entry->flag : QString();
 }
 
 QString KeyboardLayouts::name(const QString& layout, const QString& variant, int)

@@ -11,7 +11,6 @@
 #include <QDir>
 #include <QSignalSpy>
 #include <QTemporaryDir>
-#include <QUrl>
 #include <QTest>
 #include <QtEndian>
 
@@ -110,7 +109,6 @@ bool groupMatches(const QVariantList& groups, const QString& layout)
 }
 
 const QString fixtures = QStringLiteral(KEYBOARD_FIXTURES);
-const QString flagDir = QStringLiteral(KEYBOARD_FLAGS);
 
 } // namespace
 
@@ -125,8 +123,7 @@ private slots:
         QCOMPARE(names(groups),
             (QStringList { QStringLiteral("Ancient"), QStringLiteral("English (US)"), QStringLiteral("Esperanto"),
                 QStringLiteral("EurKEY (US)"), QStringLiteral("German"), QStringLiteral("Italian"),
-                QStringLiteral("Nowhere"), QStringLiteral("Russian"), QStringLiteral("Spanish (Latin American)"),
-                QStringLiteral("Vela test layout") }));
+                QStringLiteral("Russian"), QStringLiteral("Vela test layout") }));
         // The extras' variant joins its layout's group, after the base ones.
         QCOMPARE(variants(groups, QStringLiteral("it")),
             (QStringList { QStringLiteral("us"), QStringLiteral("nodeadkeys"), QStringLiteral("ibm") }));
@@ -154,8 +151,8 @@ private slots:
         // Untranslated names stay in English; the order is the translated one.
         QCOMPARE(names(layouts.groups(QString())),
             (QStringList { QStringLiteral("Ancient"), QStringLiteral("Esperanto"), QStringLiteral("EurKEY (US)"),
-                QStringLiteral("Inglese (USA)"), QStringLiteral("Italiana"), QStringLiteral("Nowhere"),
-                QStringLiteral("Russian"), QStringLiteral("Spanish (Latin American)"), QStringLiteral("Tedesca") }));
+                QStringLiteral("Inglese (USA)"), QStringLiteral("Italiana"), QStringLiteral("Russian"),
+                QStringLiteral("Tedesca") }));
         layouts.setLanguage(QStringLiteral("it"));
         QCOMPARE(changed.count(), 1);
         layouts.setLanguage(QStringLiteral("en"));
@@ -207,64 +204,6 @@ private slots:
         QVERIFY(groupMatches(italian, QStringLiteral("it")));
         QCOMPARE(variants(italian, QStringLiteral("it")),
             (QStringList { QStringLiteral("us"), QStringLiteral("nodeadkeys"), QStringLiteral("ibm") }));
-    }
-
-    void eachLayoutHasItsCountrysFlag()
-    {
-        KeyboardLayouts layouts({ fixtures }, QString(), flagDir);
-        const auto flag = [&](const char* layout, const char* variant) {
-            return layouts.flag(QString::fromLatin1(layout), QString::fromLatin1(variant));
-        };
-        const QString italy = QUrl::fromLocalFile(flagDir + QStringLiteral("/it.svg")).toString();
-        QCOMPARE(flag("it", ""), italy);
-        QCOMPARE(flag("it", "us"), italy); // a variant without countries: its layout's
-        QCOMPARE(flag("it", "ibm"), italy); // from the extras too
-        QCOMPARE(flag("eu", ""), QUrl::fromLocalFile(flagDir + QStringLiteral("/us.svg")).toString());
-        QCOMPARE(flag("latam", ""), QString()); // several countries
-        QCOMPARE(flag("latam", "mx"), QUrl::fromLocalFile(flagDir + QStringLiteral("/mx.svg")).toString());
-        QCOMPARE(flag("epo", ""), QString()); // none
-        QCOMPARE(flag("zz", ""), QString()); // no file for it
-        QCOMPARE(flag("xx", ""), QString()); // not a layout
-        // The groups carry them too.
-        for (const QVariant& value : layouts.groups(QStringLiteral("italian"))) {
-            const QVariantMap group = value.toMap();
-            if (group.value(QStringLiteral("layout")) == QLatin1String("it")) {
-                QCOMPARE(group.value(QStringLiteral("flag")).toString(), italy);
-                QCOMPARE(group.value(QStringLiteral("variants"))
-                             .toList()
-                             .first()
-                             .toMap()
-                             .value(QStringLiteral("flag"))
-                             .toString(),
-                    italy);
-            }
-        }
-        // Without a flag directory, none.
-        KeyboardLayouts bare({ fixtures }, QString());
-        QCOMPARE(bare.flag(QStringLiteral("it"), QString()), QString());
-    }
-
-    void everyCountryOfTheSystemsRegistryHasAFlag()
-    {
-        // The flags kept in settings/flags are those xkeyboard-config names
-        // (settings/flags/README.md): on a system with a newer one, a new
-        // country shows up here.
-        KeyboardLayouts layouts({}, QString(), flagDir);
-        QStringList missing;
-        for (const QVariant& value : layouts.groups(QString())) {
-            const QVariantMap group = value.toMap();
-            if (group.value(QStringLiteral("flag")).toString().isEmpty()) {
-                missing << group.value(QStringLiteral("layout")).toString();
-            }
-        }
-        // Layouts without a single country of their own.
-        for (const char* none :
-            { "ancient", "apl", "ara", "bqn", "brai", "custom", "epo", "latam", "trans", "nec_vndr/jp" }) {
-            missing.removeAll(QString::fromLatin1(none));
-        }
-        if (!missing.isEmpty()) {
-            qWarning() << "Layouts without a flag:" << missing;
-        }
     }
 
     void catalogsAreReadInBothByteOrdersAndBrokenOnesAreEmpty()

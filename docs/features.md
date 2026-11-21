@@ -104,9 +104,8 @@ see the [roadmap](roadmap.md).
 - **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
   **Time and language**: date, time and language.
 - **Keyboard**: every layout the system has (extras and the user's own
-  included), with its country's flag, named in Vela's language and found
-  by name, language or country, drawn and tried by typing before it is
-  added; where the layout in use comes from when none is chosen; key
+  included), named in Vela's language and found by name, language or
+  country, drawn and tried by typing before it is added; where the layout in use comes from when none is chosen; key
   repeat; what the Caps Lock key does, a Compose key, swapped Ctrl, Alt
   and Win, a keypad that always types digits; Num Lock at startup, and
   Caps Lock and Num Lock shared by every keyboard ([design](keyboard.md)).

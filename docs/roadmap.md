@@ -153,8 +153,8 @@ Distinguish **merged on main**, **candidate for 0.2**, and
 - Evaluate taskbar app shortcuts (Super+1 through Super+9) requested in
   [community feedback #214](https://github.com/vela-desktop/vela/issues/214).
 - **Keyboard personalization** ([design](keyboard.md)): a Keyboard section
-  in Settings, a layout picker with every layout, translated names, flags
-  and a preview to type with before adding, Caps Lock/Compose/modifier
+  in Settings, a layout picker with every layout, translated names and a
+  preview to type with before adding, Caps Lock/Compose/modifier
   choices, Num Lock at startup (asked in #214), Caps Lock warnings and
   display, custom shortcuts and a detected default terminal.
 - Finish the desktop configuration fix

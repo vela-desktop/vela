@@ -51,7 +51,7 @@ Page {
                 id: layoutCard
                 required property var modelData
                 required property int index
-                icon: Layouts.flag(modelData.layout, modelData.variant) || "input-keyboard"
+                icon: "input-keyboard"
                 title: Layouts.name(modelData.layout, modelData.variant, Layouts.revision)
                 description: index === 0 ? qsTr("Default") : ""
                 trailing: Row {
@@ -98,7 +98,7 @@ Page {
                 Prefs.addKeyboardLayout(selected.layout, selected.variant)
             }
         }
-        // [{layout, name, flag, matches, variants: [{variant, name, flag}]}],
+        // [{layout, name, matches, variants: [{variant, name}]}],
         // every layout the system has.
         readonly property var groups: visible && !previewOnly ? Layouts.groups(layoutSearch.text, Layouts.revision) : []
         readonly property bool searching: layoutSearch.text.trim() !== ""
@@ -166,7 +166,6 @@ Page {
                             layout: group.modelData.layout
                             variant: ""
                             label: group.modelData.name
-                            flag: group.modelData.flag
                             count: group.modelData.variants.length
                             open: group.open
                             onExpandRequested: addDialog.toggle(group.modelData.layout)
@@ -179,7 +178,6 @@ Page {
                                 layout: group.modelData.layout
                                 variant: modelData.variant
                                 label: modelData.name
-                                flag: modelData.flag
                                 indent: 28
                             }
                         }
@@ -238,7 +236,6 @@ Page {
         property string layout
         property string variant
         property string label
-        property string flag // a URL, or "": the generic icon
         property int count: 0
         property bool open: false
         property real indent: 0
@@ -258,26 +255,8 @@ Page {
         Keys.onRightPressed: if (count > 0 && !open) expandRequested()
         Keys.onLeftPressed: if (open) expandRequested()
         contentItem: Item {
-            Image {
-                objectName: "flag"
-                x: row.indent + 4
-                anchors.verticalCenter: parent.verticalCenter
-                width: 20
-                height: 15
-                visible: row.flag !== ""
-                source: row.flag
-                sourceSize.width: width
-                fillMode: Image.PreserveAspectFit
-            }
-            Icon {
-                x: row.indent + 4
-                anchors.verticalCenter: parent.verticalCenter
-                visible: row.flag === ""
-                name: "input-keyboard"
-                size: 20
-            }
             Text {
-                x: row.indent + 32
+                x: row.indent + 4
                 width: parent.width - x - (expander.visible ? expander.width + 8 : 0) - addedLabel.width - 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: row.label

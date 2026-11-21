@@ -178,12 +178,6 @@ qt_add_resources(vela-settings "images"
     PREFIX "/vela"
     BASE ${PROJECT_SOURCE_DIR}
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
-# The layouts' country flags (settings/flags/README.md, docs/keyboard.md §5.3).
-file(GLOB SETTINGS_FLAGS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/flags/*.svg)
-qt_add_resources(vela-settings "flags"
-    PREFIX "/flags"
-    BASE ${CMAKE_CURRENT_SOURCE_DIR}/flags
-    FILES ${SETTINGS_FLAGS})
 target_link_libraries(vela-settings PRIVATE vela-alloc
     vela-shortcuts # the matcher and Vela's shortcut table (common/shortcuts)
     vela-terminal-lookup # Default apps > Terminal (common/terminal)
@@ -280,8 +274,7 @@ if(VELA_BUILD_TOOLS)
     target_include_directories(vela-keyboardlayouts-test PRIVATE src)
     target_compile_options(vela-keyboardlayouts-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-keyboardlayouts-test PRIVATE Qt6::Core Qt6::Test PkgConfig::XKBREGISTRY)
-    target_compile_definitions(vela-keyboardlayouts-test PRIVATE KEYBOARD_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/keyboard"
-        KEYBOARD_FLAGS="${CMAKE_CURRENT_SOURCE_DIR}/flags")
+    target_compile_definitions(vela-keyboardlayouts-test PRIVATE KEYBOARD_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/keyboard")
     add_test(NAME settings-keyboardlayouts COMMAND vela-keyboardlayouts-test)
     # Keyboard > Typing's keys over the XKB options.
     qt_add_executable(vela-keyboardoptions-test tests/keyboardoptions_test.cpp src/keyboardoptions.cpp src/keyboardoptions.h)
