@@ -4,91 +4,281 @@
 #include "keyboardlayouts.h"
 
 #include <QCollator>
+#include <QDebug>
 #include <QFile>
+#include <QLocale>
 #include <QRegularExpression>
 #include <QVariantMap>
-#include <QXmlStreamReader>
+#include <QtEndian>
 
 #include <algorithm>
+#include <xkbcommon/xkbregistry.h>
+
+KeyboardLayouts::KeyboardLayouts(QObject* parent)
+    : QObject(parent)
+    , m_localeDir(QStringLiteral("/usr/share/locale"))
+{
+}
+
+KeyboardLayouts::KeyboardLayouts(const QStringList& includePaths, const QString& localeDir, QObject* parent)
+    : QObject(parent)
+    , m_includePaths(includePaths)
+    , m_localeDir(localeDir)
+{
+}
+
+void KeyboardLayouts::setLanguage(const QString& language)
+{
+    if (language == m_language) {
+        return;
+    }
+    m_language = language;
+    if (m_loaded) {
+        translate();
+    }
+    ++m_revision;
+    emit changed();
+}
+
+QHash<QString, QString> KeyboardLayouts::readCatalog(const QByteArray& data)
+{
+    // The GNU .mo layout: magic, revision, count, then the offsets of two
+    // tables of (length, offset) pairs, originals and translations.
+    QHash<QString, QString> catalog;
+    const auto* bytes = reinterpret_cast<const uchar*>(data.constData());
+    const qsizetype size = data.size();
+    if (size < 20) {
+        return catalog;
+    }
+    bool big = false;
+    if (qFromLittleEndian<quint32>(bytes) == 0x950412deU) {
+        big = false;
+    } else if (qFromBigEndian<quint32>(bytes) == 0x950412deU) {
+        big = true;
+    } else {
+        return catalog;
+    }
+    const auto word = [&](qsizetype at) -> quint32 {
+        return big ? qFromBigEndian<quint32>(bytes + at) : qFromLittleEndian<quint32>(bytes + at);
+    };
+    const quint32 count = word(8);
+    const quint32 originals = word(12);
+    const quint32 translations = word(16);
+    if (count > size / 16 || originals > size - count * 8ULL || translations > size - count * 8ULL) {
+        return catalog;
+    }
+    // The text of a (length, offset) pair: up to its first NUL (a plural's
+    // other forms follow it), or empty when it doesn't fit.
+    const auto text = [&](quint32 table, quint32 index) -> QString {
+        const quint32 length = word(table + index * 8);
+        const quint32 offset = word(table + index * 8 + 4);
+        if (offset > size || length > size - offset) {
+            return {};
+        }
+        const auto* start = reinterpret_cast<const char*>(bytes + offset);
+        return QString::fromUtf8(start, qstrnlen(start, length));
+    };
+    catalog.reserve(count);
+    for (quint32 i = 0; i < count; ++i) {
+        const QString original = text(originals, i);
+        const QString translation = text(translations, i);
+        if (!original.isEmpty() && !translation.isEmpty()) {
+            catalog.insert(original, translation);
+        }
+    }
+    return catalog;
+}
+
+QString KeyboardLayouts::fold(const QString& text)
+{
+    const QString decomposed = text.normalized(QString::NormalizationForm_KD);
+    QString folded;
+    folded.reserve(decomposed.size());
+    for (const QChar c : decomposed) {
+        if (c.category() != QChar::Mark_NonSpacing) {
+            folded.append(c);
+        }
+    }
+    return folded.toCaseFolded();
+}
 
 void KeyboardLayouts::load()
 {
-    QFile file(QStringLiteral("/usr/share/X11/xkb/rules/evdev.xml"));
-    if (!file.open(QIODevice::ReadOnly)) {
+    m_loaded = true;
+    // Exotic rules: evdev.extras.xml (EurKEY, APL, IPA, more variants).
+    int flags = RXKB_CONTEXT_LOAD_EXOTIC_RULES;
+    if (!m_includePaths.isEmpty()) {
+        flags |= RXKB_CONTEXT_NO_DEFAULT_INCLUDES;
+    }
+    rxkb_context* context = rxkb_context_new(static_cast<rxkb_context_flags>(flags));
+    if (!context) {
+        qWarning("Keyboard layouts: no XKB registry");
         return;
     }
-    // <layout><configItem><name>it</name><description>Italian</description>
-    // </configItem><variantList><variant><configItem>...</configItem></variant>...
-    // The descriptions are in English: libxkbcommon has no translations,
-    // xkeyboard-config takes them from its gettext domain. They're left as
-    // they are here.
-    QXmlStreamReader xml(&file);
-    QString layout;
-    QString layoutName;
-    bool inVariant = false;
-    QString name;
-    QString description;
-    QStringList path;
-    while (!xml.atEnd()) {
-        xml.readNext();
-        if (xml.isStartElement()) {
-            path << xml.name().toString();
-            if (xml.name() == QLatin1String("variant")) {
-                inVariant = true;
-                name.clear();
-                description.clear();
-            } else if (xml.name() == QLatin1String("layout")) {
-                layout.clear();
-                layoutName.clear();
-            } else if (xml.name() == QLatin1String("name") && path.size() >= 2 && path[path.size() - 2] == QLatin1String("configItem")) {
-                name = xml.readElementText();
-                path.removeLast();
-            } else if (xml.name() == QLatin1String("description") && path.size() >= 2
-                && path[path.size() - 2] == QLatin1String("configItem")) {
-                description = xml.readElementText();
-                path.removeLast();
-            }
-        } else if (xml.isEndElement()) {
-            if (xml.name() == QLatin1String("configItem") && path.contains(QLatin1String("layoutList"))) {
-                if (inVariant) {
-                    m_all.append(QVariantMap { { QStringLiteral("layout"), layout }, { QStringLiteral("variant"), name },
-                        { QStringLiteral("name"), description } });
-                } else if (!path.contains(QLatin1String("variantList"))) {
-                    layout = name;
-                    layoutName = description;
-                    m_all.append(QVariantMap { { QStringLiteral("layout"), layout }, { QStringLiteral("variant"), QString() },
-                        { QStringLiteral("name"), description } });
+    for (const QString& path : std::as_const(m_includePaths)) {
+        rxkb_context_include_path_append(context, QFile::encodeName(path).constData());
+    }
+    if (!rxkb_context_parse(context, "evdev")) {
+        qWarning("Keyboard layouts: the XKB registry could not be read");
+        rxkb_context_unref(context);
+        return;
+    }
+    // The registry merges what the files say twice: an extras or user file
+    // naming a layout again only adds variants.
+    QHash<QString, int> groupOf;
+    for (rxkb_layout* layout = rxkb_layout_first(context); layout; layout = rxkb_layout_next(layout)) {
+        Entry entry;
+        entry.layout = QString::fromUtf8(rxkb_layout_get_name(layout));
+        entry.variant = QString::fromUtf8(rxkb_layout_get_variant(layout));
+        entry.english = QString::fromUtf8(rxkb_layout_get_description(layout));
+        for (rxkb_iso3166_code* code = rxkb_layout_get_iso3166_first(layout); code;
+             code = rxkb_iso3166_code_next(code)) {
+            entry.countries << QString::fromUtf8(rxkb_iso3166_code_get_code(code));
+        }
+        for (rxkb_iso639_code* code = rxkb_layout_get_iso639_first(layout); code; code = rxkb_iso639_code_next(code)) {
+            entry.languages << QString::fromUtf8(rxkb_iso639_code_get_code(code));
+        }
+        if (entry.layout.isEmpty()) {
+            continue;
+        }
+        auto group = groupOf.constFind(entry.layout);
+        if (group == groupOf.constEnd()) {
+            group = groupOf.insert(entry.layout, int(m_groups.size()));
+            m_groups.append(Group {});
+        }
+        Group& into = m_groups[*group];
+        const int index = int(m_entries.size());
+        if (entry.variant.isEmpty()) {
+            into.layout = index;
+        } else {
+            into.variants.append(index);
+        }
+        m_entries.append(entry);
+    }
+    rxkb_context_unref(context);
+    // A layout listed only through its variants has no entry of its own:
+    // its group is left out.
+    m_groups.removeIf([](const Group& group) { return group.layout < 0; });
+    translate();
+}
+
+void KeyboardLayouts::translate()
+{
+    QHash<QString, QString> catalog;
+    if (m_language != QLatin1String("en")) {
+        // xkeyboard-config 2.45 renamed its domain; the old name stays as a
+        // link on some systems, and is all there is on older ones.
+        for (const char* domain : { "xkeyboard-config-2", "xkeyboard-config" }) {
+            QFile file(m_localeDir + u'/' + m_language + QStringLiteral("/LC_MESSAGES/") + QLatin1String(domain)
+                + QStringLiteral(".mo"));
+            if (file.open(QIODevice::ReadOnly)) {
+                catalog = readCatalog(file.read(4 * 1024 * 1024));
+                if (!catalog.isEmpty()) {
+                    break;
                 }
-            } else if (xml.name() == QLatin1String("variant")) {
-                inVariant = false;
-            }
-            if (!path.isEmpty()) {
-                path.removeLast();
             }
         }
     }
-    QCollator collator;
+    // Languages and countries by code, in English and in their own language.
+    QHash<QString, QString> words;
+    const auto languageWords = [&](const QString& code) {
+        auto found = words.constFind(u'l' + code);
+        if (found == words.constEnd()) {
+            const QLocale::Language language = QLocale::codeToLanguage(code, QLocale::ISO639Part3);
+            // QLocale falls back to the default locale for a language it has
+            // no data for: its own name only when it really is that one.
+            const QLocale own(language);
+            const QString text = language == QLocale::AnyLanguage ? QString()
+                : own.language() == language ? QLocale::languageToString(language) + u' ' + own.nativeLanguageName()
+                                             : QLocale::languageToString(language);
+            found = words.insert(u'l' + code, text);
+        }
+        return *found;
+    };
+    const auto countryWords = [&](const QString& code) {
+        auto found = words.constFind(u'c' + code);
+        if (found == words.constEnd()) {
+            const QLocale::Territory territory = QLocale::codeToTerritory(code);
+            const QLocale own(QLocale::AnyLanguage, territory);
+            const QString text = territory == QLocale::AnyTerritory ? QString()
+                : own.territory() == territory
+                ? QLocale::territoryToString(territory) + u' ' + own.nativeTerritoryName()
+                : QLocale::territoryToString(territory);
+            found = words.insert(u'c' + code, text);
+        }
+        return *found;
+    };
+    for (Entry& entry : m_entries) {
+        entry.name = catalog.value(entry.english, entry.english);
+        QStringList parts { entry.name, entry.english, entry.layout };
+        if (!entry.variant.isEmpty()) {
+            parts << entry.layout + u'(' + entry.variant + u')' << entry.variant;
+        }
+        for (const QString& code : std::as_const(entry.languages)) {
+            parts << languageWords(code);
+        }
+        for (const QString& code : std::as_const(entry.countries)) {
+            parts << countryWords(code);
+        }
+        entry.search = fold(parts.join(u' '));
+    }
+    QCollator collator(QLocale(m_language == QLatin1String("it") ? QLocale::Italian : QLocale::English));
     collator.setCaseSensitivity(Qt::CaseInsensitive);
-    std::sort(m_all.begin(), m_all.end(), [&](const QVariant& a, const QVariant& b) {
-        return collator.compare(a.toMap()[QStringLiteral("name")].toString(), b.toMap()[QStringLiteral("name")].toString()) < 0;
+    std::sort(m_groups.begin(), m_groups.end(), [&](const Group& a, const Group& b) {
+        return collator.compare(m_entries.at(a.layout).name, m_entries.at(b.layout).name) < 0;
     });
 }
 
-QVariantList KeyboardLayouts::all()
+QVariantList KeyboardLayouts::groups(const QString& query, int)
 {
-    if (m_all.isEmpty()) {
+    if (!m_loaded) {
         load();
     }
-    return m_all;
+    static const QRegularExpression spaces(QStringLiteral("\\s+"));
+    const QStringList words = fold(query).split(spaces, Qt::SkipEmptyParts);
+    const auto matches = [&](const Entry& entry) {
+        return std::all_of(
+            words.cbegin(), words.cend(), [&](const QString& word) { return entry.search.contains(word); });
+    };
+    const auto item = [](const Entry& entry) {
+        return QVariantMap { { QStringLiteral("variant"), entry.variant }, { QStringLiteral("name"), entry.name } };
+    };
+    QVariantList list;
+    for (const Group& group : std::as_const(m_groups)) {
+        const Entry& own = m_entries.at(group.layout);
+        const bool groupMatches = matches(own);
+        QVariantList variants;
+        for (const int index : group.variants) {
+            const Entry& variant = m_entries.at(index);
+            if (groupMatches || matches(variant)) {
+                variants.append(item(variant));
+            }
+        }
+        if (groupMatches || !variants.isEmpty()) {
+            list.append(QVariantMap { { QStringLiteral("layout"), own.layout }, { QStringLiteral("name"), own.name },
+                { QStringLiteral("matches"), groupMatches }, { QStringLiteral("variants"), variants } });
+        }
+    }
+    return list;
 }
 
-QString KeyboardLayouts::name(const QString& layout, const QString& variant)
+const KeyboardLayouts::Entry* KeyboardLayouts::find(const QString& layout, const QString& variant)
 {
-    for (const QVariant& value : all()) {
-        const QVariantMap entry = value.toMap();
-        if (entry[QStringLiteral("layout")] == layout && entry[QStringLiteral("variant")].toString() == variant) {
-            return entry[QStringLiteral("name")].toString();
+    if (!m_loaded) {
+        load();
+    }
+    for (const Entry& entry : std::as_const(m_entries)) {
+        if (entry.layout == layout && entry.variant == variant) {
+            return &entry;
         }
+    }
+    return nullptr;
+}
+
+QString KeyboardLayouts::name(const QString& layout, const QString& variant, int)
+{
+    if (const Entry* entry = find(layout, variant)) {
+        return entry->name;
     }
     return variant.isEmpty() ? layout : layout + QStringLiteral(" (") + variant + u')';
 }

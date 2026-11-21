@@ -11,6 +11,8 @@ qt_standard_project_setup(REQUIRES 6.5)
 # Output configuration is native and built even when test tools are disabled.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DISPLAYS_WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
+# The keyboard layouts' catalogue (docs/keyboard.md §5.1).
+pkg_check_modules(XKBREGISTRY REQUIRED IMPORTED_TARGET xkbregistry)
 find_program(DISPLAYS_WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 set(DISPLAYS_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${DISPLAYS_GENERATED_DIR})
@@ -154,6 +156,7 @@ qt_add_resources(vela-settings "images"
     BASE ${PROJECT_SOURCE_DIR}
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
 target_link_libraries(vela-settings PRIVATE vela-alloc
+    PkgConfig::XKBREGISTRY
     vela-displays
     Qt6::DBus
     Qt6::Gui
@@ -233,7 +236,8 @@ if(VELA_BUILD_TOOLS)
     qt_add_executable(vela-keyboardlayouts-test tests/keyboardlayouts_test.cpp src/keyboardlayouts.cpp src/keyboardlayouts.h)
     target_include_directories(vela-keyboardlayouts-test PRIVATE src)
     target_compile_options(vela-keyboardlayouts-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-keyboardlayouts-test PRIVATE Qt6::Core Qt6::Test)
+    target_link_libraries(vela-keyboardlayouts-test PRIVATE Qt6::Core Qt6::Test PkgConfig::XKBREGISTRY)
+    target_compile_definitions(vela-keyboardlayouts-test PRIVATE KEYBOARD_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/keyboard")
     add_test(NAME settings-keyboardlayouts COMMAND vela-keyboardlayouts-test)
 
     # The notification area's icons, from a fake watcher on a private bus.

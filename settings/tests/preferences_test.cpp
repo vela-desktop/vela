@@ -1017,6 +1017,26 @@ private slots:
         QVERIFY(QString::fromUtf8(file.readAll()).contains(QStringLiteral("screen-off=3")));
     }
 
+    void atMostFourKeyboardLayouts()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(QDir().mkpath(dir));
+        Preferences prefs;
+        for (const char* layout : { "it", "us", "de", "fr", "es" }) {
+            prefs.addKeyboardLayout(QString::fromLatin1(layout), QString());
+        }
+        // XKB's v1 keymaps hold four (docs/keyboard.md §5.1): the fifth is
+        // refused, not saved to be ignored.
+        QCOMPARE(prefs.keyboardLayouts().size(), 4);
+        QFile file(dir + QStringLiteral("/vela.conf"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("keyboard-layout=it,us,de,fr\n"));
+        prefs.removeKeyboardLayout(3);
+        prefs.addKeyboardLayout(QStringLiteral("es"), QString());
+        QCOMPARE(prefs.keyboardLayouts().size(), 4);
+    }
+
     void compositorSettingsRoundTrip()
     {
         const QString dir = home().filePath(QStringLiteral("config/vela"));

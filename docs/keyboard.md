@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP2 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** stages KP2–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP3–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -133,7 +133,7 @@ Each **layout** is a group: its own entry (no variant) first, then its
 variants. For each entry the registry gives the name, the description,
 the short label, the `iso3166` countries and the `iso639` languages;
 Settings keeps them and does the grouping, translation and search
-itself. The list is a virtualized view of about 145 groups: no cap, and
+itself. The list is a virtualized view of about 100 groups: no cap, and
 browsing reaches every layout. A layout already installed is marked and
 can't be added twice.
 
@@ -144,9 +144,12 @@ keymaps Vela sends to apps can hold more.
 
 ### 5.2 Names and search
 
-Descriptions are translated with xkeyboard-config's gettext domain
-(`dgettext("xkeyboard-config", …)`), in the language Vela's interface
-uses; an untranslated description stays in English. Groups are sorted by
+Descriptions are translated with xkeyboard-config's own catalog, in the
+language Vela's interface uses: Settings reads
+`/usr/share/locale/<language>/LC_MESSAGES/xkeyboard-config-2.mo` (or
+`xkeyboard-config.mo`, the domain's older name) itself, so the process
+locale doesn't decide it, and reads it again when the language changes.
+An untranslated description stays in English. Groups are sorted by
 the translated name, with the variants in file order under their layout.
 
 The search box matches, case- and accent-insensitively, any of:
@@ -155,6 +158,8 @@ The search box matches, case- and accent-insensitively, any of:
 - the code (`it`, `it(us)`);
 - the names of the layout's languages and countries, in English and in
   their own language, from `QLocale` (*italiano*, *Italia*, *Deutsch*).
+  For a language or country Qt has no data for (Gothic, Ugaritic), only
+  the English name: `QLocale` would answer with the default locale's.
 
 A group is shown when its layout or any of its variants matches, expanded
 to the matching variants.
@@ -549,7 +554,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | Stage | Contents |
 |---|---|
 | KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). Done. |
-| KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). |
+| KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). Done. |
 | KP3 | Flags (§5.3). |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). |
 | KP5 | Key behavior (§6). |

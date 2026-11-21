@@ -54,7 +54,7 @@ GPU/DRM functionality.
 sudo apt update
 sudo apt install --no-install-recommends \
     ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
-    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev libxkbregistry-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
     libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
@@ -84,7 +84,7 @@ validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardw
 
 ```sh
 sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
+    libxkbcommon-devel libxkbregistry-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
     qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
     vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
     freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \

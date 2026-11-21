@@ -4,6 +4,8 @@
 #include "processlaunch.h"
 #include "preferences.h"
 
+#include "keyboardlayouts.h"
+
 #include "../../common/taskbarsettings.h"
 #include "../../common/privatefile.h"
 
@@ -1418,6 +1420,10 @@ bool Preferences::saveLayouts()
 
 void Preferences::addKeyboardLayout(const QString& layout, const QString& variant)
 {
+    // More than XKB's v1 keymaps hold would be ignored (docs/keyboard.md §5.1).
+    if (m_layouts.size() >= KeyboardLayouts::MaxLayouts) {
+        return;
+    }
     for (const QVariant& value : std::as_const(m_layouts)) {
         const QVariantMap entry = value.toMap();
         if (entry[QStringLiteral("layout")] == layout && entry[QStringLiteral("variant")] == variant) {

@@ -125,8 +125,12 @@ int main(int argc, char* argv[])
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));
     QQmlApplicationEngine* qmlEngine = nullptr;
-    vela::language::install(QStringLiteral("vela-settings"), [&qmlEngine] {
+    KeyboardLayouts* keyboardLayouts = nullptr;
+    vela::language::install(QStringLiteral("vela-settings"), [&qmlEngine, &keyboardLayouts] {
         QGuiApplication::setApplicationDisplayName(QCoreApplication::translate("Settings", "Settings"));
+        if (keyboardLayouts) {
+            keyboardLayouts->setLanguage(vela::language::effective());
+        }
         if (qmlEngine) {
             qmlEngine->retranslate();
         }
@@ -140,10 +144,12 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Vela Settings"));
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
-        QStringLiteral("The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
-                       "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
-                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, mouse, touchpad, "
-                       "clipboard, night-light, accessibility."),
+        QStringLiteral(
+            "The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
+            "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
+            "apps, installed-apps, default-apps, time-language, datetime, keyboard, keyboard-layouts, keyboard-typing, "
+            "mouse, touchpad, "
+            "clipboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
     parser.process(app);
@@ -178,6 +184,8 @@ int main(int argc, char* argv[])
     DateTime dateTime;
     DefaultApps defaultApps(&apps);
     KeyboardLayouts layouts;
+    layouts.setLanguage(vela::language::effective());
+    keyboardLayouts = &layouts;
     SystemStatus status(&bluetooth);
     Brightness brightness;
     ServiceMenus serviceMenus; // read when Personalization > Context menu opens

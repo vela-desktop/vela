@@ -15,6 +15,12 @@ under "Unreleased" in the pull request that makes a user-visible change.
   where it comes from (the system, or the XKB_DEFAULT_* variables). Vela no
   longer takes the layout from KDE's settings.
 
+- Adding a keyboard layout lists every layout the system has, including
+  EurKEY, APL, the phonetic alphabet and the layouts in your own XKB rules,
+  grouped with their variants, named in Vela's language and found by name,
+  language or country. Settings allows up to four layouts, as many as Vela
+  can switch between.
+
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
   normal installation.

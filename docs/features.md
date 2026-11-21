@@ -103,8 +103,10 @@ see the [roadmap](roadmap.md).
   sends a notification when an update is available ([design](updates.md)).
 - **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
   **Time and language**: date, time and language.
-- **Keyboard**: layouts, with where the layout in use comes from when none is
-  chosen, and key repeat ([design](keyboard.md)).
+- **Keyboard**: every layout the system has (extras and the user's own
+  included), named in Vela's language and found by name, language or
+  country; where the layout in use comes from when none is chosen; key
+  repeat ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming

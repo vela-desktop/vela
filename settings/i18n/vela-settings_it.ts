@@ -1792,6 +1792,10 @@ Specifiche sistema
         <translation>XKB_DEFAULT_LAYOUT sceglie %1. Vale al posto dei layout qui sotto finché non viene tolta.</translation>
     </message>
     <message>
+        <source>Vela can switch between up to %1 layouts: remove one to add another.</source>
+        <translation>Vela può passare fra al massimo %1 layout: togline uno per aggiungerne un altro.</translation>
+    </message>
+    <message>
         <source>Win+Space to switch between layouts</source>
         <translation>Win+Spazio per passare da un layout all&apos;altro</translation>
     </message>
@@ -1816,8 +1820,24 @@ Specifiche sistema
         <translation>Annulla</translation>
     </message>
     <message>
-        <source>Search (e.g. Italian, English)</source>
-        <translation>Cerca (es. Italian, English)</translation>
+        <source>Search by name, language or country</source>
+        <translation>Cerca per nome, lingua o paese</translation>
+    </message>
+    <message>
+        <source>No layout found</source>
+        <translation>Nessun layout trovato</translation>
+    </message>
+    <message>
+        <source>Added</source>
+        <translation>Aggiunto</translation>
+    </message>
+    <message>
+        <source>Hide variants</source>
+        <translation>Nascondi le varianti</translation>
+    </message>
+    <message>
+        <source>Show variants</source>
+        <translation>Mostra le varianti</translation>
     </message>
 </context>
 <context>
