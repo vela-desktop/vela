@@ -108,6 +108,7 @@ struct vela_input {
     struct wlr_pointer_constraint_v1 *active_constraint;
     struct wlr_keyboard_shortcuts_inhibit_manager_v1 *shortcuts_inhibit;
     struct wl_event_source *paste_timer;
+    const char *cursor_shape; // last theme shape requested by an app, NULL for a surface cursor
 
     struct wl_listener new_input;
     struct wl_listener new_virtual_pointer;
@@ -144,6 +145,7 @@ void vela_input_destroy(struct vela_input *input);
 // Rereads vela.conf ("reload-config"): keyboard layouts and repeat, mice and
 // touchpads.
 void vela_input_reload(struct vela_input *input);
+void vela_input_reload_cursor(struct vela_input *input, const char *theme);
 
 void vela_input_hide_super_hints(struct vela_input *input);
 bool vela_input_has_touchpad(const struct vela_input *input);

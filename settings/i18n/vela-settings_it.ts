@@ -3988,6 +3988,38 @@ Specifiche sistema
         <source>Vela uses what it can and skips the rest</source>
         <translation>Vela usa quello che può e salta il resto</translation>
     </message>
+    <message>
+        <source>System appearance</source>
+        <translation>Aspetto del sistema</translation>
+    </message>
+    <message>
+        <source>System font</source>
+        <translation>Font di sistema</translation>
+    </message>
+    <message>
+        <source>Font used by KDE and Qt applications</source>
+        <translation>Font usato dalle applicazioni KDE e Qt</translation>
+    </message>
+    <message>
+        <source>Find a font</source>
+        <translation>Cerca un font</translation>
+    </message>
+    <message>
+        <source>Icon theme</source>
+        <translation>Tema delle icone</translation>
+    </message>
+    <message>
+        <source>Icons used across KDE and Qt applications</source>
+        <translation>Icone usate nelle applicazioni KDE e Qt</translation>
+    </message>
+    <message>
+        <source>Cursor theme</source>
+        <translation>Tema del cursore</translation>
+    </message>
+    <message>
+        <source>Pointer style used across the desktop</source>
+        <translation>Stile del puntatore usato nel desktop</translation>
+    </message>
 </context>
 <context>
     <name>TimeLanguagePage</name>

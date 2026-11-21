@@ -415,7 +415,7 @@ Item {
                             Image {
                                 anchors.fill: parent
                                 visible: row.entry.checked === undefined && !!row.entry.icon
-                                source: row.entry.icon
+                                source: Theme.versionedIcon(row.entry.icon)
                                     ? (row.entry.icon.indexOf(":") > 0 ? row.entry.icon : Theme.icons + encodeURIComponent(row.entry.icon))
                                     : ""
                                 sourceSize: Qt.size(width, height)

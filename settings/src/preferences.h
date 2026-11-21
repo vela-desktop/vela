@@ -43,6 +43,13 @@ class Preferences : public QObject {
     Q_PROPERTY(QString shellTheme READ shellTheme WRITE setShellTheme NOTIFY appThemeChanged)
     // Settings itself is light (it follows the apps' mode).
     Q_PROPERTY(bool light READ light NOTIFY appThemeChanged)
+    Q_PROPERTY(QString systemFont READ systemFont WRITE setSystemFont NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QStringList systemFonts READ systemFonts CONSTANT)
+    Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QStringList iconThemes READ iconThemes CONSTANT)
+    Q_PROPERTY(QString cursorTheme READ cursorTheme WRITE setCursorTheme NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QStringList cursorThemes READ cursorThemes CONSTANT)
+    Q_PROPERTY(bool desktopThemesAvailable READ desktopThemesAvailable CONSTANT)
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarPosition READ taskbarPosition WRITE setTaskbarPosition NOTIFY taskbarChanged)
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
@@ -192,6 +199,16 @@ public:
     QString shellTheme() const { return m_shellTheme; }
     void setShellTheme(const QString& theme);
     bool light() const { return m_appTheme == QLatin1String("light"); }
+    QString systemFont() const;
+    QStringList systemFonts() const;
+    void setSystemFont(const QString& family);
+    QString iconTheme() const;
+    QStringList iconThemes() const;
+    void setIconTheme(const QString& theme);
+    QString cursorTheme() const;
+    QStringList cursorThemes() const;
+    void setCursorTheme(const QString& theme);
+    bool desktopThemesAvailable() const;
 
     QString taskbarAlignment() const { return m_taskbarAlignment; }
     void setTaskbarAlignment(const QString& alignment);
@@ -398,6 +415,7 @@ signals:
     void wallpaperChanged();
     void accentChanged();
     void appThemeChanged();
+    void desktopThemesChanged();
     void taskbarChanged();
     void desktopChanged();
     void menusChanged();

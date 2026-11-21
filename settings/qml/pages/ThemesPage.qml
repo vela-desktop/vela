@@ -14,6 +14,9 @@ import Vela.Controls
 // Start).
 Page {
     id: page
+    property string fontFilter
+    readonly property var visibleFonts: fontFilter.trim() === "" ? Prefs.systemFonts
+        : Prefs.systemFonts.filter(name => name.toLowerCase().includes(fontFilter.trim().toLowerCase()))
     // The theme in use, as the shell takes it (themefile.h): its tokens and
     // what is wrong in it; again when a theme file changes (themesRevision).
     readonly property var resolved: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme) }
@@ -83,5 +86,49 @@ Page {
         }
         OwnThemesCard {}
         ResetThemesCard {}
+    }
+
+    CardGroup {
+        title: qsTr("System appearance")
+        Card {
+            icon: "preferences-desktop-font"
+            title: qsTr("System font")
+            description: qsTr("Font used by KDE and Qt applications")
+            trailing: Choice {
+                width: 220
+                usable: Prefs.desktopThemesAvailable && page.visibleFonts.length > 0
+                model: page.visibleFonts
+                currentIndex: page.visibleFonts.indexOf(Prefs.systemFont)
+                onChosen: index => Prefs.systemFont = page.visibleFonts[index]
+            }
+            contentItem: TextBox {
+                width: parent.width
+                placeholderText: qsTr("Find a font")
+                text: page.fontFilter
+                onTextChanged: page.fontFilter = text
+            }
+        }
+        Card {
+            icon: "preferences-desktop-icons"
+            title: qsTr("Icon theme")
+            description: qsTr("Icons used across KDE and Qt applications")
+            trailing: Choice {
+                usable: Prefs.desktopThemesAvailable && Prefs.iconThemes.length > 0
+                model: Prefs.iconThemes
+                currentIndex: Prefs.iconThemes.indexOf(Prefs.iconTheme)
+                onChosen: index => Prefs.iconTheme = Prefs.iconThemes[index]
+            }
+        }
+        Card {
+            icon: "preferences-desktop-cursor"
+            title: qsTr("Cursor theme")
+            description: qsTr("Pointer style used across the desktop")
+            trailing: Choice {
+                usable: Prefs.desktopThemesAvailable && Prefs.cursorThemes.length > 0
+                model: Prefs.cursorThemes
+                currentIndex: Prefs.cursorThemes.indexOf(Prefs.cursorTheme)
+                onChosen: index => Prefs.cursorTheme = Prefs.cursorThemes[index]
+            }
+        }
     }
 }

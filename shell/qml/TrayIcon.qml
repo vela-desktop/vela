@@ -46,7 +46,7 @@ Item {
         anchors.centerIn: parent
         width: 18
         height: 18
-        source: root.entry.icon
+        source: Theme.versionedIcon(root.entry.icon)
         sourceSize: Qt.size(width, height)
         smooth: true
         mipmap: true

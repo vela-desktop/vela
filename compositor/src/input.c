@@ -22,6 +22,8 @@
 #include "util.h"
 
 #include <math.h>
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/config.h>
@@ -54,6 +56,55 @@
 #define SWIPE_THRESHOLD 90.0
 // "Switch app": one step per this much movement.
 #define APP_STEP 140.0
+
+static bool valid_cursor_theme(const char *theme)
+{
+    if (!theme || !*theme || strcmp(theme, ".") == 0 || strcmp(theme, "..") == 0 || strchr(theme, '/')) {
+        return false;
+    }
+    for (const unsigned char *p = (const unsigned char *)theme; *p; ++p) {
+        if (*p < 32 || *p == 127) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static char *configured_cursor_theme(void)
+{
+    const char *config = getenv("XDG_CONFIG_HOME");
+    const char *home = getenv("HOME");
+    char path[PATH_MAX];
+    if (config && *config) {
+        snprintf(path, sizeof(path), "%s/kcminputrc", config);
+    } else if (home) {
+        snprintf(path, sizeof(path), "%s/.config/kcminputrc", home);
+    } else {
+        return NULL;
+    }
+    FILE *file = fopen(path, "r");
+    if (!file) {
+        return NULL;
+    }
+    char *line = NULL;
+    size_t capacity = 0;
+    bool mouse = false;
+    char *theme = NULL;
+    while (getline(&line, &capacity, file) >= 0) {
+        if (line[0] == '[') {
+            mouse = strcmp(line, "[Mouse]\n") == 0 || strcmp(line, "[Mouse]\r\n") == 0;
+        } else if (mouse && strncmp(line, "cursorTheme=", 12) == 0) {
+            line[strcspn(line, "\r\n")] = '\0';
+            if (valid_cursor_theme(line + 12)) {
+                theme = strdup(line + 12);
+            }
+            break;
+        }
+    }
+    free(line);
+    fclose(file);
+    return theme;
+}
 
 // A mouse or a touchpad.
 struct vela_pointer {
@@ -602,6 +653,7 @@ static void handle_request_set_cursor(struct wl_listener *listener, void *data)
     struct vela_input *input = wl_container_of(listener, input, request_set_cursor);
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     if (input->server->seat->pointer_state.focused_client == event->seat_client) {
+        input->cursor_shape = event->surface ? NULL : "default";
         wlr_cursor_set_surface(input->server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
     }
 }
@@ -614,7 +666,8 @@ static void handle_request_set_shape(struct wl_listener *listener, void *data)
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
     struct vela_server *server = input->server;
     if (event->seat_client == server->seat->pointer_state.focused_client) {
-        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, wlr_cursor_shape_v1_name(event->shape));
+        input->cursor_shape = wlr_cursor_shape_v1_name(event->shape);
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, input->cursor_shape);
     }
 }
 
@@ -823,8 +876,10 @@ struct vela_input *vela_input_create(struct vela_server *server)
 
     server->cursor = VELA_MUST(wlr_cursor_create());
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
-    server->cursor_manager
-        = VELA_MUST(wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24)));
+    char *cursor_theme = configured_cursor_theme();
+    server->cursor_manager = wlr_xcursor_manager_create(
+        cursor_theme ? cursor_theme : getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24));
+    free(cursor_theme);
 
     // Games and apps that want the mouse to themselves.
     input->relative_pointers = VELA_MUST(wlr_relative_pointer_manager_v1_create(display));
@@ -929,4 +984,26 @@ void vela_input_destroy(struct vela_input *input)
         wl_list_remove(&listeners[i]->link);
     }
     free(input);
+}
+
+void vela_input_reload_cursor(struct vela_input *input, const char *theme)
+{
+    if (!input || !valid_cursor_theme(theme)) {
+        return;
+    }
+    struct vela_server *server = input->server;
+    struct wlr_xcursor_manager *manager
+        = wlr_xcursor_manager_create(theme, (uint32_t)vela_env_int("XCURSOR_SIZE", 24));
+    if (!manager) {
+        wlr_log(WLR_ERROR, "Settings: could not load cursor theme %s", theme);
+        return;
+    }
+    struct wlr_xcursor_manager *old = server->cursor_manager;
+    server->cursor_manager = manager;
+    const char *shape = server->interaction && server->interaction->cursor
+        ? server->interaction->cursor : input->cursor_shape;
+    if (shape) {
+        wlr_cursor_set_xcursor(server->cursor, manager, shape);
+    }
+    wlr_xcursor_manager_destroy(old);
 }
