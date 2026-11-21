@@ -10,6 +10,10 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Closing a laptop lid with an active external display temporarily turns off
+  the built-in panel. Reopening the lid restores its display settings.
+  System suspend on lid close follows the system's logind policy.
+
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
   normal installation.
