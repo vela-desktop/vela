@@ -11,6 +11,7 @@
 #include "buffer.h"
 #include "decoration.h"
 #include "input.h"
+#include "icons.h"
 #include "layer.h"
 #include "lock.h"
 #include "output.h"
@@ -580,6 +581,10 @@ static void run_command(struct vela_server *server, const char *line)
         brightness(server, line + 11);
     } else if (starts_with(line, "reload-cursor ")) {
         vela_input_reload_cursor(server->input, line + 14);
+    } else if (strcmp(line, "reload-icons") == 0) {
+        vela_icons_destroy(server->icons);
+        server->icons = NULL;
+        vela_views_refresh_decoration_icons(server);
     } else if (strcmp(line, "reload-font") == 0) {
         vela_text_destroy(server->text);
         server->text = NULL;

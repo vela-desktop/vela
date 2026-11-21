@@ -1193,5 +1193,6 @@ void vela_input_reload_cursor(struct vela_input *input, const char *theme)
     if (shape) {
         wlr_cursor_set_xcursor(server->cursor, manager, shape);
     }
+    vela_xwayland_reload_cursor(server);
     wlr_xcursor_manager_destroy(old);
 }

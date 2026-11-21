@@ -335,6 +335,20 @@ static struct vela_icons *icon_loader(struct vela_server *server)
     return server->icons;
 }
 
+static void update_icon(struct vela_decoration *decoration, const struct vela_decoration_state *state)
+{
+    int pixels = vela_max(1, (int)lround(VELA_DECORATION_ICON_SIZE * state->scale));
+    // Keep a copy: the loader's cache may evict its entry while this bar uses it.
+    struct vela_image icon = { 0 };
+    decoration->has_icon = vela_icons_app(icon_loader(decoration->server), state->app_id, pixels, &icon);
+    if (decoration->has_icon) {
+        set_image(decoration, &decoration->icon, &icon, VELA_DECORATION_ICON_X,
+            (HEIGHT - VELA_DECORATION_ICON_SIZE) / 2.0, VELA_DECORATION_ICON_SIZE, VELA_DECORATION_ICON_SIZE);
+    } else {
+        clear_image(&decoration->icon);
+    }
+}
+
 static void layout_buttons(struct vela_decoration *decoration)
 {
     for (int i = 0; i < 3; ++i) {
@@ -394,17 +408,7 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
 
     // The app icon, drawn at the exact physical size (§9.6).
     if (rescaled || new_app) {
-        int pixels = vela_max(1, (int)lround(VELA_DECORATION_ICON_SIZE * scale));
-        // A copy of its own: the icon cache may evict the entry while this
-        // bar still shows it (icons.h).
-        struct vela_image icon = { 0 };
-        decoration->has_icon = vela_icons_app(icon_loader(server), state->app_id, pixels, &icon);
-        if (decoration->has_icon) {
-            set_image(decoration, &decoration->icon, &icon, VELA_DECORATION_ICON_X,
-                (HEIGHT - VELA_DECORATION_ICON_SIZE) / 2.0, VELA_DECORATION_ICON_SIZE, VELA_DECORATION_ICON_SIZE);
-        } else {
-            clear_image(&decoration->icon);
-        }
+        update_icon(decoration, state);
     }
     if (decoration->icon.node) {
         vela_node_set_opacity(&decoration->icon.node->node, active ? 1.0f : 0.6f);
@@ -501,6 +505,11 @@ void vela_decoration_refresh_text(struct vela_decoration *decoration, const stru
     free(decoration->title_text);
     decoration->title_text = NULL;
     vela_decoration_update(decoration, state);
+}
+
+void vela_decoration_refresh_icon(struct vela_decoration *decoration, const struct vela_decoration_state *state)
+{
+    update_icon(decoration, state);
 }
 
 struct vela_decoration *vela_decoration_create(struct vela_server *server, struct vela_tree *parent,

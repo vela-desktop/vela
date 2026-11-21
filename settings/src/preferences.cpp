@@ -823,6 +823,7 @@ void Preferences::setIconTheme(const QString& theme)
         return;
     }
     applyIconTheme(m_appTheme == QLatin1String("light"));
+    sendToCompositor("reload-icons");
     emit desktopThemesChanged();
 }
 
