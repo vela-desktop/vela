@@ -208,6 +208,10 @@ private slots:
     void optionsChangeTheKeys()
     {
         KeyboardPreview preview;
+        QVERIFY(preview.typesOnAltGr(QStringLiteral("it"), QString()));
+        QVERIFY(preview.typesOnAltGr(QStringLiteral("us"), QStringLiteral("intl")));
+        QVERIFY(!preview.typesOnAltGr(QStringLiteral("us"), QString()));
+        QVERIFY(!preview.typesOnAltGr(QStringLiteral("no-such-layout"), QString()));
         QVERIFY(preview.show(QStringLiteral("us"), QString(), QStringLiteral("ctrl:swap_lalt_lctl")));
         QCOMPARE(labels(preview, QStringLiteral("LALT")).first(), QStringLiteral("Ctrl"));
         QCOMPARE(labels(preview, QStringLiteral("LCTL")).first(), QStringLiteral("Alt"));

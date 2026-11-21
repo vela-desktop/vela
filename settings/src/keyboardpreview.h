@@ -56,6 +56,9 @@ public:
     // ("backspace", "delete", "left", "right", "home", "end",
     // "select-all", "copy", "cut", "paste"); both empty for nothing.
     Q_INVOKABLE QVariantMap key(quint32 keycode, bool pressed, bool autoRepeat);
+    // Whether the layout types characters on AltGr (Settings warns before
+    // Compose takes Right Alt).
+    Q_INVOKABLE bool typesOnAltGr(const QString& layout, const QString& variant);
     // Lets go of every key: the field lost the focus.
     Q_INVOKABLE void reset();
     // The clipboard's text, for a paste into the read-only field.

@@ -1941,6 +1941,10 @@ Specifiche sistema
 <context>
     <name>KeyboardTypingPage</name>
     <message>
+        <source>Custom (vela.conf)</source>
+        <translation>Personalizzato (vela.conf)</translation>
+    </message>
+    <message>
         <source>Key repeat</source>
         <translation>Ripetizione dei tasti</translation>
     </message>
@@ -1967,6 +1971,110 @@ Specifiche sistema
     <message>
         <source>Hold a key down here</source>
         <translation>Tieni premuto un tasto qui</translation>
+    </message>
+    <message>
+        <source>Keys</source>
+        <translation>Tasti</translation>
+    </message>
+    <message>
+        <source>Caps Lock key</source>
+        <translation>Tasto Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Used as the Compose key</source>
+        <translation>Usato come tasto Compose</translation>
+    </message>
+    <message>
+        <source>An option in vela.conf changes this key</source>
+        <translation>Un&apos;opzione in vela.conf cambia questo tasto</translation>
+    </message>
+    <message>
+        <source>Caps Lock</source>
+        <translation>Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation>Ctrl</translation>
+    </message>
+    <message>
+        <source>Esc</source>
+        <translation>Esc</translation>
+    </message>
+    <message>
+        <source>Backspace</source>
+        <translation>Backspace</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Compose key</source>
+        <translation>Tasto Compose</translation>
+    </message>
+    <message>
+        <source>Your layout types characters with AltGr, which is Right Alt: they need another AltGr key now.</source>
+        <translation>Il tuo layout scrive caratteri con AltGr, che è Alt destro: ora serve un altro tasto AltGr per scriverli.</translation>
+    </message>
+    <message>
+        <source>Press it, then two keys, to type a character such as é or ©</source>
+        <translation>Premilo, poi due tasti, per scrivere un carattere come é o ©</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>Nessuno</translation>
+    </message>
+    <message>
+        <source>Right Alt</source>
+        <translation>Alt destro</translation>
+    </message>
+    <message>
+        <source>Right Win</source>
+        <translation>Win destro</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>Menu</translation>
+    </message>
+    <message>
+        <source>Right Ctrl</source>
+        <translation>Ctrl destro</translation>
+    </message>
+    <message>
+        <source>Scroll Lock</source>
+        <translation>Bloc Scorr</translation>
+    </message>
+    <message>
+        <source>Bottom-left keys</source>
+        <translation>Tasti in basso a sinistra</translation>
+    </message>
+    <message>
+        <source>The left Ctrl, Win and Alt; the right ones stay as they are</source>
+        <translation>Ctrl, Win e Alt di sinistra; quelli di destra restano come sono</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>Swap Ctrl and Alt</source>
+        <translation>Scambia Ctrl e Alt</translation>
+    </message>
+    <message>
+        <source>Swap Alt and Win (Mac keyboards)</source>
+        <translation>Scambia Alt e Win (tastiere Mac)</translation>
+    </message>
+    <message>
+        <source>Numeric keypad always types digits</source>
+        <translation>Il tastierino numerico scrive sempre cifre</translation>
+    </message>
+    <message>
+        <source>An option in vela.conf changes the keypad</source>
+        <translation>Un&apos;opzione in vela.conf cambia il tastierino</translation>
+    </message>
+    <message>
+        <source>Whatever Num Lock says, like on a Mac</source>
+        <translation>Qualunque sia lo stato di Bloc Num, come su un Mac</translation>
     </message>
 </context>
 <context>
@@ -2362,6 +2470,38 @@ Specifiche sistema
     <message>
         <source>key repeat delay rate typing hold</source>
         <translation>ripetizione tasti ritardo velocità digitazione tenere premuto</translation>
+    </message>
+    <message>
+        <source>Caps Lock key</source>
+        <translation>Tasto Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>caps lock ctrl escape esc backspace disable remap</source>
+        <translation>bloc maiusc caps lock ctrl esc backspace disattiva rimappa</translation>
+    </message>
+    <message>
+        <source>Compose key</source>
+        <translation>Tasto Compose</translation>
+    </message>
+    <message>
+        <source>compose accents special characters right alt menu</source>
+        <translation>compose accenti caratteri speciali alt destro menu</translation>
+    </message>
+    <message>
+        <source>Swap Ctrl, Alt and Win</source>
+        <translation>Scambia Ctrl, Alt e Win</translation>
+    </message>
+    <message>
+        <source>swap ctrl alt win mac keyboard command option modifiers</source>
+        <translation>scambia ctrl alt win tastiera mac command option modificatori</translation>
+    </message>
+    <message>
+        <source>Numeric keypad</source>
+        <translation>Tastierino numerico</translation>
+    </message>
+    <message>
+        <source>numeric keypad numpad digits num lock</source>
+        <translation>tastierino numerico cifre bloc num num lock</translation>
     </message>
     <message>
         <source>Choose your password manager</source>

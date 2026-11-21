@@ -42,7 +42,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `update-check-interval` | `24` | Hours between automatic checks: `6`, `12`, `24`, `48` or `168` (7 days). Set in Settings > System > Updates; invalid values fall back to 24 hours. |
 | `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. Empty: systemd-localed's layout (`localectl`), then `us`; other desktops' settings are not read. Settings > Keyboard > Layouts. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
-| `keyboard-options` | empty | XKB options. |
+| `keyboard-options` | system | XKB options, comma-separated. When the key is present, even empty, these are the options and systemd-localed's are not used; Settings > Keyboard > Typing writes its Caps Lock, Compose, bottom-left and keypad choices here and keeps the other options. |
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |

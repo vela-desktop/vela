@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP4 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP5 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** stages KP5–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP6–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -288,15 +288,26 @@ Rules:
 - **PrtSc is not offered** for Compose: it opens the snipping tool.
 - **Num Lock at startup** (§7) is disabled while the keypad always types
   digits, with a note.
-- **Other options are kept.** Settings owns only the options in the table
-  and rewrites only those in `keyboard-options`; any other option a user
-  wrote there stays. When `keyboard-options` already holds an option that
-  changes the same keys (for example `ctrl:swapcaps`), the control shows
+- **Other options are kept.** Each control owns one kind of option
+  (`settings/src/keyboardoptions.h`): the Caps Lock key's (`caps:*`,
+  `ctrl:nocaps`, `ctrl:swapcaps`…), Compose's (`compose:*`), the
+  bottom-left keys' (`ctrl:swap_*`, `altwin:swap_*`…) and the keypad's
+  (`numpad:*`). A choice replaces its kind's options and keeps every other
+  option. When an option of its kind is one the control doesn't offer, or
+  there are several (for example `ctrl:swapcaps`), the control shows
   *Custom (vela.conf)* until the user picks a choice, which replaces it.
-- The forced `grp:win_space_toggle` (§3) is unchanged.
+- **Whose options.** The compositor uses vela.conf's `keyboard-options`
+  whenever the key is there, even empty, and systemd-localed's options
+  only while it isn't, whichever source the layout comes from
+  (`compositor/src/keymap_options.c`). Settings shows the system's options
+  until the first choice, then writes the whole list, the system's other
+  options included, so nothing is lost when Settings takes over.
+- **Win+Space.** With several layouts and no layout-switch option
+  (`grp:`), `grp:win_space_toggle` is added, now for the system's layouts
+  too.
 
 The changes apply at once through `reload-config`, to every keyboard, and
-the try field of §5.4 uses them too.
+the drawing and try field of §5.4 use them too.
 
 ## 7. Num Lock at startup
 
@@ -573,7 +584,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). Done. |
 | KP3 | Flags (§5.3). Done. |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). Done. |
-| KP5 | Key behavior (§6). |
+| KP5 | Key behavior (§6). Done. |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). |
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). |
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). |

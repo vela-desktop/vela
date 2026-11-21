@@ -213,6 +213,45 @@ bool isEditKey(xkb_keysym_t sym, QString* action)
     }
 }
 
+// AltGr: a level 3 that types something of its own on a key of the main
+// block, other than the key left of Shift (us gives it | on level 3 though
+// few keyboards have it).
+bool typesOnLevel3(xkb_keymap* keymap)
+{
+    for (const Cap& cap : shapeOf(QStringLiteral("iso"))) {
+        const xkb_keycode_t key = xkb_keymap_key_by_name(keymap, cap.name.constData());
+        if (key == XKB_KEYCODE_INVALID || cap.name == "LSGT" || xkb_keymap_num_levels_for_key(keymap, key, 0) < 3) {
+            continue;
+        }
+        const xkb_keysym_t* third = nullptr;
+        const xkb_keysym_t* first = nullptr;
+        if (xkb_keymap_key_get_syms_by_level(keymap, key, 0, 2, &third) == 1
+            && xkb_keymap_key_get_syms_by_level(keymap, key, 0, 0, &first) == 1 && third[0] != first[0]) {
+            const char32_t code = xkb_keysym_to_utf32(third[0]);
+            if ((code > 0x20 && code != 0x7f) || !deadMark(third[0]).isEmpty()) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// The keymap of a layout with XKB options, or null.
+xkb_keymap* compile(xkb_context* context, const QString& layout, const QString& variant, const QString& options)
+{
+    if (!context) {
+        return nullptr;
+    }
+    const QByteArray layoutName = layout.toUtf8();
+    const QByteArray variantName = variant.toUtf8();
+    const QByteArray optionNames = options.toUtf8();
+    xkb_rule_names names {};
+    names.layout = layoutName.constData();
+    names.variant = variantName.isEmpty() ? nullptr : variantName.constData();
+    names.options = optionNames.isEmpty() ? nullptr : optionNames.constData();
+    return xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+}
+
 } // namespace
 
 KeyboardPreview::KeyboardPreview(QObject* parent)
@@ -250,17 +289,7 @@ QString KeyboardPreview::usualShape(const QString& layout)
 
 bool KeyboardPreview::show(const QString& layout, const QString& variant, const QString& options)
 {
-    if (!m_context) {
-        return false;
-    }
-    const QByteArray layoutName = layout.toUtf8();
-    const QByteArray variantName = variant.toUtf8();
-    const QByteArray optionNames = options.toUtf8();
-    xkb_rule_names names {};
-    names.layout = layoutName.constData();
-    names.variant = variantName.isEmpty() ? nullptr : variantName.constData();
-    names.options = optionNames.isEmpty() ? nullptr : optionNames.constData();
-    xkb_keymap* keymap = xkb_keymap_new_from_names(m_context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    xkb_keymap* keymap = compile(m_context, layout, variant, options);
     if (!keymap) {
         return false;
     }
@@ -269,30 +298,19 @@ bool KeyboardPreview::show(const QString& layout, const QString& variant, const 
     m_layout = layout;
     m_variant = variant;
     m_shape = usualShape(layout);
-    // AltGr: a level 3 that types something of its own on a key of the main
-    // block, other than the key left of Shift (us gives it | on level 3
-    // though few keyboards have it).
-    m_altGr = false;
-    for (const Cap& cap : shapeOf(QStringLiteral("iso"))) {
-        const xkb_keycode_t key = xkb_keymap_key_by_name(keymap, cap.name.constData());
-        if (key == XKB_KEYCODE_INVALID || cap.name == "LSGT" || xkb_keymap_num_levels_for_key(keymap, key, 0) < 3) {
-            continue;
-        }
-        const xkb_keysym_t* third = nullptr;
-        const xkb_keysym_t* first = nullptr;
-        if (xkb_keymap_key_get_syms_by_level(keymap, key, 0, 2, &third) == 1
-            && xkb_keymap_key_get_syms_by_level(keymap, key, 0, 0, &first) == 1 && third[0] != first[0]) {
-            const char32_t code = xkb_keysym_to_utf32(third[0]);
-            if ((code > 0x20 && code != 0x7f) || !deadMark(third[0]).isEmpty()) {
-                m_altGr = true;
-                break;
-            }
-        }
-    }
+    m_altGr = typesOnLevel3(keymap);
     resetState();
     emit keymapChanged();
     emit keysChanged();
     return true;
+}
+
+bool KeyboardPreview::typesOnAltGr(const QString& layout, const QString& variant)
+{
+    xkb_keymap* keymap = compile(m_context, layout, variant, QString());
+    const bool types = keymap && typesOnLevel3(keymap);
+    xkb_keymap_unref(keymap);
+    return types;
 }
 
 void KeyboardPreview::setShape(const QString& shape)

@@ -107,7 +107,8 @@ see the [roadmap](roadmap.md).
   included), with its country's flag, named in Vela's language and found
   by name, language or country, drawn and tried by typing before it is
   added; where the layout in use comes from when none is chosen; key
-  repeat ([design](keyboard.md)).
+  repeat; what the Caps Lock key does, a Compose key, swapped Ctrl, Alt
+  and Win, a keypad that always types digits ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming

@@ -1017,6 +1017,48 @@ private slots:
         QVERIFY(QString::fromUtf8(file.readAll()).contains(QStringLiteral("screen-off=3")));
     }
 
+    void keyChoicesRewriteOnlyTheirOptions()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(writeFile(
+            QStringLiteral("config/vela/vela.conf"), "keyboard-options=terminate:ctrl_alt_bksp,ctrl:swapcaps\n"));
+        Preferences prefs;
+        QCOMPARE(prefs.capsKey(), QStringLiteral("custom"));
+        QCOMPARE(prefs.composeKey(), QStringLiteral("none"));
+        QSignalSpy changed(&prefs, &Preferences::keyboardChanged);
+        prefs.setCapsKey(QStringLiteral("escape"));
+        QCOMPARE(prefs.capsKey(), QStringLiteral("escape"));
+        QCOMPARE(changed.count(), 1);
+        const auto conf = [&] {
+            QFile file(dir + QStringLiteral("/vela.conf"));
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        QVERIFY(conf().contains("keyboard-options=terminate:ctrl_alt_bksp,caps:escape\n"));
+        // Compose on Caps Lock takes the key from Caps Lock.
+        prefs.setComposeKey(QStringLiteral("caps"));
+        QCOMPARE(prefs.composeKey(), QStringLiteral("caps"));
+        QCOMPARE(prefs.capsKey(), QStringLiteral("capslock"));
+        prefs.setCornerKeys(QStringLiteral("alt-win"));
+        prefs.setNumpadKeys(QStringLiteral("digits"));
+        QCOMPARE(prefs.keyboardOptions(),
+            QStringLiteral("terminate:ctrl_alt_bksp,compose:caps,altwin:swap_lalt_lwin,numpad:mac"));
+        // The same value again, or one no control offers: nothing written.
+        const int before = changed.count();
+        prefs.setNumpadKeys(QStringLiteral("digits"));
+        prefs.setCornerKeys(QStringLiteral("custom"));
+        QCOMPARE(changed.count(), before);
+        // Back to the defaults: the key stays, empty of what Settings owns.
+        prefs.setComposeKey(QStringLiteral("none"));
+        prefs.setCornerKeys(QStringLiteral("standard"));
+        prefs.setNumpadKeys(QStringLiteral("default"));
+        QVERIFY(conf().contains("keyboard-options=terminate:ctrl_alt_bksp\n"));
+        // A fresh read gives the same.
+        Preferences again;
+        QCOMPARE(again.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp"));
+        QCOMPARE(again.capsKey(), QStringLiteral("capslock"));
+    }
+
     void atMostFourKeyboardLayouts()
     {
         const QString dir = home().filePath(QStringLiteral("config/vela"));

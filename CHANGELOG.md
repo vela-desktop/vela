@@ -26,6 +26,12 @@ under "Unreleased" in the pull request that makes a user-visible change.
   test field, dead keys and Compose included, without changing the layout
   in use. Installed layouts have the same Preview.
 
+- Settings > Keyboard > Typing chooses what the Caps Lock key does (Ctrl,
+  Esc, Backspace or nothing), a Compose key, swapped Ctrl and Alt or Alt
+  and Win, and a numeric keypad that always types digits. Other XKB
+  options in vela.conf are kept. The system's XKB options (localectl) now
+  apply with layouts chosen in Settings too, until Settings changes one.
+
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
   normal installation.

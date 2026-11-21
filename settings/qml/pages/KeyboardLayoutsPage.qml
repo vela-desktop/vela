@@ -114,7 +114,7 @@ Page {
             opened = o
         }
         function choose(layout, variant) {
-            if (Preview.show(layout, variant)) {
+            if (Preview.show(layout, variant, Prefs.keyboardOptions)) {
                 selected = { layout: layout, variant: variant }
                 tryField.text = ""
             }

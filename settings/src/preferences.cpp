@@ -5,6 +5,7 @@
 #include "preferences.h"
 
 #include "keyboardlayouts.h"
+#include "keyboardoptions.h"
 
 #include "../../common/taskbarsettings.h"
 #include "../../common/privatefile.h"
@@ -335,6 +336,18 @@ void Preferences::reloadCompositor()
     for (qsizetype i = 0; i < layouts.size(); ++i) {
         m_layouts.append(QVariantMap { { QStringLiteral("layout"), layouts[i].trimmed() },
             { QStringLiteral("variant"), i < variants.size() ? variants[i].trimmed() : QString() } });
+    }
+    // The options the compositor uses: vela.conf's when it has the key, even
+    // empty, the system's until then (compositor/src/keymap_options.c).
+    const bool ownOptions = std::any_of(m_compositor.cbegin(), m_compositor.cend(),
+        [](const auto& entry) { return entry.first == QLatin1String("keyboard-options"); });
+    if (ownOptions) {
+        m_keyboardOptions = vela::keyboardoptions::split(compositorValue(QStringLiteral("keyboard-options")));
+    } else {
+        QFile localed(QStringLiteral("/etc/X11/xorg.conf.d/00-keyboard.conf"));
+        m_keyboardOptions = localed.open(QIODevice::ReadOnly)
+            ? vela::keyboardoptions::fromLocaled(QString::fromUtf8(localed.read(64 * 1024)))
+            : QStringList();
     }
     m_repeatDelay = value(QStringLiteral("keyboard-repeat-delay"), QStringLiteral("400")).toInt();
     m_repeatRate = value(QStringLiteral("keyboard-repeat-rate"), QStringLiteral("30")).toInt();
@@ -1119,6 +1132,8 @@ bool Preferences::saveCompositorKeys(const QStringList& keys)
                 values << value.toMap()[key == QLatin1String("keyboard-layout") ? QStringLiteral("layout") : QStringLiteral("variant")].toString();
             }
             changes.append({ key, values.join(u',') });
+        } else if (key == QLatin1String("keyboard-options")) {
+            changes.append({ key, m_keyboardOptions.join(u',') });
         } else if (key == QLatin1String("keyboard-repeat-delay")) {
             changes.append({ key, QString::number(m_repeatDelay) });
         } else if (key == QLatin1String("keyboard-repeat-rate")) {
@@ -1467,6 +1482,63 @@ void Preferences::moveKeyboardLayoutUp(int index)
         }
         emit keyboardChanged();
     }
+}
+
+QString Preferences::capsKey() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Caps);
+}
+
+QString Preferences::composeKey() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Compose);
+}
+
+QString Preferences::cornerKeys() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Corner);
+}
+
+QString Preferences::numpadKeys() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Numpad);
+}
+
+void Preferences::setCapsKey(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Caps), value);
+}
+
+void Preferences::setComposeKey(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Compose), value);
+}
+
+void Preferences::setCornerKeys(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Corner), value);
+}
+
+void Preferences::setNumpadKeys(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Numpad), value);
+}
+
+// Writes the whole option list to vela.conf, the system's options it was
+// showing included, so the compositor then takes Settings' alone.
+void Preferences::setKeyChoice(int control, const QString& value)
+{
+    const auto which = vela::keyboardoptions::Control(control);
+    if (value == vela::keyboardoptions::value(m_keyboardOptions, which)) {
+        return;
+    }
+    const QStringList previous = m_keyboardOptions;
+    m_keyboardOptions = vela::keyboardoptions::withValue(previous, which, value);
+    if (m_keyboardOptions == previous) {
+        return; // a value the control doesn't offer
+    }
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("keyboard-options") }), m_keyboardOptions, previous);
+    emit keyboardChanged();
 }
 
 void Preferences::setRepeatDelay(int ms)

@@ -131,6 +131,7 @@ add_library(vela-pure STATIC
     src/frame_clock.c
     src/geometry.c
     src/icon_cache.c
+    src/keymap_options.c
     src/legacy_names.c
     src/lock_state.c
     src/motion.c
@@ -679,6 +680,7 @@ if(VELA_BUILD_TOOLS)
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
             tests/super_numbers_test.cpp
+            tests/keymap_options_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)

@@ -46,6 +46,8 @@ qt_add_executable(vela-settings
     src/defaultapps.h
     src/keyboardlayouts.cpp
     src/keyboardlayouts.h
+    src/keyboardoptions.cpp
+    src/keyboardoptions.h
     src/keyboardpreview.cpp
     src/keyboardpreview.h
     src/preferences.cpp
@@ -232,7 +234,7 @@ endif()
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
     qt_add_executable(vela-preferences-test tests/preferences_test.cpp
-        src/preferences.cpp src/preferences.h
+        src/preferences.cpp src/preferences.h src/keyboardoptions.cpp src/keyboardoptions.h
         ${PROJECT_SOURCE_DIR}/compositor/src/color.c
         ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c)
     target_include_directories(vela-preferences-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
@@ -251,6 +253,12 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-keyboardlayouts-test PRIVATE KEYBOARD_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/keyboard"
         KEYBOARD_FLAGS="${CMAKE_CURRENT_SOURCE_DIR}/flags")
     add_test(NAME settings-keyboardlayouts COMMAND vela-keyboardlayouts-test)
+    # Keyboard > Typing's keys over the XKB options.
+    qt_add_executable(vela-keyboardoptions-test tests/keyboardoptions_test.cpp src/keyboardoptions.cpp src/keyboardoptions.h)
+    target_include_directories(vela-keyboardoptions-test PRIVATE src)
+    target_compile_options(vela-keyboardoptions-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-keyboardoptions-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME settings-keyboardoptions COMMAND vela-keyboardoptions-test)
     # Trying a layout: its keymap, drawing and typing (system XKB data).
     qt_add_executable(vela-keyboardpreview-test tests/keyboardpreview_test.cpp src/keyboardpreview.cpp src/keyboardpreview.h)
     target_include_directories(vela-keyboardpreview-test PRIVATE src)

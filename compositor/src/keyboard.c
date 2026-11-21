@@ -18,6 +18,7 @@
 #include "config.h"
 #include "focus.h"
 #include "input.h"
+#include "keymap_options.h"
 #include "server.h"
 #include "shell.h"
 #include "super_numbers.h"
@@ -91,13 +92,6 @@ static void keymap_from_settings(struct keymap_names *names, const struct vela_c
 {
     copy(names->layout, sizeof(names->layout), vela_config_get(settings, "keyboard-layout", ""));
     copy(names->variant, sizeof(names->variant), vela_config_get(settings, "keyboard-variant", ""));
-    copy(names->options, sizeof(names->options), vela_config_get(settings, "keyboard-options", ""));
-    // Several layouts: Win+Space switches to the next, like Windows.
-    if (strchr(names->layout, ',') && !strstr(names->options, "grp:")) {
-        size_t used = strlen(names->options);
-        snprintf(names->options + used, sizeof(names->options) - used, "%sgrp:win_space_toggle",
-            used ? "," : "");
-    }
 }
 
 // The environment variable, if set; otherwise the chosen name (NULL if empty).
@@ -115,11 +109,18 @@ static struct xkb_keymap *system_keymap(struct vela_input *input, struct xkb_con
 {
     struct keymap_names names = { 0 };
     keymap_from_settings(&names, settings);
+    struct keymap_names system = { 0 };
+    localed_keymap(&system);
     const char *origin = "Vela settings";
     if (!names.layout[0]) {
-        memset(&names, 0, sizeof(names));
-        localed_keymap(&names);
+        names = system;
         origin = "localectl";
+    }
+    // The options are Settings' whenever vela.conf has the key, whichever
+    // layout is in use (docs/keyboard.md §6).
+    if (!vela_keymap_options(names.layout, system.options, vela_config_get(settings, "keyboard-options", NULL),
+            names.options, sizeof(names.options))) {
+        wlr_log(WLR_ERROR, "Keyboard: the XKB options are too long, none used");
     }
     const struct xkb_rule_names rules = {
         .rules = pick("XKB_DEFAULT_RULES", names.rules),
