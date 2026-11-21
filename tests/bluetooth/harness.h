@@ -130,6 +130,22 @@ protected:
     // seconds on a loaded machine.
     bool startDaemon()
     {
+        // Reaping the old process and releasing its name on the bus are
+        // separate events. Wait for both before starting the next instance.
+        if (daemon.state() != QProcess::NotRunning) {
+            qWarning("Previous Bluetooth daemon is still running");
+            return false;
+        }
+        const QString service = QStringLiteral("org.vela.Bluetooth");
+        const auto connection = bus();
+        for (int i = 0; i < 500 && connection.interface()->isServiceRegistered(service); ++i) {
+            QTest::qWait(20);
+        }
+        if (connection.interface()->isServiceRegistered(service)) {
+            qWarning("Previous Bluetooth daemon still owns its D-Bus name");
+            return false;
+        }
+
         QProcessEnvironment environment = QProcessEnvironment::systemEnvironment();
         environment.insert(QStringLiteral("DBUS_SYSTEM_BUS_ADDRESS"), systemAddress);
         environment.insert(QStringLiteral("DBUS_SESSION_BUS_ADDRESS"), sessionAddress);
@@ -141,13 +157,19 @@ protected:
         daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
         if (!daemon.waitForStarted()) {
+            qWarning() << "Could not start Bluetooth daemon:" << daemon.errorString();
+            stopDaemon();
             return false;
         }
-        const QString service = QStringLiteral("org.vela.Bluetooth");
-        for (int i = 0; i < 500 && !bus().interface()->isServiceRegistered(service); ++i) {
+        for (int i = 0; i < 500 && daemon.state() == QProcess::Running; ++i) {
+            if (connection.interface()->isServiceRegistered(service)) {
+                return true;
+            }
             QTest::qWait(20);
         }
-        return bus().interface()->isServiceRegistered(service);
+        qWarning() << "Bluetooth daemon did not acquire its D-Bus name:" << daemon.state() << daemon.exitCode();
+        stopDaemon();
+        return false;
     }
 
     void stopDaemon()
