@@ -5,7 +5,6 @@
 
 #include "alloc/alloc.h"
 
-#include <ctype.h>
 #include <dirent.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,7 +64,6 @@ void vela_terminal_env_get(struct vela_terminal_env *env)
     env->path = getenv("PATH");
     env->vela_terminal = getenv("VELA_TERMINAL");
     env->config_home = getenv("XDG_CONFIG_HOME");
-    env->config_dirs = getenv("XDG_CONFIG_DIRS");
     env->data_home = getenv("XDG_DATA_HOME");
     env->data_dirs = getenv("XDG_DATA_DIRS");
     env->current_desktop = getenv("XDG_CURRENT_DESKTOP");
@@ -534,71 +532,6 @@ static void found_free(struct found_list *list)
     free(list->items);
 }
 
-// ------------------------------------------------ xdg-terminal-exec lists --
-
-// xdg-terminal-exec's "/execarg_default:ID:ARG" for `id` in its lists, in
-// its order: [desktop-]xdg-terminals.list in the config directories, then
-// in xdg-terminal-exec/ of the data directories. Allocated, or NULL.
-static char *execarg_default(const struct vela_terminal_env *env, const char *id)
-{
-    struct list files = { 0 };
-    struct list desktops = { 0 };
-    char item[256];
-    for (const char *list = env->current_desktop ? env->current_desktop : ""; next_item(&list, item, sizeof(item));) {
-        for (char *c = item; *c; ++c) {
-            *c = (char)tolower((unsigned char)*c);
-        }
-        if (item[0]) {
-            list_add(&desktops, vela_strdup(item));
-        }
-    }
-    char *config_home = home_dir(env, env->config_home, ".config");
-    char base[4096];
-    for (int pass = 0; pass < 2; ++pass) {
-        // The config directories, then the data directories.
-        const char *dirs = pass == 0 ? (set(env->config_dirs) ? env->config_dirs : "/etc/xdg")
-                                     : (set(env->data_dirs) ? env->data_dirs : "/usr/local/share:/usr/share");
-        const char *sub = pass == 0 ? "" : "/xdg-terminal-exec";
-        bool home_first = pass == 0 && config_home;
-        for (const char *list = dirs; home_first || next_item(&list, base, sizeof(base));) {
-            const char *dir = home_first ? config_home : base;
-            home_first = false;
-            if (!dir[0]) {
-                continue;
-            }
-            for (int i = 0; i < desktops.count; ++i) {
-                list_add(&files, vela_asprintf("%s%s/%s-xdg-terminals.list", dir, sub, desktops.items[i]));
-            }
-            list_add(&files, vela_asprintf("%s%s/xdg-terminals.list", dir, sub));
-        }
-    }
-    free(config_home);
-    vela_terminal_strv_free(desktops.items);
-
-    static const char directive[] = "/execarg_default:";
-    size_t id_length = strlen(id);
-    char *found = NULL;
-    for (int i = 0; i < files.count && !found; ++i) {
-        FILE *file = fopen(files.items[i], "re");
-        if (!file) {
-            continue;
-        }
-        char line[LINE_LENGTH];
-        while (!found && next_line(file, line)) {
-            const char *s = trim(line);
-            if (strncmp(s, directive, sizeof(directive) - 1) == 0) {
-                s += sizeof(directive) - 1;
-                if (strncmp(s, id, id_length) == 0 && s[id_length] == ':') {
-                    found = vela_strdup(s + id_length + 1);
-                }
-            }
-        }
-        fclose(file);
-    }
-    vela_terminal_strv_free(files.items);
-    return found;
-}
-
 // --------------------------------------------------------------- the steps --
 
 // From a desktop file. `installed`: step 4's rules, a terminal shown here.
@@ -618,15 +551,9 @@ static bool from_entry(const struct vela_terminal_env *env, const struct found *
     terminal->source = source;
     terminal->id = vela_strdup(file->id);
     terminal->argv = argv;
-    if (entry.has_exec_arg) {
-        terminal->exec_arg = entry.exec_arg;
-        entry.exec_arg = NULL;
-    } else {
-        terminal->exec_arg = execarg_default(env, file->id);
-        if (!terminal->exec_arg) {
-            terminal->exec_arg = vela_strdup("-e");
-        }
-    }
+    // X-TerminalArgExec, maybe empty (foot cmd), else the usual -e.
+    terminal->exec_arg = entry.has_exec_arg ? entry.exec_arg : vela_strdup("-e");
+    entry.exec_arg = NULL;
     entry_free(&entry);
     return true;
 }
@@ -721,32 +648,11 @@ static bool installed(const struct vela_terminal_env *env, struct vela_terminal 
     return ok;
 }
 
-// Step 5: Vela's list before desktop files, each with what it takes before
-// a command.
-static bool fixed(const struct vela_terminal_env *env, struct vela_terminal *terminal)
-{
-    static const struct {
-        const char *name;
-        const char *exec_arg;
-    } list[] = { { "konsole", "-e" }, { "foot", "" }, { "kitty", "" }, { "alacritty", "-e" }, { "xterm", "-e" } };
-    for (size_t i = 0; i < sizeof(list) / sizeof(*list); ++i) {
-        char *program = find_program(env->path, list[i].name);
-        if (program) {
-            terminal->source = VELA_TERMINAL_FIXED;
-            terminal->argv = VELA_NEW_N(char *, 2);
-            terminal->argv[0] = program;
-            terminal->exec_arg = vela_strdup(list[i].exec_arg);
-            return true;
-        }
-    }
-    return false;
-}
-
 bool vela_terminal_find(const struct vela_terminal_env *env, bool automatic, struct vela_terminal *terminal)
 {
     memset(terminal, 0, sizeof(*terminal));
     return (!automatic && chosen(env, terminal)) || variable(env, terminal) || xdg_terminal_exec(env, terminal)
-        || installed(env, terminal) || fixed(env, terminal);
+        || installed(env, terminal);
 }
 
 void vela_terminal_free(struct vela_terminal *terminal)

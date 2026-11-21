@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-// The terminal lookup (docs/keyboard.md §11): the five steps, the desktop
+// The terminal lookup (docs/keyboard.md §11): the four steps, the desktop
 // files' rules and the three requests, in a private tree.
 
 #include "terminal.h"
@@ -80,7 +80,6 @@ protected:
         e.path = path.c_str();
         e.vela_terminal = variable.c_str();
         e.config_home = configHome.c_str();
-        e.config_dirs = "/nonexistent";
         e.data_home = dataHome.c_str();
         e.data_dirs = dataDirs.c_str();
         e.current_desktop = desktop.c_str();
@@ -134,18 +133,10 @@ TEST_F(Terminal, NothingInstalled)
     EXPECT_EQ(run(), "none");
     terminal("org.kde.konsole.desktop", "konsole"); // its program isn't there
     EXPECT_EQ(run(), "none");
-    EXPECT_TRUE(installed().empty());
-}
-
-TEST_F(Terminal, FixedListWithoutDesktopFiles)
-{
+    // A program without a desktop file isn't guessed from its name.
     program("xterm");
-    EXPECT_EQ(run(command), "5 - | xterm -e sh -c echo hi");
-    program("foot");
-    EXPECT_EQ(run(command), "5 - | foot sh -c echo hi");
-    program("konsole");
-    EXPECT_EQ(run(), "5 - | konsole");
-    EXPECT_EQ(run(command), "5 - | konsole -e sh -c echo hi");
+    EXPECT_EQ(run(), "none");
+    EXPECT_TRUE(installed().empty());
 }
 
 TEST_F(Terminal, InstalledInDesktopIdOrder)
@@ -229,16 +220,8 @@ TEST_F(Terminal, ExecArgument)
     // Set empty: the command right after.
     terminal("a.desktop", "t", "X-TerminalArgExec=");
     EXPECT_EQ(run(command), "4 a.desktop | t sh -c echo hi");
-    // Absent, with xdg-terminal-exec's table.
+    // Absent: -e.
     terminal("a.desktop", "t");
-    write(fs::path(dataDirs) / "xdg-terminal-exec/xdg-terminals.list",
-        "# defaults\n/execarg_default:other.desktop:-x\n/execarg_default:a.desktop:execute\n");
-    EXPECT_EQ(run(command), "4 a.desktop | t execute sh -c echo hi");
-    // The desktop's own list comes first.
-    write(fs::path(dataDirs) / "xdg-terminal-exec/vela-xdg-terminals.list", "/execarg_default:a.desktop:-c\n");
-    EXPECT_EQ(run(command), "4 a.desktop | t -c sh -c echo hi");
-    // Absent everywhere: -e.
-    fs::remove_all(fs::path(dataDirs) / "xdg-terminal-exec");
     EXPECT_EQ(run(command), "4 a.desktop | t -e sh -c echo hi");
     // An empty terminal never gets it.
     EXPECT_EQ(run(), "4 a.desktop | t");

@@ -9,8 +9,7 @@
 // 2. VELA_TERMINAL, a command with options;
 // 3. xdg-terminal-exec, when installed;
 // 4. the installed terminals: desktop files with
-//    Categories=TerminalEmulator, in desktop-ID order;
-// 5. a fixed list, when there are no desktop files.
+//    Categories=TerminalEmulator, in desktop-ID order.
 //
 // C17, no dependency but common/alloc. Nothing here is fast enough for a
 // compositor's event loop: it reads directories.
@@ -29,7 +28,6 @@ struct vela_terminal_env {
     const char *path; // PATH
     const char *vela_terminal; // VELA_TERMINAL
     const char *config_home; // XDG_CONFIG_HOME, else $HOME/.config
-    const char *config_dirs; // XDG_CONFIG_DIRS, else /etc/xdg
     const char *data_home; // XDG_DATA_HOME, else $HOME/.local/share
     const char *data_dirs; // XDG_DATA_DIRS, else /usr/local/share:/usr/share
     const char *current_desktop; // XDG_CURRENT_DESKTOP, for OnlyShowIn and NotShowIn
@@ -43,7 +41,6 @@ enum vela_terminal_source {
     VELA_TERMINAL_VARIABLE, // step 2
     VELA_TERMINAL_XDG_TERMINAL_EXEC, // step 3
     VELA_TERMINAL_INSTALLED, // step 4
-    VELA_TERMINAL_FIXED, // step 5
 };
 
 struct vela_terminal {

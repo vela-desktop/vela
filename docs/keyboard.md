@@ -585,8 +585,10 @@ out of the compositor's event loop:
    in Vela by `OnlyShowIn`/`NotShowIn`, in desktop-ID order, without
    drop-down terminals (Yakuake, Guake). Kwi, Ghostty, WezTerm and the
    others are found this way, with no name written in Vela.
-5. The fixed list of today, as a last resort when no desktop file gives
-   a terminal.
+
+A terminal without a desktop file isn't guessed from its program's name:
+every packaged terminal installs one, and the old fixed list (Konsole,
+foot, kitty, Alacritty, xterm) was dropped in the review of PR #311.
 
 The lookup answers three different requests, because terminals'
 command lines are not uniform:
@@ -594,7 +596,7 @@ command lines are not uniform:
 | Request | Used by | How |
 |---|---|---|
 | **An empty terminal** | Win+Enter | The terminal with no arguments (`xdg-terminal-exec` with none). |
-| **A terminal running a command** | the updater | `xdg-terminal-exec <command>` when it was chosen in step 3; otherwise the entry's `X-TerminalArgExec` before the command (it may be empty: `foot cmd`), else, when xdg-terminal-exec is installed, its `/execarg_default` table for that entry, else `-e`. |
+| **A terminal running a command** | the updater | `xdg-terminal-exec <command>` when it was chosen in step 3; otherwise the entry's `X-TerminalArgExec` before the command (it may be empty: `foot cmd`), else `-e`. xdg-terminal-exec's `/execarg_default` tables aren't read: when it is installed, step 3 already uses it. |
 | **One that stays open after the command** | — | Not asked of the terminal: `X-TerminalArgHold` is rare. A caller that needs it keeps the window open itself, as the updater's script already does (*Press Enter to close*). |
 
 The `-e` fallback is the reference implementation's compatibility
@@ -603,7 +605,7 @@ assumption, not a guarantee: a terminal that rejects it fails visibly
 can pick another one in Default apps.
 
 **Settings > Apps > Default apps** gets a *Terminal* row among the common
-uses: *Automatic* (steps 2–5) and the terminals of step 4; a choice
+uses: *Automatic* (steps 2–4) and the terminals of step 4; a choice
 writes or clears the list of step 1. *Automatic* says which terminal it
 opens; for `xdg-terminal-exec`, from its `--print-id`, asked only of a
 version that has it (an older one would take it for a command).
@@ -696,10 +698,9 @@ Proposed for 0.3 in the [roadmap](roadmap.md):
 - Shortcuts file: parser, normalization, the 4096-byte and
   control-character limits; the shell message holds only the combination.
 - Terminal lookup: user list, `VELA_TERMINAL`, `xdg-terminal-exec`,
-  desktop files (hidden, `NotShowIn`, drop-down), the fixed list; for each,
-  an empty terminal and one running a command, with `X-TerminalArgExec`
-  set, set empty, absent with an `/execarg_default` entry, and absent
-  (`-e`) (extends `updates/tests/report_test.cpp`).
+  desktop files (hidden, `NotShowIn`, drop-down), no guess without one;
+  for each, an empty terminal and one running a command, with
+  `X-TerminalArgExec` set, set empty and absent (`-e`) (extends `updates/tests/report_test.cpp`).
 
 **Headless functional tests** (`scripts/run-headless.sh`, `vela-input`)
 
