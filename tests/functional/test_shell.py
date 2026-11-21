@@ -491,9 +491,14 @@ class CapsLockDisplay(RealShell):
             time.sleep(1.0 * TIME_SCALE)
             self.assertFalse(self.caps_shown(self.vela.state()), "other keys show nothing")
             os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+            # command() doesn't wait, and the key comes on another connection:
+            # wait for a change "reload-config" applies after the keyboard's
+            # (vela_a11y_load), harmless headless, before pressing it.
             with open(self.vela.config_path(), "a") as conf:
-                conf.write("caps-lock-osd=no\n")
+                conf.write("caps-lock-osd=no\nnight-light-nvidia-fix=yes\n")
             self.vela.command("reload-config")
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLightNvidiaFix"],
+                               what="vela.conf reloaded", read_state=False)
             send("key", "Caps_Lock")
             time.sleep(1.0 * TIME_SCALE)
             self.assertFalse(self.caps_shown(self.vela.state()), "caps-lock-osd=no")
