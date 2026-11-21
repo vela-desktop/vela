@@ -5,10 +5,13 @@
 settings (night light, color filters, magnifier, sticky keys) with the state
 the shell receives and what stays in vela.conf; scheduled night light;
 sticky keys; Super alone opening Start; the magnifier with Win+plus and
-Win+Esc. The shell is a FakeShell collecting the messages."""
+Win+Esc; Win+Enter's terminal. The shell is a FakeShell collecting the
+messages."""
 
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -280,6 +283,61 @@ class Accessibility(unittest.TestCase):
             expected = ((200 + x // 2 - w["x"]) & 255, (150 + y // 2 - w["y"]) & 255)
             self.assertLessEqual(max(abs(red - expected[0]), abs(green - expected[1])), 2,
                                  f"screen ({x}, {y}) shows {(red, green)}, expected {expected}")
+
+
+class WinEnter(unittest.TestCase):
+    """Win+Enter opens the terminal of docs/keyboard.md §11 through
+    vela-terminal: an installed one, or the user's choice before
+    VELA_TERMINAL and xdg-terminal-exec."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="vela-terminal-")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.share = os.path.join(self.dir, "share")
+        self.ran = os.path.join(self.dir, "ran")
+
+    def terminal(self, desktop_id, name):
+        """A desktop file for a fake terminal that writes its name and
+        arguments to `ran`."""
+        program = os.path.join(self.dir, "bin", name)
+        os.makedirs(os.path.dirname(program), exist_ok=True)
+        with open(program, "w") as script:
+            script.write(f"#!/bin/sh\nprintf '%s\\n' {name} \"$@\" > {shlex.quote(self.ran)}\n")
+        os.chmod(program, 0o755)
+        os.makedirs(os.path.join(self.share, "applications"), exist_ok=True)
+        with open(os.path.join(self.share, "applications", desktop_id), "w") as entry:
+            entry.write(f"[Desktop Entry]\nType=Application\nName={name}\nExec={program} %U\n"
+                        "Categories=System;TerminalEmulator;\n")
+
+    def start(self, env):
+        # The system's directories stay: Vulkan finds its drivers there.
+        system = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+        self.vela = Session(env={"XDG_DATA_DIRS": f"{self.share}:{system}", **env})
+        self.vela.start()
+        self.addCleanup(self.vela.stop)
+
+    def opened(self):
+        self.vela.wait_for(lambda _: os.path.exists(self.ran), what="a terminal", read_state=False)
+        time.sleep(0.2)
+        with open(self.ran) as ran:
+            return ran.read().split()
+
+    def test_an_installed_terminal(self):
+        self.terminal("org.example.Term.desktop", "term")
+        # Its PATH has no xdg-terminal-exec, nor the system's terminals.
+        self.start({"PATH": os.path.join(self.dir, "bin")})
+        self.vela.keys("super+Return")
+        self.assertEqual(self.opened(), ["term"])
+
+    def test_the_users_choice(self):
+        self.terminal("a.desktop", "first")
+        self.terminal("b.desktop", "chosen")
+        self.start({"VELA_TERMINAL": os.path.join(self.dir, "bin", "first")})
+        os.makedirs(self.vela.env["XDG_CONFIG_HOME"], exist_ok=True)
+        with open(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "vela-xdg-terminals.list"), "w") as choice:
+            choice.write("b.desktop\n")
+        self.vela.keys("super+Return")
+        self.assertEqual(self.opened(), ["chosen"])
 
 
 if __name__ == "__main__":

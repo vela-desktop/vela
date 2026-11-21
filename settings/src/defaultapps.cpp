@@ -5,9 +5,15 @@
 
 #include "appmodel.h"
 #include "mimeapps.h"
+#include "terminal.h"
 
 #include <QCoreApplication>
 #include <QCollator>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QProcess>
+#include <QSaveFile>
 #include <QMimeDatabase>
 #include <QSet>
 #include <QVariantMap>
@@ -316,4 +322,108 @@ QString DefaultApps::selectedIcon() const
 {
     const AppModel::Entry* entry = m_apps->find(m_selected);
     return entry ? entry->icon : QString();
+}
+
+QVariantMap DefaultApps::terminalInfo(const QString& appId) const
+{
+    QVariantMap info = appInfo(appId);
+    if (info.isEmpty()) {
+        QString name = appId;
+        name.chop(QStringLiteral(".desktop").size());
+        info = { { QStringLiteral("id"), appId }, { QStringLiteral("name"), name },
+            { QStringLiteral("icon"), QStringLiteral("utilities-terminal") } };
+    }
+    return info;
+}
+
+namespace {
+
+// What xdg-terminal-exec opens, by desktop ID: asked only of a version
+// that knows --print-id (an older one would take it for a command).
+QString xdgTerminalExecChoice(const QString& program)
+{
+    QFile file(program);
+    if (!file.open(QIODevice::ReadOnly) || !file.read(4 << 20).contains("--print-id")) {
+        return {};
+    }
+    QProcess process;
+    process.start(program, { QStringLiteral("--print-id") });
+    if (!process.waitForFinished(2000)) {
+        process.kill();
+        process.waitForFinished(500);
+        return {};
+    }
+    const QString id = QString::fromUtf8(process.readAllStandardOutput()).section(u'\n', 0, 0).section(u':', 0, 0);
+    return process.exitCode() == 0 && id.endsWith(QLatin1String(".desktop")) ? id : QString();
+}
+
+} // namespace
+
+QVariantMap DefaultApps::terminal() const
+{
+    if (m_terminalKnown) {
+        return m_terminal;
+    }
+    vela_terminal_env env;
+    vela_terminal_env_get(&env);
+    QVariantList candidates;
+    char** ids = vela_terminal_installed(&env);
+    for (char** id = ids; *id; ++id) {
+        candidates.append(terminalInfo(QString::fromUtf8(*id)));
+    }
+    vela_terminal_strv_free(ids);
+    candidates = sortedByName(candidates);
+
+    QVariantMap current;
+    vela_terminal found;
+    if (vela_terminal_find(&env, false, &found)) {
+        if (found.source == VELA_TERMINAL_CHOSEN) {
+            current = terminalInfo(QString::fromUtf8(found.id));
+        }
+        vela_terminal_free(&found);
+    }
+    QVariantMap automatic;
+    if (vela_terminal_find(&env, true, &found)) {
+        const QString program = QString::fromUtf8(found.argv[0]);
+        if (found.id) {
+            automatic = terminalInfo(QString::fromUtf8(found.id));
+        } else if (found.source == VELA_TERMINAL_XDG_TERMINAL_EXEC) {
+            if (const QString id = xdgTerminalExecChoice(program); !id.isEmpty()) {
+                automatic = terminalInfo(id);
+            }
+        } else {
+            automatic = { { QStringLiteral("name"), QFileInfo(program).fileName() },
+                { QStringLiteral("icon"), QStringLiteral("utilities-terminal") } };
+        }
+        vela_terminal_free(&found);
+    }
+    m_terminal = { { QStringLiteral("current"), current }, { QStringLiteral("automatic"), automatic },
+        { QStringLiteral("candidates"), candidates } };
+    m_terminalKnown = true;
+    return m_terminal;
+}
+
+void DefaultApps::setTerminal(const QString& appId)
+{
+    vela_terminal_env env;
+    vela_terminal_env_get(&env);
+    char* path = vela_terminal_choice_path(&env);
+    const QString file = path ? QString::fromUtf8(path) : QString();
+    free(path);
+    if (file.isEmpty()) {
+        return;
+    }
+    if (appId.isEmpty()) {
+        QFile::remove(file);
+    } else {
+        QDir().mkpath(QFileInfo(file).absolutePath());
+        QSaveFile out(file);
+        if (!out.open(QIODevice::WriteOnly)
+            || out.write("# The terminal chosen in Vela Settings > Apps > Default apps.\n" + appId.toUtf8() + "\n") < 0
+            || !out.commit()) {
+            qWarning("Settings: can't write %s", qPrintable(file));
+        }
+    }
+    m_terminalKnown = false;
+    emit changed();
 }

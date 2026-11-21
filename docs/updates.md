@@ -77,7 +77,7 @@ last packages for rollback by hand), a "Terminal" entry in Default apps.
 | Where the logic lives | a session daemon, `vela-update-daemon`, serving `org.vela.Updates` | checks run while Settings is closed; one owner for state, schedule and the running update |
 | How the daemon is started | by the compositor, supervised, like `vela-bluetooth` | it lives exactly as long as the session; no unit files to install |
 | Install | always in a terminal | the password prompt and the build output are visible; no privileged helper to audit |
-| Which terminal | `xdg-terminal-exec`, else `VELA_TERMINAL`, else `konsole` | the freedesktop proposal, packaged by Arch, Fedora and Ubuntu; the rest as the shell does today |
+| Which terminal | the one Win+Enter opens ([keyboard](keyboard.md#11-the-terminal)): the choice in Settings, `VELA_TERMINAL`, `xdg-terminal-exec`, then the installed terminals | the freedesktop proposal, packaged by Arch, Fedora and Ubuntu, with the user's choice first |
 | How the desktop follows an update | state files written by `vela-update` itself (§5.3) | they work for updates started by hand too, and survive the terminal |
 | JSON in C | `sd-json` from libsystemd (257 or later) | already a dependency; no new library |
 | Who notifies | the shell, when the daemon says so (§6.4) | notification texts are translated with Qt; the daemon has no translations |

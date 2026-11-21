@@ -12,6 +12,7 @@
 #include "alloc/alloc.h"
 #include "child.h"
 #include "log.h"
+#include "terminal.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -60,41 +61,43 @@ int vela_up_install_start(struct vela_up_daemon *d, const struct vela_up_options
     if (invalid) {
         return sd_bus_error_set(error, VELA_UP_ERROR("InvalidArgs"), invalid);
     }
-    char **terminal = NULL;
-    if (d->terminal) {
-        terminal = VELA_NEW_N(char *, 2);
-        terminal[0] = vela_strdup(d->terminal);
-    } else {
-        terminal = vela_up_terminal(getenv("PATH"), getenv("VELA_TERMINAL"));
-    }
-    if (!terminal || !terminal[0]) {
-        vela_up_strv_free(terminal);
-        return sd_bus_error_set(error, VELA_UP_ERROR("NoTerminal"), "No terminal is installed.");
-    }
-
     const char *update[12];
     char tag[64];
     vela_up_options_argv(options, d->command, update, tag);
-    size_t count = 0;
-    while (terminal[count]) {
-        ++count;
-    }
-    const char **argv = VELA_NEW_N(const char *, vela_size_add(count, 4 + 12 + 1));
+    // sh -c SCRIPT sh UPDATE..., in the terminal.
+    const char *command[4 + 12 + 1];
     size_t n = 0;
-    for (size_t i = 0; i < count; ++i) {
-        argv[n++] = terminal[i];
-    }
-    argv[n++] = "sh";
-    argv[n++] = "-c";
-    argv[n++] = script;
-    argv[n++] = "sh";
+    command[n++] = "sh";
+    command[n++] = "-c";
+    command[n++] = script;
+    command[n++] = "sh";
     for (size_t i = 0; update[i]; ++i) {
-        argv[n++] = update[i];
+        command[n++] = update[i];
     }
-    argv[n] = NULL;
-    pid_t pid = vela_up_spawn((char *const *)argv, NULL, VELA_UP_SPAWN_DETACH);
-    free(argv);
-    vela_up_strv_free(terminal);
+    command[n] = NULL;
+    char **argv = NULL;
+    if (d->terminal) {
+        // A test's terminal takes the command as it is.
+        argv = VELA_NEW_N(char *, n + 2);
+        argv[0] = vela_strdup(d->terminal);
+        for (size_t i = 0; i < n; ++i) {
+            argv[i + 1] = vela_strdup(command[i]);
+        }
+    } else {
+        // The terminal of docs/keyboard.md §11, as Win+Enter opens it.
+        struct vela_terminal_env env;
+        vela_terminal_env_get(&env);
+        struct vela_terminal terminal;
+        if (vela_terminal_find(&env, false, &terminal)) {
+            argv = vela_terminal_argv(&terminal, command);
+            vela_terminal_free(&terminal);
+        }
+    }
+    if (!argv) {
+        return sd_bus_error_set(error, VELA_UP_ERROR("NoTerminal"), "No terminal is installed.");
+    }
+    pid_t pid = vela_up_spawn(argv, NULL, VELA_UP_SPAWN_DETACH);
+    vela_terminal_strv_free(argv);
     if (pid < 0) {
         vela_up_log("can't open the terminal: %s", strerror((int)-pid));
         return sd_bus_error_set(error, VELA_UP_ERROR("NoTerminal"), "The terminal could not be opened.");

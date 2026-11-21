@@ -186,6 +186,7 @@ qt_add_resources(vela-settings "flags"
     FILES ${SETTINGS_FLAGS})
 target_link_libraries(vela-settings PRIVATE vela-alloc
     vela-shortcuts # the matcher and Vela's shortcut table (common/shortcuts)
+    vela-terminal-lookup # Default apps > Terminal (common/terminal)
     PkgConfig::DISPLAYS_WAYLAND
     Qt6::GuiPrivate
     PkgConfig::XKBREGISTRY

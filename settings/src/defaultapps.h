@@ -13,9 +13,11 @@ class AppModel;
 // - common uses (browser, mail, music, video, photos, PDF, archives,
 //   documents...): the app opening them, among those that can;
 // - a specific file or link type (".mkv", "mp3", "mailto");
-// - per app: the types it can open, and "Set default" for all of them.
+// - per app: the types it can open, and "Set default" for all of them;
+// - the terminal (docs/keyboard.md §11).
 // The choices go into ~/.config/mimeapps.list (mimeapps.h), read by KDE,
-// GNOME, browsers and xdg-open.
+// GNOME, browsers and xdg-open; the terminal into
+// ~/.config/vela-xdg-terminals.list, read by Vela and xdg-terminal-exec.
 class DefaultApps : public QObject {
     Q_OBJECT
     // [{key, label, icon, current: {id, name, icon} or empty, candidates:
@@ -25,6 +27,10 @@ class DefaultApps : public QObject {
     Q_PROPERTY(QString selectedApp READ selectedApp WRITE setSelectedApp NOTIFY selectedAppChanged)
     Q_PROPERTY(QString selectedName READ selectedName NOTIFY selectedAppChanged)
     Q_PROPERTY(QString selectedIcon READ selectedIcon NOTIFY selectedAppChanged)
+    // The terminal for Win+Enter and the updater: {current: {id, name,
+    // icon} or empty for Automatic, automatic: what Automatic opens, {name,
+    // icon} or empty, candidates: the installed terminals}.
+    Q_PROPERTY(QVariantMap terminal READ terminal NOTIFY changed)
 
 public:
     explicit DefaultApps(AppModel* apps, QObject* parent = nullptr);
@@ -46,6 +52,10 @@ public:
     // The app becomes the default for all the types it declares.
     Q_INVOKABLE void setDefaultForAll(const QString& appId);
 
+    QVariantMap terminal() const;
+    // An installed terminal's desktop ID, or "" for Automatic.
+    Q_INVOKABLE void setTerminal(const QString& appId);
+
     QString selectedApp() const { return m_selected; }
     void setSelectedApp(const QString& appId);
     QString selectedName() const;
@@ -58,7 +68,12 @@ signals:
 private:
     QVariantList candidatesFor(const QStringList& mimes, const QString& current) const;
     QVariantMap appInfo(const QString& appId) const;
+    // appInfo, or the ID as a name for an entry the menu leaves out.
+    QVariantMap terminalInfo(const QString& appId) const;
 
     AppModel* m_apps;
     QString m_selected;
+    // terminal(), read once per change: it reads directories.
+    mutable QVariantMap m_terminal;
+    mutable bool m_terminalKnown = false;
 };

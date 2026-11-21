@@ -9,10 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP10 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
+> KP1–KP11 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
 >
-> **Remaining:** stage KP11 of [§13](#13-stages), then the
-> real-session checks of [§15](#15-tests).
+> **Remaining:** the real-session checks of [§15](#15-tests).
 
 ## 1. Goals
 
@@ -576,8 +575,10 @@ the Start button are unchanged. In a nested session Alt+S stays.
 
 ## 11. The terminal
 
-One lookup in `common/` (C, for the compositor and the updater; Settings
-lists from it), used by Win+Enter and by the updater's terminal:
+One lookup in `common/terminal` (C, for the updater and Settings), used by
+Win+Enter and by the updater's terminal. Win+Enter starts `vela-terminal`,
+which looks the terminal up and runs it, so that reading directories stays
+out of the compositor's event loop:
 
 1. **The user's choice:** the first entry of
    `$XDG_CONFIG_HOME/vela-xdg-terminals.list`, which Settings writes. It
@@ -592,8 +593,8 @@ lists from it), used by Win+Enter and by the updater's terminal:
    in Vela by `OnlyShowIn`/`NotShowIn`, in desktop-ID order, without
    drop-down terminals (Yakuake, Guake). Kwi, Ghostty, WezTerm and the
    others are found this way, with no name written in Vela.
-5. The fixed list of today, as a last resort when there are no desktop
-   files.
+5. The fixed list of today, as a last resort when no desktop file gives
+   a terminal.
 
 The lookup answers three different requests, because terminals'
 command lines are not uniform:
@@ -611,7 +612,9 @@ can pick another one in Default apps.
 
 **Settings > Apps > Default apps** gets a *Terminal* row among the common
 uses: *Automatic* (steps 2–5) and the terminals of step 4; a choice
-writes or clears the list of step 1.
+writes or clears the list of step 1. *Automatic* says which terminal it
+opens; for `xdg-terminal-exec`, from its `--print-id`, asked only of a
+version that has it (an older one would take it for a command).
 
 ## 12. Configuration
 
@@ -646,7 +649,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). Done. |
 | KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). Done. |
 | KP10 | The Win key alone (§10). Done. |
-| KP11 | The terminal lookup and Default apps > Terminal (§11). |
+| KP11 | The terminal lookup and Default apps > Terminal (§11). Done. |
 
 ## 14. Not in scope
 

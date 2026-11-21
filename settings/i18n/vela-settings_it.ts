@@ -1383,6 +1383,26 @@ Specifiche sistema
         <translation>Nessuna app installata lo apre</translation>
     </message>
     <message>
+        <source>Terminal</source>
+        <translation>Terminale</translation>
+    </message>
+    <message>
+        <source>Opens with Win+Enter and for updates</source>
+        <translation>Si apre con Win+Invio e per gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Automatic: %1</source>
+        <translation>Automatico: %1</translation>
+    </message>
+    <message>
+        <source>No terminal installed</source>
+        <translation>Nessun terminale installato</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>Automatico</translation>
+    </message>
+    <message>
         <source>Apps</source>
         <translation>App</translation>
     </message>

@@ -70,6 +70,8 @@ add_subdirectory(common/alloc)
 # shell and Settings only: a reporter-only build must not need xkbcommon.
 if(VELA_BUILD_COMPOSITOR OR VELA_BUILD_SHELL)
     add_subdirectory(common/shortcuts)
+    # The terminal lookup and vela-terminal (Win+Enter, the updater, Settings).
+    add_subdirectory(common/terminal)
 endif()
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)

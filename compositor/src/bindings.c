@@ -27,6 +27,7 @@
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
+#include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
 // The shell's command, if there is a shell.
@@ -72,8 +73,14 @@ static bool run(struct vela_server *server, const struct vela_binding *row, cons
     case VELA_ACTION_LOCK: vela_lock_screen(server->lock); return true;
     case VELA_ACTION_QUIT: wl_display_terminate(server->display); return true;
     case VELA_ACTION_TERMINAL: {
-        const char *terminal = getenv("VELA_TERMINAL");
-        vela_spawn(terminal ? terminal : "konsole || foot || kitty || alacritty || xterm");
+        // vela-terminal looks the terminal up (docs/keyboard.md §11): the
+        // directories it reads stay out of this loop.
+        char command[4200];
+        if (vela_find_program("vela-terminal", "common/terminal", command, sizeof(command))) {
+            vela_spawn(command);
+        } else {
+            wlr_log(WLR_ERROR, "Terminal: vela-terminal not found");
+        }
         return true;
     }
     case VELA_ACTION_CLOSE_WINDOW:
