@@ -12,6 +12,10 @@
         <translation>Password</translation>
     </message>
     <message>
+        <source>Caps Lock is on.</source>
+        <translation>Il blocco maiuscole è attivo.</translation>
+    </message>
+    <message>
         <source>The password is incorrect. Try again.</source>
         <translation>La password non è corretta. Riprova.</translation>
     </message>

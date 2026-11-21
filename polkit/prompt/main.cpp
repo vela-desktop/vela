@@ -15,6 +15,7 @@
 #include "renderingpolicy.h"
 #include "controls.h"
 #include "language.h"
+#include "capslock.h"
 #include "request.h"
 
 #include <LayerShellQt/Window>
@@ -162,11 +163,21 @@ int main(int argc, char* argv[])
 
     Windows windows(engine);
     bool shown = false;
+    CapsLock capsLock;
+    QObject::connect(&capsLock, &CapsLock::changed, &request, &Request::setCapsLock);
     QObject::connect(&request, &Request::shownChanged, &app, [&] {
         if (!shown && request.shown()) {
             shown = true;
             if (!windows.show()) {
                 request.cancel();
+                return;
+            }
+            // The windows are up: Qt's seat is there, and its keyboard if
+            // the seat has one; otherwise when a keyboard gives a window
+            // the focus.
+            if (!capsLock.start()) {
+                QObject::connect(
+                    &app, &QGuiApplication::focusWindowChanged, &capsLock, [&capsLock] { capsLock.start(); });
             }
         }
     });

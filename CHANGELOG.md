@@ -37,6 +37,10 @@ under "Unreleased" in the pull request that makes a user-visible change.
   and Num Lock are now shared by every keyboard, and changing the layout
   no longer turns them off.
 
+- The lock screen says when Caps Lock is on, under the password field, and
+  the authorization dialog now reads Caps Lock's real state instead of
+  guessing it from the letters typed.
+
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
   normal installation.

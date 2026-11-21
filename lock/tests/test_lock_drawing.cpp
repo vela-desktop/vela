@@ -184,6 +184,30 @@ void testMessage()
     check(anyPixel(image, below, over(Qt::white, 220, behind), 30), "the message below the field");
 }
 
+void testCapsLock()
+{
+    const QColor caution(0xfc, 0xe1, 0x00);
+    Scene scene = loginScene();
+    const QRect below(0, 466, 800, 30);
+    const QRect further(0, 492, 800, 30);
+    check(!anyPixel(paint(defaultLook(), scene), below, caution, 40), "Caps Lock off: no warning");
+    scene.capsLock = true;
+    check(anyPixel(paint(defaultLook(), scene), below, caution, 40), "Caps Lock on: the warning under the field");
+    check(anyPixel(paint(expressiveLook(), scene), below, caution, 40), "in the expressive look too");
+    // With a message, below it.
+    scene.message = QStringLiteral("The password is incorrect. Try again.");
+    QImage image = paint(defaultLook(), scene);
+    check(!anyPixel(image, below, caution, 40), "the message keeps its place");
+    check(anyPixel(image, further, caution, 40), "the warning under the message");
+    // Not while signing in, nor on the clock.
+    scene.message.clear();
+    scene.mode = Mode::Checking;
+    check(!anyPixel(paint(defaultLook(), scene), below, caution, 40), "not while signing in");
+    Scene clock = clockScene();
+    clock.capsLock = true;
+    check(!anyPixel(paint(defaultLook(), clock), QRect(0, 0, 800, 600), caution, 40), "not on the clock");
+}
+
 // The clock: the default look's white, the expressive primary on a dark
 // wallpaper and white where nothing lighter reads.
 void testClock()
@@ -269,6 +293,7 @@ int main(int argc, char** argv)
     testExpressiveLogin();
     testPasswordDots();
     testMessage();
+    testCapsLock();
     testClock();
     testNarrowOutput();
     testScale();

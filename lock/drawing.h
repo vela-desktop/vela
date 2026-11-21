@@ -38,6 +38,9 @@ struct Scene {
     bool passwordEmpty = true;
     qsizetype passwordChars = 0;
     QString message;
+    // Caps Lock is on (the keyboard's locked modifiers): said under the
+    // field while the password is asked (docs/keyboard.md §8.2).
+    bool capsLock = false;
 };
 
 // The characters of a UTF-8 password (multibyte ones count as one).
@@ -175,6 +178,14 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
         if (!scene.message.isEmpty()) {
             p.setPen(QColor(255, 255, 255, 220));
             p.drawText(QRectF(0, field.bottom() + 16, lw, 30), Qt::AlignHCenter | Qt::AlignTop, scene.message);
+        }
+        // Below the message, if there is one, in the caution color of the
+        // dark theme: the lock is always drawn over a darkened wallpaper.
+        if (scene.capsLock && scene.mode == Mode::Login) {
+            const double y = field.bottom() + 16 + (scene.message.isEmpty() ? 0 : 26);
+            p.setPen(QColor(0xfc, 0xe1, 0x00));
+            p.drawText(QRectF(0, y, lw, 30), Qt::AlignHCenter | Qt::AlignTop,
+                QCoreApplication::translate("Lock", "Caps Lock is on."));
         }
     }
 }

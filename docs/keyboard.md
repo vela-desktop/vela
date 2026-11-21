@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP6 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP7 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** stages KP7–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP8–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -381,8 +381,15 @@ the field has the focus and Caps Lock is on, from the real state:
   its field.
 - **The polkit dialog** stops guessing from letters: it asks Qt's
   `wl_seat` (`QNativeInterface::QWaylandApplication::seat()`) for a second
-  `wl_keyboard`, whose `keymap` and `modifiers` events give the same
-  state.
+  `wl_keyboard` (`polkit/prompt/capslock.h`), whose `keymap` and
+  `modifiers` events give the same state. It asks only once Qt has a
+  keyboard of its own, since `wl_seat.get_keyboard` on a seat that never
+  had one is a protocol error that would end the prompt; otherwise it
+  asks when a keyboard first gives a window the focus.
+
+Both say *Caps Lock is on.* in the dark theme's caution color under the
+field (vela-lock draws over a darkened wallpaper whatever the theme), and
+under the error message when there is one.
 
 ### 8.3 The on-screen display
 
@@ -593,7 +600,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). Done. |
 | KP5 | Key behavior (§6). Done. |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). Done. |
-| KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). |
+| KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). Done. |
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). |
 | KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). |
 | KP10 | The Win key alone (§10). |

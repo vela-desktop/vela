@@ -100,6 +100,7 @@ QString message;
 qint64 lastInputMs = 0;
 bool unlocked = false;
 
+bool capsLock = false;
 QString userName;
 QString displayName;
 // 24-hour or 12-hour, as the taskbar shows it (shell/src/clockformat.h).
@@ -183,6 +184,7 @@ void draw(Screen& screen)
         scene.passwordEmpty = password.empty();
         scene.passwordChars = vela::lock::passwordCharacters(password);
         scene.message = message;
+        scene.capsLock = capsLock;
         vela::lock::paint(image, screen.background, screen.backgroundBlurred, QSizeF(screen.width, screen.height),
             screen.scale120, look, scene);
     }
@@ -368,6 +370,12 @@ void onModifiers(void*, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t lat
 {
     if (xkbState) {
         xkb_state_update_mask(xkbState, depressed, latched, locked, 0, 0, group);
+        // Caps Lock from the keyboard's real state, not guessed from letters.
+        const bool caps = xkb_state_mod_name_is_active(xkbState, XKB_MOD_NAME_CAPS, XKB_STATE_MODS_LOCKED) > 0;
+        if (caps != capsLock) {
+            capsLock = caps;
+            redrawAll();
+        }
     }
 }
 
