@@ -133,6 +133,7 @@ add_library(vela-pure STATIC
     src/icon_cache.c
     src/keymap_options.c
     src/legacy_names.c
+    src/lock_keys.c
     src/lock_state.c
     src/motion.c
     src/output_arrangement.c
@@ -150,7 +151,7 @@ target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-pure PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(vela-pure PUBLIC vela-alloc)
+target_link_libraries(vela-pure PUBLIC vela-alloc PkgConfig::XKBCOMMON)
 find_library(MATH_LIBRARY m)
 if(MATH_LIBRARY)
     target_link_libraries(vela-pure PUBLIC ${MATH_LIBRARY})
@@ -681,6 +682,7 @@ if(VELA_BUILD_TOOLS)
             tests/diagnostics_test.cpp
             tests/super_numbers_test.cpp
             tests/keymap_options_test.cpp
+            tests/lock_keys_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)

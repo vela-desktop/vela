@@ -137,6 +137,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString cornerKeys READ cornerKeys WRITE setCornerKeys NOTIFY keyboardChanged)
     Q_PROPERTY(QString numpadKeys READ numpadKeys WRITE setNumpadKeys NOTIFY keyboardChanged)
     Q_PROPERTY(QString keyboardOptions READ keyboardOptions NOTIFY keyboardChanged)
+    // Num Lock when Vela starts: "off", "on" or "last" (docs/keyboard.md §7).
+    Q_PROPERTY(QString numLock READ numLock WRITE setNumLock NOTIFY keyboardChanged)
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
     // Kelvin, 1700-6500 (night-light-temperature; the older strength without it).
@@ -331,6 +333,8 @@ public:
     void setCornerKeys(const QString& value);
     void setNumpadKeys(const QString& value);
     QString keyboardOptions() const { return m_keyboardOptions.join(u','); }
+    QString numLock() const { return m_numLock; }
+    void setNumLock(const QString& mode);
     void setRepeatDelay(int ms);
     int repeatRate() const { return m_repeatRate; }
     void setRepeatRate(int perSecond);
@@ -516,6 +520,7 @@ private:
     int m_repeatDelay = 400;
     // vela.conf's keyboard-options, or the system's while it has none.
     QStringList m_keyboardOptions;
+    QString m_numLock = QStringLiteral("off");
     void setKeyChoice(int control, const QString& value);
     int m_repeatRate = 30;
     bool m_nightLight = false;

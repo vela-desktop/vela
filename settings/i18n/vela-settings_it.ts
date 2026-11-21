@@ -2076,6 +2076,33 @@ Specifiche sistema
         <source>Whatever Num Lock says, like on a Mac</source>
         <translation>Qualunque sia lo stato di Bloc Num, come su un Mac</translation>
     </message>
+    <message>
+        <source>Num Lock when Vela starts</source>
+        <translation>Bloc Num all&apos;avvio di Vela</translation>
+    </message>
+    <message>
+        <source>The keypad always types digits, whatever Num Lock says</source>
+        <translation>Il tastierino scrive sempre cifre, qualunque sia lo stato di Bloc Num</translation>
+    </message>
+    <message>
+        <source>Every keyboard shares Num Lock and Caps Lock</source>
+        <translation>Tutte le tastiere condividono Bloc Num e Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>Num Lock</comment>
+        <translation>Spento</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <comment>Num Lock</comment>
+        <translation>Acceso</translation>
+    </message>
+    <message>
+        <source>As it was</source>
+        <comment>Num Lock</comment>
+        <translation>Com&apos;era</translation>
+    </message>
 </context>
 <context>
     <name>Main</name>
@@ -2502,6 +2529,14 @@ Specifiche sistema
     <message>
         <source>numeric keypad numpad digits num lock</source>
         <translation>tastierino numerico cifre bloc num num lock</translation>
+    </message>
+    <message>
+        <source>Num Lock at startup</source>
+        <translation>Bloc Num all&apos;avvio</translation>
+    </message>
+    <message>
+        <source>num lock numlock numpad startup login on off</source>
+        <translation>bloc num num lock tastierino avvio accesso acceso spento</translation>
     </message>
     <message>
         <source>Choose your password manager</source>

@@ -1053,8 +1053,15 @@ private slots:
         prefs.setCornerKeys(QStringLiteral("standard"));
         prefs.setNumpadKeys(QStringLiteral("default"));
         QVERIFY(conf().contains("keyboard-options=terminate:ctrl_alt_bksp\n"));
+        // Num Lock when Vela starts.
+        QCOMPARE(prefs.numLock(), QStringLiteral("off"));
+        prefs.setNumLock(QStringLiteral("last"));
+        QVERIFY(conf().contains("numlock=last\n"));
+        prefs.setNumLock(QStringLiteral("sometimes"));
+        QCOMPARE(prefs.numLock(), QStringLiteral("last"));
         // A fresh read gives the same.
         Preferences again;
+        QCOMPARE(again.numLock(), QStringLiteral("last"));
         QCOMPARE(again.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp"));
         QCOMPARE(again.capsKey(), QStringLiteral("capslock"));
     }

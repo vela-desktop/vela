@@ -19,6 +19,7 @@
 #include "focus.h"
 #include "input.h"
 #include "keymap_options.h"
+#include "lock_keys.h"
 #include "server.h"
 #include "shell.h"
 #include "super_numbers.h"
@@ -143,6 +144,92 @@ static struct xkb_keymap *system_keymap(struct vela_input *input, struct xkb_con
     return xkb_keymap_new_from_names(context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
 }
 
+// ------------------------------------------------------------ lock keys --
+
+// The keyboard's Caps Lock and Num Lock set to the seat's, its other locked
+// modifiers, pressed keys and layout kept (docs/keyboard.md §8.1).
+static void set_locks(struct vela_keyboard *keyboard)
+{
+    struct vela_input *input = keyboard->input;
+    struct wlr_keyboard *wlr = keyboard->wlr;
+    if (keyboard->is_virtual || !input->locks_known || !wlr->keymap) {
+        return;
+    }
+    const struct wlr_keyboard_modifiers m = wlr->modifiers;
+    const uint32_t locked = vela_locks_apply(wlr->keymap, m.locked, input->caps_locked, input->num_locked);
+    if (locked == m.locked) {
+        return;
+    }
+    keyboard->syncing = true;
+    wlr_keyboard_notify_modifiers(wlr, m.depressed, m.latched, locked, m.group); // calls handle_modifiers
+    keyboard->syncing = false;
+}
+
+void vela_keyboard_save_numlock(struct vela_input *input)
+{
+    if (!input->numlock_unsaved) {
+        return;
+    }
+    input->numlock_unsaved = false;
+    char path[4096];
+    if (!vela_numlock_path(path, sizeof(path)) || !vela_numlock_save(path, input->num_locked)) {
+        wlr_log(WLR_ERROR, "Keyboard: Num Lock's state could not be kept");
+    }
+}
+
+static int save_numlock(void *data)
+{
+    vela_keyboard_save_numlock(data);
+    return 0;
+}
+
+// Num Lock changed: kept a second after the last change (numlock=last).
+static void schedule_numlock_save(struct vela_input *input)
+{
+    if (input->numlock != VELA_NUMLOCK_LAST) {
+        return;
+    }
+    input->numlock_unsaved = true;
+    if (!input->numlock_timer) {
+        input->numlock_timer = wl_event_loop_add_timer(input->server->loop, save_numlock, input);
+    }
+    if (input->numlock_timer) {
+        wl_event_source_timer_update(input->numlock_timer, 1000);
+    } else {
+        vela_keyboard_save_numlock(input);
+    }
+}
+
+// A physical keyboard's locks changed (a key, or its own LED request): they
+// become the seat's, and every other physical keyboard takes them.
+static void share_locks(struct vela_keyboard *keyboard)
+{
+    struct vela_input *input = keyboard->input;
+    struct wlr_keyboard *wlr = keyboard->wlr;
+    if (keyboard->is_virtual || !input->locks_known) {
+        return;
+    }
+    bool caps = false;
+    bool num = false;
+    vela_locks_read(wlr->keymap, wlr->modifiers.locked, &caps, &num);
+    if (caps == input->caps_locked && num == input->num_locked) {
+        return;
+    }
+    const bool num_changed = num != input->num_locked;
+    input->caps_locked = caps;
+    input->num_locked = num;
+    struct vela_keyboard *other;
+    wl_list_for_each(other, &input->keyboards, link)
+    {
+        if (other != keyboard) {
+            set_locks(other);
+        }
+    }
+    if (num_changed) {
+        schedule_numlock_save(input);
+    }
+}
+
 void vela_keyboard_apply_settings(struct vela_keyboard *keyboard, const struct vela_config *settings)
 {
     // A virtual keyboard (automated tests) brings its own layout.
@@ -159,6 +246,8 @@ void vela_keyboard_apply_settings(struct vela_keyboard *keyboard, const struct v
     wlr_keyboard_set_keymap(keyboard->wlr, keymap);
     xkb_keymap_unref(keymap);
     xkb_context_unref(context);
+    // A new keymap starts unlocked: the seat's locks are put back.
+    set_locks(keyboard);
 
     // Key repeat: 400 ms delay and 30 characters/s by default (close to
     // Windows').
@@ -185,6 +274,14 @@ static void handle_modifiers(struct wl_listener *listener, void *data)
     struct vela_server *server = keyboard->input->server;
     struct vela_a11y *a11y = server->a11y;
     struct wlr_keyboard *wlr = keyboard->wlr;
+    // The seat's locks being put on this keyboard (set_locks): the apps hear
+    // of it only if it is the keyboard they get.
+    if (keyboard->syncing) {
+        if (server->seat->keyboard_state.keyboard == wlr) {
+            wlr_seat_keyboard_notify_modifiers(server->seat, &wlr->modifiers);
+        }
+        return;
+    }
     // Sticky keys: whoever sends modifiers itself (virtual keyboards) doesn't
     // know about the latched ones: they are put back.
     const struct wlr_keyboard_modifiers *m = &wlr->modifiers;
@@ -198,6 +295,7 @@ static void handle_modifiers(struct wl_listener *listener, void *data)
     }
     wlr_seat_set_keyboard(server->seat, wlr);
     wlr_seat_keyboard_notify_modifiers(server->seat, &wlr->modifiers);
+    share_locks(keyboard);
 }
 
 static void stop_repeat(struct vela_keyboard *keyboard)
@@ -427,6 +525,16 @@ struct vela_keyboard *vela_keyboard_create(struct vela_input *input, struct wlr_
     struct vela_keyboard *keyboard = VELA_NEW(struct vela_keyboard);
     keyboard->input = input;
     keyboard->wlr = wlr;
+    keyboard->is_virtual = wlr_input_device_get_virtual_keyboard(&wlr->base) != NULL;
+    // The first physical keyboard: Num Lock as numlock= says (§7). Later
+    // ones take the seat's locks, so plugging one in changes nothing.
+    if (!keyboard->is_virtual && !input->locks_known) {
+        char path[4096];
+        const bool have_path = vela_numlock_path(path, sizeof(path));
+        input->num_locked = vela_numlock_initial(input->numlock, have_path ? path : NULL);
+        input->caps_locked = false;
+        input->locks_known = true;
+    }
     struct vela_config settings;
     vela_config_read(&settings);
     vela_keyboard_apply_settings(keyboard, &settings);

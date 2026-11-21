@@ -108,7 +108,8 @@ see the [roadmap](roadmap.md).
   by name, language or country, drawn and tried by typing before it is
   added; where the layout in use comes from when none is chosen; key
   repeat; what the Caps Lock key does, a Compose key, swapped Ctrl, Alt
-  and Win, a keypad that always types digits ([design](keyboard.md)).
+  and Win, a keypad that always types digits; Num Lock at startup, and
+  Caps Lock and Num Lock shared by every keyboard ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming

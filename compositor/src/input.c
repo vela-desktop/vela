@@ -190,6 +190,11 @@ static void load_super_numbers(struct vela_input *input, const struct vela_confi
     vela_input_hide_super_hints(input);
 }
 
+static void load_numlock(struct vela_input *input, const struct vela_config *settings)
+{
+    input->numlock = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
+}
+
 void vela_input_hide_super_hints(struct vela_input *input)
 {
     if (input->super_timer) {
@@ -210,6 +215,7 @@ void vela_input_reload(struct vela_input *input)
         vela_keyboard_apply_settings(keyboard, &settings);
     }
     load_super_numbers(input, &settings);
+    load_numlock(input, &settings);
     vela_config_finish(&settings);
     struct wlr_seat *seat = input->server->seat;
     if (seat->keyboard_state.keyboard) {
@@ -873,6 +879,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
     struct vela_config settings;
     vela_config_read(&settings);
     load_super_numbers(input, &settings);
+    load_numlock(input, &settings);
     vela_config_finish(&settings);
     return input;
 }
@@ -898,6 +905,12 @@ void vela_input_destroy(struct vela_input *input)
     }
     if (input->paste_timer) {
         wl_event_source_remove(input->paste_timer);
+    }
+    // A Num Lock change still waiting to be kept: kept now (logout,
+    // Alt+Shift+Esc, SIGTERM).
+    vela_keyboard_save_numlock(input);
+    if (input->numlock_timer) {
+        wl_event_source_remove(input->numlock_timer);
     }
     struct wl_listener *listeners[] = {
         &input->new_input,

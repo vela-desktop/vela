@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP5 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP6 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** stages KP6–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP7–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -313,7 +313,8 @@ the drawing and try field of §5.4 use them too.
 
 `numlock=off|on|last` in `vela.conf`, Settings > Keyboard > Typing,
 *Num Lock when Vela starts*: **Off** (default, as today), **On**, **As it
-was** (the state at the end of the last session).
+was** (the state at the end of the last session). The logic is
+`compositor/src/lock_keys.c`; `keyboard.c` applies it.
 
 - Every keyboard starts with Num Lock off on Wayland whatever the
   firmware did, so *leave it unchanged* would mean *off*: it is not a
@@ -323,8 +324,8 @@ was** (the state at the end of the last session).
   `rename`), one second after the last change so that a burst of presses
   writes once, and again, at once, when the compositor exits normally
   (logout, Alt+Shift+Esc, `SIGTERM`). After a crash it holds the state
-  of at most one second earlier. A missing or unreadable file means
-  *off*.
+  of at most one second earlier. A missing, unreadable or damaged file
+  (anything but exactly `on`) means *off*.
 - The state is applied when the first physical keyboard appears. Later
   keyboards take the current state (§8.1), so plugging a keyboard in
   doesn't change it.
@@ -332,6 +333,8 @@ was** (the state at the end of the last session).
   are left alone.
 - Off is the default because some older laptops put a keypad under the
   letter keys, where Num Lock on turns *uiop* into digits.
+- While the keypad always types digits (§6), the choice is disabled,
+  with a note: Num Lock changes nothing then.
 
 ## 8. Caps Lock
 
@@ -361,6 +364,10 @@ compositor keeps **two booleans**, `caps` and `num`, not a modifier mask:
   never clears a bit it doesn't own.
 - Virtual keyboards neither feed nor receive the shared state: they send
   their own modifiers.
+
+- **A new keymap** (a layout or option changed in Settings) starts with
+  nothing locked: the compositor puts the seat's locks back on it at once,
+  so changing the layout doesn't turn Num Lock off.
 
 The layout itself stays per keyboard, as today (see §14).
 
@@ -585,7 +592,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP3 | Flags (§5.3). Done. |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). Done. |
 | KP5 | Key behavior (§6). Done. |
-| KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). |
+| KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). Done. |
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). |
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). |
 | KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). |

@@ -32,6 +32,11 @@ under "Unreleased" in the pull request that makes a user-visible change.
   options in vela.conf are kept. The system's XKB options (localectl) now
   apply with layouts chosen in Settings too, until Settings changes one.
 
+- Num Lock can be on when Vela starts, off, or as it was at the end of the
+  last session (Settings > Keyboard > Typing, as asked in #214). Caps Lock
+  and Num Lock are now shared by every keyboard, and changing the layout
+  no longer turns them off.
+
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
   normal installation.

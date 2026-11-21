@@ -261,6 +261,7 @@ Window {
         { page: "keyboard-typing", text: qsTr("Compose key"), keys: qsTr("compose accents special characters right alt menu") },
         { page: "keyboard-typing", text: qsTr("Swap Ctrl, Alt and Win"), keys: qsTr("swap ctrl alt win mac keyboard command option modifiers") },
         { page: "keyboard-typing", text: qsTr("Numeric keypad"), keys: qsTr("numeric keypad numpad digits num lock") },
+        { page: "keyboard-typing", text: qsTr("Num Lock at startup"), keys: qsTr("num lock numlock numpad startup login on off") },
         { page: "mouse", text: qsTr("Mouse"), keys: qsTr("pointer speed primary button left-handed wheel scrolling lines acceleration precision") },
         { page: "touchpad", text: qsTr("Touchpad"), keys: qsTr("tap click gestures fingers scrolling laptop trackpad") },
         { page: "touchpad", text: qsTr("Touchpad gestures"), keys: qsTr("three fingers four fingers switch desktops apps") },

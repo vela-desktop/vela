@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include <wayland-server-core.h>
 
+#include "lock_keys.h"
 #include "super_numbers.h"
 
 struct vela_server;
@@ -90,6 +91,18 @@ struct vela_input {
     // The layout written to the log last time (keyboard.c): only changes are
     // logged.
     char keymap_logged[1024];
+
+    // Caps Lock and Num Lock, the seat's (keyboard.c, docs/keyboard.md §8.1):
+    // every physical keyboard follows them. Known once the first physical
+    // keyboard has appeared and taken Num Lock's startup state (§7).
+    bool locks_known;
+    bool caps_locked;
+    bool num_locked;
+    enum vela_numlock numlock; // numlock= in vela.conf
+    // Num Lock's state to keep for numlock=last, written a second after the
+    // last change and at exit.
+    struct wl_event_source *numlock_timer;
+    bool numlock_unsaved;
 
     // Implicit grab, as Wayland wants: while a button is held, the pointer
     // stays with the surface it was pressed on (even outside it, even on

@@ -349,6 +349,8 @@ void Preferences::reloadCompositor()
             ? vela::keyboardoptions::fromLocaled(QString::fromUtf8(localed.read(64 * 1024)))
             : QStringList();
     }
+    const QString numLock = value(QStringLiteral("numlock"), QStringLiteral("off"));
+    m_numLock = numLock == QLatin1String("on") || numLock == QLatin1String("last") ? numLock : QStringLiteral("off");
     m_repeatDelay = value(QStringLiteral("keyboard-repeat-delay"), QStringLiteral("400")).toInt();
     m_repeatRate = value(QStringLiteral("keyboard-repeat-rate"), QStringLiteral("30")).toInt();
     emit keyboardChanged();
@@ -1132,6 +1134,8 @@ bool Preferences::saveCompositorKeys(const QStringList& keys)
                 values << value.toMap()[key == QLatin1String("keyboard-layout") ? QStringLiteral("layout") : QStringLiteral("variant")].toString();
             }
             changes.append({ key, values.join(u',') });
+        } else if (key == QLatin1String("numlock")) {
+            changes.append({ key, m_numLock });
         } else if (key == QLatin1String("keyboard-options")) {
             changes.append({ key, m_keyboardOptions.join(u',') });
         } else if (key == QLatin1String("keyboard-repeat-delay")) {
@@ -1482,6 +1486,18 @@ void Preferences::moveKeyboardLayoutUp(int index)
         }
         emit keyboardChanged();
     }
+}
+
+void Preferences::setNumLock(const QString& mode)
+{
+    if (mode == m_numLock
+        || (mode != QLatin1String("off") && mode != QLatin1String("on") && mode != QLatin1String("last"))) {
+        return;
+    }
+    const QString previous = m_numLock;
+    m_numLock = mode;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("numlock") }), m_numLock, previous);
+    emit keyboardChanged();
 }
 
 QString Preferences::capsKey() const

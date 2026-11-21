@@ -107,6 +107,20 @@ Page {
                 onToggled: Prefs.numpadKeys = checked ? "digits" : "default"
             }
         }
+        Card {
+            icon: "input-keyboard"
+            title: qsTr("Num Lock when Vela starts")
+            description: Prefs.numpadKeys === "digits" ? qsTr("The keypad always types digits, whatever Num Lock says")
+                : qsTr("Every keyboard shares Num Lock and Caps Lock")
+            trailing: KeyChoice {
+                objectName: "numLock"
+                values: ["off", "on", "last"]
+                model: [qsTr("Off", "Num Lock"), qsTr("On", "Num Lock"), qsTr("As it was", "Num Lock")]
+                value: Prefs.numLock
+                usable: Prefs.numpadKeys !== "digits"
+                onPicked: value => Prefs.numLock = value
+            }
+        }
     }
 
     // A drop-down of a key control: `values` matched to the model's texts,
