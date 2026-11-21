@@ -478,7 +478,8 @@ void vela_views_refresh_decoration_text(struct vela_server *server)
 void vela_views_refresh_decoration_icons(struct vela_server *server)
 {
     struct vela_view *view;
-    wl_list_for_each (view, &server->views, link) {
+    wl_list_for_each(view, &server->views, link)
+    {
         if (view->decoration) {
             const struct vela_decoration_state state = decoration_state(view);
             vela_decoration_refresh_icon(view->decoration, &state);

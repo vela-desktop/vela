@@ -56,8 +56,8 @@ inline void applyIconTheme(bool light)
         QGuiApplication::setPalette(palette);
     }
 
-    QSettings kdeGlobals(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
-                             + QStringLiteral("/kdeglobals"),
+    QSettings kdeGlobals(
+        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/kdeglobals"),
         QSettings::IniFormat);
     kdeGlobals.sync();
     QString base = kdeGlobals.value(QStringLiteral("Icons/Theme"), QIcon::themeName()).toString();
