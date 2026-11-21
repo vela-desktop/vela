@@ -279,6 +279,7 @@ own design, cost/maintenance analysis and definition of done.
 | **On-screen keyboard** | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design open, code pending | 0.3 proposed |
 | **Keyboard personalization** | [keyboard.md](keyboard.md) | — | design accepted, code pending | 0.2 candidate |
 | **Benchmark suite** | in PR | [#109](https://github.com/vela-desktop/vela/pull/109) | work/review ongoing | unassigned |
+| **Release automation**: rehearsal tags, upgrade tests in CI, `release.py` | [release-automation.md](release-automation.md) | [#306](https://github.com/vela-desktop/vela/pull/306) (R1), [#307](https://github.com/vela-desktop/vela/pull/307) (R2), [#308](https://github.com/vela-desktop/vela/pull/308) (R3), [#309](https://github.com/vela-desktop/vela/pull/309) (R4) | R1–R4 in review | 0.2 (release tooling) |
 
 ## Next — Not yet assigned to a release
 
