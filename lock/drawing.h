@@ -179,10 +179,12 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
             p.setPen(QColor(255, 255, 255, 220));
             p.drawText(QRectF(0, field.bottom() + 16, lw, 30), Qt::AlignHCenter | Qt::AlignTop, scene.message);
         }
-        // Below the message, if there is one, in the caution color of the
-        // dark theme: the lock is always drawn over a darkened wallpaper.
+        // Below the message, if there is one, a line of the font further
+        // down, in the caution color of the dark theme: the lock is always
+        // drawn over a darkened wallpaper.
         if (scene.capsLock && scene.mode == Mode::Login) {
-            const double y = field.bottom() + 16 + (scene.message.isEmpty() ? 0 : 26);
+            const double line = QFontMetricsF(font).lineSpacing() + 6;
+            const double y = field.bottom() + 16 + (scene.message.isEmpty() ? 0 : line);
             p.setPen(QColor(0xfc, 0xe1, 0x00));
             p.drawText(QRectF(0, y, lw, 30), Qt::AlignHCenter | Qt::AlignTop,
                 QCoreApplication::translate("Lock", "Caps Lock is on."));

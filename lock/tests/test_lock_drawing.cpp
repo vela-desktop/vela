@@ -189,7 +189,11 @@ void testCapsLock()
     const QColor caution(0xfc, 0xe1, 0x00);
     Scene scene = loginScene();
     const QRect below(0, 466, 800, 30);
-    const QRect further(0, 492, 800, 30);
+    // The message's own line, and the ones under it: the warning starts a
+    // line of the font plus 6 further down, wherever the font puts its
+    // glyphs.
+    const QRect messageLine(0, 466, 800, 16);
+    const QRect further(0, 486, 800, 40);
     check(!anyPixel(paint(defaultLook(), scene), below, caution, 40), "Caps Lock off: no warning");
     scene.capsLock = true;
     check(anyPixel(paint(defaultLook(), scene), below, caution, 40), "Caps Lock on: the warning under the field");
@@ -197,7 +201,7 @@ void testCapsLock()
     // With a message, below it.
     scene.message = QStringLiteral("The password is incorrect. Try again.");
     QImage image = paint(defaultLook(), scene);
-    check(!anyPixel(image, below, caution, 40), "the message keeps its place");
+    check(!anyPixel(image, messageLine, caution, 40), "the message keeps its place");
     check(anyPixel(image, further, caution, 40), "the warning under the message");
     // Not while signing in, nor on the clock.
     scene.message.clear();
