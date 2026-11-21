@@ -1,0 +1,80 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# After a Beta is published: in clean containers, install the previous Beta
+# and let its updater install this one, as users do. Before 0.2.0 the
+# updater only saw prereleases, so from 0.1.x the documented one-time step
+# runs packaging/vela-update from the release checkout
+# (docs/release-automation.md §5, R2).
+#
+# Called by build.yml once publish-beta has published a real release, and
+# runnable by hand for the newest published Beta. The script skips versions
+# that have already been superseded.
+
+name: Beta update check
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Published Beta version, e.g. 0.2.1
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Newest published Beta version, e.g. 0.2.1
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta-update-check-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  update:
+    name: Update from the previous Beta (${{ matrix.distro }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: arch
+            image: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+          - distro: fedora-44
+            image: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+          - distro: fedora-45
+            image: fedora@sha256:aacbc26b38361ba0cb3d10f268da40b61b36aed6ed6fe5831a35871636bedb06
+          - distro: ubuntu
+            image: ubuntu:26.10
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ matrix.image }}
+    steps:
+      - name: Check the version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$VERSION" in
+            0.*.*) ;;
+            *) echo "::error::Not a Beta version: $VERSION"; exit 1 ;;
+          esac
+      # The tools come from this workflow's commit; the one-time updater
+      # step runs from the release's own tree.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: refs/tags/v${{ inputs.version }}
+          path: release-tree
+      - name: Install the tools
+        run: sh scripts/ci-beta-upgrade-tools.sh
+      - name: Update from the previous Beta through its updater
+        env:
+          VERSION: ${{ inputs.version }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I scripts/ci-beta-upgrade.py updater --version "$VERSION" --checkout "$GITHUB_WORKSPACE/release-tree"

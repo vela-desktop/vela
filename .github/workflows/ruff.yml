@@ -47,7 +47,7 @@ jobs:
           python-version: '3.13'
 
       - name: Install CPU test dependencies
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake dbus-daemon
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake dbus-daemon openssh-client
 
       - name: Scripts
         run: python -m unittest discover -s scripts/tests -v

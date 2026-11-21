@@ -21,6 +21,8 @@ void vela_output_manager_finish(struct vela_server *server);
 
 // The current output configuration, to the programs.
 void vela_output_manager_update(struct vela_server *server);
+// Re-evaluate the built-in panel when lid state or external display availability changes.
+void vela_output_manager_schedule_lid_update(struct vela_server *server);
 // Recompute the active arrangement once the backend finishes this hotplug batch.
 void vela_output_manager_hotplug(struct vela_server *server);
 

@@ -11,6 +11,7 @@
 #include <QProcess>
 #include <QProcessEnvironment>
 #include <QSignalSpy>
+#include <QSize>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QTest>
@@ -139,7 +140,7 @@ struct RawOutputClient {
         wl_display_disconnect(display);
     }
     bool sync() { return wl_display_roundtrip(display) >= 0; }
-    void prepare(bool protect)
+    void prepare(bool protect, QSize panelMode = QSize())
     {
         configuration = zwlr_output_manager_v1_create_configuration(manager, serial);
         static const zwlr_output_configuration_v1_listener listener {
@@ -150,7 +151,13 @@ struct RawOutputClient {
         zwlr_output_configuration_v1_add_listener(configuration, &listener, this);
         for (size_t i = 0; i < heads.size(); ++i) {
             auto* wanted = zwlr_output_configuration_v1_enable_head(configuration, heads[i]);
-            if (heads[i] == first) zwlr_output_configuration_head_v1_set_scale(wanted, wl_fixed_from_double(2));
+            if (heads[i] == first) {
+                zwlr_output_configuration_head_v1_set_scale(wanted, wl_fixed_from_double(2));
+                if (panelMode.isValid()) {
+                    zwlr_output_configuration_head_v1_set_custom_mode(
+                        wanted, panelMode.width(), panelMode.height(), 60000);
+                }
+            }
             drop(wanted);
         }
         if (protect) {
@@ -246,6 +253,113 @@ private slots:
         QVERIFY(output("HEADLESS-2").isEmpty());
         QVERIFY(!output("HEADLESS-3").isEmpty());
     }
+    void laptopLidFollowsExternalDisplayAvailability()
+    {
+        start({ "laptop" });
+        QVERIFY(client);
+        QTRY_VERIFY(client->available());
+        QVERIFY(client->apply("HEADLESS-1", { { "scale", 1.25 }, { "transform", "180" } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        const auto panel = output("HEADLESS-1");
+        const auto before = saved();
+        QVERIFY(!before.isEmpty());
+
+        command("lid close");
+        QTRY_COMPARE(output("HEADLESS-1")["enabled"].toBool(), false);
+        QVERIFY(output("HEADLESS-2")["enabled"].toBool());
+        QCOMPARE(saved(), before);
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        QTRY_VERIFY(client->confirming());
+        client->revert();
+        QTRY_VERIFY(!client->pending());
+        QCOMPARE(saved(), before);
+        QVERIFY(!output("HEADLESS-1")["enabled"].toBool());
+
+        QVERIFY(client->apply("HEADLESS-2", { { "scale", 1.5 } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        QVERIFY(saved().contains("[HEADLESS-1]\nenabled=yes"));
+        QVERIFY(saved().contains("rotation=180"));
+
+        command("lid open");
+        QTRY_COMPARE(output("HEADLESS-1"), panel);
+
+        command("lid close");
+        QTRY_COMPARE(output("HEADLESS-1")["enabled"].toBool(), false);
+        command("remove HEADLESS-2");
+        QTRY_COMPARE(output("HEADLESS-1"), panel);
+        command("add external");
+        QTRY_COMPARE(output("HEADLESS-1")["enabled"].toBool(), false);
+        QVERIFY(output("HEADLESS-3")["enabled"].toBool());
+
+        command("lid open");
+        QTRY_COMPARE(output("HEADLESS-1"), panel);
+        QVERIFY(client->apply("HEADLESS-1", { { "enabled", false } }));
+        QTRY_VERIFY(client->confirming());
+        client->confirm();
+        QTRY_VERIFY(!client->pending());
+        command("lid close");
+        command("lid open");
+        QTRY_VERIFY(!output("HEADLESS-1")["enabled"].toBool());
+        QVERIFY(saved().contains("[HEADLESS-1]\nenabled=no"));
+    }
+    void hiddenPanelModesAreValidatedBeforeSaving()
+    {
+        start({ "laptop" });
+        QVERIFY(client);
+        QTRY_VERIFY(output("HEADLESS-1")["enabled"].toBool());
+        command("lid close");
+        QTRY_VERIFY(!output("HEADLESS-1")["enabled"].toBool());
+
+        for (bool testOnly : { true, false }) {
+            RawOutputClient other(socket);
+            other.prepare(false, QSize(16384, 16384));
+            if (testOnly) {
+                zwlr_output_configuration_v1_test(other.configuration);
+            } else {
+                zwlr_output_configuration_v1_apply(other.configuration);
+            }
+            QVERIFY(other.sync());
+            QCOMPARE(other.result, 0);
+            QVERIFY(saved().isEmpty());
+        }
+
+        {
+            RawOutputClient other(socket);
+            other.prepare(false, QSize(1600, 900));
+            zwlr_output_configuration_v1_apply(other.configuration);
+            QVERIFY(other.sync());
+            QCOMPARE(other.result, 1);
+            QVERIFY(!output("HEADLESS-1")["enabled"].toBool());
+            QVERIFY(saved().contains("mode=1600x900@60.000"));
+        }
+
+        // The client connected before the headless panel was disabled holds
+        // the synthetic mode resource needed to observe its re-enablement.
+        command("lid open");
+        QTRY_COMPARE(output("HEADLESS-1")["current"].toMap()["width"].toInt(), 1600);
+        QVERIFY(output("HEADLESS-1")["enabled"].toBool());
+    }
+
+    void reopeningRetriesTransientPanelModesetFailures()
+    {
+        start({ "laptop" });
+        QVERIFY(client);
+        QTRY_VERIFY(output("HEADLESS-1")["enabled"].toBool());
+        const auto panel = output("HEADLESS-1");
+        command("lid close");
+        QTRY_VERIFY(!output("HEADLESS-1")["enabled"].toBool());
+
+        command("fail-twice HEADLESS-1");
+        command("lid open");
+        QTRY_COMPARE_WITH_TIMEOUT(output("HEADLESS-1"), panel, 4000);
+        QVERIFY(saved().isEmpty());
+    }
+
     void primaryDisplaySelectionAndHotplug()
     {
         start();

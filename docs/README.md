@@ -19,6 +19,7 @@ Every document in this directory, grouped by what it is for. The
 
 - [Release history](release-history.md) covers what shipped in each Beta series and how it was validated.
 - [Release channels](release-channels.md): Beta and Experimental, and the maintainer release process.
+- [Release automation](release-automation.md): rehearsal tags and the `release.py` commands for Beta releases.
 - [Package provenance](package-provenance.md): how packages are built, signed and verified.
 - [Distribution metrics](distribution-metrics.md): the GitHub traffic and download statistics collected, with no runtime telemetry.
 
