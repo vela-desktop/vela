@@ -14,6 +14,7 @@
 #include "shell.h"
 #include "snap.h"
 #include "switcher.h"
+#include "table.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -34,200 +35,117 @@ static bool shell(struct vela_server *server, const char *line)
     return true;
 }
 
-bool vela_bindings_repeats(uint32_t sym)
+// The modes the table's rows depend on, as they are now.
+static struct vela_modes current_modes(struct vela_server *server)
 {
-    return sym == XKB_KEY_XF86AudioRaiseVolume || sym == XKB_KEY_XF86AudioLowerVolume;
+    return (struct vela_modes) {
+        .nested = server->nested,
+        .color_filter_shortcut = server->a11y->color_filter_shortcut,
+        .magnifier = server->a11y->magnifier,
+        .switcher = vela_switcher_active(server),
+        .numbers = server->input->super_numbers,
+    };
 }
 
-bool vela_bindings_handle(struct vela_server *server, uint32_t modifiers, uint32_t sym)
+static bool snap(struct vela_server *server, xkb_keysym_t direction)
 {
-    bool alt = modifiers & WLR_MODIFIER_ALT;
-    bool super = modifiers & WLR_MODIFIER_LOGO;
-    bool shift = modifiers & WLR_MODIFIER_SHIFT;
-    bool ctrl = modifiers & WLR_MODIFIER_CTRL;
-    // The Alt+letter variants exist because, when Vela runs in a window inside
-    // KDE, KDE keeps the Super key for itself. In the real session they are
-    // left to the apps, which use them to open their own menus.
-    bool alt_nested = alt && server->nested;
-    bool windows_key = super || alt_nested;
-    struct vela_a11y *a11y = server->a11y;
+    struct vela_view *active = vela_views_focused(server);
+    if (active) {
+        vela_snap_keyboard(server, active, direction);
+    }
+    return true;
+}
 
-    // Ctrl+Alt+F1...F12: another console (or the Plasma session). The keyboard
-    // already translates the combination into the XF86Switch_VT_n key.
-    if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
+// A row of the table (common/shortcuts/table.c): true if the key was used.
+static bool run(struct vela_server *server, const struct vela_binding *row, const struct vela_press *press)
+{
+    struct vela_a11y *a11y = server->a11y;
+    struct vela_view *active = vela_views_focused(server);
+    switch (row->action) {
+    case VELA_ACTION_SWITCH_VT:
         if (server->session) {
-            wlr_session_change_vt(server->session, (unsigned)(sym - XKB_KEY_XF86Switch_VT_1 + 1));
+            wlr_session_change_vt(server->session, (unsigned)(press->typed - XKB_KEY_XF86Switch_VT_1 + 1));
         }
         return true;
-    }
-    // The keyboard's media and volume keys (and knob) work whatever window has
-    // the focus, even on the lock screen, like Windows: the shell plays or
-    // pauses the active player (MPRIS), changes the volume and mutes the
-    // microphone. The app never sees them, or Play/Pause would toggle twice.
-    static const struct {
-        xkb_keysym_t key;
-        const char *command;
-    } media_keys[] = {
-        { XKB_KEY_XF86AudioRaiseVolume, "volume up" },
-        { XKB_KEY_XF86AudioLowerVolume, "volume down" },
-        { XKB_KEY_XF86AudioMute, "volume mute" },
-        { XKB_KEY_XF86AudioMicMute, "volume mic-mute" },
-        { XKB_KEY_XF86AudioPlay, "media play-pause" },
-        { XKB_KEY_XF86AudioPause, "media pause" },
-        { XKB_KEY_XF86AudioStop, "media stop" },
-        { XKB_KEY_XF86AudioNext, "media next" },
-        { XKB_KEY_XF86AudioPrev, "media previous" },
-    };
-    for (size_t i = 0; i < sizeof(media_keys) / sizeof(media_keys[0]); ++i) {
-        if (sym == media_keys[i].key) {
-            return shell(server, media_keys[i].command);
-        }
-    }
-    // The focused app keeps the shortcuts for itself (virtual machine, remote
-    // desktop), or the screen is locked: only the keys above are left.
-    if (vela_input_shortcuts_inhibited(server->input) || server->locked) {
-        return false;
-    }
-    // Win+L locks the screen, like Windows (Alt+L inside KDE).
-    if (windows_key && (sym == XKB_KEY_l || sym == XKB_KEY_L)) {
-        vela_lock_screen(server->lock);
-        return true;
-    }
-    if (alt && shift && sym == XKB_KEY_Escape) {
-        wl_display_terminate(server->display);
-        return true;
-    }
-    // The polkit dialog waits for an answer: the other shortcuts (Start,
-    // Alt+Tab, Win+D, snap, desktops...) stay off, like Windows' secure
-    // desktop. Locking the screen is still possible (above).
-    if (vela_focus_modal_layer(server)) {
-        return false;
-    }
-    if (windows_key && sym == XKB_KEY_Return) {
+    case VELA_ACTION_SHELL: return shell(server, row->arg);
+    case VELA_ACTION_LOCK: vela_lock_screen(server->lock); return true;
+    case VELA_ACTION_QUIT: wl_display_terminate(server->display); return true;
+    case VELA_ACTION_TERMINAL: {
         const char *terminal = getenv("VELA_TERMINAL");
         vela_spawn(terminal ? terminal : "konsole || foot || kitty || alacritty || xterm");
         return true;
     }
-    struct vela_view *active = vela_views_focused(server);
-    if ((alt && sym == XKB_KEY_F4) || (alt_nested && sym == XKB_KEY_q)) {
+    case VELA_ACTION_CLOSE_WINDOW:
         if (active) {
             vela_view_close(active);
         }
         return true;
-    }
-    // Alt+Tab (inside KDE: Alt+J), backwards with Shift. The choice goes on
-    // while Alt is held; releasing it switches to the chosen window
-    // (keyboard.c), Esc cancels.
-    bool tab = sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab;
-    bool nested_tab = sym == XKB_KEY_j || sym == XKB_KEY_J;
-    if ((alt && tab) || (alt_nested && nested_tab)) {
-        vela_switcher_step(server, shift || sym == XKB_KEY_ISO_Left_Tab ? -1 : 1);
+    case VELA_ACTION_SWITCHER_NEXT: vela_switcher_step(server, 1); return true;
+    case VELA_ACTION_SWITCHER_PREVIOUS: vela_switcher_step(server, -1); return true;
+    case VELA_ACTION_SWITCHER_CANCEL: vela_switcher_finish(server, false); return true;
+    case VELA_ACTION_DESKTOP_PREVIOUS:
+    case VELA_ACTION_DESKTOP_NEXT:
+        vela_workspaces_switch(
+            server, server->workspaces->current + (row->action == VELA_ACTION_DESKTOP_PREVIOUS ? -1 : 1), true);
         return true;
-    }
-    if (vela_switcher_active(server) && sym == XKB_KEY_Escape) {
-        vela_switcher_finish(server, false);
-        return true;
-    }
-    // Virtual desktops, like Windows: Win+Ctrl+←/→ to switch, Win+Ctrl+D to
-    // create a new one, Win+Ctrl+F4 to close the current one (inside KDE with
-    // Alt+Ctrl); Win+Tab (Alt+W) Task View.
-    if (windows_key && ctrl) {
-        if (sym == XKB_KEY_Left || sym == XKB_KEY_Right) {
-            vela_workspaces_switch(server, server->workspaces->current + (sym == XKB_KEY_Left ? -1 : 1), true);
-            return true;
-        }
-        if (sym == XKB_KEY_d || sym == XKB_KEY_D) {
-            vela_workspaces_switch(server, vela_workspaces_add(server), true);
-            return true;
-        }
-        if (sym == XKB_KEY_F4) {
-            vela_workspaces_remove(server, server->workspaces->current);
-            return true;
-        }
-    }
-    // Accessibility: Win+Ctrl+C the color filters (if the shortcut is on in
-    // Settings, like Windows); Win+plus and Win+minus the magnifier, Win+Esc
-    // closes it.
-    if (super && ctrl && xkb_keysym_to_lower(sym) == XKB_KEY_c && a11y->color_filter_shortcut) {
-        vela_a11y_set_color_filter(a11y, !a11y->color_filter, true);
-        return true;
-    }
-    if (super && (sym == XKB_KEY_plus || sym == XKB_KEY_equal || sym == XKB_KEY_KP_Add)) {
-        vela_a11y_zoom(a11y, 1);
-        return true;
-    }
-    if (super && a11y->magnifier && (sym == XKB_KEY_minus || sym == XKB_KEY_KP_Subtract)) {
-        vela_a11y_zoom(a11y, -1);
-        return true;
-    }
-    if (super && a11y->magnifier && sym == XKB_KEY_Escape) {
-        vela_a11y_set_magnifier(a11y, false);
-        return true;
-    }
-    // Win+V: clipboard history; Win+Ctrl+V: the sound outputs and the volume
-    // mixer, in quick settings; Win+Shift+S and Print: the Snipping Tool
-    // (drawn by the shell).
-    if (super && xkb_keysym_to_lower(sym) == XKB_KEY_v) {
-        return shell(server, ctrl ? "sound-output" : "clipboard");
-    }
-    if ((super && shift && xkb_keysym_to_lower(sym) == XKB_KEY_s) || sym == XKB_KEY_Print) {
-        return shell(server, "snip");
-    }
-    if ((super && tab) || (alt_nested && (sym == XKB_KEY_w || sym == XKB_KEY_W))) {
-        return shell(server, "task-view");
-    }
-    // Win+arrows: halves, quarters, maximize, minimize (snap.c). Inside KDE
-    // Alt+arrows and Alt+M (maximize or restore).
-    if (windows_key && (sym == XKB_KEY_Left || sym == XKB_KEY_Right || (super && (sym == XKB_KEY_Up || sym == XKB_KEY_Down)))) {
-        if (active) {
-            vela_snap_keyboard(server, active, sym);
-        }
-        return true;
-    }
-    if (alt_nested && sym == XKB_KEY_m) {
+    case VELA_ACTION_DESKTOP_NEW: vela_workspaces_switch(server, vela_workspaces_add(server), true); return true;
+    case VELA_ACTION_DESKTOP_CLOSE: vela_workspaces_remove(server, server->workspaces->current); return true;
+    case VELA_ACTION_COLOR_FILTERS: vela_a11y_set_color_filter(a11y, !a11y->color_filter, true); return true;
+    case VELA_ACTION_ZOOM_IN: vela_a11y_zoom(a11y, 1); return true;
+    case VELA_ACTION_ZOOM_OUT: vela_a11y_zoom(a11y, -1); return true;
+    case VELA_ACTION_MAGNIFIER_OFF: vela_a11y_set_magnifier(a11y, false); return true;
+    case VELA_ACTION_SNAP_LEFT: return snap(server, XKB_KEY_Left);
+    case VELA_ACTION_SNAP_RIGHT: return snap(server, XKB_KEY_Right);
+    case VELA_ACTION_SNAP_UP: return snap(server, XKB_KEY_Up);
+    case VELA_ACTION_SNAP_DOWN: return snap(server, XKB_KEY_Down);
+    case VELA_ACTION_MAXIMIZE:
         if (active) {
             vela_view_set_maximized(active, !active->maximized, true);
         }
         return true;
-    }
-    // Win+Z: the active window's snap layouts.
-    if (windows_key && (sym == XKB_KEY_z || sym == XKB_KEY_Z)) {
+    case VELA_ACTION_SNAP_LAYOUTS:
         if (active) {
             vela_snap_show_layouts(server, active, true);
         }
         return true;
-    }
-    if (alt_nested && sym == XKB_KEY_s) {
-        return shell(server, "toggle-start");
-    }
-    // Win+X: the Start button menu; Win+D: the desktop; Win+A:
-    // quick settings; Win+N: notification center and calendar; Win+I:
-    // Settings; Win+E: File Explorer. Inside KDE with Alt.
-    static const struct {
-        xkb_keysym_t key;
-        const char *command;
-    } shell_keys[] = {
-        { XKB_KEY_x, "winx" },
-        { XKB_KEY_d, "show-desktop" },
-        { XKB_KEY_a, "quick-settings" },
-        { XKB_KEY_n, "notification-center" },
-        { XKB_KEY_i, "settings" },
-        { XKB_KEY_e, "files" },
-    };
-    xkb_keysym_t lower = xkb_keysym_to_lower(sym);
-    for (size_t i = 0; windows_key && i < sizeof(shell_keys) / sizeof(shell_keys[0]); ++i) {
-        if (lower == shell_keys[i].key) {
-            return shell(server, shell_keys[i].command);
+    case VELA_ACTION_WINDOW_MENU: {
+        // Without a window the app keeps Alt+Space.
+        if (!active) {
+            return false;
         }
-    }
-    // Alt+Space: the window menu, under its title bar.
-    if (alt && !super && sym == XKB_KEY_space && active) {
         struct wlr_box frame = vela_view_frame_box(active);
         int bar = vela_view_title_bar_height(active) > 0 ? vela_view_title_bar_height(active) : 36;
         vela_window_menu_show(server, active, frame.x + 4, frame.y + bar, true);
         return true;
     }
+    // Run elsewhere: the key goes on as it would.
+    case VELA_ACTION_TASKBAR_NUMBER:
+    case VELA_ACTION_NEXT_LAYOUT: return false;
+    }
     return false;
+}
+
+bool vela_bindings_handle(struct vela_server *server, const struct vela_press *press, bool *repeats)
+{
+    *repeats = false;
+    const struct vela_modes modes = current_modes(server);
+    const struct vela_binding *row = vela_binding_find(press, &modes, VELA_STAGE_ALWAYS);
+    // The focused app keeps the shortcuts for itself (virtual machine, remote
+    // desktop), or the screen is locked: only the keys above are left.
+    if (!row && !vela_input_shortcuts_inhibited(server->input) && !server->locked) {
+        row = vela_binding_find(press, &modes, VELA_STAGE_BEFORE_DIALOG);
+        // The polkit dialog waits for an answer: the other shortcuts (Start,
+        // Alt+Tab, Win+D, snap, desktops...) stay off, like Windows' secure
+        // desktop. Locking the screen is still possible (above).
+        if (!row && !vela_focus_modal_layer(server)) {
+            row = vela_binding_find(press, &modes, VELA_STAGE_NORMAL);
+        }
+    }
+    if (!row) {
+        return false;
+    }
+    *repeats = row->repeats;
+    return run(server, row, press);
 }
 
 void vela_window_menu_show(struct vela_server *server, struct vela_view *view, double lx, double ly, bool keyboard)

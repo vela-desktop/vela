@@ -4,6 +4,8 @@ Vela uses Super for desktop-level actions in a normal session. When Vela runs ne
 
 Those nested alternatives are active only in nested mode; in a normal Vela session, ordinary Alt+letter combinations remain available to applications.
 
+The modifiers of a shortcut are exact: <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> is not <kbd>Super</kbd>+<kbd>E</kbd>, and stays free for the apps and for custom shortcuts. Caps Lock, Num Lock and AltGr don't count. Letters are where they are printed on the layout in use (<kbd>Super</kbd>+<kbd>Z</kbd> on AZERTY too), and work with Russian, Greek or another non-Latin layout active; the number row, the function keys and the other keys are matched by their position. One table in `common/shortcuts/table.c` holds them all, and a test checks every row of this page against it ([keyboard](keyboard.md#92-matching-a-key)).
+
 ## Windows and multitasking
 
 | Action | Normal session | Nested session |

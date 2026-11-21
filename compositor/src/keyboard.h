@@ -12,6 +12,8 @@
 // /etc/X11/xorg.conf.d/00-keyboard.conf), then "us" (docs/keyboard.md §5.6).
 // A virtual keyboard (automated tests) brings its own.
 
+#include "shortcuts.h"
+
 #include <stdbool.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
@@ -39,8 +41,7 @@ struct vela_keyboard {
     // the key, so it can't repeat it. With the keyboard's delay and rate.
     struct wl_event_source *repeat;
     uint32_t repeat_keycode; // 0: nothing repeating
-    uint32_t repeat_sym;
-    uint32_t repeat_mods;
+    struct vela_press repeat_press; // the key as it was pressed
 
     struct wl_listener modifiers;
     struct wl_listener key;

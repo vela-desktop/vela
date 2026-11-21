@@ -456,7 +456,8 @@ the compositor will run:
   takes Shift (Alt+Shift+Tab, Win+Shift+S…) says so in the table.
 - **Letters by their symbol.** The key's level-1 keysym in the active
   layout, without Shift, so Ctrl+Z is where the Z is printed (AZERTY,
-  QWERTZ). When the active layout gives no Latin letter for that key
+  QWERTZ); the other printable Latin-1 symbols too (ü, ñ, +, -). When
+  the active layout gives no Latin-1 symbol for that key
   (Russian, Greek, Arabic), the level-1 keysym of the first installed
   layout that does is used, as GNOME and KDE do; with none, the `us`
   layout's.
@@ -474,13 +475,23 @@ which is position, not symbol. Settings shows each with the symbol the
 first installed layout prints on it.
 
 **One table.** Vela's own shortcuts move out of the `if`s of
-`bindings.c` into a table in `common/` of {modifiers, key, condition,
-action}: the condition covers the modes (nested-only Alt variants, the
-Win+number mode, the color-filter switch). The compositor runs the
-table; Settings asks the same matcher whether a combination is taken,
-in the current modes. The 0.3 editor will make the table editable; here
-it only replaces the `if`s, with a test that every row of
-`docs/shortcuts.md` resolves to its action.
+`bindings.c` into a table in `common/shortcuts/table.c` of {stage,
+modifiers, key, condition, action}: the condition covers the modes
+(nested-only Alt variants, the Win+number mode, the color-filter switch,
+the magnifier and Alt+Tab being on), the stage when the compositor
+checks the row (§9.3). The compositor runs the table
+(`compositor/src/bindings.c`); Settings asks the same matcher whether a
+combination is taken, in the current modes. The 0.3 editor will make the
+table editable; here it only replaces the `if`s, with a test that every
+row of `docs/shortcuts.md` resolves to its action
+(`compositor/tests/shortcuts_test.cpp`). Rows run elsewhere are listed
+too, so Settings knows they are taken: Win+number (`keyboard.c`, for its
+releases) and Win+Space (XKB's `grp:win_space_toggle`). Print is Print
+alone now, as the other rows.
+
+The test found one row that never ran: the nested Alt+Ctrl+F4 (close the
+desktop) is the fourth console's combination, matched first; the table
+leaves it out.
 
 ### 9.3 What can be used
 
@@ -491,8 +502,11 @@ Refused, with the reason under the combination:
   Favorites…) are allowed alone.
 - **Vela's own:** anything the table matches in the current modes.
 - **Reserved:** Ctrl+Alt+F1–F12, Win+L, Alt+Shift+Esc, the media and
-  volume keys. They are matched before everything else, also while
-  shortcuts are inhibited, so they can't be taken.
+  volume keys. They are matched before everything else, so they can't be
+  taken: the consoles and the media keys also on the lock screen and
+  while an app inhibits shortcuts (stage *always*), Win+L and
+  Alt+Shift+Esc not then but while the polkit dialog waits (stage
+  *before the dialog*), as before this change.
 - **Already a custom shortcut:** Settings offers to replace it.
 
 **Warned about**, with a prominent caution bar that stays while the
@@ -510,7 +524,7 @@ order (Ctrl, Alt, Shift, Super) and the key as in §9.2:
 ```ini
 # Vela's custom shortcuts (Settings > Keyboard > Custom shortcuts)
 Ctrl+Alt+t=app org.kde.konsole.desktop
-Super+Shift+k=command kcalc
+Shift+Super+k=command kcalc
 Super+FK01=open https://docs.example.org/
 ```
 

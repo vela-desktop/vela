@@ -345,12 +345,13 @@ static int repeat_binding(void *data)
     if (!keyboard->repeat_keycode || rate <= 0) {
         return 0;
     }
-    vela_bindings_handle(keyboard->input->server, keyboard->repeat_mods, keyboard->repeat_sym);
+    bool repeats = false;
+    vela_bindings_handle(keyboard->input->server, &keyboard->repeat_press, &repeats);
     wl_event_source_timer_update(keyboard->repeat, vela_max(1, 1000 / rate));
     return 0;
 }
 
-static void start_repeat(struct vela_keyboard *keyboard, uint32_t keycode, xkb_keysym_t sym, uint32_t mods)
+static void start_repeat(struct vela_keyboard *keyboard, uint32_t keycode, const struct vela_press *press)
 {
     if (keyboard->wlr->repeat_info.rate <= 0) {
         return;
@@ -364,8 +365,7 @@ static void start_repeat(struct vela_keyboard *keyboard, uint32_t keycode, xkb_k
         }
     }
     keyboard->repeat_keycode = keycode;
-    keyboard->repeat_sym = sym;
-    keyboard->repeat_mods = mods;
+    keyboard->repeat_press = *press;
     wl_event_source_timer_update(keyboard->repeat, keyboard->wlr->repeat_info.delay);
 }
 
@@ -486,6 +486,7 @@ static void handle_key(struct wl_listener *listener, void *data)
             }
         }
     }
+    bool bindings_tried = false;
     if (number >= 0) {
         if (pressed && !inhibited) {
             // Taken before the action runs: a desktop switch focuses the
@@ -518,10 +519,16 @@ static void handle_key(struct wl_listener *listener, void *data)
                 continue;
             }
             input->super_tap = false;
-            if (!handled && vela_bindings_handle(server, mods, syms[i])) {
-                handled = true;
-                if (vela_bindings_repeats(syms[i])) {
-                    start_repeat(keyboard, event->keycode, syms[i], mods);
+            // Once per key, whatever its symbols: the table matches the key
+            // (common/shortcuts/table.c), not each symbol.
+            if (!handled && !bindings_tried && keyboard->wlr->xkb_state) {
+                bindings_tried = true;
+                struct vela_press press;
+                vela_press_from_state(keyboard->wlr->xkb_state, keycode, &press);
+                bool repeats = false;
+                handled = vela_bindings_handle(server, &press, &repeats);
+                if (handled && repeats) {
+                    start_repeat(keyboard, event->keycode, &press);
                 }
             }
             continue;
