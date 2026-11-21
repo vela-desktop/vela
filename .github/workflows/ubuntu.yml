@@ -115,9 +115,9 @@ jobs:
           cpack --config build-ubuntu/CPackConfig.cmake -G DEB -B build-ubuntu/packages
           dpkg-deb --info build-ubuntu/packages/*.deb
           dpkg-deb -f build-ubuntu/packages/*.deb Depends
-          # These must be strong Depends, not Recommends: the shell's theme
-          # icons are otherwise blank on a minimal Ubuntu installation.
-          for dependency in breeze-icon-theme qt6-svg-plugins; do
+          # Icons and the wlr ScreenCast/Screenshot backend must be strong
+          # Depends, not Recommends, on a minimal Ubuntu installation.
+          for dependency in breeze-icon-theme qt6-svg-plugins xdg-desktop-portal-wlr; do
             dpkg-deb -f build-ubuntu/packages/*.deb Depends |
               tr ',' '\n' | grep -Eq "^[[:space:]]*${dependency}([[:space:]]|$)" || {
                 echo "Missing hard DEB dependency: $dependency" >&2
@@ -176,9 +176,9 @@ jobs:
             echo "Missing DEB dependency: xdg-terminal-exec" >&2
             exit 1
           }
-          # Bluetooth needs only BlueZ (docs/bluetooth.md §10); the portals
-          # serve file choosers, screenshots and screencasts.
-          for recommendation in bluez xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr; do
+          # BlueZ and the generic GTK portal remain recommendations; screen
+          # capture uses the hard wlr dependency checked above.
+          for recommendation in bluez xdg-desktop-portal xdg-desktop-portal-gtk; do
             dpkg-deb -f build-ubuntu/packages/*.deb Recommends |
               tr ',' '\n' | grep -Eq "^[[:space:]]*${recommendation}([[:space:]]|$)" || {
                 echo "Missing DEB recommendation: $recommendation" >&2
@@ -233,8 +233,8 @@ jobs:
                 exit 1
               fi
             done
-          # --no-install-recommends must still pull in both runtime icon packages.
-          for dependency in breeze-icon-theme qt6-svg-plugins; do
+          # --no-install-recommends must still install the icons and wlr backend.
+          for dependency in breeze-icon-theme qt6-svg-plugins xdg-desktop-portal-wlr; do
             dpkg-query -W -f='${Status}\n' "$dependency" | grep -Fx 'install ok installed'
           done
           test -f /usr/share/icons/breeze-dark/index.theme

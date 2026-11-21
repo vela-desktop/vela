@@ -586,8 +586,8 @@ jobs:
           # Use normal DNF defaults so recommended desktop/updater tools
           # are exercised along with the mandatory runtime dependencies.
           dnf --refresh install -y "${rpms[0]}"
-          # DNF installs the recommended portal integrations by default;
-          # unlike Arch, Fedora deliberately keeps them optional in the RPM.
+          # DNF installs the recommended GTK portal by default; the wlr capture
+          # backend must be available even when weak dependencies are disabled.
           rpm -q xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr
           test -f /usr/share/xdg-desktop-portal/vela-portals.conf
           grep -Fxq 'default=gtk;kde' /usr/share/xdg-desktop-portal/vela-portals.conf
@@ -599,12 +599,13 @@ jobs:
           if [[ "$package_name" == vela ]]; then other_package=vela-git; else other_package=vela; fi
           rpm -q --conflicts "$package_name" | grep -Fx "$other_package"
           installed_requires=$(rpm -q --requires "$package_name")
-          for dependency in git util-linux rpm dnf5; do
+          for dependency in git util-linux rpm dnf5 xdg-desktop-portal-wlr; do
             grep -Fx "$dependency" <<< "$installed_requires"
           done
           # The DNF fixture job exercises rpmbuild. Here, verify the package
           # recommends the build toolchain for users who need a local build.
           rpm -q --recommends "$package_name" | grep -Fx rpm-build
+          rpm -q --recommends "$package_name" | grep -Fx xdg-desktop-portal-gtk
           for tool in git flock curl dnf python3; do
             command -v "$tool"
           done

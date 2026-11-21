@@ -94,6 +94,8 @@ Requires:       xorg-x11-server-Xwayland
 Requires:       pipewire
 Requires:       wireplumber
 Requires:       hicolor-icon-theme
+# ScreenCast and Screenshot use the wlr backend selected in vela-portals.conf.
+Requires:       xdg-desktop-portal-wlr
 
 # Public, attested binary downloads (curl + cosign) and local RPM build fallback.
 # Keep the build toolchain optional for systems using prebuilt releases.
@@ -103,7 +105,6 @@ Requires:       hicolor-icon-theme
 # No GitHub CLI is required by vela-update for public alpha releases.
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
-Recommends:     xdg-desktop-portal-wlr
 Recommends:     xdg-desktop-portal-gtk
 Recommends:     breeze-icon-theme
 Recommends:     NetworkManager

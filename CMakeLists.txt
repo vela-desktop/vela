@@ -186,17 +186,17 @@ if(VELA_PACKAGE_DEB)
     # Executables, icon themes and launch scripts require these at runtime
     # even when not linked as ELF libraries (shlibdeps handles the rest).
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
+    # ScreenCast and Screenshot use wlr; this is required even without Recommends.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "git, curl, apt, dpkg, sudo, util-linux, xdg-utils, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3 (>= 3.13), python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+        "git, curl, apt, dpkg, sudo, util-linux, xdg-utils, xdg-terminal-exec, xdg-desktop-portal-wlr, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3 (>= 3.13), python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
     # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
     # Recommends and Arch's optional dependency. Settings > Updates runs
     # vela-update in a terminal (docs/updates.md §6.3): xdg-terminal-exec
-    # (Depends) picks any one installed, Konsole by default. The portals
-    # match Fedora's Recommends and Arch's dependencies: GTK serves file
-    # choosers and other generic portals, wlr screenshots and screencasts
-    # (session/vela-portals.conf).
+    # (Depends) picks any one installed, Konsole by default. GTK remains a
+    # recommended backend for generic portals; wlr is a hard dependency for
+    # screen capture (session/vela-portals.conf).
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
-        "bluez, konsole | x-terminal-emulator, xdg-desktop-portal, xdg-desktop-portal-gtk, xdg-desktop-portal-wlr")
+        "bluez, konsole | x-terminal-emulator, xdg-desktop-portal, xdg-desktop-portal-gtk")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")
