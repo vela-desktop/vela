@@ -39,15 +39,16 @@ Two hardware-backed paths provide mandatory GPU-labeled test coverage
 **AMD Radeon RX 9070 XT** and a **rented NVIDIA RTX GPU on Vast.ai**,
 whose model may vary by run. The RTX 4070 laptop was used by the previous
 NVIDIA runner, not the current CI. A third, experimental manual Intel
-ANV runner has been added, but has no confirmed passing full-suite baseline. See the
+ANV runner is informational, not mandatory: its full GPU suite first passed
+(27 of 27, none skipped) on `main` at `10e43095` on 15 November 2026. See the
 [GPU CI policy](ci-quality.md#gpu-ci-policy) for mandatory coverage,
 candidate revision checks and release rules.
 
 | Environment | What has been established | What remains uncertain |
 |---|---|---|
 | AMD Radeon RX 9070 XT + Mesa/RADV, CachyOS | Primary development machine and the AMD GPU CI runner: the GPU suites run on it for relevant GPU changes and releases, and it is used daily as a DRM session | Not representative of every AMD generation or every multi-display setup |
-| NVIDIA RTX GPU + proprietary driver, Vast.ai rental (Arch Linux container) | The current NVIDIA GPU CI rents a supported single-GPU instance per run to execute the same GPU suites; actual model and driver vary | Runs are headless, so physical DRM/KMS, screen sharing and suspend/resume still need manual verification; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
-| Intel Alder Lake-UP3 UHD Graphics (8086:46b3) + Mesa/ANV 26.2.5, CachyOS | Hardware Vulkan 1.4 and required DRM/dma-buf extensions confirmed; experimental manual Intel GPU CI workflow added | Full-suite baseline not yet established; timing-sensitive synchronization on a shared GPU engine and physical KMS need further testing |
+| NVIDIA RTX GPU + proprietary driver, Vast.ai rental (digest-pinned Arch Linux image) | The current NVIDIA GPU CI rents a supported single-GPU instance per run to execute the same GPU suites; actual model and driver vary | Runs are headless, so physical DRM/KMS, screen sharing and suspend/resume still need manual verification; known failures are tracked as issues (such as [#132](https://github.com/vela-desktop/vela/issues/132)) |
+| Intel Alder Lake-UP3 UHD Graphics (8086:46b3) + Mesa/ANV 26.2.5, CachyOS | Hardware Vulkan 1.4 and required DRM/dma-buf extensions confirmed; the experimental manual Intel GPU CI passes the full GPU suites (first on 15 November 2026) | Not a mandatory check, so a release may ship without an Intel run; timing-sensitive synchronization on a shared GPU engine and physical KMS need further testing |
 | NVK | Listed as an intended Vulkan driver option | Compatibility is not demonstrated by the AMD test runs |
 | VMs and virtio/Venus | One Fedora 44 KDE guest verified with [Vulkan output allocation and Zink clients](virtual-machines.md), without GPU passthrough: nested and DRM/KMS login, Vulkan/X11 windows, capture and 125% scale | Other stacks, full GPU suites, lock/unlock and logout remain unverified; a client stall and KDE autostart observation are recorded in the VM guide |
 | Hybrid and multi-GPU systems | Supported configurations are an architectural goal | Correct operation across GPU boundaries needs dedicated tests |
@@ -64,7 +65,7 @@ These are **coverage descriptions**, not a ranking of hardware or a statement th
 
 ## Integration services
 
-Different features rely on installed/running system services. On Arch, [vela-git](../packaging/arch/PKGBUILD) installs Vela Core and the standard Vela Desktop integration together. Additional hardware/services remain optional.
+On Arch, the Beta ([`vela`](../packaging/arch/PKGBUILD.beta)) and Experimental ([`vela-git`](../packaging/arch/PKGBUILD)) packages install Vela Core and the standard Vela Desktop integration together. The [Fedora package](../packaging/fedora/vela.spec) and the Ubuntu Experimental DEB built from current `main` recommend the GTK and wlr portal backends, which DNF and APT install by default. On Ubuntu Beta `v0.1.2`, install the portals as described in the [installation guide](installation.md#ubuntu-2610). Additional hardware and services remain optional.
 
 | Feature | Typically needed |
 |---|---|
@@ -73,7 +74,7 @@ Different features rely on installed/running system services. On Arch, [vela-git
 | Audio controls and per-app volumes | PipeWire and WirePlumber (PulseAudio without PipeWire is not supported) |
 | X11 apps and older games | Xwayland |
 | Removable and unmounted storage | UDisks2 |
-| Screen sharing / application portals | Arch installs `xdg-desktop-portal`, `xdg-desktop-portal-gtk` and `xdg-desktop-portal-wlr` by default. GTK serves generic portals, KDE is an optional fallback if already installed, and wlr handles screenshot and screencast |
+| Screen sharing / application portals | `xdg-desktop-portal` with `xdg-desktop-portal-gtk` for file choosers and other generic portals, and `xdg-desktop-portal-wlr` for screenshots and screencasts. KDE is an optional fallback for generic portals if already installed |
 | KDE styling and secrets | Appropriate KDE icon/theme/wallet components |
 
 Vela does not install `xdg-desktop-portal-kde` or Plasma Workspace. Konsole and Breeze icons remain default desktop components. BlueZ remains optional for native Vela Bluetooth integration; Bluedevil plus bluez-obex are optional for Bluetooth file sending from Files.
@@ -82,7 +83,7 @@ The Vela compositor and Vulkan renderer are Vela's own; reusing standard Linux s
 
 ## Suggested manual smoke tests
 
-On the affected physical GPU, test login/logout, multiple displays and scaling, Alt+Tab and snapping, locking/unlocking, audio mute and network scanning, screenshots and screen sharing, device hotplug, suspend/resume and recovery from a compositor/shell crash where safe. Record observed pass/fail/untested status per test; do not infer it from a generic CI green check. Specifically verify the file chooser through a sandboxed application, GTK as the selected generic portal, actual screencast and screenshot portal calls through wlr, and an interactive screen-share chooser. When testing the optional KDE fallback, remove GTK only in a disposable test environment and confirm the file chooser still works with KDE installed. After a `qt6-base` upgrade check whether `vela-shell` can launch and rebuild the current revision with `vela-update --force --build` if its Qt private ABI is incompatible.
+On the affected physical GPU, test login/logout, multiple displays and scaling (arranging them in Settings, unplugging one and plugging it back in), Alt+Tab and snapping, locking/unlocking, audio mute and network scanning, screenshots and screen sharing, device hotplug, suspend/resume (on a laptop, closing the lid with and without an external display), the taskbar on every display and recovery from a compositor/shell crash where safe. Record observed pass/fail/untested status per test; do not infer it from a generic CI green check. Specifically verify the file chooser through a sandboxed application, GTK as the selected generic portal, actual screencast and screenshot portal calls through wlr, and an interactive screen-share chooser. When testing the optional KDE fallback, remove GTK only in a disposable test environment and confirm the file chooser still works with KDE installed. After a `qt6-base` upgrade check whether `vela-shell` can launch and rebuild the current revision with `vela-update --force --build` if its Qt private ABI is incompatible.
 
 ### Sound
 

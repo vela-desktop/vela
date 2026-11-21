@@ -8,6 +8,7 @@ documentation, reviews, bug reports, and community support.
 ## Contributors
 
 - **[@Lowell137](https://github.com/Lowell137)** — Development, feature contributions, improvements, and bug fixes.
+- **[@iotserver24](https://github.com/iotserver24)** — Bug fixes: Settings keeps the shown values when `vela.conf` cannot be saved ([#221](https://github.com/vela-desktop/vela/pull/221)).
 
 ## Third-party code
 

@@ -1,6 +1,6 @@
 # Vela Report
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** nothing; the current implementation's boundaries are recorded below.
 

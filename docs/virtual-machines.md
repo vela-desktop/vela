@@ -87,7 +87,7 @@ host/guest graphics configuration before testing Vela.
 
 ## Build and first launch
 
-Use this branch's [Fedora build dependencies](development.md#distribution-dependencies)
+Use the [Fedora build dependencies](development.md#distribution-dependencies)
 and [source build instructions](development.md#build). For a local nested
 test from the checkout:
 

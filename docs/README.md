@@ -17,6 +17,7 @@ Every document in this directory, grouped by what it is for. The
 
 ## Releases and distribution
 
+- [Release history](release-history.md) covers what shipped in each Beta series and how it was validated.
 - [Release channels](release-channels.md): Beta and Experimental, and the maintainer release process.
 - [Release automation](release-automation.md): rehearsal tags and the `release.py` commands for Beta releases.
 - [Package provenance](package-provenance.md): how packages are built, signed and verified.
@@ -63,8 +64,9 @@ the current behavior.
 - [CI quality checks](ci-quality.md): sanitizers, static analysis, coverage and GPU CI.
 - [Code quality integrations](code-quality-integrations.md): labeler, Codecov, SonarQube Cloud and DCO.
 
-The repository root also has the [contribution guide](../CONTRIBUTING.md), the
-[security policy](../SECURITY.md) and the [contributors](../CONTRIBUTORS.md).
+The repository root also has the [changelog](../CHANGELOG.md), the
+[contribution guide](../CONTRIBUTING.md), the [code of conduct](../CODE_OF_CONDUCT.md),
+the [security policy](../SECURITY.md) and the [contributors](../CONTRIBUTORS.md).
 
 ## Status headers
 

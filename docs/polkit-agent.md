@@ -3,12 +3,12 @@
 Design of Vela's own polkit authentication agent: the dialog that asks for an
 administrator password when an app or a command needs one (`pkexec`, `run0`,
 renaming the PC, changing the date, mounting a disk...). It replaces KDE's
-agent (`plasma-polkit-agent.service`). This document comes before the code:
-decisions are made here, and the code follows them.
+agent (`plasma-polkit-agent.service`). This document came before the code:
+the decisions were made here, and the code follows them.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
-> **Remaining:** P4, trying it in the real session (§10, "by hand"). Stages are in §11.
+> **Remaining:** nothing from the stages (§11); P4 was done on real hardware by 11 October 2026. The open questions in §12 remain.
 
 ## 1. Goals
 
@@ -36,7 +36,7 @@ decisions are made here, and the code follows them.
 | Look | **UAC-like, full screen**: dimmed and live-blurred desktop, modal dialog | layer-shell overlay surfaces on every output (§6.1) |
 | Processes | **two**: `vela-polkit-agent` (always running, no GUI) and `vela-polkit-prompt` (Qt Quick, one per request) | they talk over a pipe with lines of text (§5) |
 | Who starts the agent | **the compositor, as a supervised child**, like `vela-shell` | it inherits the logind session (§4.1); no systemd unit |
-| Language | **C++**, like the rest of Vela | no Rust: it would bring no real security gain (the password is typed in the Qt prompt anyway) and would add a second toolchain |
+| Language | **C++**, like the shell and Vela's apps (the compositor has since moved to C, [c-core](c-core.md)) | no Rust: it would bring no real security gain (the password is typed in the Qt prompt anyway) and would add a second toolchain |
 | polkit library | **libpolkit-agent-1 directly** (GLib), not polkit-qt6 | polkit-qt6's `cancelAuthentication()` doesn't say *which* request is cancelled. KDE's agent therefore refuses a second request while one is open. With a `GCancellable` per request we can queue (§4.3) |
 | Shared QML | a new **`Vela.Controls`** module (Theme, buttons, text fields, blur) | used by the prompt first, then by the shell, Settings and Files (§8) |
 | Tests | the prompt is driven **by the test itself**, which plays the agent; the agent's core runs on a **fake backend**, the whole agent against a **fake polkitd** | no polkit and no PAM in automated tests (§10) |
@@ -331,8 +331,9 @@ had drifted apart; Files also compiles `MenuPanel.qml` straight from
     the veil behind system dialogs;
   - `Button` (standard, accent or subtle, with text and/or an icon) and
     `TextBox` (with `password: true`), since joined by `Fill`, `Switch`,
-    `Slider`, `Shadow`, `PanelMotion`, `Dialog`, `ListItem` and the pieces
-    controls are made of (`Icon`, `Chevron`, `FocusRing`, `Eased`)
+    `Slider`, `Shadow`, `PanelMotion`, `Dialog`, `ListItem`, `RoundClip`,
+    `TonalSurface`, `StartIcon` and the pieces controls are made of (`Icon`,
+    `Chevron`, `FocusRing`, `Eased`, `Spatial`, `ColorFade`)
     ([development](development.md#controls));
   - the C++ singletons `Style` (`Appearance`: light or dark, accent, Mica,
     icon mode; system UI follows the shell's mode, apps their own) and
@@ -415,12 +416,13 @@ None of them uses polkitd or PAM.
 | P1 | `vela-polkit-prompt` and the protocol (§5, §6), with its functional tests driven by the harness | done |
 | P2 | `vela-polkit-agent`: registration, requests, queue, cancellation, re-registration after a polkitd restart, unit tests | done |
 | P3 | Compositor: list of supervised children, the agent started with the session, the modal dialog keeps keyboard and shortcuts; `vela-session.target` drops `Wants=plasma-polkit-agent.service`; PKGBUILD depends on `polkit` instead of suggesting `polkit-kde-agent` | done |
-| P4 | The user tries it for real (§10, "by hand") | |
+| P4 | The user tries it for real (§10, "by hand") | done |
 | P5 | Shell, Settings and Files move to `Vela.Controls` | done |
 
 ## 12. Open questions and risks
 
-- **Which `polkit.*` details polkitd really sends** (§4.2): to check in P4.
+- **Which `polkit.*` details polkitd really sends** (§4.2): P4 used the dialog
+  for real, but what arrives was not recorded.
   If the subject pid is missing, the dialog falls back to the action's icon,
   as KDE's does.
 - **Re-registration after a polkitd restart** (§4.1) is not covered by the

@@ -19,6 +19,9 @@ channel, and Settings → System → Updates can switch it.
 The Beta needs **Cosign** on every distribution: installation stops if it
 is missing, rather than trusting an unverified binary.
 
+After installing, sign out, choose **Vela** from the session menu on the
+login screen, and sign back in.
+
 ## Arch Linux, CachyOS, EndeavourOS
 
 Install `git`, `curl`, `base-devel` and `cosign` (GitHub CLI is not required):
@@ -49,12 +52,11 @@ Fedora 44 and 45 (x86_64) have distinct native Beta `vela` and Experimental
 derivatives. The same updater installs Vela and handles subsequent updates
 through DNF.
 
-**Fedora 45 Beta release requirement:** Installing or rolling back to a Beta
-release on Fedora 45 requires that release to publish a Fedora 45 RPM and its
-`SHA256SUMS-fedora-45` manifest. The `v0.1.1` release does not contain these
-assets, so `vela-update` cannot install it or select it for rollback on
-Fedora 45. If no Beta release includes Fedora 45 assets yet, wait for one;
-do not substitute a Fedora 44 RPM.
+**Fedora 45 Beta releases:** Installing or rolling back to a Beta release on
+Fedora 45 requires that release to publish a Fedora 45 RPM and its
+`SHA256SUMS-fedora-45` manifest. `v0.1.2` is the first Beta with them;
+`v0.1.0` and `v0.1.1` have none, so `vela-update` cannot install them or roll
+back to them on Fedora 45. Never substitute a Fedora 44 RPM.
 
 **Fedora verification prerequisite:** Fedora 44 does not currently ship
 `cosign` in its default repositories. Install the official upstream Cosign RPM
@@ -113,24 +115,27 @@ updates.
 ### After upgrading Fedora 44 to Fedora 45
 
 An updater installed from an older Fedora 44 RPM may reject Fedora 45 before
-it can download a replacement. Use a **fresh Vela checkout** with Fedora 45
-support to bootstrap the update, explicitly preserving your installed channel:
+it can download a replacement. Get a **fresh Vela checkout** for the
+Fedora 45 updater and its Beta helper.
 
 ```sh
 git clone https://github.com/vela-desktop/vela.git vela-fedora-45
-# If `vela` (Beta) is installed, and a Fedora 45 Beta release is available:
-sh vela-fedora-45/packaging/vela-update --channel beta
-# If `vela-git` (Experimental) is installed, run this INSTEAD:
-sh vela-fedora-45/packaging/vela-update --channel experimental
 ```
 
-Run **only one** of the two updater commands, matching your installed package.
-The checkout supplies the Fedora 45-capable updater and its Beta helper;
-calling the old installed `/usr/bin/vela-update` will not bootstrap it.
-The Beta command requires a published Fedora 45 RPM and
-`SHA256SUMS-fedora-45` as explained above. If they are not yet available,
-keep the installed Beta and wait rather than switching channels or using a
-Fedora 44 RPM.
+Run only the command for your installed package.
+
+**Beta (`vela`)** — Wait until the release provides both a Fedora 45 RPM
+and its `SHA256SUMS-fedora-45` manifest, then run
+
+```sh
+sh vela-fedora-45/packaging/vela-update --channel beta
+```
+
+**Experimental (`vela-git`)**
+
+```sh
+sh vela-fedora-45/packaging/vela-update --channel experimental
+```
 
 ## Ubuntu 26.10
 
@@ -151,6 +156,15 @@ sh vela/packaging/vela-update --channel beta
 
 Beta downloads the release's DEB, verifies its checksum and signed
 provenance, and installs it with APT.
+
+On Beta `v0.1.2`, install the following packages for file choosers in
+sandboxed apps, screenshots and screen sharing. The Experimental DEB built
+from current `main` recommends all three, so on that channel this step is
+only needed if APT skips recommendations.
+
+```sh
+sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr
+```
 
 Experimental (`sh vela/packaging/vela-update`) installs the Ubuntu build
 dependencies through APT, compiles the exact selected Git revision with
@@ -215,13 +229,17 @@ its devices, and Vela changes nothing.
 
 **Settings > System > Updates** shows whether an update is available, what's
 new (Beta's release notes, or Experimental's commits) and the update channel.
-Vela checks by itself once a day, never on a metered connection, and sends a
-notification when there is something new; turn this off on the same page.
+Automatic checks run daily by default, skip metered connections and notify
+you when an update is available. On Beta `v0.1.2`, you can turn these checks
+on or off. On Experimental, you can also choose an interval of 6, 12, 24 or
+48 hours or one week, and see when the next automatic check is due.
 
 **Install now** runs `vela-update` in a terminal, where the package manager
-asks for your password and the build stays readable; updates started by hand
-in a terminal show on the page too. `xdg-terminal-exec` (a dependency of the
-package) opens your default terminal, or Konsole without one. After an update,
+asks for your password. The updater shipped with Experimental also shows the
+packaging recipe for the selected commit. If it opens in `less`, press `q`
+to continue. Updates started by hand in a terminal show on the page too.
+`xdg-terminal-exec` (a package dependency) opens your default terminal,
+or Konsole without one. After an update,
 sign out and in again to use the new version: the page and a notification say
 so. The design is in [Updates](updates.md).
 

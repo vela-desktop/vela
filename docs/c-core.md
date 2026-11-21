@@ -1,8 +1,8 @@
 # The C core
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
-> **Remaining:** the input paths ported line by line in step 9 of §4 (gestures, wheel lines, touchpad settings, pointer constraints, paste and keyboard layouts) need a check by hand on real hardware.
+> **Remaining:** nothing. The input paths ported line by line in step 9 of §4 were checked by hand on real hardware (AMD, NVIDIA and Intel) by 11 October 2026.
 
 The compositor has been rewritten in plain C, one subsystem at a time, with
 the behavior that users and tests can observe left exactly as it is. This
@@ -50,7 +50,7 @@ supervisor.cpp  a separate process holding the Wayland socket; restarts the
          compositor after a crash, locked if it was locked
 ```
 
-Ownership and lifecycle today:
+Ownership and lifecycle at the time:
 
 - Most objects are created with `new` from a wlroots signal and destroy
   themselves (`delete this`) on the matching destroy signal; `Listener`
@@ -108,16 +108,24 @@ uninstrumented code (wlroots or Mesa).
 - No global state except the process-wide pieces that are truly unique (the
   supervisor's and the server's signal flags); the server is passed
   explicitly.
-- Allocations are visible: fixed arrays where the size is known, `calloc`
-  where it is not, freed in the matching destroy function. No hidden
-  allocation in hot paths (the frame loop reuses its arrays).
-- No macros where a function works; no callbacks where a direct call works.
+- Allocations are visible: fixed arrays where the size is known, the
+  `common/alloc` helpers (`VELA_NEW`, `vela_grow`, `vela_strdup`...) where it
+  is not, freed in the matching destroy function; what happens when memory
+  runs out is in the [host allocation policy](memory-allocation-policy.md).
+  No hidden allocation in hot paths (the frame loop reuses its arrays).
+- No macros where a function works (the allocation helpers are macros only
+  to get the type's size right); no callbacks where a direct call works.
   Lists are `wl_list`, arrays are plain arrays with a count and a capacity.
 - Comments, logs and messages are in English.
 - The GoogleTest suites remain the specification: they include the C headers
   inside `extern "C"` and keep their names and assertions.
 
 ## 3. Target layout
+
+The layout the migration aimed for. Modules added since (brightness,
+Bluetooth, capture watching, output arrangement and preview, security
+policy...) are in the development guide's
+[project layout](development.md#project-layout).
 
 ```text
 compositor/src/
@@ -202,8 +210,8 @@ During steps 5–11 the remaining C++ called the C modules through their
 headers; where a C module had to call code that was still C++, the function
 was declared in the C header and implemented, temporarily, in C++ with C
 linkage. Those implementations moved to C with their subsystem. After step
-11 `compositor/src` is about 22,000 lines of C and no C++; only the
-GoogleTest suites are C++.
+11 `compositor/src` was about 22,000 lines of C and no C++ (about 36,000 in
+November 2026); only the GoogleTest suites are C++.
 
 ## 5. Bugs found along the way, and their fixes
 

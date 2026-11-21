@@ -3,10 +3,10 @@
 Design of what Vela shows while the screen, or a window, is being shared or
 recorded: an icon in the taskbar next to the microphone's, a small panel
 that says who is capturing what, and notifications held back meanwhile. This
-document comes before the code: decisions are made here, and the code
-follows them.
+document came before the code (#220): the decisions were made here, and the
+code follows them.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** a test by hand in a real session (S5 in §10).
 
