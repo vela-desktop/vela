@@ -8,7 +8,8 @@
 # (docs/release-automation.md §5, R2).
 #
 # Called by build.yml once publish-beta has published a real release, and
-# runnable by hand for the newest published Beta.
+# runnable by hand for the newest published Beta. The script skips versions
+# that have already been superseded.
 
 name: Beta update check
 

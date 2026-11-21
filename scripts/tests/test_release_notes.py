@@ -27,6 +27,7 @@ CHANGELOG = """# Changelog
 ## 0.2.1 — 3 December 2026
 
 - The taskbar keeps its edge ([taskbar](docs/taskbar.md#7-super19-and-super0)).
+- See the [earlier release](#020).
 - See [#310](https://github.com/vela-desktop/vela/pull/310) and
   <https://example.invalid>.
 
@@ -57,11 +58,23 @@ class Notes(unittest.TestCase):
             "Changelog: https://github.com/vela-desktop/vela/blob/v0.2.1/CHANGELOG.md\n"))
 
     def test_a_link_whose_label_is_its_url(self):
-        self.assertEqual(notes.plain("[https://a.invalid](https://a.invalid)", "0.2.1"), "https://a.invalid")
+        self.assertEqual(notes.plain("[https://a.invalid](https://a.invalid)", "v0.2.1"), "https://a.invalid")
 
     def test_fragment_links_point_to_the_tagged_changelog(self):
-        self.assertEqual(notes.plain("[Earlier release](#012)", "0.2.1"),
+        self.assertEqual(notes.plain("[Earlier release](#012)", "v0.2.1"),
                          "Earlier release (https://github.com/vela-desktop/vela/blob/v0.2.1/CHANGELOG.md#012)")
+
+    def test_rehearsal_links_use_the_rehearsal_tag(self):
+        result = subprocess.run([sys.executable, "-I", str(SCRIPT), "0.1.2",
+                                 "--source-ref", "rehearsal/v0.1.2"],
+                                capture_output=True, text=True, check=True, timeout=10)
+        self.assertIn("/blob/rehearsal/v0.1.2/docs/installation.md", result.stdout)
+        self.assertIn("/blob/rehearsal/v0.1.2/CHANGELOG.md", result.stdout)
+
+        text = notes.notes(CHANGELOG, "0.2.1", "rehearsal/v0.2.1")
+        self.assertIn("/blob/rehearsal/v0.2.1/docs/taskbar.md#7-super19-and-super0", text)
+        self.assertIn("/blob/rehearsal/v0.2.1/CHANGELOG.md#020", text)
+        self.assertIn("https://github.com/vela-desktop/vela/pull/310", text)
 
     def test_missing_or_empty_sections_stop_the_pipeline(self):
         with tempfile.TemporaryDirectory() as directory:

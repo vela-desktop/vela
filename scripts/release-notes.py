@@ -27,30 +27,32 @@ def section(text, version):
     return match[1].strip()
 
 
-def plain(text, version):
+def plain(text, source_ref):
     def link(match):
         label, url = match[1], match[2]
         if url.startswith("#"):
-            url = f"{REPO}/blob/v{version}/CHANGELOG.md{url}"
+            url = f"{REPO}/blob/{source_ref}/CHANGELOG.md{url}"
         elif not re.match(r"[a-z]+:", url):
-            url = f"{REPO}/blob/v{version}/{url.removeprefix('./')}"
+            url = f"{REPO}/blob/{source_ref}/{url.removeprefix('./')}"
         return label if label == url else f"{label} ({url})"
     return LINK.sub(link, text)
 
 
-def notes(text, version):
-    return (f"{plain(section(text, version), version)}\n\n"
-            f"Install or update: {REPO}/blob/v{version}/docs/installation.md\n"
-            f"Changelog: {REPO}/blob/v{version}/CHANGELOG.md\n")
+def notes(text, version, source_ref=None):
+    source_ref = source_ref or f"v{version}"
+    return (f"{plain(section(text, version), source_ref)}\n\n"
+            f"Install or update: {REPO}/blob/{source_ref}/docs/installation.md\n"
+            f"Changelog: {REPO}/blob/{source_ref}/CHANGELOG.md\n")
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("version")
+    parser.add_argument("--source-ref", help="Git ref used in changelog links (default: vVERSION)")
     args = parser.parse_args(argv)
     if not re.fullmatch(r"0\.\d+\.\d+", args.version):
         raise SystemExit(f"release-notes: not a Beta version: {args.version}")
-    sys.stdout.write(notes(CHANGELOG.read_text(encoding="utf-8"), args.version))
+    sys.stdout.write(notes(CHANGELOG.read_text(encoding="utf-8"), args.version, args.source_ref))
     return 0
 
 

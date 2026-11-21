@@ -87,6 +87,25 @@ class Distros(unittest.TestCase):
 
 
 class Updater(unittest.TestCase):
+    def test_a_newer_published_beta_skips_the_updater_check(self):
+        with mock.patch.object(upgrade, "os_release") as os_release:
+            upgrade.upgrade_with_updater("0.2.9", "/tree", [release("v0.2.10")])
+        os_release.assert_not_called()
+
+    def test_the_upgrade_pins_the_tag_and_propagates_install_failures(self):
+        releases = [release("v0.2.1"), release("v0.2.10", draft=True), release("rehearsal/v0.2.10")]
+        with (
+            mock.patch.object(upgrade, "os_release", return_value={"ID": "arch"}),
+            mock.patch.object(upgrade, "install_cosign"),
+            mock.patch.object(upgrade, "install_previous", return_value="0.2.0"),
+            mock.patch.object(upgrade, "run", side_effect=upgrade.UpgradeError("installation failed")) as run,
+            mock.patch.object(upgrade, "check_current") as check_current,
+        ):
+            with self.assertRaisesRegex(upgrade.UpgradeError, "installation failed"):
+                upgrade.upgrade_with_updater("0.2.1", "/tree", releases)
+        run.assert_called_once_with("vela-update", "--channel", "beta", "--tag=v0.2.1", stdin="y\n" * 20)
+        check_current.assert_not_called()
+
     def test_updaters_before_0_2_take_the_documented_one_time_step(self):
         for previous in ("0.1.0", "0.1.2", "0.1.10"):
             with self.subTest(previous=previous):
@@ -101,14 +120,19 @@ class Updater(unittest.TestCase):
     def check(self, report, exit_code):
         with tempfile.TemporaryDirectory() as bindir:
             stub = Path(bindir) / "vela-update"
-            stub.write_text(f"#!/bin/sh\nprintf '%s' '{json.dumps(report)}'\nexit {exit_code}\n"
-                            if report is not None else f"#!/bin/sh\necho 'vela-update: broken' >&2\nexit {exit_code}\n")
+            output = (f"printf '%s' '{json.dumps(report)}'" if report is not None
+                      else "echo 'vela-update: broken' >&2")
+            stub.write_text(f'#!/bin/sh\ntest "$3" = --tag=v0.2.1 || exit 64\n{output}\nexit {exit_code}\n')
             stub.chmod(0o755)
             with mock.patch.dict(os.environ, {"PATH": f"{bindir}:{os.environ['PATH']}"}):
                 upgrade.check_current("0.2.1")
 
     def test_up_to_date_on_the_new_release_passes(self):
         self.check({"status": "up-to-date", "version": "0.2.1", "error": None}, 0)
+
+    def test_up_to_date_with_a_failed_exit_is_rejected(self):
+        with self.assertRaises(upgrade.UpgradeError):
+            self.check({"status": "up-to-date", "version": "0.2.1"}, 1)
 
     def test_a_failed_check_is_not_up_to_date(self):
         # Plain --check exits 1 both when current and when it failed: an

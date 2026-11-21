@@ -27,7 +27,14 @@ state = os.environ["TEST_GH_STATE"]
 releases = json.load(open(state))
 with open(os.environ["TEST_GH_LOG"], "a") as log:
     log.write(json.dumps(args) + "\n")
-if args[:2] == ["release", "view"]:
+if args[:2] == ["api", "graphql"]:
+    fields = dict(arg.split("=", 1) for arg in args[2:] if "=" in arg)
+    if os.environ.get("TEST_GH_LOOKUP_FAIL"):
+        # Even a partial response with a null release is inconclusive.
+        print(json.dumps({"data": {"repository": {"release": None}}}))
+        sys.exit("API rate limit exceeded")
+    print(json.dumps({"data": {"repository": {"release": releases.get(fields["tag"])}}}))
+elif args[:2] == ["release", "view"]:
     if args[2] not in releases:
         sys.exit("release not found")
     print(json.dumps(releases[args[2]]))
@@ -233,6 +240,19 @@ class Release(Fixture):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.releases(), {})
         self.assertEqual(self.remote_tags(), {})
+
+    def test_failed_release_lookup_keeps_the_existing_tag(self):
+        tag = "rehearsal/v0.2.1"
+        self.git("push", "--quiet", "origin", f"{self.old_patch}:refs/tags/{tag}")
+        self.state.write_text(json.dumps({tag: {"isDraft": True}}))
+        self.env["TEST_GH_LOOKUP_FAIL"] = "1"
+        for command in ("clean", "rehearse"):
+            with self.subTest(command=command):
+                result = self.release(command, "0.2.1")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("API rate limit exceeded", result.stderr)
+                self.assertEqual(self.remote_tags(), {tag: self.old_patch})
+                self.assertEqual(self.releases(), {tag: {"isDraft": True}})
 
     def test_clean_without_a_rehearsal_does_nothing(self):
         result = self.release("clean", "0.2.1")

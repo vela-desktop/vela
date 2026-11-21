@@ -107,10 +107,29 @@ def candidate(version, remote, commit=None):
 
 def release_state(repo, tag):
     """'draft', 'published' or None for the release of a tag."""
-    result = run("gh", "release", "view", tag, "--repo", repo, "--json", "isDraft", check=False)
-    if result.returncode != 0:
+    owner_path, _, name = repo.rpartition("/")
+    host, _, owner = owner_path.rpartition("/")
+    # Query drafts and published releases together. gh release view can report
+    # "release not found" even when one of its two lookups failed.
+    query = """
+        query($owner: String!, $name: String!, $tag: String!) {
+            repository(owner: $owner, name: $name) {
+                release(tagName: $tag) { isDraft }
+            }
+        }
+    """
+    result = run("gh", "api", "graphql", "--hostname", host or "github.com",
+                 "-f", f"query={query}", "-f", f"owner={owner}",
+                 "-f", f"name={name}", "-f", f"tag={tag}")
+    try:
+        release = json.loads(result.stdout)["data"]["repository"]["release"]
+        if release is not None and not isinstance(release["isDraft"], bool):
+            raise ValueError("isDraft is not a boolean")
+    except (KeyError, TypeError, ValueError) as error:
+        raise ReleaseError(f"could not determine release state for {repo}@{tag}: {error}") from error
+    if release is None:
         return None
-    return "draft" if json.loads(result.stdout)["isDraft"] else "published"
+    return "draft" if release["isDraft"] else "published"
 
 
 # --- prepare ---------------------------------------------------------------

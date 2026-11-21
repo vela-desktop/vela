@@ -160,9 +160,10 @@ class BetaReleaseNotes(unittest.TestCase):
         build = (ROOT / ".github/workflows/build.yml").read_text()
         changes = build.split("\n  changes:\n", 1)[1].split("\n\n  ", 1)[0]
         self.assertIn("if: steps.release.outputs.beta_version != ''", changes)
-        self.assertIn('scripts/release-notes.py "$VERSION"\n', changes)
+        notes_command = 'scripts/release-notes.py "$VERSION" --source-ref "$GITHUB_REF_NAME"'
+        self.assertIn(notes_command + '\n', changes)
         publish = build.split("\n  publish-beta:\n", 1)[1].split("\n\n  ", 1)[0]
-        self.assertIn('scripts/release-notes.py "$VERSION" > release-notes.txt', publish)
+        self.assertIn(notes_command + ' > release-notes.txt', publish)
         self.assertLess(publish.index("release-notes.txt"), publish.index("- name: Publish signed Beta release"))
         self.assertNotIn("--generate-notes", build)
 

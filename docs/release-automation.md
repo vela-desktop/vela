@@ -124,9 +124,11 @@ it does for users. For Betas before 0.2.0, the installed updater only sees
 prereleases, so the test follows the documented one-time procedure and runs
 `packaging/vela-update` from the release tree
 ([release channels](release-channels.md#updating-older-beta-installations)).
-Then `vela-update --check --json` must report the new release as
-`up-to-date`. It reads the JSON because plain `--check` also exits 1 when
-the check itself fails, and an updater that finds no release at all (0.1.x
+The test skips a Beta if a newer one is already published. Both the upgrade
+and the final `vela-update --check --json` use `--tag=v0.x.y` so a concurrent
+publication cannot change the target. The final check must report the
+tested release as `up-to-date`. It reads the JSON because plain `--check`
+also exits 1 when the check itself fails, and an updater that finds no release at all (0.1.x
 once its releases became normal ones) must not pass.
 
 What this does not cover before the tag is the updater's conversation with

@@ -80,7 +80,7 @@ jobs:
         if: steps.release.outputs.beta_version != ''
         env:
           VERSION: ${{ steps.release.outputs.beta_version }}
-        run: python3 -I scripts/release-notes.py "$VERSION"
+        run: python3 -I scripts/release-notes.py "$VERSION" --source-ref "$GITHUB_REF_NAME"
       - name: Skip costly jobs for documentation-only PRs
         id: detect
         shell: bash
@@ -726,7 +726,7 @@ jobs:
       - name: Write the release notes from CHANGELOG.md
         env:
           VERSION: ${{ needs.changes.outputs.beta_version }}
-        run: python3 -I scripts/release-notes.py "$VERSION" > release-notes.txt
+        run: python3 -I scripts/release-notes.py "$VERSION" --source-ref "$GITHUB_REF_NAME" > release-notes.txt
       - name: Publish signed Beta release
         shell: bash
         env:
@@ -810,7 +810,8 @@ jobs:
           fi
 
   # Once a real Beta is published, its users' path: the previous Beta's
-  # updater installs it. A rehearsal's draft can't be read by an updater.
+  # updater checks it unless a newer Beta is already published.
+  # A rehearsal's draft can't be read by an updater.
   beta-update-check:
     needs: [changes, publish-beta]
     if: needs.changes.outputs.beta_version != '' && needs.changes.outputs.rehearsal == 'false'

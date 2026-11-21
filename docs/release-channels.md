@@ -175,7 +175,8 @@ container with an older package available. For a previous Beta earlier
 than 0.2.0, it uses `packaging/vela-update` from the release tree.
 For 0.1.1 → 0.1.2, the check runs in Arch, Fedora 44 and Ubuntu 26.10
 and skips Fedora 45 because 0.1.1 has no package for it.
-After the upgrade, the installed updater must report `up-to-date`.
+The check skips superseded Betas. It pins both updater commands to the
+tested tag and requires the installed updater to report `up-to-date`.
 Run the check manually only for the newest published Beta with
 `gh workflow run beta-update-check.yml -f version=0.x.y`. The updater's
 verifier, channel replacement and the way back to Experimental are

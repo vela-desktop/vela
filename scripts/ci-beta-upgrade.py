@@ -10,10 +10,11 @@ release tag and on its rehearsal (docs/release-automation.md §5, R2).
 
 `updater --version 0.2.1 --checkout DIR` installs the previous Beta and
 lets its own updater install the published 0.2.1, then checks that the new
-updater finds nothing newer. Updaters before 0.2.0 only see prereleases, so
-from those the documented one-time step runs `packaging/vela-update` from
-DIR, a checkout of the release (release-channels.md, "Updating older Beta
-installations").
+updater reports it as current. The check skips a superseded Beta and pins
+the tag for both updater commands. Updaters before 0.2.0 only see
+prereleases, so from those the documented one-time step runs
+`packaging/vela-update` from DIR, a checkout of the release
+(release-channels.md, "Updating older Beta installations").
 
 The distribution comes from /etc/os-release. Runs as root.
 """
@@ -231,22 +232,29 @@ def updater_command(previous, checkout):
 
 
 def check_current(version):
-    """The installed updater must find the published release and call it
+    """The installed updater must find the requested release and call it
     current. Plain --check also exits 1 when the check itself failed, so
     read the JSON (docs/updates.md §5)."""
-    result = subprocess.run(["vela-update", "--channel", "beta", "--check", "--json"],
+    result = subprocess.run(["vela-update", "--channel", "beta", f"--tag=v{version}", "--check", "--json"],
                             capture_output=True, text=True)
     print(result.stderr, end="", file=sys.stderr)
     try:
         report = json.loads(result.stdout)
     except json.JSONDecodeError:
         raise UpgradeError(f"the installed updater printed no JSON (exit {result.returncode})") from None
-    if report.get("status") != "up-to-date" or report.get("version") != version:
+    if result.returncode or report.get("status") != "up-to-date" or report.get("version") != version:
         raise UpgradeError(f"the installed updater reports {report.get('status')} for "
-                           f"{report.get('version')} ({report.get('error')}), expected up-to-date for {version}")
+                           f"{report.get('version')} (exit {result.returncode}, error: {report.get('error')}), "
+                           f"expected up-to-date for {version}")
 
 
 def upgrade_with_updater(version, checkout, releases):
+    for release in releases:
+        match = TAG.fullmatch(release.get("tag_name", ""))
+        if match and not release.get("draft") and version_key(match[1]) > version_key(version):
+            print(f"::notice::Skipping the updater check for v{version}: v{match[1]} is already published")
+            return
+
     name = distro(os_release())
     install_cosign(name)
     with tempfile.TemporaryDirectory(prefix="vela-previous-") as directory:
@@ -254,7 +262,8 @@ def upgrade_with_updater(version, checkout, releases):
     if previous is None:
         return
     # pacman asks before installing; the updater passes the question on.
-    run(*updater_command(previous, checkout), stdin="y\n" * 20)
+    # Pin both commands in case another Beta is published during this run.
+    run(*updater_command(previous, checkout), f"--tag=v{version}", stdin="y\n" * 20)
     check_installed(name, version)
     check_current(version)
     print(f":: {name}: the updater of {previous} installed {version}, which is up to date")
