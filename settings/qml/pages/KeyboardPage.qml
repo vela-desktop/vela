@@ -18,8 +18,15 @@ Page {
             objectName: "typingLink"
             icon: "edit-entry"
             title: qsTr("Typing")
-            description: qsTr("Key repeat")
+            description: qsTr("Key repeat, Caps Lock, Compose and the keypad")
             onClicked: root.navigate("keyboard-typing")
+        }
+        LinkCard {
+            objectName: "shortcutsLink"
+            icon: "preferences-desktop-keyboard-shortcuts"
+            title: qsTr("Custom shortcuts")
+            description: qsTr("Your own key combinations to open apps, commands, links and files")
+            onClicked: root.navigate("keyboard-shortcuts")
         }
     }
 }

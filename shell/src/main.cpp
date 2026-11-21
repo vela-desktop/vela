@@ -38,6 +38,7 @@
 #include "notifications.h"
 #include "servicemenus.h"
 #include "shellcontroller.h"
+#include "shortcutrunner.h"
 #include "snip.h"
 #include "soundkeys.h"
 #include "systemactions.h"
@@ -555,6 +556,9 @@ int main(int argc, char* argv[])
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
+    // The user's custom shortcuts, matched by the compositor.
+    ShortcutRunner shortcuts(&apps);
+    QObject::connect(&shell, &ShellController::shortcutRequested, &shortcuts, &ShortcutRunner::run);
     QObject::connect(&shell, &ShellController::volumeKeyPressed, &sound, &SoundKeys::press);
     MediaKeys media;
     QObject::connect(&shell, &ShellController::mediaKeyPressed, &media, &MediaKeys::press);

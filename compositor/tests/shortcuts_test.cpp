@@ -7,6 +7,7 @@
 // format, and every row of docs/shortcuts.md resolving to its action.
 
 extern "C" {
+#include "custom.h"
 #include "shortcuts.h"
 #include "table.h"
 }
@@ -221,6 +222,44 @@ TEST(Shortcuts, CombinationText)
         EXPECT_FALSE(out.empty()) << text;
         EXPECT_TRUE(std::regex_match(out, std::regex("[A-Za-z0-9+_]+"))) << out;
     }
+}
+
+namespace {
+
+bool parse_line(const std::string &line, vela_custom_line *out)
+{
+    return vela_custom_line_parse(line.data(), line.size(), out);
+}
+
+} // namespace
+
+// shortcuts.conf's lines (docs/keyboard.md §9.4).
+TEST(Shortcuts, CustomLines)
+{
+    vela_custom_line line {};
+    // The target points into the line: they live as long as the test.
+    const std::string app = "Ctrl+Alt+t=app org.kde.konsole.desktop";
+    const std::string command = "Shift+Super+k=command notify-send 'a = b'";
+    ASSERT_TRUE(parse_line(app, &line));
+    EXPECT_EQ(format(line.combo), "Ctrl+Alt+t");
+    EXPECT_EQ(line.kind, VELA_CUSTOM_APP);
+    EXPECT_EQ(std::string(line.target, line.target_length), "org.kde.konsole.desktop");
+    ASSERT_TRUE(parse_line(command, &line));
+    EXPECT_EQ(line.kind, VELA_CUSTOM_COMMAND);
+    EXPECT_EQ(std::string(line.target, line.target_length), "notify-send 'a = b'");
+    ASSERT_TRUE(parse_line("Super+FK01=open https://docs.example.org/", &line));
+    EXPECT_EQ(line.kind, VELA_CUSTOM_OPEN);
+    ASSERT_TRUE(parse_line("Super+FK02=open /home/user/a b.pdf", &line));
+    for (const std::string bad : { "", "# Ctrl+Alt+t=command x", "Ctrl+Alt+t", "=command x", "Ctrl+Alt+t=command",
+             "Ctrl+Alt+t=command ", "Ctrl+Alt+t=script x", "Hyper+t=command x", "Ctrl+Alt+t=app ../x.desktop",
+             "Ctrl+Alt+t=app konsole", "Ctrl+Alt+t=open notes.txt", "Ctrl+Alt+t=command a\tb",
+             "Ctrl+Alt+t=command a\rb", "Ctrl+Alt+t=command  x" }) {
+        EXPECT_FALSE(parse_line(bad, &line)) << bad;
+    }
+    // At most 4096 bytes.
+    std::string longest = "Super+k=command " + std::string(4096 - 16, 'x');
+    EXPECT_TRUE(parse_line(longest, &line));
+    EXPECT_FALSE(parse_line(longest + "x", &line));
 }
 
 // Win+number in the table says what keyboard.c does (super_numbers.c).

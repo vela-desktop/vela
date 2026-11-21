@@ -19,6 +19,7 @@
 #include "updates/updates.h"
 #include "brightness.h"
 #include "controls.h"
+#include "customshortcuts.h"
 #include "datetime.h"
 #include "defaultapps.h"
 #include "displays.h"
@@ -145,12 +146,12 @@ int main(int argc, char* argv[])
     parser.setApplicationDescription(QStringLiteral("Vela Settings"));
     parser.addHelpOption();
     const QCommandLineOption pageOption(QStringLiteral("page"),
-        QStringLiteral(
-            "The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
-            "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
-            "apps, installed-apps, default-apps, time-language, datetime, keyboard, keyboard-layouts, keyboard-typing, "
-            "mouse, touchpad, "
-            "clipboard, night-light, accessibility."),
+        QStringLiteral("The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
+                       "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
+                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, keyboard-layouts, "
+                       "keyboard-typing, keyboard-shortcuts, "
+                       "mouse, touchpad, "
+                       "clipboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
     parser.process(app);
@@ -185,6 +186,28 @@ int main(int argc, char* argv[])
     DateTime dateTime;
     DefaultApps defaultApps(&apps);
     KeyboardLayouts layouts;
+    // Keyboard > Custom shortcuts: the layouts in use name the keys, and the
+    // modes say which of Vela's combinations are taken.
+    CustomShortcuts shortcuts(
+        [&apps] {
+            QVariantList out;
+            for (const AppModel::Entry& entry : apps.all()) {
+                out.append(QVariantMap { { QStringLiteral("id"), entry.id }, { QStringLiteral("name"), entry.name },
+                    { QStringLiteral("icon"), entry.icon },
+                    { QStringLiteral("keys"), entry.genericName + u' ' + entry.keywords } });
+            }
+            return out;
+        },
+        [&preferences, &layouts] {
+            const QVariantList own = preferences.keyboardLayouts();
+            return own.isEmpty() ? layouts.source().value(QStringLiteral("layouts")).toList() : own;
+        },
+        [&preferences] {
+            return CustomShortcuts::Modes { preferences.colorFilterShortcut(), preferences.superNumberKeys() };
+        },
+        [] { sendToCompositor("reload-config"); });
+    // Apps installed or removed: their names and icons.
+    QObject::connect(&apps, &AppModel::catalogRevisionChanged, &shortcuts, &CustomShortcuts::reload);
     layouts.setLanguage(vela::language::effective());
     keyboardLayouts = &layouts;
     KeyboardPreview preview; // Keyboard > Layouts: a layout tried before it is added
@@ -221,6 +244,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);
     context->setContextProperty(QStringLiteral("Layouts"), &layouts);
+    context->setContextProperty(QStringLiteral("Shortcuts"), &shortcuts);
     context->setContextProperty(QStringLiteral("Preview"), &preview);
     context->setContextProperty(QStringLiteral("Status"), &status);
     context->setContextProperty(QStringLiteral("Brightness"), &brightness);

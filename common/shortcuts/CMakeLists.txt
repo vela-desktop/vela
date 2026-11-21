@@ -6,7 +6,7 @@
 # that what Settings accepts is what the compositor runs. C17, xkbcommon.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SHORTCUTS_XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
-add_library(vela-shortcuts STATIC shortcuts.c super_numbers.c table.c)
+add_library(vela-shortcuts STATIC custom.c shortcuts.c super_numbers.c table.c)
 target_include_directories(vela-shortcuts PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_options(vela-shortcuts PRIVATE -Wall -Wextra)
 target_link_libraries(vela-shortcuts PUBLIC PkgConfig::SHORTCUTS_XKBCOMMON)

@@ -1141,6 +1141,49 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>CustomShortcuts</name>
+    <message>
+        <source>This key can&apos;t be used for a shortcut.</source>
+        <translation>Questo tasto non si può usare per una scorciatoia.</translation>
+    </message>
+    <message>
+        <source>Vela already uses this combination.</source>
+        <translation>Vela usa già questa combinazione.</translation>
+    </message>
+    <message>
+        <source>This combination is reserved for Vela.</source>
+        <translation>Questa combinazione è riservata a Vela.</translation>
+    </message>
+    <message>
+        <source>Add Ctrl, Alt or Win: alone or with Shift, this key types.</source>
+        <translation>Aggiungi Ctrl, Alt o Win: da solo o con Maiusc, questo tasto scrive.</translation>
+    </message>
+    <message>
+        <source>Choose an app.</source>
+        <translation>Scegli un&apos;app.</translation>
+    </message>
+    <message>
+        <source>Write a command.</source>
+        <translation>Scrivi un comando.</translation>
+    </message>
+    <message>
+        <source>Write a link or choose a file.</source>
+        <translation>Scrivi un link o scegli un file.</translation>
+    </message>
+    <message>
+        <source>Too long.</source>
+        <translation>Troppo lungo.</translation>
+    </message>
+    <message>
+        <source>Write a link such as https://example.org, or a file&apos;s full path.</source>
+        <translation>Scrivi un link come https://example.org, o il percorso completo di un file.</translation>
+    </message>
+    <message>
+        <source>It can&apos;t hold line breaks or tabs, nor start or end with a space.</source>
+        <translation>Non può contenere a capo o tabulazioni, né iniziare o finire con uno spazio.</translation>
+    </message>
+</context>
+<context>
     <name>DateTimePage</name>
     <message>
         <source>Set time automatically</source>
@@ -1879,8 +1922,139 @@ Specifiche sistema
         <translation>Digitazione</translation>
     </message>
     <message>
-        <source>Key repeat</source>
-        <translation>Ripetizione dei tasti</translation>
+        <source>Key repeat, Caps Lock, Compose and the keypad</source>
+        <translation>Ripetizione dei tasti, Bloc Maiusc, Compose e tastierino</translation>
+    </message>
+    <message>
+        <source>Custom shortcuts</source>
+        <translation>Scorciatoie personalizzate</translation>
+    </message>
+    <message>
+        <source>Your own key combinations to open apps, commands, links and files</source>
+        <translation>Le tue combinazioni di tasti per aprire app, comandi, link e file</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardShortcutsPage</name>
+    <message>
+        <source>Your shortcuts</source>
+        <translation>Le tue scorciatoie</translation>
+    </message>
+    <message>
+        <source>No custom shortcuts yet</source>
+        <translation>Ancora nessuna scorciatoia personalizzata</translation>
+    </message>
+    <message>
+        <source>Open an app, run a command, or open a link or file with a key combination</source>
+        <translation>Apri un&apos;app, esegui un comando o apri un link o un file con una combinazione di tasti</translation>
+    </message>
+    <message>
+        <source>Add a shortcut</source>
+        <translation>Aggiungi una scorciatoia</translation>
+    </message>
+    <message>
+        <source>Opens %1</source>
+        <translation>Apre %1</translation>
+    </message>
+    <message>
+        <source>Runs %1</source>
+        <translation>Esegue %1</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Modifica</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Edit the shortcut</source>
+        <translation>Modifica la scorciatoia</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Salva</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>What it does</source>
+        <translation>Cosa fa</translation>
+    </message>
+    <message>
+        <source>Open an app</source>
+        <translation>Apri un&apos;app</translation>
+    </message>
+    <message>
+        <source>Run a command</source>
+        <translation>Esegui un comando</translation>
+    </message>
+    <message>
+        <source>Open a link or file</source>
+        <translation>Apri un link o un file</translation>
+    </message>
+    <message>
+        <source>Search apps</source>
+        <translation>Cerca app</translation>
+    </message>
+    <message>
+        <source>Such as kcalc, or notify-send Hello</source>
+        <translation>Come kcalc, o notify-send Ciao</translation>
+    </message>
+    <message>
+        <source>Such as https://example.org or a file</source>
+        <translation>Come https://example.org o un file</translation>
+    </message>
+    <message>
+        <source>Browse</source>
+        <translation>Sfoglia</translation>
+    </message>
+    <message>
+        <source>The combination</source>
+        <translation>La combinazione</translation>
+    </message>
+    <message>
+        <source>Press the keys…</source>
+        <translation>Premi i tasti…</translation>
+    </message>
+    <message>
+        <source>Record again</source>
+        <translation>Registra di nuovo</translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation>Registra</translation>
+    </message>
+    <message>
+        <source>Not set</source>
+        <translation>Non impostata</translation>
+    </message>
+    <message>
+        <source>Another of your shortcuts has this combination: saving replaces it.</source>
+        <translation>Un&apos;altra tua scorciatoia ha questa combinazione: salvando la sostituisci.</translation>
+    </message>
+    <message>
+        <source>Apps use combinations without Win, such as Ctrl+Alt+T or Ctrl+Shift+Esc. This one will reach no app any more, in any window.</source>
+        <translation>Le app usano combinazioni senza Win, come Ctrl+Alt+T o Ctrl+Maiusc+Esc. Questa non arriverà più a nessuna app, in nessuna finestra.</translation>
+    </message>
+    <message>
+        <source>Take %1 from every app?</source>
+        <translation>Togliere %1 a tutte le app?</translation>
+    </message>
+    <message>
+        <source>Without Win, apps may use this combination. With this shortcut it opens what you chose, and no app gets it.</source>
+        <translation>Senza Win, le app possono usare questa combinazione. Con questa scorciatoia apre ciò che hai scelto, e nessuna app la riceve.</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Indietro</translation>
+    </message>
+    <message>
+        <source>Choose a file</source>
+        <translation>Scegli un file</translation>
     </message>
 </context>
 <context>
@@ -2114,6 +2288,22 @@ Specifiche sistema
 </context>
 <context>
     <name>Main</name>
+    <message>
+        <source>Custom shortcuts</source>
+        <translation>Scorciatoie personalizzate</translation>
+    </message>
+    <message>
+        <source>Show Caps Lock on screen</source>
+        <translation>Mostra Bloc Maiusc sullo schermo</translation>
+    </message>
+    <message>
+        <source>caps lock on screen display osd indicator notification</source>
+        <translation>bloc maiusc schermo indicatore avviso osd caps lock</translation>
+    </message>
+    <message>
+        <source>custom shortcuts keyboard combination hotkey launch app command link file</source>
+        <translation>scorciatoie personalizzate tastiera combinazione tasti rapidi avvia app comando link file</translation>
+    </message>
     <message>
         <source>Could not save settings</source>
         <translation>Impossibile salvare le impostazioni</translation>

@@ -78,6 +78,10 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
 
+### Custom shortcuts
+
+The user's own keyboard shortcuts live in `$XDG_CONFIG_HOME/vela/shortcuts.conf`, one `combination=kind target` per line: `Ctrl+Alt+t=app org.kde.konsole.desktop`, `Shift+Super+k=command kcalc`, `Super+FK01=open https://example.org/`. Settings > Keyboard > Custom shortcuts writes it; the compositor rereads it on `reload-config` and skips, with a log line, a line that doesn't parse ([keyboard](keyboard.md#94-the-file)).
+
 ### Theme files
 
 A **theme** is a complete look of the shell and of Vela's apps: colors and corner radii, the blur behind the shell's panels, and the shape of any shell surface. A **style** changes one surface of the shell over the theme, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they, or what they inherit, change.

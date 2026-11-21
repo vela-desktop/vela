@@ -15,6 +15,7 @@
 #include "snap.h"
 #include "switcher.h"
 #include "table.h"
+#include "util.h"
 #include "view.h"
 #include "workspace.h"
 
@@ -139,6 +140,19 @@ bool vela_bindings_handle(struct vela_server *server, const struct vela_press *p
         // desktop. Locking the screen is still possible (above).
         if (!row && !vela_focus_modal_layer(server)) {
             row = vela_binding_find(press, &modes, VELA_STAGE_NORMAL);
+            // Then the user's own, which Settings never lets take one of
+            // Vela's: the shell reads the file and runs the line. Only the
+            // combination goes on its socket, never the target.
+            const struct vela_input *input = server->input;
+            for (size_t i = 0; !row && i < input->custom_count; ++i) {
+                if (vela_combo_matches(&input->custom[i].combo, press)) {
+                    char line[160];
+                    if (vela_format(line, sizeof(line), "shortcut %s", input->custom[i].text)) {
+                        vela_shell_send(server, line);
+                    }
+                    return true;
+                }
+            }
         }
     }
     if (!row) {

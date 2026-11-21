@@ -46,6 +46,17 @@ under "Unreleased" in the pull request that makes a user-visible change.
   the key does something else. *Show Caps Lock on screen* in Settings >
   Keyboard > Typing turns it off.
 
+- Settings > Keyboard > Custom shortcuts: your own key combinations to
+  open an app, run a command, or open a link or file. Recording catches
+  Win and Vela's combinations; Vela's and the reserved ones are refused,
+  and those without Win need a confirmation, since apps use them.
+
+- Shortcut modifiers are now exact, so Win+Shift+E no longer opens Files
+  and Win+Shift+L no longer locks: those combinations are free for apps
+  and custom shortcuts. Letters follow the layout in use (Win+Z where the
+  Z is printed, on AZERTY too) and work with a Russian or Greek layout
+  active; Print alone opens the Snipping Tool.
+
 - Closing a laptop lid with an active external display temporarily turns off
   the built-in panel. Reopening the lid restores its display settings.
   System suspend on lid close follows the system's logind policy.

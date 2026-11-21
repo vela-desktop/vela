@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP8 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
+> KP1–KP9 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
 >
-> **Remaining:** stages KP9–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP10–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -437,8 +437,18 @@ link or file) and *Edit* and *Remove*. *Add a shortcut* opens a dialog:
    with *Browse* for a file).
 2. **The combination:** *Record*, then the keys. While recording,
    Settings holds a `zwp_keyboard_shortcuts_inhibitor_v1` on its window,
-   so Win and Vela's combinations reach it instead of acting.
+   so Win and Vela's combinations reach it instead of acting; the media
+   keys and the consoles never reach it, being reserved (§9.3). A
+   modifier alone keeps it waiting; Esc alone stops recording. The key
+   goes through the matcher of §9.2 with a keymap of the layouts in use,
+   the first active, so the combination is stored as the compositor
+   will match it, and shown as the first layout prints it (Win+Shift+K,
+   Ctrl+Alt+1 on AZERTY too, Ctrl+Alt+Ò on Italian).
 3. **Save**, enabled once both are set and the combination is allowed.
+   A combination without Win asks to confirm (§9.3).
+
+The page is `settings/qml/pages/KeyboardShortcutsPage.qml`, its model
+`settings/src/customshortcuts.h`.
 
 ### 9.2 Matching a key
 
@@ -509,6 +519,10 @@ Refused, with the reason under the combination:
   *before the dialog*), as before this change.
 - **Already a custom shortcut:** Settings offers to replace it.
 
+Settings counts the magnifier's keys (Win+minus, Win+Esc) as taken
+whether or not it is on, since it may be when the shortcut is used;
+Alt+Tab's Esc is not, the switcher being a moment.
+
 **Warned about**, with a prominent caution bar that stays while the
 combination is shown, and a confirmation on *Save*: any combination
 without Win. Ctrl, Alt and Ctrl+Shift combinations are what apps use
@@ -544,13 +558,14 @@ dialog and `keyboard-shortcuts-inhibit` (so a VM or remote desktop keeps
 them). It never puts the target on the shell's socket, whose messages
 are newline-delimited text: it sends `shortcut <combination>`, and a
 normalized combination holds only `[A-Za-z0-9+_]`. The shell reads the
-file itself (and again when it changes), finds the line and runs it as
+file itself, each time it is asked (`shell/src/shortcutrunner.cpp`; the
+file is small, and so never stale), finds the line and runs it as
 Start would: an app with an activation token, so its window comes forward
 under the focus rules of
 [#264](https://github.com/vela-desktop/vela/pull/264); a command with
 `sh -c`, detached; a link or file with its default app. A combination
 the shell can't find (the file changed in between) does nothing and is
-logged.
+logged. The compositor logs the lines it skips, with their number.
 
 ## 10. The Win key alone
 
@@ -629,7 +644,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). Done. |
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). Done. |
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). Done. |
-| KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). |
+| KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). Done. |
 | KP10 | The Win key alone (§10). |
 | KP11 | The terminal lookup and Default apps > Terminal (§11). |
 

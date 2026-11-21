@@ -29,6 +29,17 @@ foreach(name wlr-output-management-unstable-v1 vela-output-preview-v1)
         DEPENDS ${xml})
     list(APPEND DISPLAYS_PROTOCOL_SOURCES ${header} ${code})
 endforeach()
+# Recording a custom shortcut: the compositor's shortcuts stay off for
+# Settings' window meanwhile (docs/keyboard.md §9.1).
+pkg_get_variable(SETTINGS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+set(SETTINGS_INHIBIT_XML
+    ${SETTINGS_WAYLAND_PROTOCOLS_DIR}/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml)
+set(SETTINGS_INHIBIT_HEADER ${DISPLAYS_GENERATED_DIR}/keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h)
+set(SETTINGS_INHIBIT_CODE ${DISPLAYS_GENERATED_DIR}/keyboard-shortcuts-inhibit-unstable-v1-protocol.c)
+add_custom_command(OUTPUT ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE}
+    COMMAND ${DISPLAYS_WAYLAND_SCANNER} client-header ${SETTINGS_INHIBIT_XML} ${SETTINGS_INHIBIT_HEADER}
+    COMMAND ${DISPLAYS_WAYLAND_SCANNER} private-code ${SETTINGS_INHIBIT_XML} ${SETTINGS_INHIBIT_CODE}
+    DEPENDS ${SETTINGS_INHIBIT_XML})
 add_library(vela-displays STATIC src/displays.cpp src/displays.h ${DISPLAYS_PROTOCOL_SOURCES})
 target_include_directories(vela-displays PUBLIC src PRIVATE ${DISPLAYS_GENERATED_DIR})
 target_link_libraries(vela-displays PUBLIC Qt6::Gui PRIVATE PkgConfig::DISPLAYS_WAYLAND)
@@ -42,6 +53,10 @@ qt_add_executable(vela-settings
     src/about.h
     src/datetime.cpp
     src/datetime.h
+    src/customshortcuts.cpp
+    src/customshortcuts.h
+    ${SETTINGS_INHIBIT_HEADER}
+    ${SETTINGS_INHIBIT_CODE}
     src/defaultapps.cpp
     src/defaultapps.h
     src/keyboardlayouts.cpp
@@ -74,7 +89,8 @@ qt_add_executable(vela-settings
     ${SHELL_SRC}/systemstatus.h
     ${SHELL_SRC}/brightness.cpp
     ${SHELL_SRC}/brightness.h)
-target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
+target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src
+    ${DISPLAYS_GENERATED_DIR})
 
 set(SETTINGS_QML_FILES
     qml/Main.qml
@@ -137,6 +153,7 @@ set(SETTINGS_QML_FILES
     qml/pages/KeyboardPage.qml
     qml/pages/KeyboardLayoutsPage.qml
     qml/pages/KeyboardTypingPage.qml
+    qml/pages/KeyboardShortcutsPage.qml
     qml/pages/NightLightPage.qml
     qml/pages/AccessibilityPage.qml
     qml/pages/MousePage.qml
@@ -168,6 +185,9 @@ qt_add_resources(vela-settings "flags"
     BASE ${CMAKE_CURRENT_SOURCE_DIR}/flags
     FILES ${SETTINGS_FLAGS})
 target_link_libraries(vela-settings PRIVATE vela-alloc
+    vela-shortcuts # the matcher and Vela's shortcut table (common/shortcuts)
+    PkgConfig::DISPLAYS_WAYLAND
+    Qt6::GuiPrivate
     PkgConfig::XKBREGISTRY
     PkgConfig::XKBCOMMON
     vela-displays
@@ -244,6 +264,15 @@ if(VELA_BUILD_TOOLS)
         Qt6::DBus Qt6::Gui Qt6::Network Qt6::Quick Qt6::Test)
     add_test(NAME settings-preferences COMMAND vela-preferences-test)
     set_tests_properties(settings-preferences PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Custom shortcuts: recording, refusals, the file (docs/keyboard.md §9).
+    qt_add_executable(vela-customshortcuts-test tests/customshortcuts_test.cpp src/customshortcuts.cpp
+        src/customshortcuts.h ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE})
+    target_include_directories(vela-customshortcuts-test PRIVATE src ${DISPLAYS_GENERATED_DIR})
+    target_compile_options(vela-customshortcuts-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-customshortcuts-test PRIVATE vela-shortcuts PkgConfig::DISPLAYS_WAYLAND Qt6::Gui
+        Qt6::GuiPrivate Qt6::Test)
+    add_test(NAME settings-customshortcuts COMMAND vela-customshortcuts-test)
 
     # The keyboard layouts and where the layout in use comes from.
     qt_add_executable(vela-keyboardlayouts-test tests/keyboardlayouts_test.cpp src/keyboardlayouts.cpp src/keyboardlayouts.h)
