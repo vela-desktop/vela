@@ -34,6 +34,8 @@ In Taskbar settings, the number keys can switch to the corresponding virtual
 desktop, move the focused window there with Shift, or be turned off.
 See [taskbar shortcuts](taskbar.md#7-super19-and-super0).
 
+<kbd>Super</kbd> by itself opens Start unless *Open Start with the Win key* is turned off in Settings > Keyboard > Typing; the other <kbd>Super</kbd> shortcuts and the taskbar numbers work either way ([keyboard](keyboard.md#10-the-win-key-alone)).
+
 ## Shell and apps
 
 | Action | Normal session | Nested session |

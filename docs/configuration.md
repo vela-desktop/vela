@@ -45,6 +45,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `keyboard-options` | system | XKB options, comma-separated. When the key is present, even empty, these are the options and systemd-localed's are not used; Settings > Keyboard > Typing writes its Caps Lock, Compose, bottom-left and keypad choices here and keeps the other options. |
 | `numlock` | `off` | Num Lock when Vela starts: `off`, `on`, or `last` (as it was at the end of the last session, kept in `$XDG_STATE_HOME/vela/numlock`). Settings > Keyboard > Typing. |
 | `caps-lock-osd` | `yes` | Shows *Caps Lock on* or *Caps Lock off* at the bottom of the screen for a moment each time Caps Lock changes, on the lock screen too. Settings > Keyboard > Typing. |
+| `super-opens-start` | `yes` | The Win key pressed and released by itself opens Start. With `no` it does nothing; Win shortcuts, the taskbar numbers while Win is held and the Start button are unchanged. Settings > Keyboard > Typing. |
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |

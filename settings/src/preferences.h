@@ -141,6 +141,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString numLock READ numLock WRITE setNumLock NOTIFY keyboardChanged)
     // caps-lock-osd=: the Caps Lock display on every toggle (docs/keyboard.md §8.3).
     Q_PROPERTY(bool capsLockOsd READ capsLockOsd WRITE setCapsLockOsd NOTIFY keyboardChanged)
+    // super-opens-start=: the Win key alone opens Start (docs/keyboard.md §10).
+    Q_PROPERTY(bool superOpensStart READ superOpensStart WRITE setSuperOpensStart NOTIFY keyboardChanged)
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
     // Kelvin, 1700-6500 (night-light-temperature; the older strength without it).
@@ -338,6 +340,8 @@ public:
     QString numLock() const { return m_numLock; }
     bool capsLockOsd() const { return m_capsLockOsd; }
     void setCapsLockOsd(bool on);
+    bool superOpensStart() const { return m_superOpensStart; }
+    void setSuperOpensStart(bool on);
     void setNumLock(const QString& mode);
     void setRepeatDelay(int ms);
     int repeatRate() const { return m_repeatRate; }
@@ -526,6 +530,7 @@ private:
     QStringList m_keyboardOptions;
     QString m_numLock = QStringLiteral("off");
     bool m_capsLockOsd = true;
+    bool m_superOpensStart = true;
     void setKeyChoice(int control, const QString& value);
     int m_repeatRate = 30;
     bool m_nightLight = false;

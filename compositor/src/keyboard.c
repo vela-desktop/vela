@@ -538,7 +538,7 @@ static void handle_key(struct wl_listener *listener, void *data)
             // The shell may need a full Qt/Wayland map round-trip. Show the
             // taskbar in the current compositor tick after a successful send,
             // without altering the game's fullscreen protocol state.
-            if (vela_shell_send(server, "toggle-start")) {
+            if (input->super_opens_start && vela_shell_send(server, "toggle-start")) {
                 vela_fullscreen_preview_start(server);
             }
         }

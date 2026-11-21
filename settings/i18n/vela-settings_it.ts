@@ -2285,6 +2285,14 @@ Specifiche sistema
         <source>For a moment, each time Caps Lock turns on or off</source>
         <translation>Per un attimo, ogni volta che Bloc Maiusc si attiva o si disattiva</translation>
     </message>
+    <message>
+        <source>Open Start with the Win key</source>
+        <translation>Apri Start con il tasto Win</translation>
+    </message>
+    <message>
+        <source>Pressing the Win key by itself opens Start; Win shortcuts work either way</source>
+        <translation>Premere solo il tasto Win apre Start; le scorciatoie con Win funzionano comunque</translation>
+    </message>
 </context>
 <context>
     <name>Main</name>

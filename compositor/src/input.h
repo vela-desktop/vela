@@ -90,8 +90,11 @@ struct vela_input {
         int steps; // "switch app" steps already taken
     } swipe;
 
-    // Super pressed and released alone: opens the Start menu.
+    // Super pressed and released alone: opens the Start menu, unless
+    // super-opens-start=no (docs/keyboard.md §10). The taskbar numbers
+    // while Super is held follow super_tap either way.
     bool super_tap;
+    bool super_opens_start;
     enum vela_super_numbers super_numbers;
     struct wl_event_source *super_timer;
     struct vela_keyboard *super_keyboard;

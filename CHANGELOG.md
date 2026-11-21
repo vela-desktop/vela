@@ -57,6 +57,10 @@ under "Unreleased" in the pull request that makes a user-visible change.
   Z is printed, on AZERTY too) and work with a Russian or Greek layout
   active; Print alone opens the Snipping Tool.
 
+- *Open Start with the Win key* in Settings > Keyboard > Typing: turned
+  off, the Win key by itself no longer opens Start, while Win shortcuts,
+  the taskbar numbers and the Start button keep working.
+
 - Closing a laptop lid with an active external display temporarily turns off
   the built-in panel. Reopening the lid restores its display settings.
   System suspend on lid close follows the system's logind policy.

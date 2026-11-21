@@ -5,8 +5,8 @@ import QtQuick
 import Vela.Controls
 
 // Keyboard > Typing: key repeat, what the Caps Lock, Compose, bottom-left
-// and keypad keys do, Num Lock at startup and the Caps Lock display
-// (docs/keyboard.md §4, §6, §7, §8.3).
+// and keypad keys do, Num Lock at startup, the Caps Lock display and the
+// Win key alone (docs/keyboard.md §4, §6, §7, §8.3, §10).
 Page {
     id: page
     // The layouts in use: Settings', or the system's.
@@ -130,6 +130,16 @@ Page {
                 objectName: "capsLockOsd"
                 checked: Prefs.capsLockOsd
                 onToggled: Prefs.capsLockOsd = checked
+            }
+        }
+        Card {
+            icon: "start-here"
+            title: qsTr("Open Start with the Win key")
+            description: qsTr("Pressing the Win key by itself opens Start; Win shortcuts work either way")
+            trailing: Switch {
+                objectName: "superOpensStart"
+                checked: Prefs.superOpensStart
+                onToggled: Prefs.superOpensStart = checked
             }
         }
     }

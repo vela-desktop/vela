@@ -225,6 +225,20 @@ class Accessibility(unittest.TestCase):
         self.shell.wait_for("show-desktop")
         self.assertEqual(self.shell.received("toggle-start"), [])
 
+    def test_super_alone_can_leave_start_closed(self):
+        """super-opens-start=no (docs/keyboard.md §10): Win alone does
+        nothing, its shortcuts and the taskbar numbers while it is held
+        stay."""
+        self.start(["super-opens-start=no"])
+        self.vela.keys("super")
+        self.vela.keys("super+d")
+        self.shell.wait_for("show-desktop")
+        # Held, the taskbar numbers still show; released, Start stays closed.
+        self.vela.input("keydown", "super", "sleep", "800", "keyup", "super")
+        self.shell.wait_for("super-held")
+        time.sleep(0.3)
+        self.assertEqual(self.shell.received("toggle-start"), [])
+
     def test_magnifier_keys(self):
         self.start()
         self.vela.open_window(400, 300)

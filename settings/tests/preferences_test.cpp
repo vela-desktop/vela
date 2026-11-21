@@ -1064,10 +1064,16 @@ private slots:
         QVERIFY(!conf().contains("caps-lock-osd="));
         prefs.setCapsLockOsd(false);
         QVERIFY(conf().contains("caps-lock-osd=no\n"));
+        // The Win key alone: opens Start until turned off (§10).
+        QVERIFY(prefs.superOpensStart());
+        QVERIFY(!conf().contains("super-opens-start="));
+        prefs.setSuperOpensStart(false);
+        QVERIFY(conf().contains("super-opens-start=no\n"));
         // A fresh read gives the same.
         Preferences again;
         QCOMPARE(again.numLock(), QStringLiteral("last"));
         QVERIFY(!again.capsLockOsd());
+        QVERIFY(!again.superOpensStart());
         QCOMPARE(again.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp"));
         QCOMPARE(again.capsKey(), QStringLiteral("capslock"));
     }

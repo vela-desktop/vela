@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP9 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
+> KP1–KP10 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
 >
-> **Remaining:** stages KP10–KP11 of [§13](#13-stages), then the
+> **Remaining:** stage KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -645,7 +645,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). Done. |
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). Done. |
 | KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). Done. |
-| KP10 | The Win key alone (§10). |
+| KP10 | The Win key alone (§10). Done. |
 | KP11 | The terminal lookup and Default apps > Terminal (§11). |
 
 ## 14. Not in scope

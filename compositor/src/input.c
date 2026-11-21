@@ -248,10 +248,13 @@ static void load_custom_shortcuts(struct vela_input *input)
     fclose(file);
 }
 
-static void load_numlock(struct vela_input *input, const struct vela_config *settings)
+// Num Lock at startup, the Caps Lock display and Win alone (docs/keyboard.md
+// §7, §8.3, §10).
+static void load_keyboard_choices(struct vela_input *input, const struct vela_config *settings)
 {
     input->numlock = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
     input->caps_lock_osd = vela_config_flag(settings, "caps-lock-osd", true);
+    input->super_opens_start = vela_config_flag(settings, "super-opens-start", true);
 }
 
 void vela_input_hide_super_hints(struct vela_input *input)
@@ -274,7 +277,7 @@ void vela_input_reload(struct vela_input *input)
         vela_keyboard_apply_settings(keyboard, &settings);
     }
     load_super_numbers(input, &settings);
-    load_numlock(input, &settings);
+    load_keyboard_choices(input, &settings);
     load_custom_shortcuts(input);
     vela_config_finish(&settings);
     struct wlr_seat *seat = input->server->seat;
@@ -1015,7 +1018,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
     struct vela_config settings;
     vela_config_read(&settings);
     load_super_numbers(input, &settings);
-    load_numlock(input, &settings);
+    load_keyboard_choices(input, &settings);
     load_custom_shortcuts(input);
     vela_config_finish(&settings);
     return input;
