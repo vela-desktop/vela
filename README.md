@@ -33,26 +33,24 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 
 ## Why Vela
 
-Vela uses modern hardware where that improves the experience and avoids overhead where
-it does not. Efficiency comes from doing less unnecessary work, not from making the
-desktop feel less modern.
-
-- **Modern.** Shell, window management, file manager and settings are designed as one
-  desktop rather than a collection of unrelated utilities.
-- **Fluid.** Animations advance on the monitor's real frames, never on arbitrary timers,
-  and each frame is drawn as late as safely possible. Fullscreen games can go straight
-  to the display, with VRR and tearing support.
-- **Sharp.** Fractional scaling is designed around physical pixels: at 125% or 175% an
-  app rendering at the screen's scale is shown 1:1 with no filtering, and an automated
-  test checks this bit for bit.
-- **Efficient.** Damage tracking, direct scanout and native components keep overhead
-  low: the compositor idles at about 17 MiB and 0.1% of one CPU core on the development
-  system ([methodology](docs/performance.md)).
+- **Small text stays clear in motion.** The shell, Files and Settings use scalable
+  glyphs and grayscale antialiasing. A [scrolling test](common/tests/text_rendering.cpp)
+  moves text through one physical pixel in 64 steps and checks for colored fringes.
+- **A 125% desktop, a native 1440p game.** Windows drawn at the monitor's scale map
+  1:1 to its pixels, checked bit for bit. Even an [X11 game](docs/renderer.md#39-x11-apps)
+  can use all 2560×1440 pixels and direct scanout.
+- **Each monitor sets the pace.** Switch desktops across 75 Hz and 180 Hz screens.
+  Each draws the animation for its own next refresh. Recent frame times tell
+  Vela how late it can start drawing.
+- **A slow window can wait.** While an app's GPU work finishes, its previous frame
+  stays visible. The cursor keeps moving, even in a [test](tests/functional/test_ready.py)
+  that delays the app by 150 ms.
 
 ## What's inside
 
 - **Compositor:** stacking window management with window snapping, virtual desktops, live
-  window previews, blur, rounded corners and shadows, and Xwayland for X11 apps and games.
+  window previews, blur, rounded corners and shadows. Xwayland runs X11 apps and games.
+  Fullscreen games can use variable refresh rate and tearing.
 - **Shell:** taskbar, app launcher, quick settings, notifications, clipboard history,
   screenshots and desktop icons, in light and dark modes.
 - **Themes** (in 0.2, on the Experimental channel today): complete looks in one click,
@@ -64,7 +62,8 @@ desktop feel less modern.
   and recovery from compositor, shell and GPU crashes. Windows stay open after a shell
   crash; after a compositor or GPU restart, Qt and KDE apps reconnect.
 
-The [feature list](docs/features.md) has the details and more screenshots.
+See the [feature gallery](docs/features.md#screenshots) for a closer look at the
+desktop, from the corners of Quick Settings to the lock-screen clock.
 
 ## Get Vela
 

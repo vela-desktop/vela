@@ -31,6 +31,15 @@ changes as the desktop evolves. For the complete key reference see
 </tr>
 </table>
 
+**Theme details (Experimental)**
+
+<table>
+<tr>
+<td width="28%" valign="top"><img src="../themes/screenshots/notifications/round-qs.png" alt="Quick Settings in the Round style, with rounded tiles inset from the curved panel"><br><sub>In the Round style, each corner tile follows the panel’s curve so the gap stays even around the bend.</sub></td>
+<td width="72%" valign="top"><img src="screenshots/expressive-clock.webp" alt="The same lock-screen clock in pale blue on a dark wallpaper and white on a lighter one"><br><sub>The Expressive clock uses the same accent setting in both previews. It checks the brightest pixel behind the time and lightens the digits when they need more contrast.</sub></td>
+</tr>
+</table>
+
 ## Window management and multitasking
 - **Snap layouts**: halves, quarters, and six layouts (thirds, 2/3 + 1/3,
   and more). **Snap Assist** offers your other windows for the empty space. Windows you
@@ -101,8 +110,9 @@ changes as the desktop evolves. For the complete key reference see
 - **Displays**: drag-and-drop arrangement, scale, resolution, refresh rate, rotation, and
   "Keep these settings?" with compositor-owned revert on timeout or a Settings crash.
   Native Wayland configuration requires no external display utility. Monitors snap
-  together and never overlap; unplugging one moves the others so the pointer can still
-  reach them, and the saved arrangement returns when it is plugged back in. Closing a
+  together and never overlap. Unplug the middle of three monitors and Vela closes the
+  gap, even keeping a window resize in progress under the pointer. Reconnect it and the
+  saved arrangement returns. Closing a
   laptop's lid with an external display connected turns the built-in panel off until
   the lid opens. Also **Night light**, variable refresh rate, tearing, and
   [brightness](brightness.md) for each monitor over DDC/CI or the backlight.
@@ -136,8 +146,9 @@ changes as the desktop evolves. For the complete key reference see
 - **Direct scanout** for fullscreen apps, **VRR** (FreeSync/G-Sync, automatic for
   fullscreen apps by default), **tearing control** for games, explicit sync
   (`linux-drm-syncobj-v1`), relative pointer and pointer constraints.
-- **Night light** in the monitor's gamma LUT, so screenshots stay untinted and games keep
-  direct scanout. It can follow sunset and sunrise, computed offline from your time zone.
+- **Night light** fades in a shader to keep the pointer moving smoothly. Once the fade
+  ends, supported displays apply the tint in hardware, so screenshots keep their colors
+  and games can use direct scanout. It can follow sunrise and sunset offline.
 - Picks the **highest refresh rate** at native resolution, even when the monitor
   advertises 60 Hz as "preferred".
 - **Virtual machines** (experimental): [QEMU/KVM guests](virtual-machines.md) with
