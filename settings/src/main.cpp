@@ -24,6 +24,7 @@
 #include "displays.h"
 #include "iconprovider.h"
 #include "keyboardlayouts.h"
+#include "keyboardpreview.h"
 #include "language.h"
 #include "levelmeter.h"
 #include "network.h"
@@ -186,6 +187,7 @@ int main(int argc, char* argv[])
     KeyboardLayouts layouts;
     layouts.setLanguage(vela::language::effective());
     keyboardLayouts = &layouts;
+    KeyboardPreview preview; // Keyboard > Layouts: a layout tried before it is added
     SystemStatus status(&bluetooth);
     Brightness brightness;
     ServiceMenus serviceMenus; // read when Personalization > Context menu opens
@@ -219,6 +221,7 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);
     context->setContextProperty(QStringLiteral("Layouts"), &layouts);
+    context->setContextProperty(QStringLiteral("Preview"), &preview);
     context->setContextProperty(QStringLiteral("Status"), &status);
     context->setContextProperty(QStringLiteral("Brightness"), &brightness);
     engine.loadFromModule("Vela.Settings", "Main");

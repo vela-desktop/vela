@@ -9,9 +9,9 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP3 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
+> KP1–KP4 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** stages KP4–KP11 of [§13](#13-stages), then the
+> **Remaining:** stages KP5–KP11 of [§13](#13-stages), then the
 > real-session checks of [§15](#15-tests).
 
 ## 1. Goals
@@ -184,42 +184,56 @@ icon. They hold no script, image or external link.
 
 ### 5.4 Try before adding
 
-*Add a keyboard* becomes a two-pane dialog: the list and search on one
-side, the chosen entry's preview on the other, and *Add* at the bottom,
-enabled once an entry is chosen. A double click on an entry also adds it.
+*Add a keyboard* shows the list and the search on top and the chosen
+entry's preview below, so it fits a narrow window, with *Add* and
+*Cancel* at the bottom: *Add* is enabled once an entry not yet installed
+is chosen. A click on an entry tries it; a double click adds it.
+`KeyboardPreview` (`settings/src/keyboardpreview.h`) does the work.
 
-**The drawing.** Settings compiles the entry's keymap with libxkbcommon,
-with the key options of §6, and draws the main block of a keyboard: for
-each key, the symbols of levels 1 and 2, and of level 3 when the layout
-has an AltGr. Holding Shift or AltGr in the dialog brings that level
-forward. XKB has no geometry, so the shapes are Vela's own tables of evdev
-key codes: ISO 105 keys by default, ANSI for the layouts of countries that
-use it (`us`, among others), JIS for `jp` and ABNT2 for `br`; a small
-choice in the preview switches the shape.
+**The drawing.** Settings compiles the entry's keymap with libxkbcommon
+(with the key options of §6 once they exist) and draws the main block of
+a keyboard, 15 keys wide and 5 rows high. On each key, the characters of
+its levels as printed keys show them: level 1 bottom left, Shift top
+left (a letter's capital alone), and, when the layout types anything on
+AltGr, AltGr bottom right and Shift+AltGr top right, in the accent
+color. A dead key shows the mark it adds; a modifier or other named key
+shows its name (*Shift*, *AltGr*, *Compose*), so an option that moves
+keys shows on the drawing. The level the key would type now is drawn
+full and the others dimmed, and the keys held in the try field are lit:
+holding Shift or AltGr there brings that level forward. XKB has no
+geometry, so the shapes are Vela's own tables of XKB key names: ISO 105
+keys by default, ANSI for the layouts of countries that mostly use it
+(`us`, `cn`, `kr`, `tw`, `th`, `il`, `ph`, `id`, `vn`, `my`), JIS for
+`jp` and ABNT2 for `br`; a choice beside the try field switches the
+shape. The tall ISO Enter is one L-shaped outline.
 
-**The try field.** A text field under the drawing that types *through the
+**The try field.** A text box under the drawing that types *through the
 candidate layout*: on each key event it takes the key code (on Wayland,
 `QKeyEvent::nativeScanCode()` is the XKB key code), feeds its own
 `xkb_state` and inserts `xkb_state_key_get_utf8()`, with dead keys and
-Compose through `xkb_compose` for the locale. The key pressed lights up
-in the drawing. The layout in use by the rest of the desktop never
-changes, so nothing has to be put back if the dialog is closed.
+Compose through `xkb_compose`, with the compose table of the user's
+locale (English's when the locale is C). The layout in use by the rest
+of the desktop never changes, so nothing has to be put back when the
+dialog closes.
 
-So that no character is typed twice, the field is a read-only text
-input that owns its key events: its handler accepts every press and
-release, so Qt never inserts the text of the layout in use, and the
-field inserts only what the candidate keymap gives. It doesn't accept an
-input method (`Qt::ItemAcceptsInputMethod` off), so an IME can't commit
-text into it either. Its own `xkb_state` follows the presses and
-releases, including the modifiers; an auto-repeated press types the
-key's text again without updating the state twice. Backspace, Delete,
-the arrows, Home, End and Ctrl+A/C/V/X/Z are recognized by the
-*candidate's* keysym and edit the field as usual. When the field loses
-the focus its state is reset, so a modifier held while leaving it is not
-stuck.
+So that no character is typed twice, the field is read-only and owns its
+key events: its handler accepts every press and release, so Qt never
+inserts the text of the layout in use, and the field inserts only what
+the candidate keymap gives. Being read-only, it doesn't accept an input
+method either, and it draws its own blinking cursor, which Qt leaves out
+of read-only fields. Its `xkb_state` follows the presses and releases,
+modifiers included; an auto-repeated press types the key's text again
+without pressing it twice, and the repeat of a key pressed before the
+field had the focus types nothing. Backspace, Delete, the arrows, Home,
+End and Ctrl+A, C, X and V are recognized by the *candidate's* keysym,
+so Ctrl+A is where the candidate puts the A, and edit the field; other
+Ctrl, Alt and Win combinations type nothing. Tab, Enter and Esc go on to
+the dialog: Tab moves the focus, Enter adds, Esc cancels. When the field
+loses the focus its state is reset, so a modifier held while leaving it
+is not stuck.
 
-The installed layouts (§5.5) open the same preview from their *Preview*
-button.
+The installed layouts (§5.5) open the same preview, alone and with
+*Close*, from their *Preview* button.
 
 ### 5.5 The installed layouts
 
@@ -558,7 +572,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 | KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). Done. |
 | KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). Done. |
 | KP3 | Flags (§5.3). Done. |
-| KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). |
+| KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). Done. |
 | KP5 | Key behavior (§6). |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). |
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). |
@@ -594,6 +608,10 @@ Proposed for 0.3 in the [roadmap](roadmap.md):
   countries, accents; a group expands to its matching variants.
 - Flags: the variant's country, then the layout's; none or several →
   the generic icon.
+- Drawing: each shape's rows are 15 units wide; the usual shape of
+  `it`, `us`, `jp` and `br`; a letter's capital alone, names on modifier
+  keys, AltGr detected (not for `us`); options move the names (Ctrl on
+  LALT with `ctrl:swap_lalt_lctl`).
 - Try field: a keymap compiled for `it` turns the key codes of *ò*, *à*
   and AltGr+*è* into those characters; a dead key and a Compose sequence
   for `us(intl)`; an auto-repeated key types again without a double state

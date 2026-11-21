@@ -105,7 +105,8 @@ see the [roadmap](roadmap.md).
   **Time and language**: date, time and language.
 - **Keyboard**: every layout the system has (extras and the user's own
   included), with its country's flag, named in Vela's language and found
-  by name, language or country; where the layout in use comes from when none is chosen; key
+  by name, language or country, drawn and tried by typing before it is
+  added; where the layout in use comes from when none is chosen; key
   repeat ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 

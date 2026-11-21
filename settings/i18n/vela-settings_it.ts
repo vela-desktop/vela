@@ -1808,6 +1808,10 @@ Specifiche sistema
         <translation>Predefinito</translation>
     </message>
     <message>
+        <source>Preview</source>
+        <translation>Anteprima</translation>
+    </message>
+    <message>
         <source>Move up</source>
         <translation>Sposta su</translation>
     </message>
@@ -1816,8 +1820,16 @@ Specifiche sistema
         <translation>Rimuovi</translation>
     </message>
     <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
+    </message>
+    <message>
         <source>Cancel</source>
         <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Aggiungi</translation>
     </message>
     <message>
         <source>Search by name, language or country</source>
@@ -1826,6 +1838,14 @@ Specifiche sistema
     <message>
         <source>No layout found</source>
         <translation>Nessun layout trovato</translation>
+    </message>
+    <message>
+        <source>Choose a layout to see its keys and try it.</source>
+        <translation>Scegli un layout per vederne i tasti e provarlo.</translation>
+    </message>
+    <message>
+        <source>Keyboard shape</source>
+        <translation>Forma della tastiera</translation>
     </message>
     <message>
         <source>Added</source>
@@ -1838,6 +1858,10 @@ Specifiche sistema
     <message>
         <source>Show variants</source>
         <translation>Mostra le varianti</translation>
+    </message>
+    <message>
+        <source>Type here to try the layout</source>
+        <translation>Scrivi qui per provare il layout</translation>
     </message>
 </context>
 <context>
@@ -1857,6 +1881,61 @@ Specifiche sistema
     <message>
         <source>Key repeat</source>
         <translation>Ripetizione dei tasti</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardPreview</name>
+    <message>
+        <source>Shift</source>
+        <translation>Maiusc</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation>Ctrl</translation>
+    </message>
+    <message>
+        <source>Alt</source>
+        <translation>Alt</translation>
+    </message>
+    <message>
+        <source>Win</source>
+        <translation>Win</translation>
+    </message>
+    <message>
+        <source>AltGr</source>
+        <translation>Alt Gr</translation>
+    </message>
+    <message>
+        <source>Caps Lock</source>
+        <translation>Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Compose</source>
+        <translation>Compose</translation>
+    </message>
+    <message>
+        <source>Esc</source>
+        <translation>Esc</translation>
+    </message>
+    <message>
+        <source>Backspace</source>
+        <translation>Backspace</translation>
+    </message>
+    <message>
+        <source>Tab</source>
+        <translation>Tab</translation>
+    </message>
+    <message>
+        <source>Enter</source>
+        <translation>Invio</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>Menu</translation>
+    </message>
+    <message>
+        <source>Num Lock</source>
+        <translation>Bloc Num</translation>
     </message>
 </context>
 <context>

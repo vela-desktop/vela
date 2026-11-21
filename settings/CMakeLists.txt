@@ -13,6 +13,8 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(DISPLAYS_WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
 # The keyboard layouts' catalogue (docs/keyboard.md §5.1).
 pkg_check_modules(XKBREGISTRY REQUIRED IMPORTED_TARGET xkbregistry)
+# Its preview: keymaps and Compose (§5.4).
+pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 find_program(DISPLAYS_WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 set(DISPLAYS_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${DISPLAYS_GENERATED_DIR})
@@ -44,6 +46,8 @@ qt_add_executable(vela-settings
     src/defaultapps.h
     src/keyboardlayouts.cpp
     src/keyboardlayouts.h
+    src/keyboardpreview.cpp
+    src/keyboardpreview.h
     src/preferences.cpp
     src/preferences.h
     src/trayicons.cpp
@@ -163,6 +167,7 @@ qt_add_resources(vela-settings "flags"
     FILES ${SETTINGS_FLAGS})
 target_link_libraries(vela-settings PRIVATE vela-alloc
     PkgConfig::XKBREGISTRY
+    PkgConfig::XKBCOMMON
     vela-displays
     Qt6::DBus
     Qt6::Gui
@@ -246,6 +251,13 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-keyboardlayouts-test PRIVATE KEYBOARD_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/keyboard"
         KEYBOARD_FLAGS="${CMAKE_CURRENT_SOURCE_DIR}/flags")
     add_test(NAME settings-keyboardlayouts COMMAND vela-keyboardlayouts-test)
+    # Trying a layout: its keymap, drawing and typing (system XKB data).
+    qt_add_executable(vela-keyboardpreview-test tests/keyboardpreview_test.cpp src/keyboardpreview.cpp src/keyboardpreview.h)
+    target_include_directories(vela-keyboardpreview-test PRIVATE src)
+    target_compile_options(vela-keyboardpreview-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-keyboardpreview-test PRIVATE Qt6::Gui Qt6::Test PkgConfig::XKBCOMMON)
+    add_test(NAME settings-keyboardpreview COMMAND vela-keyboardpreview-test)
+    set_tests_properties(settings-keyboardpreview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # The notification area's icons, from a fake watcher on a private bus.
     find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session)

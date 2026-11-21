@@ -18,8 +18,13 @@ under "Unreleased" in the pull request that makes a user-visible change.
 - Adding a keyboard layout lists every layout the system has, including
   EurKEY, APL, the phonetic alphabet and the layouts in your own XKB rules,
   grouped with their variants, with their country's flag, named in Vela's
-  language and found by name, language or country. Settings allows up to four layouts, as many as Vela
-  can switch between.
+  language and found by name, language or country. Settings allows up to
+  four layouts, as many as Vela can switch between.
+
+- Before adding a layout, Settings draws its keyboard (ISO, ANSI, JIS or
+  ABNT2) with every level's characters and lets you type with it in a
+  test field, dead keys and Compose included, without changing the layout
+  in use. Installed layouts have the same Preview.
 
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
