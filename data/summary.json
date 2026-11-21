@@ -1,29 +1,35 @@
 {
-  "generated_at": "2026-11-20T11:37:56+00:00",
+  "generated_at": "2026-11-21T10:59:24+00:00",
   "popular_paths": [
     {
-      "count": 428,
+      "count": 449,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 195
+      "uniques": 199
     },
     {
-      "count": 94,
+      "count": 109,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 19
+      "uniques": 21
     },
     {
-      "count": 47,
+      "count": 51,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 7
     },
     {
-      "count": 30,
+      "count": 31,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
       "uniques": 8
+    },
+    {
+      "count": 20,
+      "path": "/vela-desktop/vela/pull/303",
+      "title": "/pull/303",
+      "uniques": 1
     },
     {
       "count": 15,
@@ -32,15 +38,21 @@
       "uniques": 12
     },
     {
-      "count": 11,
-      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
-      "title": "/blob/main/docs/installation.md",
-      "uniques": 8
+      "count": 14,
+      "path": "/vela-desktop/vela/issues/214",
+      "title": "/issues/214",
+      "uniques": 3
     },
     {
-      "count": 10,
-      "path": "/vela-desktop/vela/tree/main",
-      "title": "/tree/main",
+      "count": 12,
+      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
+      "title": "/blob/main/docs/installation.md",
+      "uniques": 9
+    },
+    {
+      "count": 11,
+      "path": "/vela-desktop/vela/blob/main/docs/development.md",
+      "title": "/blob/main/docs/development.md",
       "uniques": 6
     },
     {
@@ -48,18 +60,6 @@
       "path": "/vela-desktop/vela/releases/tag/v0.1.2",
       "title": "/releases/tag/v0.1.2",
       "uniques": 8
-    },
-    {
-      "count": 9,
-      "path": "/vela-desktop/vela/blob/main/docs/development.md",
-      "title": "/blob/main/docs/development.md",
-      "uniques": 6
-    },
-    {
-      "count": 8,
-      "path": "/vela-desktop/vela/blob/main/docs/hardware.md",
-      "title": "/blob/main/docs/hardware.md",
-      "uniques": 6
     }
   ],
   "releases": {
@@ -104,119 +104,119 @@
       {
         "assets": [
           {
-            "downloads": 38,
+            "downloads": 41,
             "id": "706673382",
             "name": "SHA256SUMS"
           },
           {
-            "downloads": 9,
+            "downloads": 11,
             "id": "706673386",
             "name": "SHA256SUMS-fedora"
           },
           {
-            "downloads": 11,
+            "downloads": 13,
             "id": "706673405",
             "name": "SHA256SUMS-ubuntu"
           },
           {
-            "downloads": 41,
+            "downloads": 44,
             "id": "706673380",
             "name": "vela-0.1.1-1-x86_64.pkg.tar.zst"
           },
           {
-            "downloads": 10,
+            "downloads": 12,
             "id": "706673384",
             "name": "vela-0.1.1-1.fc44.x86_64.rpm"
           },
           {
-            "downloads": 16,
+            "downloads": 18,
             "id": "706673381",
             "name": "vela_0.1.1_amd64.deb"
           }
         ],
-        "downloads_current_assets": 125,
+        "downloads_current_assets": 139,
         "tag": "v0.1.1"
       },
       {
         "assets": [
           {
-            "downloads": 10,
+            "downloads": 14,
             "id": "756575991",
             "name": "SHA256SUMS"
           },
           {
-            "downloads": 1,
+            "downloads": 3,
             "id": "756575992",
             "name": "SHA256SUMS-fedora"
           },
           {
-            "downloads": 2,
+            "downloads": 3,
             "id": "756576024",
             "name": "SHA256SUMS-fedora-45"
           },
           {
-            "downloads": 2,
+            "downloads": 5,
             "id": "756576039",
             "name": "SHA256SUMS-ubuntu"
           },
           {
-            "downloads": 14,
+            "downloads": 19,
             "id": "756575985",
             "name": "vela-0.1.2-1-x86_64.pkg.tar.zst"
           },
           {
-            "downloads": 1,
+            "downloads": 4,
             "id": "756575994",
             "name": "vela-0.1.2-1.fc44.x86_64.rpm"
           },
           {
-            "downloads": 2,
+            "downloads": 4,
             "id": "756575996",
             "name": "vela-0.1.2-1.fc45.x86_64.rpm"
           },
           {
-            "downloads": 6,
+            "downloads": 10,
             "id": "756576030",
             "name": "vela_0.1.2_amd64.deb"
           }
         ],
-        "downloads_current_assets": 38,
+        "downloads_current_assets": 62,
         "tag": "v0.1.2"
       }
     ],
-    "downloads_current_assets": 215,
-    "downloads_observed_maxima": 394,
-    "downloads_since_previous_daily_snapshot": 5,
-    "previous_snapshot_date": "2026-11-19",
+    "downloads_current_assets": 253,
+    "downloads_observed_maxima": 432,
+    "downloads_since_previous_daily_snapshot": 38,
+    "previous_snapshot_date": "2026-11-20",
     "release_count": 3
   },
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "sources": {
     "releases": {
-      "last_collected_at": "2026-11-20T11:37:56+00:00",
+      "last_collected_at": "2026-11-21T10:59:24+00:00",
       "status": "ok"
     },
     "traffic": {
-      "last_collected_at": "2026-11-20T11:37:56+00:00",
+      "last_collected_at": "2026-11-21T10:59:24+00:00",
       "status": "ok"
     }
   },
   "top_referrers": [
     {
-      "count": 54,
+      "count": 55,
       "referrer": "velade.org",
-      "uniques": 43
+      "uniques": 41
     },
     {
-      "count": 28,
+      "count": 29,
       "referrer": "reddit.com",
       "uniques": 25
     },
     {
-      "count": 25,
+      "count": 26,
       "referrer": "github.com",
-      "uniques": 18
+      "uniques": 19
     },
     {
       "count": 22,
@@ -229,19 +229,19 @@
       "uniques": 20
     },
     {
-      "count": 15,
+      "count": 16,
       "referrer": "youtube.com",
-      "uniques": 13
+      "uniques": 14
+    },
+    {
+      "count": 5,
+      "referrer": "Google",
+      "uniques": 4
     },
     {
       "count": 5,
       "referrer": "DuckDuckGo",
       "uniques": 3
-    },
-    {
-      "count": 4,
-      "referrer": "Google",
-      "uniques": 4
     },
     {
       "count": 2,
@@ -256,51 +256,51 @@
   ],
   "traffic": {
     "clones": {
-      "growth_vs_previous_7_days_percent": 82.97,
+      "growth_vs_previous_7_days_percent": 119.91,
       "last_30_complete_days": {
         "complete": true,
-        "count": 36086,
-        "end_date": "2026-11-19",
+        "count": 37776,
+        "end_date": "2026-11-20",
         "observed_days": 30,
-        "start_date": "2026-10-21"
+        "start_date": "2026-10-22"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 9253,
-        "end_date": "2026-11-19",
+        "count": 11191,
+        "end_date": "2026-11-20",
         "observed_days": 7,
-        "start_date": "2026-11-13"
+        "start_date": "2026-11-14"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 5057,
-        "end_date": "2026-11-12",
+        "count": 5089,
+        "end_date": "2026-11-13",
         "observed_days": 7,
-        "start_date": "2026-11-06"
+        "start_date": "2026-11-07"
       }
     },
     "views": {
-      "growth_vs_previous_7_days_percent": -17.99,
+      "growth_vs_previous_7_days_percent": -8.28,
       "last_30_complete_days": {
         "complete": true,
-        "count": 2863,
-        "end_date": "2026-11-19",
+        "count": 2990,
+        "end_date": "2026-11-20",
         "observed_days": 30,
-        "start_date": "2026-10-21"
+        "start_date": "2026-10-22"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 392,
-        "end_date": "2026-11-19",
+        "count": 454,
+        "end_date": "2026-11-20",
         "observed_days": 7,
-        "start_date": "2026-11-13"
+        "start_date": "2026-11-14"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 478,
-        "end_date": "2026-11-12",
+        "count": 495,
+        "end_date": "2026-11-13",
         "observed_days": 7,
-        "start_date": "2026-11-06"
+        "start_date": "2026-11-07"
       }
     }
   }

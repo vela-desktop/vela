@@ -1,0 +1,120 @@
+{
+  "collected_at": "2026-11-21T10:59:24+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 449,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 199
+    },
+    {
+      "count": 109,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 21
+    },
+    {
+      "count": 51,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 7
+    },
+    {
+      "count": 31,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 8
+    },
+    {
+      "count": 20,
+      "path": "/vela-desktop/vela/pull/303",
+      "title": "/pull/303",
+      "uniques": 1
+    },
+    {
+      "count": 15,
+      "path": "/vela-desktop/vela/releases",
+      "title": "/releases",
+      "uniques": 12
+    },
+    {
+      "count": 14,
+      "path": "/vela-desktop/vela/issues/214",
+      "title": "/issues/214",
+      "uniques": 3
+    },
+    {
+      "count": 12,
+      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
+      "title": "/blob/main/docs/installation.md",
+      "uniques": 9
+    },
+    {
+      "count": 11,
+      "path": "/vela-desktop/vela/blob/main/docs/development.md",
+      "title": "/blob/main/docs/development.md",
+      "uniques": 6
+    },
+    {
+      "count": 9,
+      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
+      "title": "/releases/tag/v0.1.2",
+      "uniques": 8
+    }
+  ],
+  "referrers": [
+    {
+      "count": 55,
+      "referrer": "velade.org",
+      "uniques": 41
+    },
+    {
+      "count": 29,
+      "referrer": "reddit.com",
+      "uniques": 25
+    },
+    {
+      "count": 26,
+      "referrer": "github.com",
+      "uniques": 19
+    },
+    {
+      "count": 22,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 17
+    },
+    {
+      "count": 20,
+      "referrer": "news.ycombinator.com",
+      "uniques": 20
+    },
+    {
+      "count": 16,
+      "referrer": "youtube.com",
+      "uniques": 14
+    },
+    {
+      "count": 5,
+      "referrer": "Google",
+      "uniques": 4
+    },
+    {
+      "count": 5,
+      "referrer": "DuckDuckGo",
+      "uniques": 3
+    },
+    {
+      "count": 2,
+      "referrer": "search.brave.com",
+      "uniques": 2
+    },
+    {
+      "count": 1,
+      "referrer": "Bing",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}
