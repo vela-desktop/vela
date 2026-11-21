@@ -121,13 +121,13 @@ class BetaVersionDerivation(unittest.TestCase):
             return result.returncode, dict(line.split("=", 1) for line in output.read().split())
 
     def test_release_and_rehearsal_tags_build_the_same_beta_version(self):
-        self.assertEqual(self.derive("refs/tags/v0.2.1"), (0, {"beta_version": "0.2.1"}))
-        self.assertEqual(self.derive("refs/tags/rehearsal/v0.2.1"), (0, {"beta_version": "0.2.1"}))
+        self.assertEqual(self.derive("refs/tags/v0.2.1"), (0, {"beta_version": "0.2.1", "rehearsal": "false"}))
+        self.assertEqual(self.derive("refs/tags/rehearsal/v0.2.1"), (0, {"beta_version": "0.2.1", "rehearsal": "true"}))
 
     def test_branches_and_pull_requests_build_experimental(self):
         for ref in ("refs/heads/main", "refs/heads/release/0.2", "refs/pull/305/merge"):
             with self.subTest(ref=ref):
-                self.assertEqual(self.derive(ref), (0, {"beta_version": ""}))
+                self.assertEqual(self.derive(ref), (0, {"beta_version": "", "rehearsal": "false"}))
 
     def test_malformed_tags_stop_the_pipeline(self):
         for ref in ("refs/tags/v0.2", "refs/tags/v0.2.1-rc1", "refs/tags/rehearsal/v0.2.1a",
@@ -153,6 +153,59 @@ class BetaVersionDerivation(unittest.TestCase):
             with self.subTest(job=job):
                 self.assertRegex(build, rf"(?m)^  {job}:\n    needs: \[changes, ")
         self.assertIn("beta_version: ${{ needs.changes.outputs.beta_version }}", build)
+
+
+class BetaReleaseNotes(unittest.TestCase):
+    def test_notes_are_checked_first_and_published_from_the_changelog(self):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        changes = build.split("\n  changes:\n", 1)[1].split("\n\n  ", 1)[0]
+        self.assertIn("if: steps.release.outputs.beta_version != ''", changes)
+        self.assertIn('scripts/release-notes.py "$VERSION"\n', changes)
+        publish = build.split("\n  publish-beta:\n", 1)[1].split("\n\n  ", 1)[0]
+        self.assertIn('scripts/release-notes.py "$VERSION" > release-notes.txt', publish)
+        self.assertLess(publish.index("release-notes.txt"), publish.index("- name: Publish signed Beta release"))
+        self.assertNotIn("--generate-notes", build)
+
+
+class BetaUpgradeJobs(unittest.TestCase):
+    """Upgrades from the previous Beta gate publication; the updater check follows it."""
+
+    DISTROS = ("arch", "fedora-44", "fedora-45", "ubuntu")
+
+    def job(self, workflow, name):
+        text = (ROOT / ".github/workflows" / workflow).read_text()
+        return text.split(f"\n  {name}:\n", 1)[1].split("\n\n  ", 1)[0]
+
+    def test_package_upgrade_gates_publication_on_every_distro(self):
+        upgrade = self.job("build.yml", "beta-upgrade")
+        self.assertIn("needs.changes.outputs.beta_version != ''", upgrade)
+        self.assertIn("ci-beta-upgrade.py packages", upgrade)
+        for distro in self.DISTROS:
+            with self.subTest(distro=distro):
+                self.assertIn(f"- distro: {distro}\n", upgrade)
+        for artifact in ("vela-git", "vela-fedora-rpm", "vela-fedora-45-rpm", "vela-ubuntu-26.10-deb"):
+            with self.subTest(artifact=artifact):
+                self.assertIn(f"artifact: {artifact}\n", upgrade)
+        publish = self.job("build.yml", "publish-beta")
+        needs = re.search(r"(?m)^    needs: \[([^\]]+)\]$", publish)[1].split(", ")
+        self.assertIn("beta-upgrade", needs)
+
+    def test_updater_check_runs_after_real_releases_only(self):
+        check = self.job("build.yml", "beta-update-check")
+        self.assertIn("needs: [changes, publish-beta]", check)
+        self.assertIn("needs.changes.outputs.rehearsal == 'false'", check)
+        self.assertIn("needs.changes.outputs.beta_version != ''", check)
+        self.assertIn("uses: ./.github/workflows/beta-update-check.yml", check)
+
+    def test_updater_check_covers_every_distro_and_the_release_tree(self):
+        workflow = (ROOT / ".github/workflows/beta-update-check.yml").read_text()
+        for distro in self.DISTROS:
+            with self.subTest(distro=distro):
+                self.assertIn(f"- distro: {distro}\n", workflow)
+        self.assertIn("ref: refs/tags/v${{ inputs.version }}", workflow)
+        self.assertIn('ci-beta-upgrade.py updater --version "$VERSION" --checkout "$GITHUB_WORKSPACE/release-tree"',
+                      workflow)
+        self.assertIn("workflow_dispatch:", workflow)
 
 
 if __name__ == "__main__":

@@ -58,7 +58,7 @@ jobs:
         run: >-
           pacman -Syu --noconfirm --needed
           base-devel git cmake ccache shaderc vulkan-headers vulkan-icd-loader
-          gtest python wayland wayland-protocols wlroots0.20
+          gtest python openssh wayland wayland-protocols wlroots0.20
           libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
           fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
           qt6-svg qt6-wayland qt6-tools layer-shell-qt hicolor-icon-theme

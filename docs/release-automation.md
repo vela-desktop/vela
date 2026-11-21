@@ -5,9 +5,9 @@ few commands instead of a checklist. The release rules themselves do not
 change: numbered `v0.<minor>.<patch>` tags, the release branches and the
 validation in [release channels](release-channels.md).
 
-> **Status:** R1 in progress: the rehearsal tag.
+> **Status:** R1–R4 in progress, in stacked pull requests (§8).
 >
-> **Remaining:** R2–R4 (§5).
+> **Remaining:** review and merge; the first real release made this way.
 
 ## 1. The problem
 
@@ -54,7 +54,10 @@ what a hotfix is for; what has to shrink is the work around it.
 - **The rehearsal runs in `vela-desktop/vela`,** not on a fork: a
   `rehearsal/v0.<minor>.<patch>` tag runs the Beta pipeline and publishes
   a *draft* release. No token for another repository is needed, and the
-  fork is retired after R2.
+  fork is retired with R2.
+- **No modified updater in the tests.** Before the tag the packages are
+  upgraded with the native package manager; the updater itself is tried,
+  unmodified, against the real release right after it is published (§5).
 - **Version numbers stay `v0.<minor>.<patch>`.** A hotfix is a patch
   release.
 
@@ -97,24 +100,102 @@ candidate is the tip of `origin/release/0.2`, or `origin/main` for a
 must be the version being rehearsed, and the real `v0.2.1` tag must not
 exist yet.
 
-## 5. Stages
+## 5. Upgrade tests
+
+`scripts/ci-beta-upgrade.py` starts from what users have: the newest
+published Beta older than the version under test, downloaded from its
+release and checked against the release's manifest. A release without that
+distribution's manifest (0.1.0 and 0.1.1 had no Fedora 45 package) is
+skipped; when nothing older exists, there is nothing to upgrade from and
+the test says so. It runs in clean Arch, Fedora 44, Fedora 45 and Ubuntu
+26.10 containers.
+
+**Before publication** (`beta-upgrade` in `build.yml`, on the release tag
+and on its rehearsal), the previous Beta is upgraded to the run's own
+packages with pacman, dnf or apt, the packages that publication would
+upload. Then the installed version must be the new one, the package's
+files must verify (`pacman -Qkk`, `rpm -V`, `dpkg --verify`) and
+`vela-update` must run. `publish-beta` waits for all four.
+
+**After publication** (`beta-update-check.yml`, called once `publish-beta`
+has published a real release, and runnable by hand only for the newest
+published Beta), the previous Beta's own updater installs the release, as
+it does for users. For Betas before 0.2.0, the installed updater only sees
+prereleases, so the test follows the documented one-time procedure and runs
+`packaging/vela-update` from the release tree
+([release channels](release-channels.md#updating-older-beta-installations)).
+Then `vela-update --check --json` must report the new release as
+`up-to-date`. It reads the JSON because plain `--check` also exits 1 when
+the check itself fails, and an updater that finds no release at all (0.1.x
+once its releases became normal ones) must not pass.
+
+What this does not cover before the tag is the updater's conversation with
+the real GitHub. The updater cannot read a draft, and a copy patched to
+read one (tag format, downloads, provenance reference) would need changing
+for every old updater. Its logic stays covered offline by
+`packaging/tests`, and a failure after publication is fixed by a patch
+release.
+
+## 6. The commands
+
+`scripts/release.py` runs on the maintainer's machine, with their git
+remote, signing key and `gh` login, so CI never holds a key that signs
+tags and the pull requests it opens run CI like any other. A release is
+four commands; between them, everything runs by itself:
+
+| Command | What it does | Refuses when |
+|---|---|---|
+| `prepare 0.2.1` | From a temporary worktree of the branch tip, commits (signed off) `project(VERSION 0.2.1)` and a `## 0.2.1 — <date>` CHANGELOG section holding the "Unreleased" entries, pushes `prepare/v0.2.1` and opens the pull request against the branch. A `.0` only gets the CHANGELOG section: `main` is already at that version. | `v0.2.1` exists; the branch is already at or past 0.2.1; nothing is under "Unreleased"; the section exists |
+| `rehearse 0.2.1` | §4, then starts `gpu-amd.yml` and `gpu-nvidia.yml` on the rehearsal tag (`--no-gpu` to skip them). | as in §4 |
+| `status 0.2.1` | Prints each check for the rehearsed commit, and exits 0 only when all pass: still on the branch with the right version and no `v0.2.1`; the `build.yml` run of the rehearsal tag succeeded on it; the draft exists; a full AMD and a full NVIDIA suite succeeded on it. | — |
+| `tag 0.2.1` | Runs `status`, asks you to type `v0.2.1`, creates the tag with `git tag -s` on the rehearsed commit, checks its signature with `git verify-tag`, pushes it and deletes the rehearsal. | any check fails; a different answer; a tag whose signature fails verification; a local `v0.2.1` on another commit |
+
+A GPU run counts as a full suite only when it has the workflow's plain
+name: both GPU workflows set `run-name` to append ` - only <regex>` when
+the `tests` input filters the suite. A later retry still running does not
+hide an earlier success on the same commit.
+
+If `prepare` already pushed the intended change, rerunning it keeps the
+original changelog date and reuses the branch and any open pull request.
+For SSH-signed tags, configure Git's `gpg.ssh.allowedSignersFile` with
+your public signing key so `git verify-tag` can verify the signature locally.
+
+## 7. After publication
+
+**Notes.** `scripts/release-notes.py 0.2.1` prints the CHANGELOG section
+`prepare` wrote, as plain text, because Settings shows release notes
+without Markdown ([Updates](updates.md)): a Markdown link becomes its
+text followed by the address in parentheses, a relative link points at the
+file in the tagged tree, and two lines at the end link the installation guide and the changelog. The
+`changes` job runs it first on every Beta tag, so a tag without a section
+stops before anything is built; `publish-beta` passes the same text to
+the release (`--generate-notes` gave only a changelog link). A
+rehearsal's draft carries the same notes under a warning line, to be read
+before tagging. Editing a published release's text later
+(`gh release edit`) still leaves its assets untouched.
+
+**`release.py finish 0.2.1`**, once `v0.2.1` is published with its four
+manifests, opens a pull request on `release/0.2` and one on `main` that
+move the `PKGBUILD.beta` fallback (what manual builds fetch without
+`VELA_RELEASE_VERSION`) to the new tag when the fallback is older. After a `.0` it first creates
+`release/0.<minor>` from the tag, and the `main` pull request also moves
+`project(VERSION)` to the next minor version. If the release branch rules
+refuse the push, it says so; create the branch from the tag on GitHub and
+run it again. A retry reuses a previously pushed head that contains the
+intended change and reports its pull request if it is already open.
+It refuses a draft, a release missing a manifest, and a
+patch release whose branch does not exist.
+
+## 8. Stages
 
 | Stage | What | Pull request |
 |---|---|---|
 | **R1** | The rehearsal tag (§4) and `release.py rehearse`/`clean`. | [#306](https://github.com/vela-desktop/vela/pull/306) |
-| **R2** | Upgrade tests in CI: the previous published Beta installed in clean Arch, Fedora 44/45 and Ubuntu 26.10 containers, upgraded to the rehearsal's draft packages through the installed updater, then checked; the same test against the real release after the tag. Retires the fork. | — |
-| **R3** | `release.py prepare` (version bump pull request with its CHANGELOG section), `release.py status` (rehearsal, both GPU suites and upgrade tests on the exact commit, in one go/no-go summary; the GPU suites are dispatched by `rehearse`), `release.py tag` (refuses unless `status` is green, signs and pushes). | — |
-| **R4** | After publication: notes taken from the CHANGELOG section instead of `--generate-notes`, and the `PKGBUILD.beta` fallback pull requests opened by `release.py tag`. | — |
+| **R2** | Upgrade tests in CI (§5): the previous Beta upgraded to the candidate packages before publication, and its updater installing the real release after it. Retires the fork. | [#307](https://github.com/vela-desktop/vela/pull/307) |
+| **R3** | The commands (§6): `prepare`, GPU suites started by `rehearse`, `status`, `tag`. | [#308](https://github.com/vela-desktop/vela/pull/308) |
+| **R4** | After publication (§7): notes from the CHANGELOG section, and `release.py finish`. | [#309](https://github.com/vela-desktop/vela/pull/309) |
 
-R2 has one open question. The installed updater reads releases from the
-public API and skips drafts, so the upgrade test cannot point it at the
-draft unchanged. The proposal is to test a copy of the installed updater
-whose only changes are the repository, an accepted tag (`rehearsal/v0.x.y`)
-and an authenticated download, as the 0.1.1 container tests did with
-`REPO`; the unmodified updater is then exercised against the real release
-right after the tag.
-
-## 6. Not in scope
+## 9. Not in scope
 
 - Tags or releases created by CI on its own.
 - A second Beta channel or pre-release versions such as `v0.2.1-rc1`: the
@@ -123,7 +204,7 @@ right after the tag.
 - 0.1.x: its updater only sees prereleases, and 0.1.x support ends with
   `v0.2.0`.
 
-## 7. Tests
+## 10. Tests
 
 - `packaging/tests/test_beta_publication.py` runs the real publication
   script with a fake `gh`: a real tag creates a normal release, a
@@ -132,6 +213,30 @@ right after the tag.
   is refused.
 - `packaging/tests/test_ci_workflows.py` checks that both tags start the
   pipeline and that no job matches `refs/tags/v0.*` on its own.
+- `scripts/tests/test_ci_beta_upgrade.py` checks the choice of the
+  previous Beta (numeric order; drafts, rehearsals and other tags skipped;
+  a missing manifest), the supported systems, the candidate package names,
+  when the one-time step applies, refused downloads, and the final verdict:
+  only `up-to-date` for the new version passes, and a failed check does not.
+- `packaging/tests/test_ci_workflows.py` also checks that `beta-upgrade`
+  covers the four systems and gates `publish-beta`, and that the updater
+  check runs after real releases only.
 - `scripts/tests/test_release.py` runs `release.py` against a temporary
-  Git repository with a fake `gh`: version mismatch, an existing real tag,
-  replacing an earlier rehearsal, and `clean`.
+  Git repository with a bare remote and a fake `gh`: version mismatch, an
+  existing real tag, replacing an earlier rehearsal, and `clean`; the
+  `prepare` pull request (its two-file commit, sign-off, base branch, and
+  the maintainer's checkout left untouched) and its refusals; `status` with
+  each check failing in turn (failed or other-commit pipeline, a filtered
+  or missing or running GPU suite, no draft); and `tag` signing with a
+  throwaway SSH key, asking for the exact name, and refusing an unsigned
+  or misplaced local tag. A test ties the GPU suite names `status` expects
+  to the workflows' `name` and `run-name`. `finish` is run for a patch (two
+  one-file pull requests) and for a `.0` (the new branch, and `main` moved to
+  the next minor version), and refuses a draft, a missing manifest and a
+  missing release branch.
+- `scripts/tests/test_release_notes.py` checks the section boundaries
+  (`0.2.1` never reads `0.2.10`), plain-text links pinned to the tag, the
+  footer, refusals of a missing or empty section, and that the real
+  CHANGELOG has every published version.
+- `packaging/tests/test_beta_publication.py` checks that a release takes its
+  notes from the file and a rehearsal puts its warning above them.

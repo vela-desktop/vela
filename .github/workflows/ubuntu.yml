@@ -60,6 +60,7 @@ jobs:
           # Fail on missing packages: no distro-specific vendoring/fallbacks.
           pkg-config --modversion wlroots-0.20
           pkg-config --modversion vulkan
+          apt-get install -y --no-install-recommends openssh-client
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
