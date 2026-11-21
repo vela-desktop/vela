@@ -16,11 +16,14 @@ extern "C" {
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QLockFile>
 #include <QSaveFile>
 #include <QWindow>
 #include <qpa/qplatformwindow_p.h>
 
 #include <linux/input-event-codes.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include <wayland-client.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -28,6 +31,24 @@ extern "C" {
 #include <memory>
 
 namespace {
+
+constexpr qsizetype MaxFileBytes = 1024 * 1024;
+
+std::optional<QByteArray> readShortcuts(const QString& path)
+{
+    QFile file(path);
+    if (!file.exists()) {
+        return QByteArray();
+    }
+    if (!file.open(QIODevice::ReadOnly)) {
+        return std::nullopt;
+    }
+    const QByteArray contents = file.read(MaxFileBytes + 1);
+    if (file.error() != QFile::NoError || contents.size() > MaxFileBytes) {
+        return std::nullopt;
+    }
+    return contents;
+}
 
 struct KeymapDeleter {
     void operator()(xkb_keymap* keymap) const { xkb_keymap_unref(keymap); }
@@ -198,9 +219,9 @@ QString CustomShortcuts::path()
 void CustomShortcuts::reload()
 {
     m_lines.clear();
-    QFile file(path());
-    if (file.open(QIODevice::ReadOnly)) {
-        const QList<QByteArray> lines = file.read(1024 * 1024).split('\n');
+    m_snapshot = readShortcuts(path());
+    if (m_snapshot) {
+        const QList<QByteArray> lines = m_snapshot->split('\n');
         for (qsizetype i = 0; i < lines.size(); ++i) {
             const QByteArray& raw = lines.at(i);
             if (i == lines.size() - 1 && raw.isEmpty()) {
@@ -219,6 +240,11 @@ void CustomShortcuts::reload()
             m_lines.append(line);
         }
     }
+    refreshItems();
+}
+
+void CustomShortcuts::refreshItems()
+{
     const QVariantList layouts = m_layouts ? m_layouts() : QVariantList();
     const QVariantList installed = m_apps ? m_apps() : QVariantList();
     m_items.clear();
@@ -305,17 +331,15 @@ QString CustomShortcuts::label(const QString& combo) const
 
 QVariantMap CustomShortcuts::press(int scanCode, int modifiers) const
 {
+    if (m_keyboard) {
+        return pressWithState(scanCode, m_state);
+    }
     const QVariantList layouts = m_layouts ? m_layouts() : QVariantList();
     const auto keymap = keymapFor(layouts);
     if (!keymap || scanCode < 8) {
         return { { QStringLiteral("state"), QStringLiteral("modifier") } };
     }
     std::unique_ptr<xkb_state, StateDeleter> state(xkb_state_new(keymap.get()));
-    const xkb_keysym_t* syms = nullptr;
-    if (xkb_keymap_key_get_syms_by_level(keymap.get(), xkb_keycode_t(scanCode), 0, 0, &syms) > 0
-        && isModifier(syms[0])) {
-        return { { QStringLiteral("state"), QStringLiteral("modifier") } };
-    }
     xkb_mod_mask_t mask = 0;
     const auto add = [&](Qt::KeyboardModifier qt, const char* name) {
         const xkb_mod_index_t index = xkb_keymap_mod_get_index(keymap.get(), name);
@@ -328,8 +352,17 @@ QVariantMap CustomShortcuts::press(int scanCode, int modifiers) const
     add(Qt::ShiftModifier, XKB_MOD_NAME_SHIFT);
     add(Qt::MetaModifier, XKB_MOD_NAME_LOGO);
     xkb_state_update_mask(state.get(), mask, 0, 0, 0, 0, 0);
+    return pressWithState(scanCode, state.get());
+}
+
+QVariantMap CustomShortcuts::pressWithState(int scanCode, xkb_state* state) const
+{
+    if (!state || scanCode < 8 || isModifier(xkb_state_key_get_one_sym(state, scanCode))) {
+        return { { QStringLiteral("state"), QStringLiteral("modifier") } };
+    }
+    const QVariantList layouts = m_layouts ? m_layouts() : QVariantList();
     vela_press pressed {};
-    vela_press_from_state(state.get(), xkb_keycode_t(scanCode), &pressed);
+    vela_press_from_state(state, xkb_keycode_t(scanCode), &pressed);
     const vela_combo combo = vela_combo_from_press(&pressed);
     char text[128];
     if (!vela_combo_format(&combo, text, sizeof(text))) {
@@ -419,6 +452,14 @@ bool CustomShortcuts::write(const QList<Line>& lines)
     if (file.isEmpty() || !QDir().mkpath(QFileInfo(file).absolutePath())) {
         return false;
     }
+    QLockFile lock(file + QStringLiteral(".lock"));
+    if (!lock.tryLock()) {
+        return false;
+    }
+    if (!m_snapshot || readShortcuts(file) != m_snapshot) {
+        reload();
+        return false;
+    }
     QSaveFile out(file);
     if (!out.open(QIODevice::WriteOnly)) {
         return false;
@@ -435,8 +476,7 @@ bool CustomShortcuts::write(const QList<Line>& lines)
         text += (line.combo.isEmpty() ? line.text : line.combo + u'=' + line.kind + u' ' + line.target).toUtf8();
         text += '\n';
     }
-    out.write(text);
-    if (!out.commit()) {
+    if (text.size() > MaxFileBytes || out.write(text) != text.size() || !out.commit()) {
         return false;
     }
     if (m_written) {
@@ -526,6 +566,43 @@ void CustomShortcuts::startRecording(QWindow* window)
     auto* native = window ? window->nativeInterface<QNativeInterface::Private::QWaylandWindow>() : nullptr;
     wl_surface* surface = native ? native->surface() : nullptr;
     wl_seat* seat = wayland ? wayland->seat() : nullptr;
+    if (seat && wayland->keyboard()) {
+        // Qt exposes scan codes, but the active group and custom keymap come from the seat.
+        static const wl_keyboard_listener listener {
+            [](void* data, wl_keyboard*, uint32_t format, int fd, uint32_t size) {
+                auto** state = static_cast<xkb_state**>(data);
+                xkb_state_unref(*state);
+                *state = nullptr;
+                if (format == WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1 && size > 0) {
+                    void* map = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+                    if (map != MAP_FAILED) {
+                        auto* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+                        auto* keymap = context ? xkb_keymap_new_from_buffer(context, static_cast<const char*>(map),
+                                                     size - 1, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS)
+                                               : nullptr;
+                        *state = keymap ? xkb_state_new(keymap) : nullptr;
+                        xkb_keymap_unref(keymap);
+                        xkb_context_unref(context);
+                        munmap(map, size);
+                    }
+                }
+                close(fd);
+            },
+            [](void*, wl_keyboard*, uint32_t, wl_surface*, wl_array*) {},
+            [](void*, wl_keyboard*, uint32_t, wl_surface*) {},
+            [](void*, wl_keyboard*, uint32_t, uint32_t, uint32_t, uint32_t) {},
+            [](void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked,
+                uint32_t group) {
+                if (auto* state = *static_cast<xkb_state**>(data)) {
+                    xkb_state_update_mask(state, depressed, latched, locked, 0, 0, group);
+                }
+            },
+            [](void*, wl_keyboard*, int32_t, int32_t) {},
+        };
+        m_keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(m_keyboard, &listener, &m_state);
+        wl_display_roundtrip(wayland->display());
+    }
     if (!m_manager || !surface || !seat) {
         return; // Win still acts while recording: the other keys are recorded
     }
@@ -535,6 +612,12 @@ void CustomShortcuts::startRecording(QWindow* window)
 
 void CustomShortcuts::stopRecording()
 {
+    if (m_keyboard) {
+        wl_keyboard_release(m_keyboard);
+        m_keyboard = nullptr;
+        xkb_state_unref(m_state);
+        m_state = nullptr;
+    }
     if (!m_inhibitor) {
         return;
     }

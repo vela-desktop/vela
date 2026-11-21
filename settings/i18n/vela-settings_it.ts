@@ -1331,6 +1331,10 @@ Specifiche sistema
         <source>%1 links:</source>
         <translation>Collegamenti %1:</translation>
     </message>
+    <message>
+        <source>System default</source>
+        <translation>Predefinito di sistema</translation>
+    </message>
 </context>
 <context>
     <name>DefaultAppsPage</name>
@@ -2075,6 +2079,18 @@ Specifiche sistema
     <message>
         <source>Choose a file</source>
         <translation>Scegli un file</translation>
+    </message>
+    <message>
+        <source>Shortcut changes could not be saved</source>
+        <translation>Impossibile salvare le modifiche alle scorciatoie</translation>
+    </message>
+    <message>
+        <source>Check the current shortcuts and try again. The file may have changed in another editor.</source>
+        <translation>Controlla le scorciatoie attuali e riprova. Il file potrebbe essere stato modificato in un altro editor.</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
     </message>
 </context>
 <context>

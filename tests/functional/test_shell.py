@@ -518,7 +518,7 @@ class CustomShortcuts(RealShell):
         opener = os.path.join(bin_dir, "xdg-open")
         with open(opener, "w") as file:
             file.write(f'#!/bin/sh\nprintf "%s" "$1" > {self.marks}/opened\n')
-        os.chmod(opener, 0o755)
+        os.chmod(opener, 0o700)
         self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin")}
         applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
         os.makedirs(applications, exist_ok=True)

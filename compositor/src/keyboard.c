@@ -170,10 +170,11 @@ void vela_keyboard_save_numlock(struct vela_input *input)
     if (!input->numlock_unsaved) {
         return;
     }
-    input->numlock_unsaved = false;
     char path[4096];
     if (!vela_numlock_path(path, sizeof(path)) || !vela_numlock_save(path, input->num_locked)) {
         wlr_log(WLR_ERROR, "Keyboard: Num Lock's state could not be kept");
+    } else {
+        input->numlock_unsaved = false;
     }
 }
 

@@ -63,10 +63,9 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 - Settings > Apps > Default apps has a *Terminal* row: *Automatic* or one
   of the installed terminals. Win+Enter and updates now open the same
-  terminal: the one chosen there, then `VELA_TERMINAL`,
-  `xdg-terminal-exec`, then any installed terminal (Kwi, Ghostty, WezTerm
-  and others are found from their desktop files), instead of Win+Enter
-  trying only Konsole, foot, kitty, Alacritty and xterm.
+  terminal. The packaged `xdg-terminal-exec` handles XDG choices and
+  profile actions. `VELA_TERMINAL` remains available as an override
+  when there is no explicit Vela preference.
 
 - Closing a laptop lid with an active external display temporarily turns off
   the built-in panel. Reopening the lid restores its display settings.

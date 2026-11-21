@@ -13,6 +13,7 @@
 #include <QTest>
 
 #include <linux/input-event-codes.h>
+#include <xkbcommon/xkbcommon.h>
 
 namespace {
 
@@ -201,6 +202,36 @@ private slots:
         QCOMPARE(file(), QByteArray("# mine\nnot a shortcut\n"));
         QVERIFY(!shortcuts->remove(0));
         QVERIFY(shortcuts->items().isEmpty());
+    }
+
+    void recordsTheActiveLayout()
+    {
+        auto shortcuts = make();
+        xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        const xkb_rule_names names { "evdev", "pc105", "us,fr", nullptr, nullptr };
+        xkb_keymap* map = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+        QVERIFY(map);
+        xkb_state* state = xkb_state_new(map);
+        const auto ctrl = 1u << xkb_keymap_mod_get_index(map, XKB_MOD_NAME_CTRL);
+        xkb_state_update_mask(state, ctrl, 0, 0, 0, 0, 1);
+        QCOMPARE(shortcuts->pressWithState(scan(KEY_Q), state).value("combo").toString(), "Ctrl+a");
+        xkb_state_unref(state);
+        xkb_keymap_unref(map);
+        xkb_context_unref(context);
+    }
+
+    void detectsAnExternalEditBeforeSavingOrRemoving()
+    {
+        auto first = make();
+        QVERIFY(first->save(-1, "Ctrl+Alt+q", "command", "echo one"));
+        auto second = make();
+        QVERIFY(first->save(-1, "Ctrl+Alt+w", "command", "echo two"));
+        QVERIFY(!second->save(0, "Ctrl+Alt+q", "command", "echo three"));
+        QCOMPARE(second->items().size(), 2);
+        QVERIFY(file().contains("echo two"));
+        QVERIFY(second->save(0, "Ctrl+Alt+q", "command", "echo three"));
+        QVERIFY(!first->remove(0));
+        QVERIFY(file().contains("echo three"));
     }
 
     void newFileHasItsHeader()

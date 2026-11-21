@@ -303,7 +303,7 @@ class WinEnter(unittest.TestCase):
         os.makedirs(os.path.dirname(program), exist_ok=True)
         with open(program, "w") as script:
             script.write(f"#!/bin/sh\nprintf '%s\\n' {name} \"$@\" > {shlex.quote(self.ran)}\n")
-        os.chmod(program, 0o755)
+        os.chmod(program, 0o700)
         os.makedirs(os.path.join(self.share, "applications"), exist_ok=True)
         with open(os.path.join(self.share, "applications", desktop_id), "w") as entry:
             entry.write(f"[Desktop Entry]\nType=Application\nName={name}\nExec={program} %U\n"

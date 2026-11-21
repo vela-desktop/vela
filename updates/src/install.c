@@ -88,7 +88,7 @@ int vela_up_install_start(struct vela_up_daemon *d, const struct vela_up_options
         struct vela_terminal_env env;
         vela_terminal_env_get(&env);
         struct vela_terminal terminal;
-        if (vela_terminal_find(&env, false, &terminal)) {
+        if (vela_terminal_find(&env, &terminal)) {
             argv = vela_terminal_argv(&terminal, command);
             vela_terminal_free(&terminal);
         }

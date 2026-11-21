@@ -49,7 +49,7 @@ Page {
                         objectName: "remove:" + shortcutCard.modelData.combo
                         subtle: true
                         text: qsTr("Remove")
-                        onClicked: Shortcuts.remove(shortcutCard.index)
+                        onClicked: if (!Shortcuts.remove(shortcutCard.index)) saveError.open()
                     }
                 }
             }
@@ -84,7 +84,7 @@ Page {
             if (warning) {
                 confirm.open()
             } else {
-                Shortcuts.save(index, combo, kind, target)
+                if (!Shortcuts.save(index, combo, kind, target)) saveError.open()
             }
         }
         onVisibleChanged: if (!visible) recorder.stop()
@@ -325,11 +325,19 @@ Page {
         buttons: [{ text: qsTr("Save"), accent: true, value: "save" }, { text: qsTr("Back"), value: "back" }]
         onChosen: value => {
             if (value === "save") {
-                Shortcuts.save(editor.index, editor.combo, editor.kind, editor.target)
+                if (!Shortcuts.save(editor.index, editor.combo, editor.kind, editor.target)) saveError.open()
             } else {
                 editor.open()
             }
         }
+    }
+
+    Dialog {
+        id: saveError
+        parent: root.contentItem
+        title: qsTr("Shortcut changes could not be saved")
+        text: qsTr("Check the current shortcuts and try again. The file may have changed in another editor.")
+        buttons: [{ text: qsTr("Close"), value: "close" }]
     }
 
     FileDialog {

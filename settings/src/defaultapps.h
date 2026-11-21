@@ -52,7 +52,7 @@ public:
     // The app becomes the default for all the types it declares.
     Q_INVOKABLE void setDefaultForAll(const QString& appId);
 
-    QVariantMap terminal() const;
+    QVariantMap terminal();
     // An installed terminal's desktop ID, or "" for Automatic.
     Q_INVOKABLE void setTerminal(const QString& appId);
 
@@ -74,6 +74,8 @@ private:
     AppModel* m_apps;
     QString m_selected;
     // terminal(), read once per change: it reads directories.
-    mutable QVariantMap m_terminal;
-    mutable bool m_terminalKnown = false;
+    void queryAutomaticTerminal(const QString& program);
+    int m_terminalRevision = 0;
+    QVariantMap m_terminal;
+    bool m_terminalKnown = false;
 };

@@ -207,7 +207,7 @@ int main(int argc, char* argv[])
         },
         [] { sendToCompositor("reload-config"); });
     // Apps installed or removed: their names and icons.
-    QObject::connect(&apps, &AppModel::catalogRevisionChanged, &shortcuts, &CustomShortcuts::reload);
+    QObject::connect(&apps, &AppModel::catalogRevisionChanged, &shortcuts, &CustomShortcuts::refreshItems);
     layouts.setLanguage(vela::language::effective());
     keyboardLayouts = &layouts;
     KeyboardPreview preview; // Keyboard > Layouts: a layout tried before it is added

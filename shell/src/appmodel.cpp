@@ -166,6 +166,8 @@ bool parseDesktopEntry(QIODevice& file, const QString& path, const QStringList& 
     entry.wmClass = values.value(QStringLiteral("StartupWMClass"));
     entry.mimeTypes = values.value(QStringLiteral("MimeType")).split(u';', Qt::SkipEmptyParts);
     entry.terminal = isTrue("Terminal");
+    entry.terminalEmulator =
+        listContains(values.value(QStringLiteral("Categories")), QStringLiteral("TerminalEmulator"));
     return !entry.name.isEmpty() && !entry.exec.isEmpty();
 }
 

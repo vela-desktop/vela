@@ -343,7 +343,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_OUTPUT_SIZE` | Resolution/refresh for nested or headless outputs, for example `1920x1080@144`. |
 | `VELA_NATURAL_SCROLL=0` | Force classic touchpad scrolling; this override wins over the stored natural-scrolling setting. |
 | `XKB_DEFAULT_LAYOUT` | Keyboard layout, for example `it`; wins over `keyboard-layout`, and Settings > Keyboard > Layouts says so. `XKB_DEFAULT_VARIANT`, `_OPTIONS`, `_MODEL` and `_RULES` work the same, field by field. |
-| `VELA_TERMINAL` | Terminal for Super+Enter and updates, a command with options, unless one is chosen in Settings > Apps > Default apps. Without it: `xdg-terminal-exec`, else the first installed terminal ([keyboard](keyboard.md#11-the-terminal)). |
+| `VELA_TERMINAL` | Terminal for Super+Enter and updates, a command with options, unless one is chosen in Settings > Apps > Default apps. The packaged `xdg-terminal-exec` resolves XDG preferences ([keyboard](keyboard.md#11-the-terminal)). |
 
 ### Presentation, VRR and power
 

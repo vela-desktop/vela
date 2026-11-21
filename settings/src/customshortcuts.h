@@ -17,11 +17,14 @@
 #include <QVariantMap>
 
 #include <functional>
+#include <optional>
 
 class QWindow;
 struct wl_registry;
 struct zwp_keyboard_shortcuts_inhibit_manager_v1;
 struct zwp_keyboard_shortcuts_inhibitor_v1;
+struct wl_keyboard;
+struct xkb_state;
 
 class CustomShortcuts : public QObject {
     Q_OBJECT
@@ -52,6 +55,7 @@ public:
     bool recording() const { return m_inhibitor != nullptr; }
 
     Q_INVOKABLE void reload();
+    void refreshItems();
 
     // While recording, Win and Vela's combinations reach `window` instead of
     // acting (zwp_keyboard_shortcuts_inhibitor_v1).
@@ -64,6 +68,7 @@ public:
     // reason, warning (no Win: apps use it), existing (the index of a
     // custom shortcut with it, or -1)}.
     Q_INVOKABLE QVariantMap press(int scanCode, int modifiers) const;
+    QVariantMap pressWithState(int scanCode, xkb_state* state) const;
 
     // The installed apps to choose from: [{id, name, icon}], by name.
     Q_INVOKABLE QVariantList apps(const QString& filter) const;
@@ -102,8 +107,11 @@ private:
     LayoutsSource m_layouts;
     ModesSource m_modes;
     Written m_written;
+    std::optional<QByteArray> m_snapshot;
     QList<Line> m_lines;
     QVariantList m_items;
+    wl_keyboard* m_keyboard = nullptr;
+    xkb_state* m_state = nullptr;
     wl_registry* m_registry = nullptr;
     zwp_keyboard_shortcuts_inhibit_manager_v1* m_manager = nullptr;
     zwp_keyboard_shortcuts_inhibitor_v1* m_inhibitor = nullptr;

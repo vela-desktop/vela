@@ -315,31 +315,21 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
     }
 
-    // The terminal Win+Enter opens (docs/keyboard.md §11), from its desktop
-    // file, with the argument it takes before a command.
+    // Win+Enter and the updater both delegate terminal-specific arguments to XDG.
     void installFindsTheTerminalOfWinEnter()
     {
-        QDir().mkpath(fake(QStringLiteral("empty")));
-        // A PATH with only what the fake terminal needs: no
-        // xdg-terminal-exec, no installed terminal.
         QDir().mkpath(fake(QStringLiteral("tools")));
         QVERIFY(QFile::link(QStandardPaths::findExecutable(QStringLiteral("mv")), fake(QStringLiteral("tools/mv"))));
-        QVERIFY(write(fake(QStringLiteral("share/applications/org.example.Term.desktop")),
-            QStringLiteral("[Desktop Entry]\nType=Application\nName=Term\nExec=%1 %U\n"
-                           "Categories=System;TerminalEmulator;\nX-TerminalArgExec=--\n")
-                .arg(fake(QStringLiteral("terminal-program")))
-                .toUtf8()));
+        QVERIFY(QFile::link(fake(QStringLiteral("terminal-program")), fake(QStringLiteral("tools/xdg-terminal-exec"))));
         QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), QString() },
-            { QStringLiteral("PATH"), fake(QStringLiteral("tools")) }, { QStringLiteral("VELA_TERMINAL"), QString() },
-            { QStringLiteral("XDG_DATA_HOME"), fake(QStringLiteral("empty")) },
-            { QStringLiteral("XDG_DATA_DIRS"), fake(QStringLiteral("share")) } }));
+            { QStringLiteral("PATH"), fake(QStringLiteral("tools")) },
+            { QStringLiteral("VELA_TERMINAL"), QString() } }));
         QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).type(), QDBusMessage::ReplyMessage);
         QTRY_VERIFY(QFile::exists(fake(QStringLiteral("terminal"))));
         const QStringList terminal =
             QString::fromUtf8(read(fake(QStringLiteral("terminal")))).split(u'\n', Qt::SkipEmptyParts);
-        QCOMPARE(
-            terminal.mid(0, 3), (QStringList { QStringLiteral("--"), QStringLiteral("sh"), QStringLiteral("-c") }));
-        QCOMPARE(terminal.value(5), fake(QStringLiteral("vela-update")));
+        QCOMPARE(terminal.mid(0, 2), (QStringList { QStringLiteral("sh"), QStringLiteral("-c") }));
+        QCOMPARE(terminal.value(4), fake(QStringLiteral("vela-update")));
     }
 
     void installRunsInTheTerminal()

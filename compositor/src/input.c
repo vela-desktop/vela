@@ -252,7 +252,12 @@ static void load_custom_shortcuts(struct vela_input *input)
 // §7, §8.3, §10).
 static void load_keyboard_choices(struct vela_input *input, const struct vela_config *settings)
 {
-    input->numlock = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
+    const enum vela_numlock mode = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
+    if (input->numlock != mode) {
+        input->numlock = mode;
+        input->numlock_unsaved = mode == VELA_NUMLOCK_LAST && input->locks_known;
+        vela_keyboard_save_numlock(input);
+    }
     input->caps_lock_osd = vela_config_flag(settings, "caps-lock-osd", true);
     input->super_opens_start = vela_config_flag(settings, "super-opens-start", true);
 }

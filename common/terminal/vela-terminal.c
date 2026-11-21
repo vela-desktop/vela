@@ -34,7 +34,7 @@ int main(int argc, char **argv)
     struct vela_terminal_env env;
     vela_terminal_env_get(&env);
     struct vela_terminal terminal;
-    if (!vela_terminal_find(&env, false, &terminal)) {
+    if (!vela_terminal_find(&env, &terminal)) {
         fprintf(stderr, "vela-terminal: no terminal is installed\n");
         return 1;
     }

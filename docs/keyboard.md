@@ -431,8 +431,7 @@ link or file) and *Edit* and *Remove*. *Add a shortcut* opens a dialog:
    so Win and Vela's combinations reach it instead of acting; the media
    keys and the consoles never reach it, being reserved (§9.3). A
    modifier alone keeps it waiting; Esc alone stops recording. The key
-   goes through the matcher of §9.2 with a keymap of the layouts in use,
-   the first active, so the combination is stored as the compositor
+   goes through the matcher of §9.2 with the keymap and active group of the Wayland seat, so the combination is stored as the compositor
    will match it, and shown as the first layout prints it (Win+Shift+K,
    Ctrl+Alt+1 on AZERTY too, Ctrl+Alt+Ò on Italian).
 3. **Save**, enabled once both are set and the combination is allowed.
@@ -567,48 +566,22 @@ the Start button are unchanged. In a nested session Alt+S stays.
 
 ## 11. The terminal
 
-One lookup in `common/terminal` (C, for the updater and Settings), used by
-Win+Enter and by the updater's terminal. Win+Enter starts `vela-terminal`,
-which looks the terminal up and runs it, so that reading directories stays
-out of the compositor's event loop:
+Win+Enter and the updater use the packaged `xdg-terminal-exec` launcher.
+It reads the desktop entries, honors profile actions and selects the
+terminal-specific arguments for running the updater's command. The updater
+keeps its window open until the user presses Enter.
 
-1. **The user's choice:** the first entry of
-   `$XDG_CONFIG_HOME/vela-xdg-terminals.list`, which Settings writes. It
-   is the desktop-specific list of the freedesktop default-terminal
-   proposal (Vela's `XDG_CURRENT_DESKTOP` starts with `Vela`), so a Plasma
-   or GNOME session on the same account keeps its own choice.
-2. **`VELA_TERMINAL`**, for compatibility.
-3. **`xdg-terminal-exec`**, when installed: it applies the rest of the
-   proposal, its lists and its exclusions.
-4. **The installed terminals:** desktop files in the applications
-   directories with `Categories=TerminalEmulator`, not hidden and allowed
-   in Vela by `OnlyShowIn`/`NotShowIn`, in desktop-ID order, without
-   drop-down terminals (Yakuake, Guake). Kwi, Ghostty, WezTerm and the
-   others are found this way, with no name written in Vela.
+Settings > Apps > Default apps lists terminal emulators from the application
+catalog. Selecting one prepends its desktop ID to
+`$XDG_CONFIG_HOME/vela-xdg-terminals.list`. Choosing *Automatic* removes
+the entry Settings wrote and preserves the user's own preferences and
+directives. The session's `XDG_CURRENT_DESKTOP` starts with Vela, so the
+choice applies to Vela sessions.
 
-A terminal without a desktop file isn't guessed from its program's name:
-every packaged terminal installs one, and the old fixed list (Konsole,
-foot, kitty, Alacritty, xterm) was dropped in the review of PR #311.
-
-The lookup answers three different requests, because terminals'
-command lines are not uniform:
-
-| Request | Used by | How |
-|---|---|---|
-| **An empty terminal** | Win+Enter | The terminal with no arguments (`xdg-terminal-exec` with none). |
-| **A terminal running a command** | the updater | `xdg-terminal-exec <command>` when it was chosen in step 3; otherwise the entry's `X-TerminalArgExec` before the command (it may be empty: `foot cmd`), else `-e`. xdg-terminal-exec's `/execarg_default` tables aren't read: when it is installed, step 3 already uses it. |
-| **One that stays open after the command** | — | Not asked of the terminal: `X-TerminalArgHold` is rare. A caller that needs it keeps the window open itself, as the updater's script already does (*Press Enter to close*). |
-
-The `-e` fallback is the reference implementation's compatibility
-assumption, not a guarantee: a terminal that rejects it fails visibly
-(the updater reports *The terminal could not be opened*), and the user
-can pick another one in Default apps.
-
-**Settings > Apps > Default apps** gets a *Terminal* row among the common
-uses: *Automatic* (steps 2–4) and the terminals of step 4; a choice
-writes or clears the list of step 1. *Automatic* says which terminal it
-opens; for `xdg-terminal-exec`, from its `--print-id`, asked only of a
-version that has it (an older one would take it for a command).
+An explicit preference in Vela's list takes priority. With no preference,
+a runnable `VELA_TERMINAL` command is used for compatibility (with `-e`
+for the updater). Otherwise the XDG launcher selects the default. Settings
+asks it for the selected ID asynchronously when it supports `--print-id`.
 
 ## 12. Configuration
 
@@ -697,10 +670,8 @@ Proposed for 0.3 in the [roadmap](roadmap.md):
   the compositor's for every combination of the table.
 - Shortcuts file: parser, normalization, the 4096-byte and
   control-character limits; the shell message holds only the combination.
-- Terminal lookup: user list, `VELA_TERMINAL`, `xdg-terminal-exec`,
-  desktop files (hidden, `NotShowIn`, drop-down), no guess without one;
-  for each, an empty terminal and one running a command, with
-  `X-TerminalArgExec` set, set empty and absent (`-e`) (extends `updates/tests/report_test.cpp`).
+- Terminal lookup: the user list, `VELA_TERMINAL`, and delegation to
+  `xdg-terminal-exec`, including desktop actions and argument boundaries.
 
 **Headless functional tests** (`scripts/run-headless.sh`, `vela-input`)
 
