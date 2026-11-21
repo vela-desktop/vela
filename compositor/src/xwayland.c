@@ -1012,6 +1012,19 @@ static void handle_shell_surface(struct wl_listener *listener, void *data)
     wake_window_manager(server);
 }
 
+void vela_xwayland_reload_cursor(struct vela_server *server)
+{
+    if (!server->xwayland || !wlr_xcursor_manager_load(server->cursor_manager, 1.0f)) {
+        return;
+    }
+    struct wlr_xcursor *xcursor = wlr_xcursor_manager_get_xcursor(server->cursor_manager, "default", 1.0f);
+    if (xcursor) {
+        struct wlr_xcursor_image *image = xcursor->images[0];
+        wlr_xwayland_set_cursor(server->xwayland, wlr_xcursor_image_get_buffer(image), (int32_t)image->hotspot_x,
+            (int32_t)image->hotspot_y);
+    }
+}
+
 static void handle_ready(struct wl_listener *listener, void *data)
 {
     struct vela_server *server = wl_container_of(listener, server, xwayland_ready);
@@ -1021,14 +1034,7 @@ static void handle_ready(struct wl_listener *listener, void *data)
     publish_dpi(server);
     wlr_xwayland_set_seat(server->xwayland, server->seat);
     // The cursor for X11 windows until the app picks one.
-    if (wlr_xcursor_manager_load(server->cursor_manager, 1.0f)) {
-        struct wlr_xcursor *xcursor = wlr_xcursor_manager_get_xcursor(server->cursor_manager, "default", 1.0f);
-        if (xcursor) {
-            struct wlr_xcursor_image *image = xcursor->images[0];
-            wlr_xwayland_set_cursor(server->xwayland, wlr_xcursor_image_get_buffer(image), (int32_t)image->hotspot_x,
-                (int32_t)image->hotspot_y);
-        }
-    }
+    vela_xwayland_reload_cursor(server);
     // The atom is asked for once, here: later a reply could keep us waiting
     // on an Xwayland that is itself waiting on us.
     xcb_connection_t *connection = wlr_xwayland_get_xwm_connection(server->xwayland);
@@ -1143,6 +1149,10 @@ void vela_xwayland_finish(struct vela_server *server)
 }
 
 void vela_xwayland_sync(struct vela_server *server)
+{
+}
+
+void vela_xwayland_reload_cursor(struct vela_server *server)
 {
 }
 

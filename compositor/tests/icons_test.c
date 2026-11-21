@@ -199,6 +199,47 @@ static void test_long_app_id(void)
 }
 
 #if VELA_HAVE_RSVG
+static void write_theme(const char *name, uint32_t color)
+{
+    char relative[PATH_MAX];
+    char path[PATH_MAX];
+    CHECK(snprintf(relative, sizeof(relative), "data/icons/%s", name) < (int)sizeof(relative));
+    make_dir(relative);
+    CHECK(snprintf(relative, sizeof(relative), "data/icons/%s/scalable", name) < (int)sizeof(relative));
+    make_dir(relative);
+    CHECK(snprintf(relative, sizeof(relative), "data/icons/%s/scalable/apps", name) < (int)sizeof(relative));
+    make_dir(relative);
+    CHECK(snprintf(path, sizeof(path), "%s/data/icons/%s/index.theme", root, name) < (int)sizeof(path));
+    write_text(path, "[Icon Theme]\nDirectories=scalable/apps\n\n[scalable/apps]\nSize=16\nType=Scalable\n");
+    CHECK(snprintf(apps_dir, sizeof(apps_dir), "%s/data/icons/%s/scalable/apps", root, name) < (int)sizeof(apps_dir));
+    write_icon("vela-icons-test.theme", color);
+}
+
+static void test_theme_reload(void)
+{
+    write_theme("vela-red", RED);
+    write_theme("vela-blue", BLUE);
+    char path[PATH_MAX];
+    CHECK(snprintf(path, sizeof(path), "%s/config/kdeglobals", root) < (int)sizeof(path));
+    write_text(path, "[Icons]\nTheme=vela-red\n");
+
+    struct vela_icons *icons = vela_icons_create();
+    struct vela_image image;
+    CHECK(vela_icons_app(icons, "vela-icons-test.theme", 16, &image));
+    CHECK(filled(&image, 16, RED));
+    vela_image_finish(&image);
+
+    write_text(path, "[Icons]\nTheme=vela-blue\n");
+    vela_icons_destroy(icons);
+    icons = vela_icons_create();
+    CHECK(vela_icons_app(icons, "vela-icons-test.theme", 16, &image));
+    CHECK(filled(&image, 16, BLUE));
+    vela_image_finish(&image);
+    vela_icons_destroy(icons);
+    write_text(path, "[Icons]\nTheme=hicolor\n");
+    CHECK(snprintf(apps_dir, sizeof(apps_dir), "%s/data/icons/hicolor/scalable/apps", root) < (int)sizeof(apps_dir));
+}
+
 // A title bar holds its icon while the entry it came from is evicted: the
 // held image is untouched, and the same request draws the icon again.
 static void test_held_icon_outlives_eviction(void)
@@ -320,6 +361,7 @@ int main(void)
     test_miss_is_remembered();
     test_long_app_id();
 #if VELA_HAVE_RSVG
+    test_theme_reload();
     test_held_icon_outlives_eviction();
     test_recently_used_survives();
 #endif
