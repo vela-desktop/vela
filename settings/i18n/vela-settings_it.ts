@@ -1631,10 +1631,6 @@ Specifiche sistema
 <context>
     <name>Displays</name>
     <message>
-        <source>Move this display to make room before changing its size or orientation.</source>
-        <translation>Sposta questo schermo per creare spazio prima di modificarne le dimensioni o l’orientamento.</translation>
-    </message>
-    <message>
         <source>The display connection was lost. Reopen Settings to try again.</source>
         <translation>La connessione agli schermi è stata interrotta. Riapri Impostazioni per riprovare.</translation>
     </message>
@@ -1774,26 +1770,30 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>KeyboardPage</name>
+    <name>KeyboardLayoutsPage</name>
     <message>
         <source>Keyboard layout</source>
         <translation>Layout di tastiera</translation>
     </message>
     <message>
-        <source>The system&apos;s</source>
-        <translation>Quello del sistema</translation>
+        <source>Set by environment variables</source>
+        <translation>Impostato dalle variabili d&apos;ambiente</translation>
     </message>
     <message>
         <source>Installed layouts</source>
         <translation>Layout installati</translation>
     </message>
     <message>
-        <source>Win+Space to switch between layouts</source>
-        <translation>Win+Spazio per passare da un layout all&apos;altro</translation>
+        <source>From the system</source>
+        <translation>Dal sistema</translation>
     </message>
     <message>
-        <source>Chosen by localectl or KDE</source>
-        <translation>Scelto da localectl o da KDE</translation>
+        <source>XKB_DEFAULT_LAYOUT chooses %1. It applies instead of the layouts below until it is removed.</source>
+        <translation>XKB_DEFAULT_LAYOUT sceglie %1. Vale al posto dei layout qui sotto finché non viene tolta.</translation>
+    </message>
+    <message>
+        <source>Win+Space to switch between layouts</source>
+        <translation>Win+Spazio per passare da un layout all&apos;altro</translation>
     </message>
     <message>
         <source>Add a keyboard</source>
@@ -1811,6 +1811,36 @@ Specifiche sistema
         <source>Remove</source>
         <translation>Rimuovi</translation>
     </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Search (e.g. Italian, English)</source>
+        <translation>Cerca (es. Italian, English)</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardPage</name>
+    <message>
+        <source>Layouts</source>
+        <translation>Layout</translation>
+    </message>
+    <message>
+        <source>The keyboard layouts you type with, and Win+Space between them</source>
+        <translation>I layout di tastiera con cui scrivi, e Win+Spazio per passare dall&apos;uno all&apos;altro</translation>
+    </message>
+    <message>
+        <source>Typing</source>
+        <translation>Digitazione</translation>
+    </message>
+    <message>
+        <source>Key repeat</source>
+        <translation>Ripetizione dei tasti</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardTypingPage</name>
     <message>
         <source>Key repeat</source>
         <translation>Ripetizione dei tasti</translation>
@@ -1838,14 +1868,6 @@ Specifiche sistema
     <message>
         <source>Hold a key down here</source>
         <translation>Tieni premuto un tasto qui</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
-    </message>
-    <message>
-        <source>Search (e.g. Italian, English)</source>
-        <translation>Cerca (es. Italian, English)</translation>
     </message>
 </context>
 <context>
@@ -1965,6 +1987,14 @@ Specifiche sistema
     <message>
         <source>Keyboard</source>
         <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Layouts</source>
+        <translation>Layout</translation>
+    </message>
+    <message>
+        <source>Typing</source>
+        <translation>Digitazione</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -2215,6 +2245,26 @@ Specifiche sistema
         <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
     </message>
     <message>
+        <source>keyboard keys typing</source>
+        <translation>tastiera tasti digitazione</translation>
+    </message>
+    <message>
+        <source>Keyboard layout</source>
+        <translation>Layout di tastiera</translation>
+    </message>
+    <message>
+        <source>layout language input keyboard add win+space switch</source>
+        <translation>layout lingua input tastiera aggiungi win+spazio cambia</translation>
+    </message>
+    <message>
+        <source>Key repeat</source>
+        <translation>Ripetizione dei tasti</translation>
+    </message>
+    <message>
+        <source>key repeat delay rate typing hold</source>
+        <translation>ripetizione tasti ritardo velocità digitazione tenere premuto</translation>
+    </message>
+    <message>
         <source>Choose your password manager</source>
         <translation type="unfinished"></translation>
     </message>
@@ -2345,10 +2395,6 @@ Specifiche sistema
     <message>
         <source>language english italian italiano inglese translation</source>
         <translation>lingua inglese italiano english language traduzione</translation>
-    </message>
-    <message>
-        <source>layout language input typing key repeat</source>
-        <translation>layout lingua input digitazione ripetizione tasti</translation>
     </message>
     <message>
         <source>pointer speed primary button left-handed wheel scrolling lines acceleration precision</source>
@@ -4010,14 +4056,6 @@ Specifiche sistema
     <message>
         <source>Same as the system</source>
         <translation>Come il sistema</translation>
-    </message>
-    <message>
-        <source>Keyboard</source>
-        <translation>Tastiera</translation>
-    </message>
-    <message>
-        <source>Keyboard layouts, key repeat</source>
-        <translation>Layout di tastiera, ripetizione dei tasti</translation>
     </message>
 </context>
 <context>

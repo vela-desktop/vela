@@ -10,6 +10,11 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Keyboard settings have their own section in Settings, with Layouts and
+  Typing pages. When no layout is chosen, Settings shows the one in use and
+  where it comes from (the system, or the XKB_DEFAULT_* variables). Vela no
+  longer takes the layout from KDE's settings.
+
 - The Ubuntu package recommends the GTK and wlr portal backends, so file
   choosers in sandboxed apps, screenshots and screen sharing work after a
   normal installation.

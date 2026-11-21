@@ -49,66 +49,6 @@ static void copy(char *out, size_t size, const char *value)
     snprintf(out, size, "%s", value);
 }
 
-// From kxkbrc, the [Layout] section (only if KDE manages the keyboard).
-static void kde_keymap(struct keymap_names *names)
-{
-    char path[4096];
-    const char *config = getenv("XDG_CONFIG_HOME");
-    const char *home = getenv("HOME");
-    if (config && *config) {
-        snprintf(path, sizeof(path), "%s/kxkbrc", config);
-    } else if (home) {
-        snprintf(path, sizeof(path), "%s/.config/kxkbrc", home);
-    } else {
-        return;
-    }
-    FILE *file = fopen(path, "re");
-    if (!file) {
-        return;
-    }
-    struct keymap_names found = { 0 };
-    bool use = false;
-    bool reset_options = false;
-    char options[512] = "";
-    bool in_layout = false;
-    char line[1024];
-    while (fgets(line, sizeof(line), file)) {
-        line[strcspn(line, "\r\n")] = '\0';
-        if (line[0] == '[') {
-            in_layout = strcmp(line, "[Layout]") == 0;
-            continue;
-        }
-        char *eq = strchr(line, '=');
-        if (!in_layout || !eq) {
-            continue;
-        }
-        *eq = '\0';
-        const char *key = line;
-        const char *value = eq + 1;
-        if (strcmp(key, "Use") == 0) {
-            use = strcmp(value, "true") == 0;
-        } else if (strcmp(key, "LayoutList") == 0) {
-            copy(found.layout, sizeof(found.layout), value);
-        } else if (strcmp(key, "VariantList") == 0) {
-            copy(found.variant, sizeof(found.variant), value);
-        } else if (strcmp(key, "Model") == 0) {
-            copy(found.model, sizeof(found.model), value);
-        } else if (strcmp(key, "ResetOldOptions") == 0) {
-            reset_options = strcmp(value, "true") == 0;
-        } else if (strcmp(key, "Options") == 0) {
-            copy(options, sizeof(options), value);
-        }
-    }
-    fclose(file);
-    if (!use) {
-        return; // KDE doesn't manage the keyboard: the system decides
-    }
-    if (reset_options) {
-        copy(found.options, sizeof(found.options), options);
-    }
-    *names = found;
-}
-
 // From systemd-localed: Option "XkbLayout" "us".
 static void localed_keymap(struct keymap_names *names)
 {
@@ -176,11 +116,6 @@ static struct xkb_keymap *system_keymap(struct vela_input *input, struct xkb_con
     struct keymap_names names = { 0 };
     keymap_from_settings(&names, settings);
     const char *origin = "Vela settings";
-    if (!names.layout[0]) {
-        memset(&names, 0, sizeof(names));
-        kde_keymap(&names);
-        origin = "KDE";
-    }
     if (!names.layout[0]) {
         memset(&names, 0, sizeof(names));
         localed_keymap(&names);

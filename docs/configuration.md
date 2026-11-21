@@ -40,7 +40,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
 | `update-check-interval` | `24` | Hours between automatic checks: `6`, `12`, `24`, `48` or `168` (7 days). Set in Settings > System > Updates; invalid values fall back to 24 hours. |
-| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
+| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. Empty: systemd-localed's layout (`localectl`), then `us`; other desktops' settings are not read. Settings > Keyboard > Layouts. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
 | `keyboard-options` | empty | XKB options. |
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
@@ -335,7 +335,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_SCALE` | Force output scale. A single value applies to all outputs (`1.25`); per-output values can be supplied as `DP-1=1.5,HDMI-A-1=1`. Without it, Vela chooses a scale from each monitor's DPI. |
 | `VELA_OUTPUT_SIZE` | Resolution/refresh for nested or headless outputs, for example `1920x1080@144`. |
 | `VELA_NATURAL_SCROLL=0` | Force classic touchpad scrolling; this override wins over the stored natural-scrolling setting. |
-| `XKB_DEFAULT_LAYOUT` | Initial keyboard layout, for example `it`. |
+| `XKB_DEFAULT_LAYOUT` | Keyboard layout, for example `it`; wins over `keyboard-layout`, and Settings > Keyboard > Layouts says so. `XKB_DEFAULT_VARIANT`, `_OPTIONS`, `_MODEL` and `_RULES` work the same, field by field. |
 | `VELA_TERMINAL` | Terminal launched by Super+Enter. Default: `konsole`. |
 
 ### Presentation, VRR and power

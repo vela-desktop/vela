@@ -102,7 +102,9 @@ see the [roadmap](roadmap.md).
   channel, and an update that runs in a terminal. Vela checks in the background and
   sends a notification when an update is available ([design](updates.md)).
 - **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
-  **Time and language**: date and time, keyboard layouts.
+  **Time and language**: date, time and language.
+- **Keyboard**: layouts, with where the layout in use comes from when none is
+  chosen, and key repeat ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming

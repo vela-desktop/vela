@@ -8,10 +8,9 @@
 // Super alone for Start, shortcuts, then the focused app).
 //
 // The layout, in order: the XKB_DEFAULT_* variables (field by field), the
-// choice made in Vela's Settings (vela.conf), KDE's (~/.config/kxkbrc, if KDE
-// manages the keyboard), systemd-localed's (localectl,
-// /etc/X11/xorg.conf.d/00-keyboard.conf). A virtual keyboard (automated tests)
-// brings its own.
+// choice made in Vela's Settings (vela.conf), systemd-localed's (localectl,
+// /etc/X11/xorg.conf.d/00-keyboard.conf), then "us" (docs/keyboard.md §5.6).
+// A virtual keyboard (automated tests) brings its own.
 
 #include <stdbool.h>
 #include <stdint.h>

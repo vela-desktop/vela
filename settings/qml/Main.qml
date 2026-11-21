@@ -57,14 +57,16 @@ Window {
         "default-app": { title: qsTr("Apps"), parent: "default-apps", file: "DefaultAppPage.qml", icon: "preferences-desktop-default-applications" },
         "time-language": { title: qsTr("Time & language"), parent: "", file: "TimeLanguagePage.qml", icon: "preferences-system-time" },
         "datetime": { title: qsTr("Date & time"), parent: "time-language", file: "DateTimePage.qml", icon: "preferences-system-time" },
-        "keyboard": { title: qsTr("Keyboard"), parent: "time-language", file: "KeyboardPage.qml", icon: "input-keyboard" },
+        "keyboard": { title: qsTr("Keyboard"), parent: "", file: "KeyboardPage.qml", icon: "input-keyboard" },
+        "keyboard-layouts": { title: qsTr("Layouts"), parent: "keyboard", file: "KeyboardLayoutsPage.qml", icon: "input-keyboard" },
+        "keyboard-typing": { title: qsTr("Typing"), parent: "keyboard", file: "KeyboardTypingPage.qml", icon: "edit-entry" },
         "mouse": { title: qsTr("Mouse"), parent: "bluetooth", file: "MousePage.qml", icon: "input-mouse" },
         "touchpad": { title: qsTr("Touchpad"), parent: "bluetooth", file: "TouchpadPage.qml", icon: "input-touchpad" },
         "clipboard": { title: qsTr("Clipboard"), parent: "system", file: "ClipboardPage.qml", icon: "edit-paste" },
         "night-light": { title: qsTr("Night light"), parent: "display", file: "NightLightPage.qml", icon: "redshift-status-on" },
         "accessibility": { title: qsTr("Accessibility"), parent: "", file: "AccessibilityPage.qml", icon: "preferences-desktop-accessibility" }
     })
-    readonly property var sections: ["home", "system", "bluetooth", "network", "personalization", "apps", "time-language", "accessibility"]
+    readonly property var sections: ["home", "system", "bluetooth", "network", "personalization", "apps", "time-language", "keyboard", "accessibility"]
     // The names the shell uses (systemactions.cpp) for the menu entries.
     readonly property var aliases: ({
         "settings": "home", "personalize": "personalization", "taskbar-settings": "taskbar",
@@ -252,7 +254,9 @@ Window {
         { page: "datetime", text: qsTr("Date & time"), keys: qsTr("clock time zone sync ntp") },
         { page: "datetime", text: qsTr("Time format"), keys: qsTr("clock 24-hour 12-hour am pm time format hours") },
         { page: "time-language", text: qsTr("Language"), keys: qsTr("language english italian italiano inglese translation") },
-            { page: "keyboard", text: qsTr("Keyboard"), keys: qsTr("layout language input typing key repeat") },
+        { page: "keyboard", text: qsTr("Keyboard"), keys: qsTr("keyboard keys typing") },
+        { page: "keyboard-layouts", text: qsTr("Keyboard layout"), keys: qsTr("layout language input keyboard add win+space switch") },
+        { page: "keyboard-typing", text: qsTr("Key repeat"), keys: qsTr("key repeat delay rate typing hold") },
         { page: "mouse", text: qsTr("Mouse"), keys: qsTr("pointer speed primary button left-handed wheel scrolling lines acceleration precision") },
         { page: "touchpad", text: qsTr("Touchpad"), keys: qsTr("tap click gestures fingers scrolling laptop trackpad") },
         { page: "touchpad", text: qsTr("Touchpad gestures"), keys: qsTr("three fingers four fingers switch desktops apps") },

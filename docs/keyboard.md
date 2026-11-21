@@ -8,11 +8,11 @@ startup, Caps Lock you can see, custom shortcuts, the Win key alone, and
 the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
-> **Status:** Accepted: designed with the maintainer on 21 November 2026,
-> no code yet. **Checked:** 21 November 2026, `b236a81`.
+> **Status:** Accepted: designed with the maintainer on 21 November 2026;
+> KP1 implemented in PR #311. **Checked:** 21 November 2026, `b236a81`.
 >
-> **Remaining:** every stage of [§13](#13-stages), then the real-session
-> checks of [§15](#15-tests).
+> **Remaining:** stages KP2–KP11 of [§13](#13-stages), then the
+> real-session checks of [§15](#15-tests).
 
 ## 1. Goals
 
@@ -548,7 +548,7 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 
 | Stage | Contents |
 |---|---|
-| KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). |
+| KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). Done. |
 | KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). |
 | KP3 | Flags (§5.3). |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). |

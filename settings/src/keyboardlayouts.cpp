@@ -5,6 +5,7 @@
 
 #include <QCollator>
 #include <QFile>
+#include <QRegularExpression>
 #include <QVariantMap>
 #include <QXmlStreamReader>
 
@@ -20,7 +21,7 @@ void KeyboardLayouts::load()
     // </configItem><variantList><variant><configItem>...</configItem></variant>...
     // The descriptions are in English: libxkbcommon has no translations,
     // xkeyboard-config takes them from its gettext domain. They're left as
-    // they are here, as KDE does when a translation is missing.
+    // they are here.
     QXmlStreamReader xml(&file);
     QString layout;
     QString layoutName;
@@ -90,4 +91,61 @@ QString KeyboardLayouts::name(const QString& layout, const QString& variant)
         }
     }
     return variant.isEmpty() ? layout : layout + QStringLiteral(" (") + variant + u')';
+}
+
+namespace {
+// "it,us" and ",nodeadkeys": [{layout: "it", variant: ""}, {layout: "us",
+// variant: "nodeadkeys"}].
+QVariantList layoutList(const QString& layouts, const QString& variants)
+{
+    const QStringList names = layouts.split(u',', Qt::SkipEmptyParts);
+    const QStringList kinds = variants.split(u',');
+    QVariantList list;
+    for (qsizetype i = 0; i < names.size(); ++i) {
+        list.append(QVariantMap { { QStringLiteral("layout"), names.at(i).trimmed() },
+            { QStringLiteral("variant"), i < kinds.size() ? kinds.at(i).trimmed() : QString() } });
+    }
+    return list;
+}
+} // namespace
+
+QVariantMap KeyboardLayouts::sourceFrom(const QString& envLayout, const QString& envVariant, const QString& localed)
+{
+    if (!envLayout.isEmpty()) {
+        return { { QStringLiteral("source"), QStringLiteral("environment") },
+            { QStringLiteral("layouts"), layoutList(envLayout, envVariant) } };
+    }
+    // Option "XkbLayout" "it,us", as the compositor reads it.
+    static const QRegularExpression option(QStringLiteral(R"re(^\s*Option\s+"([^"]*)"\s+"([^"]*)")re"));
+    QString layout;
+    QString variant;
+    for (const QString& line : localed.split(u'\n')) {
+        const QRegularExpressionMatch match = option.match(line);
+        if (!match.hasMatch()) {
+            continue;
+        }
+        if (match.captured(1) == QLatin1String("XkbLayout")) {
+            layout = match.captured(2);
+        } else if (match.captured(1) == QLatin1String("XkbVariant")) {
+            variant = match.captured(2);
+        }
+    }
+    const QVariantList layouts = layoutList(layout, variant);
+    if (layouts.isEmpty()) {
+        return { { QStringLiteral("source"), QStringLiteral("default") },
+            { QStringLiteral("layouts"),
+                QVariantList { QVariantMap { { QStringLiteral("layout"), QStringLiteral("us") },
+                    { QStringLiteral("variant"), QString() } } } } };
+    }
+    return { { QStringLiteral("source"), QStringLiteral("system") }, { QStringLiteral("layouts"), layouts } };
+}
+
+QVariantMap KeyboardLayouts::source() const
+{
+    QString localed;
+    QFile file(QStringLiteral("/etc/X11/xorg.conf.d/00-keyboard.conf"));
+    if (file.open(QIODevice::ReadOnly)) {
+        localed = QString::fromUtf8(file.read(64 * 1024));
+    }
+    return sourceFrom(qEnvironmentVariable("XKB_DEFAULT_LAYOUT"), qEnvironmentVariable("XKB_DEFAULT_VARIANT"), localed);
 }
