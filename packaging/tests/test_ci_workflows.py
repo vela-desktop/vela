@@ -155,6 +155,18 @@ class BetaVersionDerivation(unittest.TestCase):
         self.assertIn("beta_version: ${{ needs.changes.outputs.beta_version }}", build)
 
 
+class BetaReleaseNotes(unittest.TestCase):
+    def test_notes_are_checked_first_and_published_from_the_changelog(self):
+        build = (ROOT / ".github/workflows/build.yml").read_text()
+        changes = build.split("\n  changes:\n", 1)[1].split("\n\n  ", 1)[0]
+        self.assertIn("if: steps.release.outputs.beta_version != ''", changes)
+        self.assertIn('scripts/release-notes.py "$VERSION"\n', changes)
+        publish = build.split("\n  publish-beta:\n", 1)[1].split("\n\n  ", 1)[0]
+        self.assertIn('scripts/release-notes.py "$VERSION" > release-notes.txt', publish)
+        self.assertLess(publish.index("release-notes.txt"), publish.index("- name: Publish signed Beta release"))
+        self.assertNotIn("--generate-notes", build)
+
+
 class BetaUpgradeJobs(unittest.TestCase):
     """Upgrades from the previous Beta gate publication; the updater check follows it."""
 

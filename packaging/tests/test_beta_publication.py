@@ -55,6 +55,8 @@ class BetaPublication(unittest.TestCase):
                      "vela-0.1.3-1.fc45.x86_64.rpm",
                      "vela_0.1.3_amd64.deb"):
             (dist / name).write_bytes(b"package fixture\n")
+        # Written by the previous step from CHANGELOG.md.
+        (self.root / "release-notes.txt").write_text("- A fix.\n\nInstall or update: https://example.invalid\n")
         bindir = self.root / "bin"
         bindir.mkdir()
         gh = bindir / "gh"
@@ -85,6 +87,9 @@ class BetaPublication(unittest.TestCase):
         self.assertIn("--prerelease=false", created[0])
         self.assertIn("--verify-tag", created[0])
         self.assertEqual(created[0][created[0].index("--title") + 1], "Vela 0.1.3 Beta")
+        # Notes come from CHANGELOG.md, not GitHub's generated changelog link.
+        self.assertNotIn("--generate-notes", created[0])
+        self.assertEqual(created[0][created[0].index("--notes-file") + 1], "../release-notes.txt")
 
     def test_rerun_keeps_existing_published_release_unchanged(self):
         # No prerelease metadata is consulted: both old and reclassified
@@ -118,6 +123,11 @@ class BetaPublication(unittest.TestCase):
         self.assertIn("--verify-tag", created[0])
         self.assertNotIn("--generate-notes", created[0])
         self.assertEqual(created[0][created[0].index("--title") + 1], "Rehearsal of Vela 0.1.3 Beta")
+        notes = created[0][created[0].index("--notes-file") + 1]
+        self.assertEqual(notes, "../rehearsal-notes.txt")
+        text = (self.root / "rehearsal-notes.txt").read_text()
+        self.assertTrue(text.startswith("Rehearsal of v0.1.3 on " + "a" * 40 + ". Not a release"))
+        self.assertTrue(text.endswith("- A fix.\n\nInstall or update: https://example.invalid\n"))
         for asset in ("vela-0.1.3-1-x86_64.pkg.tar.zst", "vela-0.1.3-1.fc44.x86_64.rpm",
                       "vela-0.1.3-1.fc45.x86_64.rpm", "vela_0.1.3_amd64.deb",
                       "SHA256SUMS", "SHA256SUMS-fedora", "SHA256SUMS-fedora-45", "SHA256SUMS-ubuntu"):

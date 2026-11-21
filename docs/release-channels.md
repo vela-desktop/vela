@@ -18,15 +18,22 @@ Drafts and tags outside that format are ignored.
 
 ## Maintainer release process
 
-1. Prepare the exact release commit, update `project(VERSION ...)` in
-   `CMakeLists.txt`, and complete reviews and required test suites,
-   including both GPU suites on that commit.
+1. Prepare: `scripts/release.py prepare 0.x.y` opens the pull request
+   that sets `project(VERSION 0.x.y)` on the release branch (`main` for a
+   `.0`, whose version is already set) and moves the CHANGELOG's
+   "Unreleased" entries under `0.x.y`. Review and merge it.
 2. Rehearse: `scripts/release.py rehearse 0.x.y` pushes
-   `rehearsal/v0.x.y` on that commit, which runs the whole pipeline and
-   publishes a draft release (see [Rollout validation](#rollout-validation)).
+   `rehearsal/v0.x.y` on the branch tip, which runs the whole pipeline and
+   publishes a draft release (see [Rollout validation](#rollout-validation)),
+   and starts both full GPU suites on that commit.
    `v0.*` tags in this repository can be neither moved nor deleted, so a tag
    whose pipeline fails burns that version number.
-3. Create a signed, protected Git tag `v0.x.y` pointing to that commit.
+3. Check and tag: `scripts/release.py status 0.x.y` lists what the commit
+   still lacks: the pipeline, the draft and both full GPU suites, all
+   green on that exact commit. When it is all green,
+   `scripts/release.py tag 0.x.y` asks you to type `v0.x.y`, signs the tag
+   with your own key (never a key in CI), pushes it and removes the
+   rehearsal.
 4. GitHub Actions builds Arch/CachyOS, Fedora 44/45 and Ubuntu 26.10 packages
    for the **tagged** commit, verifies package installs and their runtime
    requirements, then publishes a normal GitHub Release titled `Vela 0.x.y Beta`.
@@ -34,11 +41,16 @@ Drafts and tags outside that format are ignored.
    per distribution. Each binary must be accompanied by GitHub-hosted
    cryptographic provenance that binds the build to the tag and commit.
 6. If a build, smoke test or verification fails, there is no new Beta release.
-7. Replace the generated notes with hand-written ones
-   (`gh release edit v0.x.y --notes-file …`); editing the text leaves the
-   assets untouched. Settings shows them as plain text
-   ([Updates](updates.md)), so they must read well without Markdown
-   rendering: full URLs rather than links, no tables.
+7. The notes are the version's CHANGELOG section as plain text
+   (`scripts/release-notes.py`); the draft of the rehearsal already shows
+   them. Settings shows them as plain text ([Updates](updates.md)), so they
+   must read well without Markdown rendering. To fix them after
+   publication, `gh release edit v0.x.y --notes-file …` changes the text and
+   leaves the assets untouched.
+8. Finish: once the release is published, `scripts/release.py finish 0.x.y`
+   opens the pull requests that point manual builds at it, and after a `.0`
+   creates `release/0.<minor>` and moves `main` to the next minor version
+   ([release automation §7](release-automation.md#7-after-publication)).
 
 Pushes to `main` build and test Experimental in CI but do not create
 GitHub Releases. Temporary CI artifacts are **not** a public update channel.
@@ -83,9 +95,9 @@ required checks, and CI runs on pushes to either.
   version. The rehearsal and the GPU suites run on that commit.
 - **A minor release** (`v0.<minor>.0`) is tagged on `main`; its
   `release/0.<minor>` branch is then created from the tag, and `main`
-  moves to the next minor version. The fallback version in
-  `packaging/arch/PKGBUILD.beta`, used by manual builds, stays on the
-  latest published tag.
+  moves to the next minor version (`release.py finish` does both). The
+  fallback version in `packaging/arch/PKGBUILD.beta`, used by manual
+  builds, stays on the latest published tag.
 
 There is one Beta channel, and the updater offers the highest published
 `v0.x.y`: once `v0.<minor+1>.0` is out, Beta users move to it, so the

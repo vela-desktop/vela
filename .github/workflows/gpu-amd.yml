@@ -4,6 +4,9 @@
 # Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
 # The self-hosted runner must have the custom 'vela-amd' label.
 name: GPU CI - AMD (manual)
+# A full suite keeps the plain name; release.py status accepts only that
+# (docs/release-automation.md §6, R3).
+run-name: GPU CI - AMD (manual)${{ inputs.tests && format(' - only {0}', inputs.tests) || '' }}
 
 on:
   workflow_dispatch:
