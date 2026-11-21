@@ -38,7 +38,7 @@ Plasma, GNOME, macOS and COSMIC, never the rule.
 | Topic | Decision | Elsewhere |
 |---|---|---|
 | Where | A **Keyboard** section at the top level of Settings; the layouts move there from Time & language. | GNOME: Keyboard panel; KDE: Input Devices > Keyboard; macOS: Keyboard; Windows: Time & language. |
-| Catalogue | `evdev.xml`, `evdev.extras.xml` and the user's own XKB rules, grouped by layout, no cap on the list. | KDE and GNOME read `evdev.xml`; KDE offers extras behind a switch. |
+| Catalogue | libxkbregistry, with the extras and the user's own rules, grouped by layout, no cap on the list. | GNOME and KDE read the same registry; KDE offers extras behind a switch. |
 | Names | Translated with xkeyboard-config's own translations, searchable in English too. | GNOME and KDE translate the same way. |
 | Flags | The layout's country flag, bundled SVGs, generic keyboard icon when there is no single country. | macOS shows flags; KDE optional in its indicator; GNOME, Windows none. |
 | Trying | A drawing of the keyboard and a field typed through the candidate layout, before *Add*. | GNOME and KDE show a drawing; macOS a Keyboard Viewer of the active source; none lets you type with a layout you haven't added. |
@@ -46,7 +46,8 @@ Plasma, GNOME, macOS and COSMIC, never the rule.
 | Num Lock | Off (today's behavior), on, or as it was at the end of the last session. | KDE: on, off, unchanged; GNOME remembers; Windows: a registry value. |
 | Caps Lock | A warning in every Vela password field, and a short on-screen display on each toggle. | macOS: an indicator at the text cursor; Windows: OEM utilities. |
 | Custom shortcuts | Their own page: app, command, or link/file; Vela's and reserved combinations refused; combinations apps may use warned about. | GNOME: name, command, shortcut; KDE: app, command, script; COSMIC: command. |
-| Vela's own shortcuts | Fixed for now; an editor is deferred to 0.3. | |
+| Matching | One binding table and one matcher for Vela's shortcuts and the custom ones, shared with Settings' conflict check; exact modifiers; letters by the symbol on the key (a Latin layout's for non-Latin ones), the digit row and other keys by position. | GNOME and KDE: symbols, with a Latin fallback. |
+| Vela's own shortcuts | Fixed for now, moved into the table; an editor is deferred to 0.3. | |
 | Win key alone | Opens Start unless the user turns that off. | GNOME, KDE and Windows open their launcher; macOS has no such key. |
 | Terminal | One lookup for Win+Enter and the updater, following the freedesktop default-terminal proposal, with a choice in Default apps. | xdg-terminal-exec implements the proposal; KDE: kdeglobals; GNOME: its own setting. |
 | KDE's files | The compositor stops reading `kxkbrc`; Settings stops naming KDE for the layout. | |
@@ -63,9 +64,13 @@ Plasma, GNOME, macOS and COSMIC, never the rule.
   (EurKEY, APL, the International Phonetic Alphabet, more Italian, German
   and French variants) are missing. A click on a row adds the layout at
   once.
-- **More than four layouts:** XKB keymaps hold at most four. Settings
+- **More than four layouts:** the compositor compiles its keymap with
+  `xkb_keymap_new_from_names()` and sends it to apps in the `xkb_v1`
+  format of `wl_keyboard`, which holds at most four layouts. Settings
   lets you add a fifth; libxkbcommon then ignores it with an error in the
-  log, and Win+Space never reaches it.
+  log, and Win+Space never reaches it. libxkbcommon 1.11 raised the limit
+  to 32 in its v2 format, but clients, Qt among them, parse v1, and
+  libxkbcommon itself recommends v1 for keymaps sent to them.
 - **The layout's sources**, in order (`compositor/src/keyboard.c`): the
   `XKB_DEFAULT_*` variables, `vela.conf`, KDE's `kxkbrc` when KDE manages
   the keyboard, systemd-localed's `/etc/X11/xorg.conf.d/00-keyboard.conf`.
@@ -80,7 +85,13 @@ Plasma, GNOME, macOS and COSMIC, never the rule.
 - **Caps Lock warnings:** the polkit dialog guesses the state from the
   letters typed (an uppercase letter without Shift); `vela-lock` says
   nothing.
-- **Shortcuts** are written in `compositor/src/bindings.c`. Win+Enter
+- **Shortcuts** are written in `compositor/src/bindings.c`, as `if`s on
+  the keysym of the current layout. Most check only that Win is held, so
+  extra modifiers still match: Win+Shift+E opens Files and Win+Shift+L
+  locks, though `docs/shortcuts.md` lists neither. With a non-Latin
+  layout active (Russian, Greek) the letter shortcuts don't fire. The
+  Win+number keys alone match the key's position (`super_numbers.c`).
+  Win+Enter
   tries `VELA_TERMINAL`, then `konsole || foot || kitty || alacritty ||
   xterm`; the updater's *Open in a terminal* (`updates/src/report.c`)
   tries `xdg-terminal-exec`, then `VELA_TERMINAL`, then `konsole`.
@@ -107,23 +118,29 @@ indicator) keep working.
 
 ### 5.1 The catalogue
 
-`KeyboardLayouts` reads, in order, and merges by layout and variant name:
-
-1. `/usr/share/X11/xkb/rules/evdev.xml`;
-2. `/usr/share/X11/xkb/rules/evdev.extras.xml`;
-3. the user's rules, `$XDG_CONFIG_HOME/xkb/rules/evdev.xml`, which
-   libxkbcommon already loads, so a layout the user wrote there works
-   once added.
+`KeyboardLayouts` asks **libxkbregistry**, the part of libxkbcommon made
+for configuration tools, instead of parsing XML itself:
+`rxkb_context_new(RXKB_CONTEXT_LOAD_EXOTIC_RULES)`, then
+`rxkb_context_include_path_append_default()` and
+`rxkb_context_parse(ctx, "evdev")`. The default include path is the one
+libxkbcommon compiles keymaps from (`$XDG_CONFIG_HOME/xkb`, `~/.xkb`,
+`/etc/xkb`, then the system's), so the list holds exactly what the
+compositor can load: the `evdev.xml` layouts, the extras of
+`evdev.extras.xml`, and a layout the user wrote in their own rules. The
+registry also gives the option groups and names that §6 uses.
 
 Each **layout** is a group: its own entry (no variant) first, then its
-variants. From each `configItem` it keeps the name, the description, the
-`iso3166Id` countries and the `iso639Id` languages. The list is a
-virtualized view of about 145 groups: no cap, and browsing reaches every
-layout. A layout already installed is marked and can't be added twice.
+variants. For each entry the registry gives the name, the description,
+the short label, the `iso3166` countries and the `iso639` languages;
+Settings keeps them and does the grouping, translation and search
+itself. The list is a virtualized view of about 145 groups: no cap, and
+browsing reaches every layout. A layout already installed is marked and
+can't be added twice.
 
 **Four at most.** With four layouts installed *Add a keyboard* is
-disabled and says why (*A keyboard can switch between up to four
-layouts*).
+disabled and says why (*Vela can switch between up to four layouts*).
+The limit is the integration's, not XKB's (§3): it can rise when the
+keymaps Vela sends to apps can hold more.
 
 ### 5.2 Names and search
 
@@ -177,11 +194,22 @@ choice in the preview switches the shape.
 candidate layout*: on each key event it takes the key code (on Wayland,
 `QKeyEvent::nativeScanCode()` is the XKB key code), feeds its own
 `xkb_state` and inserts `xkb_state_key_get_utf8()`, with dead keys and
-Compose through `xkb_compose` for the locale. Backspace, Delete, the
-arrows, Home, End and the Ctrl shortcuts edit the field as usual. The key
-pressed lights up in the drawing. The layout in use by the rest of the
-desktop never changes, so nothing has to be put back if the dialog is
-closed.
+Compose through `xkb_compose` for the locale. The key pressed lights up
+in the drawing. The layout in use by the rest of the desktop never
+changes, so nothing has to be put back if the dialog is closed.
+
+So that no character is typed twice, the field is a read-only text
+input that owns its key events: its handler accepts every press and
+release, so Qt never inserts the text of the layout in use, and the
+field inserts only what the candidate keymap gives. It doesn't accept an
+input method (`Qt::ItemAcceptsInputMethod` off), so an IME can't commit
+text into it either. Its own `xkb_state` follows the presses and
+releases, including the modifiers; an auto-repeated press types the
+key's text again without updating the state twice. Backspace, Delete,
+the arrows, Home, End and Ctrl+A/C/V/X/Z are recognized by the
+*candidate's* keysym and edit the field as usual. When the field loses
+the focus its state is reset, so a modifier held while leaving it is not
+stuck.
 
 The installed layouts (§5.5) open the same preview from their *Preview*
 button.
@@ -189,10 +217,23 @@ button.
 ### 5.5 The installed layouts
 
 As today: the list in Win+Space order, the first one the default, with
-*Move up* and *Remove*, and the flag and translated name of each. With no
-layout chosen the card says *From the system* and names the layout
-systemd-localed configured, read from the same file the compositor reads;
-with none there either, *English (US)*.
+*Move up* and *Remove*, and the flag and translated name of each.
+
+The card on top names where the layout in use comes from, following the
+compositor's order (§5.6), so Settings never shows a layout Vela isn't
+using:
+
+- **`XKB_DEFAULT_*` set** (Settings inherits the session's environment):
+  *Set by environment variables*, with the layout they choose. The list
+  below stays editable, with a note that the variables win until they are
+  removed.
+- **Layouts chosen in Settings:** the list, as above.
+- **None chosen:** *From the system*, with the layout systemd-localed
+  configured, read from the same file the compositor reads.
+- **None there either:** *English (US)*.
+
+The compositor logs the same source on every reload (it does already),
+and `vela-report` includes that line.
 
 ### 5.6 No KDE settings
 
@@ -246,7 +287,12 @@ was** (the state at the end of the last session).
   firmware did, so *leave it unchanged* would mean *off*: it is not a
   separate choice.
 - *As it was* keeps the state in `$XDG_STATE_HOME/vela/numlock` (`on` or
-  `off`), written when the state changes, at most once a second.
+  `off`). It is written atomically (a temporary file, `fsync`, then
+  `rename`), one second after the last change so that a burst of presses
+  writes once, and again, at once, when the compositor exits normally
+  (logout, Alt+Shift+Esc, `SIGTERM`). After a crash it holds the state
+  of at most one second earlier. A missing or unreadable file means
+  *off*.
 - The state is applied when the first physical keyboard appears. Later
   keyboards take the current state (§8.1), so plugging a keyboard in
   doesn't change it.
@@ -259,12 +305,32 @@ was** (the state at the end of the last session).
 
 ### 8.1 One state for every keyboard
 
-Caps Lock and Num Lock become the seat's, as in GNOME and KDE: when a
-key on one physical keyboard changes the locked modifiers, the
-compositor gives the others the same locked mask, keeping their pressed
-and latched modifiers and their layout. It fits the sticky keys' handling
-(`restoring` already guards re-entrant modifier updates). The layout
-itself stays per keyboard, as today (see §14).
+Caps Lock and Num Lock become the seat's, as in GNOME and KDE. The
+compositor keeps **two booleans**, `caps` and `num`, not a modifier mask:
+
+- **Reading.** In `handle_modifiers()` of a physical keyboard, the state
+  is read *by name* from that keyboard's keymap: `XKB_MOD_NAME_CAPS` and
+  `XKB_VMOD_NAME_NUM`, through `xkb_keymap_mod_get_index()` and
+  `xkb_state_mod_index_is_active(…, XKB_STATE_MODS_LOCKED)`. Two
+  keyboards may have different keymaps, so their indices are never
+  compared or copied.
+- **Propagating.** When a boolean changes, every other physical keyboard
+  gets its own locked mask with only those two bits changed, translated
+  through *its* keymap: its other locked modifiers (sticky keys' locked
+  modifiers, a Shift Lock) and its pressed and latched modifiers and
+  layout are kept. `wlr_keyboard_notify_modifiers()` updates that
+  keyboard's LEDs itself.
+- **No loops.** That call re-enters `handle_modifiers()`; a per-keyboard
+  `syncing` flag, like today's `restoring` for sticky keys, makes the
+  re-entry only forward the modifiers to the seat. A propagation that
+  changes nothing is skipped, so two keyboards never bounce an update.
+- **Sticky keys first.** The sticky keys' re-application of latched and
+  locked modifiers runs before the sync and is untouched by it; the sync
+  never clears a bit it doesn't own.
+- Virtual keyboards neither feed nor receive the shared state: they send
+  their own modifiers.
+
+The layout itself stays per keyboard, as today (see §14).
 
 ### 8.2 The warning in password fields
 
@@ -315,20 +381,59 @@ link or file) and *Edit* and *Remove*. *Add a shortcut* opens a dialog:
    so Win and Vela's combinations reach it instead of acting.
 3. **Save**, enabled once both are set and the combination is allowed.
 
-### 9.2 What can be used
+### 9.2 Matching a key
+
+A combination is **modifiers + a key**. Both Vela's shortcuts and the
+custom ones are matched by one function in `common/` (C, linked by the
+compositor and by Settings), so what Settings accepts is exactly what
+the compositor will run:
+
+- **Modifiers are exact.** The effective Ctrl, Alt, Shift and Win (held
+  or latched by sticky keys) must equal the combination's; Caps Lock, Num
+  Lock and the layout are ignored. AltGr (level 3) is not a shortcut
+  modifier: AltGr combinations type characters. Today's "Win and
+  anything else" matches (§3) go away: Win+Shift+E no longer opens Files,
+  and becomes free for a custom shortcut. Each of Vela's shortcuts that
+  takes Shift (Alt+Shift+Tab, Win+Shift+S…) says so in the table.
+- **Letters by their symbol.** The key's level-1 keysym in the active
+  layout, without Shift, so Ctrl+Z is where the Z is printed (AZERTY,
+  QWERTZ). When the active layout gives no Latin letter for that key
+  (Russian, Greek, Arabic), the level-1 keysym of the first installed
+  layout that does is used, as GNOME and KDE do; with none, the `us`
+  layout's.
+- **Other keys by position.** The digit row (as Win+number already is,
+  `super_numbers.c`), the function keys, Enter, Space, Tab, Esc, the
+  arrows, the keypad and the special keys are matched by key code, so
+  Shift+1 is *Shift and the 1 key* whatever it types, on AZERTY too.
+- **Several layouts.** Matching uses the layout active when the key is
+  pressed; the Latin fallback makes a letter combination reachable from
+  any of them.
+
+The file (§9.4) stores letters as their lowercase keysym name and the
+other keys by their XKB key name (`AE01` for the 1 key, `FK05`, `RTRN`),
+which is position, not symbol. Settings shows each with the symbol the
+first installed layout prints on it.
+
+**One table.** Vela's own shortcuts move out of the `if`s of
+`bindings.c` into a table in `common/` of {modifiers, key, condition,
+action}: the condition covers the modes (nested-only Alt variants, the
+Win+number mode, the color-filter switch). The compositor runs the
+table; Settings asks the same matcher whether a combination is taken,
+in the current modes. The 0.3 editor will make the table editable; here
+it only replaces the `if`s, with a test that every row of
+`docs/shortcuts.md` resolves to its action.
+
+### 9.3 What can be used
 
 Refused, with the reason under the combination:
 
 - **No modifier:** a plain key or Shift with a key would stop typing it.
   F13–F24 and the special keys Vela doesn't use (Calculator, Mail,
   Favorites…) are allowed alone.
-- **Vela's own:** every combination of `docs/shortcuts.md` in the
-  current mode (the Win+number keys only in the mode that uses them).
-  They come from one table in `common/` that the compositor's bindings
-  and Settings both read; the 0.3 editor grows it into the binding
-  table.
+- **Vela's own:** anything the table matches in the current modes.
 - **Reserved:** Ctrl+Alt+F1–F12, Win+L, Alt+Shift+Esc, the media and
-  volume keys.
+  volume keys. They are matched before everything else, also while
+  shortcuts are inhibited, so they can't be taken.
 - **Already a custom shortcut:** Settings offers to replace it.
 
 **Warned about**, with a prominent caution bar that stays while the
@@ -337,35 +442,42 @@ without Win. Ctrl, Alt and Ctrl+Shift combinations are what apps use
 (Ctrl+Alt+T, Ctrl+Shift+Esc…), and a custom shortcut takes them from
 every app, without exception.
 
-### 9.3 The file
+### 9.4 The file
 
-`$XDG_CONFIG_HOME/vela/shortcuts.conf`, written by Settings, one line per
-shortcut, the combination with its modifiers in a fixed order and the key
-as its XKB keysym name:
+`$XDG_CONFIG_HOME/vela/shortcuts.conf`, written atomically by Settings,
+one line per shortcut, the combination with its modifiers in a fixed
+order (Ctrl, Alt, Shift, Super) and the key as in §9.2:
 
 ```ini
 # Vela's custom shortcuts (Settings > Keyboard > Custom shortcuts)
 Ctrl+Alt+t=app org.kde.konsole.desktop
 Super+Shift+k=command kcalc
-Super+F1=open https://docs.example.org/
+Super+FK01=open https://docs.example.org/
 ```
 
 The kinds are `app` (a desktop file ID), `command` (a shell command line)
-and `open` (a URL or an absolute path). A line that doesn't parse is
-skipped with a warning in the log. The file is the user's, like
-`vela.conf`: whoever can write it can already run anything as the user.
+and `open` (a URL or an absolute path). A line is at most 4096 bytes and
+holds no control characters; Settings refuses a command or target that
+would break that, and the readers skip a line that doesn't parse, with a
+warning in the log. The file is the user's, like `vela.conf`: whoever can
+write it can already run anything as the user.
 
-### 9.4 Running them
+### 9.5 Running them
 
-The compositor reads the file at startup and on `reload-config`, and
-matches it in `vela_bindings_handle` after the lock, the polkit dialog and
-`keyboard-shortcuts-inhibit` (so a VM or remote desktop keeps them), the
-same way it matches its own: the modifiers held and the key's keysym
-without Shift. It sends the shell `shortcut <kind> <target>`. The shell
-runs it as Start would: an app with an activation token, so its window
-comes forward under the focus rules of
+The compositor reads only the combinations from the file, at startup and
+on `reload-config`, and matches them with the matcher of §9.2 in
+`vela_bindings_handle()`, after the reserved keys, the lock, the polkit
+dialog and `keyboard-shortcuts-inhibit` (so a VM or remote desktop keeps
+them). It never puts the target on the shell's socket, whose messages
+are newline-delimited text: it sends `shortcut <combination>`, and a
+normalized combination holds only `[A-Za-z0-9+_]`. The shell reads the
+file itself (and again when it changes), finds the line and runs it as
+Start would: an app with an activation token, so its window comes forward
+under the focus rules of
 [#264](https://github.com/vela-desktop/vela/pull/264); a command with
-`sh -c`, detached; a link or file with its default app.
+`sh -c`, detached; a link or file with its default app. A combination
+the shell can't find (the file changed in between) does nothing and is
+logged.
 
 ## 10. The Win key alone
 
@@ -395,8 +507,19 @@ lists from it), used by Win+Enter and by the updater's terminal:
 5. The fixed list of today, as a last resort when there are no desktop
    files.
 
-A command to run (the updater's case) is passed with the desktop file's
-`X-TerminalArgExec`, else `-e`.
+The lookup answers three different requests, because terminals'
+command lines are not uniform:
+
+| Request | Used by | How |
+|---|---|---|
+| **An empty terminal** | Win+Enter | The terminal with no arguments (`xdg-terminal-exec` with none). |
+| **A terminal running a command** | the updater | `xdg-terminal-exec <command>` when it was chosen in step 3; otherwise the entry's `X-TerminalArgExec` before the command (it may be empty: `foot cmd`), else, when xdg-terminal-exec is installed, its `/execarg_default` table for that entry, else `-e`. |
+| **One that stays open after the command** | — | Not asked of the terminal: `X-TerminalArgHold` is rare. A caller that needs it keeps the window open itself, as the updater's script already does (*Press Enter to close*). |
+
+The `-e` fallback is the reference implementation's compatibility
+assumption, not a guarantee: a terminal that rejects it fails visibly
+(the updater reports *The terminal could not be opened*), and the user
+can pick another one in Default apps.
 
 **Settings > Apps > Default apps** gets a *Terminal* row among the common
 uses: *Automatic* (steps 2–5) and the terminals of step 4; a choice
@@ -414,7 +537,7 @@ New and changed `vela.conf` keys, documented in `docs/configuration.md`:
 | `super-opens-start` | `yes` | Win alone opens Start (§10). |
 
 Other files: `$XDG_STATE_HOME/vela/numlock` (§7),
-`$XDG_CONFIG_HOME/vela/shortcuts.conf` (§9.3),
+`$XDG_CONFIG_HOME/vela/shortcuts.conf` (§9.4),
 `$XDG_CONFIG_HOME/vela-xdg-terminals.list` (§11).
 
 ## 13. Stages
@@ -425,15 +548,15 @@ documentation it changes (`docs/shortcuts.md`, `docs/configuration.md`,
 
 | Stage | Contents |
 |---|---|
-| KP1 | The Keyboard section (§4), *From the system* (§5.5), no `kxkbrc` (§5.6). |
-| KP2 | The catalogue, names, search and the four-layout limit (§5.1, §5.2). |
+| KP1 | The Keyboard section (§4), the layout's source (§5.5), no `kxkbrc` (§5.6). |
+| KP2 | The catalogue from libxkbregistry, names, search and the four-layout limit (§5.1, §5.2). |
 | KP3 | Flags (§5.3). |
 | KP4 | Try before adding: the drawing, the try field, *Preview* (§5.4). |
 | KP5 | Key behavior (§6). |
 | KP6 | One lock state for every keyboard and Num Lock at startup (§7, §8.1). |
 | KP7 | The Caps Lock warning in vela-lock and the polkit dialog (§8.2). |
 | KP8 | The Caps Lock display, in the shell and vela-lock (§8.3). |
-| KP9 | Custom shortcuts: file, compositor, shell, Settings page (§9). |
+| KP9 | The binding table and matcher, with Vela's shortcuts moved into it (§9.2); then custom shortcuts: file, compositor, shell, Settings page (§9). |
 | KP10 | The Win key alone (§10). |
 | KP11 | The terminal lookup and Default apps > Terminal (§11). |
 
@@ -457,25 +580,41 @@ Proposed for 0.3 in the [roadmap](roadmap.md):
 
 **Unit tests**
 
-- Catalogue: fixture rules files (base, extras, user) merge, group, keep
-  countries and languages; the four-layout limit.
+- Catalogue: libxkbregistry over a fixture include path (base, extras,
+  user rules) gives every layout, grouped, with countries and languages;
+  the four-layout limit.
 - Names and search: translated and English names, codes, languages,
   countries, accents; a group expands to its matching variants.
 - Flags: the variant's country, then the layout's; none or several →
   the generic icon.
 - Try field: a keymap compiled for `it` turns the key codes of *ò*, *à*
   and AltGr+*è* into those characters; a dead key and a Compose sequence
-  for `us(intl)`.
+  for `us(intl)`; an auto-repeated key types again without a double state
+  update; each character is inserted once whatever the layout in use;
+  focus loss releases held modifiers.
 - Options: each control writes its option, keeps unknown ones, shows
   *Custom* for a conflicting one; Compose on Caps disables the Caps
   control.
-- Compositor: the Num Lock mask for each mode and saved state; lock sync
-  between two keyboards keeps the others' pressed modifiers and layout;
-  the shortcuts file parser and the combination normalization; the
-  conflict table against `bindings.c`.
+- Num Lock: the state for each mode and saved file; the file is written
+  once after a burst, at exit, and atomically (a restart right after a
+  change reads it; a truncated file reads as *off*).
+- Lock sync: two keyboards with *different* keymaps (Num Lock on another
+  modifier index) share Caps and Num Lock; their other locked, pressed and
+  latched modifiers, sticky keys' among them, and their layouts are kept;
+  no re-entry loop; virtual keyboards untouched.
+- Matcher: exact modifiers (Win+Shift+E is not Win+E); letters on AZERTY
+  and QWERTZ by symbol; a letter combination with `ru` active through the
+  Latin fallback; the digit row and F-keys by position (Shift+1 on
+  AZERTY); AltGr never a modifier; every row of `docs/shortcuts.md`
+  resolves to its action in its mode; Settings' conflict answer equals
+  the compositor's for every combination of the table.
+- Shortcuts file: parser, normalization, the 4096-byte and
+  control-character limits; the shell message holds only the combination.
 - Terminal lookup: user list, `VELA_TERMINAL`, `xdg-terminal-exec`,
-  desktop files (hidden, `NotShowIn`, drop-down), the fixed list,
-  `X-TerminalArgExec` (extends `updates/tests/report_test.cpp`).
+  desktop files (hidden, `NotShowIn`, drop-down), the fixed list; for each,
+  an empty terminal and one running a command, with `X-TerminalArgExec`
+  set, set empty, absent with an `/execarg_default` entry, and absent
+  (`-e`) (extends `updates/tests/report_test.cpp`).
 
 **Headless functional tests** (`scripts/run-headless.sh`, `vela-input`)
 
