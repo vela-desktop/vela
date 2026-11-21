@@ -15,9 +15,11 @@
 
 #include <unistd.h>
 #include <utility>
+#include <algorithm>
 
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QImage>
@@ -838,6 +840,29 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(calls().contains("set org.gnome.desktop.interface color-scheme prefer-light"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(calls().contains("BreezeLight"), 5000);
         expectFreshShell({ { QStringLiteral("appearance/appTheme"), QStringLiteral("light") } });
+    }
+
+    void desktopThemesWorkWithoutKdeConfigUtility()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
+        const QString bin = home().filePath(QStringLiteral("no-kde-bin"));
+        QVERIFY(QDir().mkpath(bin));
+        qputenv("PATH", bin.toUtf8());
+
+        Preferences prefs;
+        QVERIFY(prefs.desktopThemesAvailable());
+        const QString current = prefs.systemFont();
+        const auto families = QFontDatabase::families();
+        const auto alternative = std::find_if(families.cbegin(), families.cend(),
+            [&](const QString& family) { return family != current; });
+        if (alternative == families.cend()) QSKIP("No alternative font family is installed.");
+
+        prefs.setSystemFont(*alternative);
+        QSettings kdeGlobals(home().filePath(QStringLiteral("config/kdeglobals")), QSettings::IniFormat);
+        QFont written;
+        QVERIFY(written.fromString(kdeGlobals.value(QStringLiteral("General/font")).toString()));
+        QCOMPARE(written.family(), *alternative);
     }
 
     void failedWriteReloadsNewerPersistedShellValues()

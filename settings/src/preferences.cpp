@@ -97,9 +97,15 @@ QStringList installedThemes(const QString& subdirectory, const QString& marker)
 bool writeKdeValue(const QString& file, const QString& group, const QString& key, const QString& value)
 {
     const QString writer = QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6"));
-    return !writer.isEmpty() && QProcess::execute(writer,
-        { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
-            QStringLiteral("--key"), key, value }) == 0;
+    if (!writer.isEmpty()) {
+        return QProcess::execute(writer,
+            { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
+                QStringLiteral("--key"), key, value }) == 0;
+    }
+    QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
+    settings.setValue(group + u'/' + key, value);
+    settings.sync();
+    return settings.status() == QSettings::NoError;
 }
 
 void deleteKdeValue(const QString& file, const QString& group, const QString& key)
@@ -109,6 +115,10 @@ void deleteKdeValue(const QString& file, const QString& group, const QString& ke
         QProcess::execute(writer,
             { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
                 QStringLiteral("--key"), key, QStringLiteral("--delete") });
+    } else {
+        QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
+        settings.remove(group + u'/' + key);
+        settings.sync();
     }
 }
 
@@ -694,7 +704,7 @@ QStringList Preferences::systemFonts() const
 
 bool Preferences::desktopThemesAvailable() const
 {
-    return !QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6")).isEmpty();
+    return true;
 }
 
 void Preferences::setSystemFont(const QString& family)
@@ -759,19 +769,11 @@ void Preferences::setIconTheme(const QString& theme)
     if (!desktopThemesAvailable() || theme == iconTheme() || !iconThemes().contains(theme)) {
         return;
     }
-    const QString previous = iconTheme();
     if (!writeKdeValue(QStringLiteral("kdeglobals"), QStringLiteral("Icons"), QStringLiteral("Theme"), theme)) {
         emit desktopThemesChanged();
         return;
     }
     applyIconTheme(m_appTheme == QLatin1String("light"));
-    if (QIcon::themeName() != theme
-        && !writeKdeValue(QStringLiteral("kdeglobals"), QStringLiteral("Icons"), QStringLiteral("Theme"), QIcon::themeName())) {
-        writeKdeValue(QStringLiteral("kdeglobals"), QStringLiteral("Icons"), QStringLiteral("Theme"), previous);
-        applyIconTheme(m_appTheme == QLatin1String("light"));
-        emit desktopThemesChanged();
-        return;
-    }
     emit desktopThemesChanged();
 }
 
@@ -849,18 +851,7 @@ void Preferences::setAppTheme(const QString& theme)
         vela::process::startDetached(QStringLiteral("plasma-apply-colorscheme"),
             { light ? QStringLiteral("BreezeLight") : QStringLiteral("BreezeDark") });
     }
-    const QString icons = QIcon::themeName();
     applyIconTheme(light); // ours too
-    if (QIcon::themeName() != icons) {
-        const QString changer = QStringLiteral("/usr/lib/plasma-changeicons");
-        if (QFileInfo(changer).isExecutable()) {
-            vela::process::startDetached(changer, { QIcon::themeName() });
-        } else if (!QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6")).isEmpty()) {
-            vela::process::startDetached(QStringLiteral("kwriteconfig6"),
-                { QStringLiteral("--file"), QStringLiteral("kdeglobals"), QStringLiteral("--group"), QStringLiteral("Icons"),
-                    QStringLiteral("--key"), QStringLiteral("Theme"), QIcon::themeName() });
-        }
-    }
     emit appThemeChanged();
 }
 

@@ -99,9 +99,10 @@ static char *configured_cursor_theme(void)
         if (line[0] == '[') {
             mouse = strcmp(line, "[Mouse]\n") == 0 || strcmp(line, "[Mouse]\r\n") == 0;
         } else if (mouse && strncmp(line, "cursorTheme=", 12) == 0) {
-            line[strcspn(line, "\r\n")] = '\0';
-            if (valid_cursor_theme(line + 12)) {
-                theme = strdup(line + 12);
+            char *save = NULL;
+            char *value = strtok_r(line + 12, "\r\n", &save);
+            if (valid_cursor_theme(value)) {
+                theme = strdup(value);
             }
             break;
         }
@@ -1090,8 +1091,10 @@ void vela_input_reload_cursor(struct vela_input *input, const char *theme)
     }
     struct wlr_xcursor_manager *old = server->cursor_manager;
     server->cursor_manager = manager;
-    const char *shape = server->interaction && server->interaction->cursor
-        ? server->interaction->cursor : input->cursor_shape;
+    const char *shape = input->cursor_shape
+        ? (server->interaction && server->interaction->cursor
+                ? server->interaction->cursor : input->cursor_shape)
+        : NULL;
     if (shape) {
         wlr_cursor_set_xcursor(server->cursor, manager, shape);
     }
