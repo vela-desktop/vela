@@ -8,15 +8,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-static const char* const kind_names[] = { "app", "command", "open" };
+static const char *const kind_names[] = { "app", "command", "open" };
 
-const char* vela_custom_kind_name(enum vela_custom_kind kind)
+const char *vela_custom_kind_name(enum vela_custom_kind kind)
 {
     return (size_t)kind < sizeof(kind_names) / sizeof(kind_names[0]) ? kind_names[kind] : "";
 }
 
 // "https:", "mailto:", "file:": a scheme, then a colon.
-static bool url(const char* text, size_t length)
+static bool url(const char *text, size_t length)
 {
     if (length == 0 || !isalpha((unsigned char)text[0])) {
         return false;
@@ -33,7 +33,7 @@ static bool url(const char* text, size_t length)
     return false;
 }
 
-bool vela_custom_target_valid(enum vela_custom_kind kind, const char* target, size_t length)
+bool vela_custom_target_valid(enum vela_custom_kind kind, const char *target, size_t length)
 {
     if (!target || length == 0 || length > VELA_CUSTOM_LINE_MAX) {
         return false;
@@ -61,7 +61,7 @@ bool vela_custom_target_valid(enum vela_custom_kind kind, const char* target, si
     return false;
 }
 
-bool vela_custom_line_parse(const char* line, size_t length, struct vela_custom_line* out)
+bool vela_custom_line_parse(const char *line, size_t length, struct vela_custom_line *out)
 {
     if (!line || length == 0 || length > VELA_CUSTOM_LINE_MAX || line[0] == '#') {
         return false;
@@ -72,7 +72,7 @@ bool vela_custom_line_parse(const char* line, size_t length, struct vela_custom_
             return false;
         }
     }
-    const char* eq = memchr(line, '=', length);
+    const char *eq = memchr(line, '=', length);
     if (!eq || eq == line) {
         return false;
     }
@@ -87,9 +87,9 @@ bool vela_custom_line_parse(const char* line, size_t length, struct vela_custom_
     if (!vela_combo_parse(combo, &parsed.combo)) {
         return false;
     }
-    const char* rest = eq + 1;
+    const char *rest = eq + 1;
     const size_t rest_length = length - combo_length - 1;
-    const char* space = memchr(rest, ' ', rest_length);
+    const char *space = memchr(rest, ' ', rest_length);
     if (!space) {
         return false;
     }
@@ -110,14 +110,14 @@ bool vela_custom_line_parse(const char* line, size_t length, struct vela_custom_
     return true;
 }
 
-bool vela_custom_path(char* out, size_t size)
+bool vela_custom_path(char *out, size_t size)
 {
-    const char* config = getenv("XDG_CONFIG_HOME");
+    const char *config = getenv("XDG_CONFIG_HOME");
     int written;
     if (config && config[0] == '/') {
         written = snprintf(out, size, "%s/vela/shortcuts.conf", config);
     } else {
-        const char* home = getenv("HOME");
+        const char *home = getenv("HOME");
         if (!home || home[0] != '/') {
             return false;
         }

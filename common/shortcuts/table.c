@@ -130,13 +130,13 @@ static const struct vela_binding table[] = {
     CODE(NORMAL, SUPER, KEY_SPACE, 0, VELA_ACTION_NEXT_LAYOUT, NULL),
 };
 
-const struct vela_binding* vela_bindings_table(size_t* count)
+const struct vela_binding *vela_bindings_table(size_t *count)
 {
     *count = sizeof(table) / sizeof(table[0]);
     return table;
 }
 
-static bool applies(const struct vela_binding* row, const struct vela_modes* modes)
+static bool applies(const struct vela_binding *row, const struct vela_modes *modes)
 {
     return (!(row->when & VELA_WHEN_NESTED) || modes->nested)
         && (!(row->when & VELA_WHEN_COLOR_FILTER_SHORTCUT) || modes->color_filter_shortcut)
@@ -146,7 +146,7 @@ static bool applies(const struct vela_binding* row, const struct vela_modes* mod
         && (!(row->when & VELA_WHEN_NUMBERS_DESKTOPS) || modes->numbers == VELA_SUPER_NUMBERS_DESKTOPS);
 }
 
-static bool matches(const struct vela_binding* row, const struct vela_press* press)
+static bool matches(const struct vela_binding *row, const struct vela_press *press)
 {
     if (!(row->when & VELA_WHEN_ANY_MODS) && row->mods != press->mods) {
         return false;
@@ -158,8 +158,8 @@ static bool matches(const struct vela_binding* row, const struct vela_press* pre
     return key >= row->key && key - row->key < span;
 }
 
-const struct vela_binding* vela_binding_find(
-    const struct vela_press* press, const struct vela_modes* modes, enum vela_stage stage)
+const struct vela_binding *vela_binding_find(
+    const struct vela_press *press, const struct vela_modes *modes, enum vela_stage stage)
 {
     for (size_t i = 0; i < sizeof(table) / sizeof(table[0]); ++i) {
         if (table[i].stage == stage && applies(&table[i], modes) && matches(&table[i], press)) {
@@ -169,10 +169,10 @@ const struct vela_binding* vela_binding_find(
     return NULL;
 }
 
-const struct vela_binding* vela_binding_taken(const struct vela_press* press, const struct vela_modes* modes)
+const struct vela_binding *vela_binding_taken(const struct vela_press *press, const struct vela_modes *modes)
 {
     for (int stage = VELA_STAGE_ALWAYS; stage <= VELA_STAGE_NORMAL; ++stage) {
-        const struct vela_binding* row = vela_binding_find(press, modes, (enum vela_stage)stage);
+        const struct vela_binding *row = vela_binding_find(press, modes, (enum vela_stage)stage);
         if (row) {
             return row;
         }

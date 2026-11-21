@@ -35,7 +35,7 @@ struct vela_super_modifiers {
 };
 
 // The super-number-keys value of vela.conf: "apps" when unknown.
-enum vela_super_numbers vela_super_numbers_parse(const char* mode);
+enum vela_super_numbers vela_super_numbers_parse(const char *mode);
 
 // The key's index, 0 for 1 up to 9 for 0; -1 for any other key.
 int vela_super_number_index(uint32_t keycode);
@@ -44,10 +44,10 @@ enum vela_super_number_action vela_super_number_action(enum vela_super_numbers m
 
 // The shell's word for an app action ("activate", "new", "jump"); NULL for
 // the others.
-const char* vela_super_number_verb(enum vela_super_number_action action);
+const char *vela_super_number_verb(enum vela_super_number_action action);
 
 // `keycodes` without the number keys in `handled` (bit i: index i), into
 // `out` (room for `count`). Returns how many are left.
-size_t vela_super_numbers_filter(const uint32_t* keycodes, size_t count, uint16_t handled, uint32_t* out);
+size_t vela_super_numbers_filter(const uint32_t *keycodes, size_t count, uint16_t handled, uint32_t *out);
 
 #endif

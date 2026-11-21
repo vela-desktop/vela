@@ -55,32 +55,32 @@ struct vela_combo {
 };
 
 // The key `xkb_keycode` pressed with `state` as it is before the key.
-void vela_press_from_state(struct xkb_state* state, uint32_t xkb_keycode, struct vela_press* out);
+void vela_press_from_state(struct xkb_state *state, uint32_t xkb_keycode, struct vela_press *out);
 
 // The modifiers of `state` that count for shortcuts.
-uint8_t vela_shortcut_mods(struct xkb_state* state);
+uint8_t vela_shortcut_mods(struct xkb_state *state);
 
 // Whether the key is matched by position: not a printable level-1 symbol,
 // or a key of the digit row or the keypad.
-bool vela_press_is_positional(const struct vela_press* press);
+bool vela_press_is_positional(const struct vela_press *press);
 
 // The combination a pressed key makes, as Settings records it.
-struct vela_combo vela_combo_from_press(const struct vela_press* press);
+struct vela_combo vela_combo_from_press(const struct vela_press *press);
 
-bool vela_combo_matches(const struct vela_combo* combo, const struct vela_press* press);
+bool vela_combo_matches(const struct vela_combo *combo, const struct vela_press *press);
 
 // "Ctrl+Alt+t", "Super+Shift+k", "Super+FK01": modifiers (Ctrl, Alt, Shift,
 // Super, any case and order) and a key, a lowercase keysym name for the
 // printable keys or an XKB key name (AE01, FK05, RTRN) for the others.
 // false if it doesn't parse.
-bool vela_combo_parse(const char* text, struct vela_combo* out);
+bool vela_combo_parse(const char *text, struct vela_combo *out);
 
 // The normalized text of a combination: the modifiers in the order Ctrl,
 // Alt, Shift, Super, then the key, only [A-Za-z0-9+_]. false if `size` is
 // too small or the key has no name.
-bool vela_combo_format(const struct vela_combo* combo, char* out, size_t size);
+bool vela_combo_format(const struct vela_combo *combo, char *out, size_t size);
 
 // The `us` keymap the Latin fallback and the key names use, compiled once.
-struct xkb_keymap* vela_shortcuts_us_keymap(void);
+struct xkb_keymap *vela_shortcuts_us_keymap(void);
 
 #endif

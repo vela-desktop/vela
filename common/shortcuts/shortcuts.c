@@ -10,11 +10,11 @@
 #include <strings.h>
 #include <xkbcommon/xkbcommon.h>
 
-struct xkb_keymap* vela_shortcuts_us_keymap(void)
+struct xkb_keymap *vela_shortcuts_us_keymap(void)
 {
-    static struct xkb_keymap* keymap;
+    static struct xkb_keymap *keymap;
     if (!keymap) {
-        struct xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
         if (!context) {
             return NULL;
         }
@@ -32,19 +32,19 @@ static bool printable(xkb_keysym_t sym)
     return (sym >= 0x21 && sym <= 0x7e) || (sym >= 0xa1 && sym <= 0xff);
 }
 
-static xkb_keysym_t level_one(struct xkb_keymap* keymap, xkb_keycode_t keycode, xkb_layout_index_t layout)
+static xkb_keysym_t level_one(struct xkb_keymap *keymap, xkb_keycode_t keycode, xkb_layout_index_t layout)
 {
-    const xkb_keysym_t* syms = NULL;
+    const xkb_keysym_t *syms = NULL;
     if (!keymap || xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, 0, &syms) < 1) {
         return XKB_KEY_NoSymbol;
     }
     return xkb_keysym_to_lower(syms[0]);
 }
 
-uint8_t vela_shortcut_mods(struct xkb_state* state)
+uint8_t vela_shortcut_mods(struct xkb_state *state)
 {
     static const struct {
-        const char* name;
+        const char *name;
         uint8_t mod;
     } names[] = {
         { XKB_MOD_NAME_CTRL, VELA_MOD_CTRL },
@@ -61,9 +61,9 @@ uint8_t vela_shortcut_mods(struct xkb_state* state)
     return mods;
 }
 
-void vela_press_from_state(struct xkb_state* state, uint32_t xkb_keycode, struct vela_press* out)
+void vela_press_from_state(struct xkb_state *state, uint32_t xkb_keycode, struct vela_press *out)
 {
-    struct xkb_keymap* keymap = xkb_state_get_keymap(state);
+    struct xkb_keymap *keymap = xkb_state_get_keymap(state);
     memset(out, 0, sizeof(*out));
     out->mods = vela_shortcut_mods(state);
     out->keycode = xkb_keycode >= 8 ? xkb_keycode - 8 : 0;
@@ -88,13 +88,13 @@ void vela_press_from_state(struct xkb_state* state, uint32_t xkb_keycode, struct
     out->sym = sym;
 }
 
-bool vela_press_is_positional(const struct vela_press* press)
+bool vela_press_is_positional(const struct vela_press *press)
 {
     const bool digit_row = press->keycode >= KEY_1 && press->keycode <= KEY_0;
     return digit_row || !printable(press->sym);
 }
 
-struct vela_combo vela_combo_from_press(const struct vela_press* press)
+struct vela_combo vela_combo_from_press(const struct vela_press *press)
 {
     const bool position = vela_press_is_positional(press);
     return (struct vela_combo) {
@@ -104,7 +104,7 @@ struct vela_combo vela_combo_from_press(const struct vela_press* press)
     };
 }
 
-bool vela_combo_matches(const struct vela_combo* combo, const struct vela_press* press)
+bool vela_combo_matches(const struct vela_combo *combo, const struct vela_press *press)
 {
     if (combo->mods != press->mods) {
         return false;
@@ -118,7 +118,7 @@ bool vela_combo_matches(const struct vela_combo* combo, const struct vela_press*
 }
 
 static const struct {
-    const char* name;
+    const char *name;
     uint8_t mod;
 } modifier_names[] = {
     { "Ctrl", VELA_MOD_CTRL },
@@ -132,13 +132,13 @@ static const struct {
 };
 
 // Shaped like an XKB key name: 2 to 4 capitals and digits (ESC, AE01, RTRN).
-static bool key_name(const char* token)
+static bool key_name(const char *token)
 {
     const size_t length = strlen(token);
     if (length < 2 || length > 4) {
         return false;
     }
-    for (const char* c = token; *c; ++c) {
+    for (const char *c = token; *c; ++c) {
         if (!isupper((unsigned char)*c) && !isdigit((unsigned char)*c)) {
             return false;
         }
@@ -147,9 +147,9 @@ static bool key_name(const char* token)
 }
 
 // The key code (evdev) of us's key whose level-1 symbol is `sym`.
-static bool us_keycode_for(xkb_keysym_t sym, uint32_t* keycode)
+static bool us_keycode_for(xkb_keysym_t sym, uint32_t *keycode)
 {
-    struct xkb_keymap* us = vela_shortcuts_us_keymap();
+    struct xkb_keymap *us = vela_shortcuts_us_keymap();
     if (!us) {
         return false;
     }
@@ -162,14 +162,14 @@ static bool us_keycode_for(xkb_keysym_t sym, uint32_t* keycode)
     return false;
 }
 
-static bool parse_key(const char* token, struct vela_combo* out)
+static bool parse_key(const char *token, struct vela_combo *out)
 {
     if (!*token) {
         return false;
     }
     // A key name, unless no key has it (F5 is a keysym).
     if (key_name(token)) {
-        struct xkb_keymap* us = vela_shortcuts_us_keymap();
+        struct xkb_keymap *us = vela_shortcuts_us_keymap();
         const xkb_keycode_t code = us ? xkb_keymap_key_by_name(us, token) : XKB_KEYCODE_INVALID;
         if (code != XKB_KEYCODE_INVALID && code >= 8) {
             out->kind = VELA_KEY_CODE;
@@ -196,7 +196,7 @@ static bool parse_key(const char* token, struct vela_combo* out)
     return true;
 }
 
-bool vela_combo_parse(const char* text, struct vela_combo* out)
+bool vela_combo_parse(const char *text, struct vela_combo *out)
 {
     char copy[128];
     if (!text || strlen(text) >= sizeof(copy)) {
@@ -204,9 +204,9 @@ bool vela_combo_parse(const char* text, struct vela_combo* out)
     }
     memcpy(copy, text, strlen(text) + 1);
     struct vela_combo combo = { 0 };
-    char* token = copy;
+    char *token = copy;
     for (;;) {
-        char* plus = strchr(token, '+');
+        char *plus = strchr(token, '+');
         if (!plus) {
             break;
         }
@@ -231,7 +231,7 @@ bool vela_combo_parse(const char* text, struct vela_combo* out)
     return true;
 }
 
-bool vela_combo_format(const struct vela_combo* combo, char* out, size_t size)
+bool vela_combo_format(const struct vela_combo *combo, char *out, size_t size)
 {
     char key[64] = "";
     if (combo->kind == VELA_KEY_SYM) {
@@ -239,8 +239,8 @@ bool vela_combo_format(const struct vela_combo* combo, char* out, size_t size)
             return false;
         }
     } else if (combo->kind == VELA_KEY_CODE) {
-        struct xkb_keymap* us = vela_shortcuts_us_keymap();
-        const char* name = us ? xkb_keymap_key_get_name(us, combo->key + 8) : NULL;
+        struct xkb_keymap *us = vela_shortcuts_us_keymap();
+        const char *name = us ? xkb_keymap_key_get_name(us, combo->key + 8) : NULL;
         if (!name || strlen(name) >= sizeof(key)) {
             return false;
         }
@@ -248,7 +248,7 @@ bool vela_combo_format(const struct vela_combo* combo, char* out, size_t size)
     } else {
         return false;
     }
-    for (const char* c = key; *c; ++c) {
+    for (const char *c = key; *c; ++c) {
         if (!isalnum((unsigned char)*c) && *c != '_') {
             return false;
         }

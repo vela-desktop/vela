@@ -71,7 +71,7 @@ struct vela_binding {
     uint8_t span; // keys key … key + span - 1 (the VTs, the digit row); 0 is 1
     uint16_t when;
     enum vela_action action;
-    const char* arg;
+    const char *arg;
     bool repeats; // repeats while held (the volume keys)
 };
 
@@ -84,13 +84,13 @@ struct vela_modes {
 };
 
 // The first row of `stage` that `press` matches in `modes`, or NULL.
-const struct vela_binding* vela_binding_find(
-    const struct vela_press* press, const struct vela_modes* modes, enum vela_stage stage);
+const struct vela_binding *vela_binding_find(
+    const struct vela_press *press, const struct vela_modes *modes, enum vela_stage stage);
 
 // The first row of any stage, or NULL: whether Vela takes the combination.
-const struct vela_binding* vela_binding_taken(const struct vela_press* press, const struct vela_modes* modes);
+const struct vela_binding *vela_binding_taken(const struct vela_press *press, const struct vela_modes *modes);
 
 // The rows, for the tests.
-const struct vela_binding* vela_bindings_table(size_t* count);
+const struct vela_binding *vela_bindings_table(size_t *count);
 
 #endif

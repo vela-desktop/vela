@@ -33,7 +33,7 @@ enum vela_custom_kind {
 struct vela_custom_line {
     struct vela_combo combo;
     enum vela_custom_kind kind;
-    const char* target; // inside the parsed line
+    const char *target; // inside the parsed line
     size_t target_length;
 };
 
@@ -41,15 +41,15 @@ struct vela_custom_line {
 // line, or one that doesn't parse (longer than VELA_CUSTOM_LINE_MAX, a
 // control character, a bad combination, an unknown kind, an empty or
 // invalid target).
-bool vela_custom_line_parse(const char* line, size_t length, struct vela_custom_line* out);
+bool vela_custom_line_parse(const char *line, size_t length, struct vela_custom_line *out);
 
 // Whether `target` is fit for a line of `kind` (no control character, the
 // line's limit, an app's ".desktop", an absolute path or a URL to open).
-bool vela_custom_target_valid(enum vela_custom_kind kind, const char* target, size_t length);
+bool vela_custom_target_valid(enum vela_custom_kind kind, const char *target, size_t length);
 
-const char* vela_custom_kind_name(enum vela_custom_kind kind);
+const char *vela_custom_kind_name(enum vela_custom_kind kind);
 
 // $XDG_CONFIG_HOME/vela/shortcuts.conf, or ~/.config/vela/shortcuts.conf.
-bool vela_custom_path(char* out, size_t size);
+bool vela_custom_path(char *out, size_t size);
 
 #endif
