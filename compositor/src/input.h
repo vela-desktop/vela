@@ -64,6 +64,7 @@ struct vela_drag_icon {
 struct vela_input {
     struct vela_server *server;
     struct wl_list pointers; // vela_pointer.link
+    struct wl_list lid_switches;
     struct wl_list keyboards; // vela_keyboard.link
 
     // From vela.conf.

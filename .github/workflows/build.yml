@@ -19,7 +19,9 @@ name: Build
 on:
   push:
     branches: [main, 'release/**']
-    tags: ['v0.*']
+    # rehearsal/v0.x.y runs the same Beta pipeline and publishes a draft
+    # (docs/release-automation.md §4).
+    tags: ['v0.*', 'rehearsal/v0.*']
   pull_request:
   workflow_dispatch:
 
@@ -45,11 +47,40 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       heavy: ${{ steps.detect.outputs.heavy }}
+      # The Beta version a v0.x.y or rehearsal/v0.x.y tag builds; empty for
+      # Experimental. Jobs read it instead of matching the ref themselves.
+      beta_version: ${{ steps.release.outputs.beta_version }}
+      # true for rehearsal/v0.x.y: the same jobs, but the release is a draft.
+      rehearsal: ${{ steps.release.outputs.rehearsal }}
     steps:
+      - name: Derive the Beta version from a release or rehearsal tag
+        id: release
+        shell: bash
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          set -euo pipefail
+          tag='' rehearsal=false
+          case "$REF" in
+            refs/tags/rehearsal/*) tag=${REF#refs/tags/rehearsal/} rehearsal=true ;;
+            refs/tags/*) tag=${REF#refs/tags/} ;;
+          esac
+          if [ -n "$tag" ] && [[ ! "$tag" =~ ^v0\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Not a numbered Beta tag: $REF"; exit 1
+          fi
+          echo "beta_version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "rehearsal=$rehearsal" >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 3
+      # The notes come from CHANGELOG.md: stop before building a Beta that
+      # has none (scripts/release.py prepare writes the section).
+      - name: Check the Beta release notes
+        if: steps.release.outputs.beta_version != ''
+        env:
+          VERSION: ${{ steps.release.outputs.beta_version }}
+        run: python3 -I scripts/release-notes.py "$VERSION" --source-ref "$GITHUB_REF_NAME"
       - name: Skip costly jobs for documentation-only PRs
         id: detect
         shell: bash
@@ -116,7 +147,7 @@ jobs:
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     steps:
       - name: Dependencies
-        run: pacman -Syu --noconfirm --needed $DEPENDENCIES xorg-server-xvfb xorg-xauth ttf-dejavu
+        run: pacman -Syu --noconfirm --needed $DEPENDENCIES openssh xorg-server-xvfb xorg-xauth ttf-dejavu
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -221,6 +252,7 @@ jobs:
       artifact-metadata: write
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
+      VELA_BETA_VERSION: ${{ needs.changes.outputs.beta_version }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache-package
       CCACHE_MAXSIZE: 350M
     steps:
@@ -255,8 +287,8 @@ jobs:
           mkdir -p "$CCACHE_DIR"
           chown -R builder:builder "$CCACHE_DIR"
           cp -r packaging/arch /home/builder/pkgbuild
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
-            version="${GITHUB_REF_NAME#v}"
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
+            version="$VELA_BETA_VERSION"
             sed -n 's/^[[:space:]]*VERSION[[:space:]]*\([0-9.]*\).*/\1/p' CMakeLists.txt | grep -Fx "$version" || {
               echo "::error::Release tag and project version differ"; exit 1;
             }
@@ -273,7 +305,7 @@ jobs:
             "cd /home/builder/pkgbuild && \
             CCACHE_DIR=$CCACHE_DIR CCACHE_MAXSIZE=$CCACHE_MAXSIZE \
             CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            VELA_GIT_URL=file://$GITHUB_WORKSPACE#commit=$GITHUB_SHA VELA_RELEASE_VERSION=${GITHUB_REF_NAME#v} MAKEFLAGS=-j$(nproc) \
+            VELA_GIT_URL=file://$GITHUB_WORKSPACE#commit=$GITHUB_SHA VELA_RELEASE_VERSION=$VELA_BETA_VERSION MAKEFLAGS=-j$(nproc) \
             makepkg --noconfirm"
 
 
@@ -291,8 +323,8 @@ jobs:
           shopt -s nullglob
           packages=(/home/builder/pkgbuild/vela-*.pkg.tar.zst)
           test "${#packages[@]}" -eq 1
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
-            [[ "${packages[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
+            [[ "${packages[0]##*/}" == "vela-$VELA_BETA_VERSION-"* ]]
           else
             [[ "${packages[0]}" == *".g${GITHUB_SHA:0:7}-"* ]]
           fi
@@ -317,9 +349,11 @@ jobs:
   # Install and smoke-test the EXACT binary from the package job, not an
   # independently rebuilt package in another workflow. This gates release.
   package-smoke:
-    needs: package
+    needs: [changes, package]
     runs-on: ubuntu-latest
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+    env:
+      VELA_BETA_VERSION: ${{ needs.changes.outputs.beta_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -337,8 +371,8 @@ jobs:
           shopt -s nullglob
           packages=(dist/vela-*.pkg.tar.zst)
           test "${#packages[@]}" -eq 1
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
-            [[ "${packages[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
+            [[ "${packages[0]##*/}" == "vela-$VELA_BETA_VERSION-"* ]]
             # A clean container needs all required Beta updater dependencies.
             pacman -S --noconfirm --needed cosign
           else
@@ -346,9 +380,9 @@ jobs:
           fi
           pacman -U --noconfirm --needed "${packages[0]}"
           package=vela-git
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then package=vela; fi
+          if [[ -n "$VELA_BETA_VERSION" ]]; then package=vela; fi
           VELA_PACKAGE_NAME="$package" bash scripts/ci-check-package.sh
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
             # Exercise both directions of the actual pacman conflict transaction
             # with a disposable minimal vela-git fixture, then restore the
             # exact Beta binary being tested (never remove first).
@@ -394,6 +428,7 @@ jobs:
     uses: ./.github/workflows/fedora.yml
     with:
       updater_fixtures: true
+      beta_version: ${{ needs.changes.outputs.beta_version }}
     permissions:
       contents: read
 
@@ -412,6 +447,7 @@ jobs:
             image: fedora@sha256:aacbc26b38361ba0cb3d10f268da40b61b36aed6ed6fe5831a35871636bedb06
             artifact: vela-fedora-45-rpm
     env:
+      VELA_BETA_VERSION: ${{ needs.changes.outputs.beta_version }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache-fedora-rpm
       CCACHE_MAXSIZE: 500M
     runs-on: ubuntu-latest
@@ -453,8 +489,8 @@ jobs:
           cp packaging/fedora/vela.spec rpmbuild/SPECS/vela.spec
           version=$(sed -n 's/^[[:space:]]*VERSION[[:space:]]\([0-9][0-9.]*\).*/\1/p' CMakeLists.txt | head -n 1)
           [[ "$version" =~ ^[0-9]+(\.[0-9]+)+$ ]] || { echo "::error::Invalid project VERSION: $version"; exit 1; }
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
-            test "$version" = "${GITHUB_REF_NAME#v}" || {
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
+            test "$version" = "$VELA_BETA_VERSION" || {
               echo "::error::RPM source version differs from release tag"; exit 1;
             }
           fi
@@ -467,7 +503,7 @@ jobs:
           # Exercise the actual spec with DNF5, not just an updater stub.
           dnf builddep -y --define "vela_version $VELA_RPM_VERSION" rpmbuild/SPECS/vela.spec
           channel=experimental
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then channel=beta; fi
+          if [[ -n "$VELA_BETA_VERSION" ]]; then channel=beta; fi
           rpmbuild -bb rpmbuild/SPECS/vela.spec \
             --define "vela_channel $channel" \
             --define "_topdir $GITHUB_WORKSPACE/rpmbuild" \
@@ -478,10 +514,10 @@ jobs:
             --define "vela_ccache 1"
           shopt -s nullglob
           # Select the main package only; RPM also builds debuginfo/debugsource.
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
             rpm_files=(rpmbuild/RPMS/x86_64/vela-[0-9]*.x86_64.rpm)
             test "${#rpm_files[@]}" -eq 1
-            [[ "${rpm_files[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+            [[ "${rpm_files[0]##*/}" == "vela-$VELA_BETA_VERSION-"* ]]
           else
             rpm_files=(rpmbuild/RPMS/x86_64/vela-git-[0-9]*.x86_64.rpm)
             test "${#rpm_files[@]}" -eq 1
@@ -511,7 +547,7 @@ jobs:
 
   # Install exactly the signed binary, not a second independently built RPM.
   fedora-package-smoke:
-    needs: fedora-package
+    needs: [changes, fedora-package]
     strategy:
       fail-fast: false
       matrix:
@@ -524,6 +560,8 @@ jobs:
             artifact: vela-fedora-45-rpm
     runs-on: ubuntu-latest
     container: ${{ matrix.image }}
+    env:
+      VELA_BETA_VERSION: ${{ needs.changes.outputs.beta_version }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -540,8 +578,8 @@ jobs:
           rpms=(dist/vela-*.x86_64.rpm)
           test "${#rpms[@]}" -eq 1
           [[ "${rpms[0]}" == *".fc${{ matrix.fedora }}.x86_64.rpm" ]]
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then
-            [[ "${rpms[0]##*/}" == "vela-${GITHUB_REF_NAME#v}-"* ]]
+          if [[ -n "$VELA_BETA_VERSION" ]]; then
+            [[ "${rpms[0]##*/}" == "vela-$VELA_BETA_VERSION-"* ]]
           else
             [[ "${rpms[0]}" == *".g${GITHUB_SHA:0:7}."* ]]
           fi
@@ -556,7 +594,7 @@ jobs:
           grep -Fxq 'org.freedesktop.impl.portal.ScreenCast=wlr' /usr/share/xdg-desktop-portal/vela-portals.conf
           grep -Fxq 'org.freedesktop.impl.portal.Screenshot=wlr' /usr/share/xdg-desktop-portal/vela-portals.conf
           package_name=vela-git
-          if [[ "$GITHUB_REF" == refs/tags/v0.* ]]; then package_name=vela; fi
+          if [[ -n "$VELA_BETA_VERSION" ]]; then package_name=vela; fi
           rpm -V "$package_name"
           if [[ "$package_name" == vela ]]; then other_package=vela-git; else other_package=vela; fi
           rpm -q --conflicts "$package_name" | grep -Fx "$other_package"
@@ -603,19 +641,64 @@ jobs:
 
   # The exact Ubuntu Beta DEB must pass its clean-install smoke test.
   ubuntu-beta:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
+    needs: changes
+    if: github.event_name == 'push' && needs.changes.outputs.beta_version != ''
     uses: ./.github/workflows/ubuntu.yml
+    with:
+      beta_version: ${{ needs.changes.outputs.beta_version }}
     permissions:
       contents: read
       id-token: write
       attestations: write
       artifact-metadata: write
 
+  # Upgrade from the previous published Beta to the exact packages built
+  # above, with each distribution's package manager, before anything is
+  # published (docs/release-automation.md §5, R2).
+  beta-upgrade:
+    name: Upgrade from the previous Beta (${{ matrix.distro }})
+    needs: [changes, package, fedora-package, ubuntu-beta]
+    if: github.event_name == 'push' && needs.changes.outputs.beta_version != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: arch
+            image: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+            artifact: vela-git
+          - distro: fedora-44
+            image: fedora@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+            artifact: vela-fedora-rpm
+          - distro: fedora-45
+            image: fedora@sha256:aacbc26b38361ba0cb3d10f268da40b61b36aed6ed6fe5831a35871636bedb06
+            artifact: vela-fedora-45-rpm
+          - distro: ubuntu
+            image: ubuntu:26.10
+            artifact: vela-ubuntu-26.10-deb
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: ${{ matrix.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+      - name: Install the tools
+        run: sh scripts/ci-beta-upgrade-tools.sh
+      - name: Upgrade with the native package manager
+        env:
+          VERSION: ${{ needs.changes.outputs.beta_version }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I scripts/ci-beta-upgrade.py packages --version "$VERSION" --candidate dist
+
   # Only version tags publish official Beta binaries. Ordinary pushes to
   # main keep ephemeral Experimental build artifacts without GitHub Releases.
   publish-beta:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v0.')
-    needs: [build, packaging-tests, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta]
+    if: github.event_name == 'push' && needs.changes.outputs.beta_version != ''
+    needs: [changes, build, packaging-tests, package, package-smoke, fedora-tests, fedora-package, fedora-package-smoke, ubuntu-beta, beta-upgrade]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -640,15 +723,27 @@ jobs:
         with:
           name: vela-ubuntu-26.10-deb
           path: dist
+      - name: Write the release notes from CHANGELOG.md
+        env:
+          VERSION: ${{ needs.changes.outputs.beta_version }}
+        run: python3 -I scripts/release-notes.py "$VERSION" --source-ref "$GITHUB_REF_NAME" > release-notes.txt
       - name: Publish signed Beta release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          [[ "$GITHUB_REF_NAME" =~ ^v0\.[0-9]+\.[0-9]+$ ]] || {
+          # A rehearsal tag publishes the same assets as a draft, which the
+          # updater never sees and which can be deleted with its tag
+          # (docs/release-automation.md §4).
+          case "$GITHUB_REF_NAME" in
+            rehearsal/*) tag=${GITHUB_REF_NAME#rehearsal/} draft=true ;;
+            *) tag=$GITHUB_REF_NAME draft=false ;;
+          esac
+          [[ "$tag" =~ ^v0\.[0-9]+\.[0-9]+$ ]] || {
             echo "::error::Only numbered v0.x.y Beta tags can publish"; exit 1;
           }
+          version=${tag#v}
           cd dist
           shopt -s nullglob
           packages=(vela-[0-9]*.pkg.tar.zst)
@@ -681,7 +776,7 @@ jobs:
           # Reruns must never overwrite already-published release bytes.
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
-              --json isDraft --jq '.isDraft' | grep -Fxq false
+              --json isDraft --jq '.isDraft' | grep -Fxq "$draft"
             for asset in "${packages[0]}" "${fedora44_packages[0]}" "${fedora45_packages[0]}" "${ubuntu_packages[0]}" \
                          SHA256SUMS SHA256SUMS-fedora SHA256SUMS-fedora-45 SHA256SUMS-ubuntu; do
               gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" \
@@ -695,10 +790,33 @@ jobs:
             done
             echo ":: Existing release matches verified packages; keeping it unchanged"
           else
-            gh release create "$GITHUB_REF_NAME" "${packages[0]}" SHA256SUMS \
-              "${fedora44_packages[0]}" SHA256SUMS-fedora \
-              "${fedora45_packages[0]}" SHA256SUMS-fedora-45 \
-              "${ubuntu_packages[0]}" SHA256SUMS-ubuntu \
-              --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease=false \
-              --title "Vela ${GITHUB_REF_NAME#v} Beta" --generate-notes
+            assets=("${packages[0]}" SHA256SUMS
+                    "${fedora44_packages[0]}" SHA256SUMS-fedora
+                    "${fedora45_packages[0]}" SHA256SUMS-fedora-45
+                    "${ubuntu_packages[0]}" SHA256SUMS-ubuntu)
+            if [ "$draft" = true ]; then
+              # The same notes, to read before tagging, under a warning.
+              { printf 'Rehearsal of v%s on %s. Not a release: delete it with scripts/release.py clean %s.\n\n' \
+                  "$version" "$GITHUB_SHA" "$version"
+                cat ../release-notes.txt; } > ../rehearsal-notes.txt
+              gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+                --repo "$GITHUB_REPOSITORY" --verify-tag --draft --prerelease=false \
+                --title "Rehearsal of Vela $version Beta" --notes-file ../rehearsal-notes.txt
+            else
+              gh release create "$GITHUB_REF_NAME" "${assets[@]}" \
+                --repo "$GITHUB_REPOSITORY" --verify-tag --prerelease=false \
+                --title "Vela $version Beta" --notes-file ../release-notes.txt
+            fi
           fi
+
+  # Once a real Beta is published, its users' path: the previous Beta's
+  # updater checks it unless a newer Beta is already published.
+  # A rehearsal's draft can't be read by an updater.
+  beta-update-check:
+    needs: [changes, publish-beta]
+    if: needs.changes.outputs.beta_version != '' && needs.changes.outputs.rehearsal == 'false'
+    uses: ./.github/workflows/beta-update-check.yml
+    with:
+      version: ${{ needs.changes.outputs.beta_version }}
+    permissions:
+      contents: read
