@@ -86,14 +86,14 @@ static void configuration_origin(const struct wlr_output_configuration_v1 *confi
     *y = min_y == INT_MAX ? 0 : min_y;
 }
 
-
 static bool lid_hides_panels(const struct vela_server *server, const struct wlr_output_configuration_v1 *config)
 {
     if (!server->lid_closed) {
         return false;
     }
     struct wlr_output_configuration_head_v1 *head;
-    wl_list_for_each(head, &config->heads, link) {
+    wl_list_for_each(head, &config->heads, link)
+    {
         const struct vela_output *output = head->state.output->data;
         if (head->state.enabled && output && output->drm_connector && !output->internal_panel) {
             return true;
@@ -484,8 +484,6 @@ static bool commit_configuration(
     return ok;
 }
 
-
-
 // Arrange only if a previously hidden panel would otherwise overlap an
 // external display that was hotplugged while the lid was closed.
 static bool arrange_configuration(struct wlr_output_configuration_v1 *config);
@@ -496,7 +494,8 @@ static bool lid_restore_pending(struct vela_server *server, const struct wlr_out
         return false;
     }
     struct vela_output *output;
-    wl_list_for_each(output, &server->outputs, link) {
+    wl_list_for_each(output, &server->outputs, link)
+    {
         if (output->lid_saved.enabled) {
             return true;
         }
@@ -725,8 +724,8 @@ bool vela_output_manager_save(struct vela_server *server, const struct wlr_outpu
             height = state->mode ? state->mode->height : state->custom_mode.height;
             refresh = state->mode ? state->mode->refresh : state->custom_mode.refresh;
         }
-        entries[n] = (struct vela_output_config_entry) { keys[n], state->enabled, width, height, refresh,
-            state->scale, state->transform, x, y };
+        entries[n] = (struct vela_output_config_entry) { keys[n], state->enabled, width, height, refresh, state->scale,
+            state->transform, x, y };
         ++n;
     }
     bool saved = vela_output_config_save(entries, n);
@@ -858,7 +857,8 @@ static bool resize_without_moving(struct vela_server *server, const struct wlr_o
     return resized;
 }
 
-static bool prepare_configuration(struct vela_server *server, struct wlr_output_configuration_v1 *config, bool implicit, bool resized)
+static bool prepare_configuration(
+    struct vela_server *server, struct wlr_output_configuration_v1 *config, bool implicit, bool resized)
 {
     bool disabled = false;
     struct wlr_output_configuration_head_v1 *head;
@@ -880,15 +880,16 @@ static bool prepare_configuration(struct vela_server *server, struct wlr_output_
     }
     // Reject overlapping explicit positions before repairing a software disable.
     return test_configuration(config, false, lid_hides_panels(server, config))
-        && (!disabled || (arrange_configuration(config) && test_configuration(config, false, lid_hides_panels(server, config))));
+        && (!disabled
+            || (arrange_configuration(config) && test_configuration(config, false, lid_hides_panels(server, config))));
 }
-
 
 static bool prepare_client_configuration(struct vela_server *server, struct wlr_output_configuration_v1 *config)
 {
     bool hide_panels = lid_hides_panels(server, config);
     struct wlr_output_configuration_head_v1 *head;
-    wl_list_for_each(head, &config->heads, link) {
+    wl_list_for_each(head, &config->heads, link)
+    {
         const struct vela_output *output = head->state.output->data;
         if (!output) {
             return false;
