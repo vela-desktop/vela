@@ -55,7 +55,8 @@ public:
         QString program; // the program name (such as "kate"), from Exec's first argument
         QString workDir; // Path=: the directory to start it in (empty: home)
         QString wmClass; // StartupWMClass: its windows' app_id, if different from the id
-        bool terminal = false;
+        bool terminal = false; // runs inside a terminal
+        bool terminalEmulator = false; // offers a terminal
     };
 
     explicit AppModel(QObject* parent = nullptr);

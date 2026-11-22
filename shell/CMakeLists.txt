@@ -27,6 +27,8 @@ qt_add_executable(vela-shell
     src/clipboard.h
     src/snip.cpp
     src/snip.h
+    src/shortcutrunner.cpp
+    src/shortcutrunner.h
     src/soundkeys.cpp
     src/soundkeys.h
     src/config.cpp
@@ -156,6 +158,7 @@ set(VELA_QML_FILES
     qml/SmallButton.qml
     qml/NotificationList.qml
     qml/TaskView.qml
+    qml/CapsLockOsd.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml
     qml/SnapLayouts.qml
@@ -184,6 +187,7 @@ qt_add_qml_module(vela-shell
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
 target_link_libraries(vela-shell PRIVATE vela-alloc
+    vela-shortcuts # custom shortcuts' file (common/shortcuts/custom.h)
     Qt6::DBus
     Qt6::Gui
     Qt6::Qml

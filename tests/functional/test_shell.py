@@ -472,6 +472,114 @@ class TaskbarDrag(RealShell):
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class CapsLockDisplay(RealShell):
+    """The Caps Lock display (docs/keyboard.md §8.3): each change of Caps
+    Lock by a key shows it for a moment, other keys don't, and
+    caps-lock-osd=no turns it off."""
+
+    def caps_shown(self, state):
+        return self.mapped(state, "vela-caps-lock-osd")
+
+    def test_each_toggle_shows_it_until_turned_off(self):
+        with self.input_session() as send:
+            for what in ("on", "off"):
+                send("key", "Caps_Lock")
+                self.vela.wait_for(self.caps_shown, what=f"the display for Caps Lock {what}")
+                self.vela.wait_for(lambda s: not self.caps_shown(s), timeout=10,
+                                   what=f"the display for Caps Lock {what} gone by itself")
+            send("key", "a", "key", "shift+b")
+            time.sleep(1.0 * TIME_SCALE)
+            self.assertFalse(self.caps_shown(self.vela.state()), "other keys show nothing")
+            os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+            # command() doesn't wait, and the key comes on another connection:
+            # wait for a change "reload-config" applies after the keyboard's
+            # (vela_a11y_load), harmless headless, before pressing it.
+            with open(self.vela.config_path(), "a") as conf:
+                conf.write("caps-lock-osd=no\nnight-light-nvidia-fix=yes\n")
+            self.vela.command("reload-config")
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLightNvidiaFix"],
+                               what="vela.conf reloaded", read_state=False)
+            send("key", "Caps_Lock")
+            time.sleep(1.0 * TIME_SCALE)
+            self.assertFalse(self.caps_shown(self.vela.state()), "caps-lock-osd=no")
+
+
+class CustomShortcuts(RealShell):
+    """The user's custom shortcuts (docs/keyboard.md §9.5): the compositor
+    matches the combination from shortcuts.conf and sends only that to the
+    shell, which runs the line: a command, an app, a link."""
+
+    def prepare_shell(self):
+        self.marks = os.path.join(self.vela.directory, "marks")
+        os.makedirs(self.marks)
+        # The default app for links: a fake xdg-open that notes the link.
+        bin_dir = os.path.join(self.vela.directory, "bin")
+        os.makedirs(bin_dir)
+        opener = os.path.join(bin_dir, "xdg-open")
+        with open(opener, "w") as file:
+            file.write(f'#!/bin/sh\nprintf "%s" "$1" > {self.marks}/opened\n')
+        os.chmod(opener, 0o700)
+        self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin")}
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications, exist_ok=True)
+        with open(os.path.join(applications, "vela-test-shortcut.desktop"), "w") as file:
+            file.write(f"[Desktop Entry]\nType=Application\nName=Shortcut probe\nExec=touch {self.marks}/app\n")
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path("shortcuts.conf"), "w") as file:
+            file.write("# made by the test\n"
+                       f"Ctrl+Alt+AE01=command touch {self.marks}/command\n"
+                       "Shift+Super+e=app vela-test-shortcut.desktop\n"
+                       "Super+FK05=open https://example.org/vela\n"
+                       "Ctrl+Alt+AE02=command\n")  # no target: skipped
+        self.vela.command("reload-config")
+
+    def wait_for_mark(self, name, what):
+        path = os.path.join(self.marks, name)
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        while not os.path.exists(path):
+            self.assertLess(time.monotonic(), deadline, f"{what}: {self.vela.log_text()[-3000:]}")
+            time.sleep(0.05)
+        return path
+
+    def wait_for_text(self, name, text, what):
+        """Waits until the mark holds `text`: the fake xdg-open creates it
+        before writing."""
+        path = self.wait_for_mark(name, what)
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        while True:
+            with open(path) as file:
+                if file.read() == text:
+                    return
+            self.assertLess(time.monotonic(), deadline, f"{what}: {self.vela.log_text()[-3000:]}")
+            time.sleep(0.05)
+
+    def test_each_kind_runs(self):
+        with self.input_session() as send:
+            send("key", "ctrl+alt+1")
+            self.wait_for_mark("command", "the command")
+            # Win+Shift+E is free since the modifiers are exact.
+            send("key", "super+shift+e")
+            self.wait_for_mark("app", "the app")
+            send("key", "super+F5")
+            self.wait_for_text("opened", "https://example.org/vela", "the link")
+            # A line without a target is skipped: the key reaches nobody's
+            # shortcut, and nothing runs.
+            send("key", "ctrl+alt+2")
+            time.sleep(0.5 * TIME_SCALE)
+        self.assertEqual(sorted(os.listdir(self.marks)), ["app", "command", "opened"])
+        self.assertIn("Custom shortcuts: line 5", self.vela.log_text())
+
+    def test_vela_keeps_its_own(self):
+        """A hand-written line with one of Vela's combinations: Vela's wins."""
+        with open(self.vela.config_path("shortcuts.conf"), "a") as file:
+            file.write(f"Super+d=command touch {self.marks}/stolen\n")
+        self.vela.command("reload-config")
+        with self.input_session() as send:
+            send("key", "super+d")
+            time.sleep(1.0 * TIME_SCALE)
+        self.assertFalse(os.path.exists(os.path.join(self.marks, "stolen")))
+
+
 class QtShell(RealShell):
     def secondary_output(self, transform="90", scale=1, side="above", size=(1920, 1080)):
         """Configure a real Qt desktop at any side of the main output. Above or

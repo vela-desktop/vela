@@ -66,6 +66,13 @@ endif()
 # The allocation helpers, in every build: the C code allocates through them,
 # and every C++ program installs their new handler (alloc/new_handler.h).
 add_subdirectory(common/alloc)
+# The shortcut table and matcher (needs xkbcommon), for the compositor, the
+# shell and Settings only: a reporter-only build must not need xkbcommon.
+if(VELA_BUILD_COMPOSITOR OR VELA_BUILD_SHELL)
+    add_subdirectory(common/shortcuts)
+    # The terminal lookup and vela-terminal (Win+Enter, the updater, Settings).
+    add_subdirectory(common/terminal)
+endif()
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)

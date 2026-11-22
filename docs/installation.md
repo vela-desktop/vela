@@ -220,8 +220,9 @@ notification when there is something new; turn this off on the same page.
 
 **Install now** runs `vela-update` in a terminal, where the package manager
 asks for your password and the build stays readable; updates started by hand
-in a terminal show on the page too. `xdg-terminal-exec` (a dependency of the
-package) opens your default terminal, or Konsole without one. After an update,
+in a terminal show on the page too. The terminal is the one chosen in
+Settings > Apps > Default apps, else the default of `xdg-terminal-exec` (a
+dependency of the package). After an update,
 sign out and in again to use the new version: the page and a notification say
 so. The design is in [Updates](updates.md).
 
