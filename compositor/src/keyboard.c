@@ -160,8 +160,13 @@ static void set_locks(struct vela_keyboard *keyboard)
     if (locked == m.locked) {
         return;
     }
+    // wlroots takes its group as the locked layout: pass the locked one, not
+    // the effective one, or a layout switch held on this keyboard would
+    // stay after its release. (A held switch pauses until released.)
+    const xkb_layout_index_t group =
+        wlr->xkb_state ? xkb_state_serialize_layout(wlr->xkb_state, XKB_STATE_LAYOUT_LOCKED) : m.group;
     keyboard->syncing = true;
-    wlr_keyboard_notify_modifiers(wlr, m.depressed, m.latched, locked, m.group); // calls handle_modifiers
+    wlr_keyboard_notify_modifiers(wlr, m.depressed, m.latched, locked, group); // calls handle_modifiers
     keyboard->syncing = false;
 }
 
@@ -382,14 +387,16 @@ static int show_super_hints(void *data)
     return 0;
 }
 
-static bool handle_super_number(struct vela_input *input, unsigned index, uint32_t mods)
+// `mods`: VELA_MOD_*, the effective ones, so a modifier Sticky Keys
+// locked counts as it does for the binding table.
+static bool handle_super_number(struct vela_input *input, unsigned index, uint8_t mods)
 {
     struct vela_server *server = input->server;
     const struct vela_super_modifiers held = {
-        .logo = mods & WLR_MODIFIER_LOGO,
-        .ctrl = mods & WLR_MODIFIER_CTRL,
-        .alt = mods & WLR_MODIFIER_ALT,
-        .shift = mods & WLR_MODIFIER_SHIFT,
+        .logo = mods & VELA_MOD_SUPER,
+        .ctrl = mods & VELA_MOD_CTRL,
+        .alt = mods & VELA_MOD_ALT,
+        .shift = mods & VELA_MOD_SHIFT,
     };
     const enum vela_super_number_action action = vela_super_number_action(input->super_numbers, held);
     struct vela_view *active = vela_views_focused(server);
@@ -487,14 +494,21 @@ static void handle_key(struct wl_listener *listener, void *data)
             }
         }
     }
-    bool bindings_tried = false;
+    // A pressed key that isn't Super goes to the binding table once,
+    // whatever its symbols, even none (F13 in a keymap that leaves it
+    // empty): the table matches the key (common/shortcuts/table.c).
+    bool try_bindings = pressed && count <= 0;
+    if (try_bindings) {
+        input->super_tap = false;
+    }
     if (number >= 0) {
         if (pressed && !inhibited) {
             // Taken before the action runs: a desktop switch focuses the
             // window there now, and its enter must leave this key out
             // (vela_input_keyboard_enter).
             keyboard->handled_numbers |= number_bit;
-            handled = handle_super_number(input, (unsigned)number, mods);
+            const uint8_t held = keyboard->wlr->xkb_state ? vela_shortcut_mods(keyboard->wlr->xkb_state) : 0;
+            handled = handle_super_number(input, (unsigned)number, held);
             if (!handled) {
                 keyboard->handled_numbers &= (uint16_t)~number_bit;
             }
@@ -520,18 +534,7 @@ static void handle_key(struct wl_listener *listener, void *data)
                 continue;
             }
             input->super_tap = false;
-            // Once per key, whatever its symbols: the table matches the key
-            // (common/shortcuts/table.c), not each symbol.
-            if (!handled && !bindings_tried && keyboard->wlr->xkb_state) {
-                bindings_tried = true;
-                struct vela_press press;
-                vela_press_from_state(keyboard->wlr->xkb_state, keycode, &press);
-                bool repeats = false;
-                handled = vela_bindings_handle(server, &press, &repeats);
-                if (handled && repeats) {
-                    start_repeat(keyboard, event->keycode, &press);
-                }
-            }
+            try_bindings = true;
             continue;
         }
         if (is_super(syms[i]) && input->super_tap) {
@@ -546,6 +549,15 @@ static void handle_key(struct wl_listener *listener, void *data)
         // Alt released during Alt+Tab: switch to the chosen window.
         if (is_alt(syms[i]) && vela_switcher_active(server)) {
             vela_switcher_finish(server, true);
+        }
+    }
+    if (try_bindings && !handled && keyboard->wlr->xkb_state) {
+        struct vela_press press;
+        vela_press_from_state(keyboard->wlr->xkb_state, keycode, &press);
+        bool repeats = false;
+        handled = vela_bindings_handle(server, &press, &repeats);
+        if (handled && repeats) {
+            start_repeat(keyboard, event->keycode, &press);
         }
     }
     if (!handled) {
