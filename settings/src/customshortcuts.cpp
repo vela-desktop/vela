@@ -511,6 +511,9 @@ bool CustomShortcuts::save(int index, const QString& combo, const QString& kind,
         lines.append(line);
     }
     if (!placed) {
+        if (full()) {
+            return false; // the compositor would never run it
+        }
         lines.append(Line { {}, text, kind, target.trimmed() });
     }
     if (!write(lines)) {
@@ -518,6 +521,11 @@ bool CustomShortcuts::save(int index, const QString& combo, const QString& kind,
     }
     reload();
     return true;
+}
+
+bool CustomShortcuts::full() const
+{
+    return m_items.size() >= VELA_CUSTOM_MAX;
 }
 
 qsizetype CustomShortcuts::lineOf(int index) const

@@ -19,9 +19,11 @@ Page {
             objectName: "shortcutsIntro"
             icon: "preferences-desktop-keyboard-shortcuts"
             title: Shortcuts.items.length > 0 ? qsTr("Your shortcuts") : qsTr("No custom shortcuts yet")
-            description: qsTr("Open an app, run a command, or open a link or file with a key combination")
+            description: Shortcuts.full ? qsTr("You have as many shortcuts as Vela can run. Remove one to add another.")
+                : qsTr("Open an app, run a command, or open a link or file with a key combination")
             trailing: Button {
                 objectName: "addShortcut"
+                enabled: !Shortcuts.full
                 text: qsTr("Add a shortcut")
                 onClicked: editor.openFor(-1)
             }
@@ -296,6 +298,9 @@ Page {
                     active = false
                     Shortcuts.stopRecording()
                 }
+                // Only while recording: afterwards the keys go up to the
+                // dialog (Enter saves) instead of recording a plain Enter.
+                Keys.enabled: active
                 Keys.onPressed: event => {
                     event.accepted = true
                     if (event.key === Qt.Key_Escape && event.modifiers === Qt.NoModifier) {

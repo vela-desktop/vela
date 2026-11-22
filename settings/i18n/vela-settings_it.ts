@@ -1973,6 +1973,10 @@ Specifiche sistema
         <translation>Ancora nessuna scorciatoia personalizzata</translation>
     </message>
     <message>
+        <source>You have as many shortcuts as Vela can run. Remove one to add another.</source>
+        <translation>Hai già tutte le scorciatoie che Vela può eseguire. Rimuovine una per aggiungerne un&apos;altra.</translation>
+    </message>
+    <message>
         <source>Open an app, run a command, or open a link or file with a key combination</source>
         <translation>Apri un&apos;app, esegui un comando o apri un link o un file con una combinazione di tasti</translation>
     </message>

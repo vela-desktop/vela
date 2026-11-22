@@ -30,6 +30,8 @@ class CustomShortcuts : public QObject {
     Q_OBJECT
     // [{combo, label, kind, target, name, icon}], in the file's order.
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
+    // As many as the compositor runs (VELA_CUSTOM_MAX): no new one.
+    Q_PROPERTY(bool full READ full NOTIFY changed)
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
 
 public:
@@ -55,6 +57,7 @@ public:
     ~CustomShortcuts() override;
 
     QVariantList items() const { return m_items; }
+    bool full() const;
     bool recording() const { return m_inhibitor != nullptr; }
 
     Q_INVOKABLE void reload();

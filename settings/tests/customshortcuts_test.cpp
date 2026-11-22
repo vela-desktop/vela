@@ -8,7 +8,9 @@
 
 #include "customshortcuts.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -211,6 +213,35 @@ private slots:
         QCOMPARE(file(), QByteArray("# mine\nnot a shortcut\n"));
         QVERIFY(!shortcuts->remove(0));
         QVERIFY(shortcuts->items().isEmpty());
+    }
+
+    void noMoreThanTheCompositorRuns()
+    {
+        // 256 lines, VELA_CUSTOM_MAX: the compositor ignores any more.
+        {
+            QFile out(CustomShortcuts::path());
+            QVERIFY(QDir().mkpath(QFileInfo(out).absolutePath()));
+            QVERIFY(out.open(QIODevice::WriteOnly));
+            const char* mods[] = { "Ctrl+Alt", "Ctrl+Shift", "Alt+Shift", "Ctrl+Alt+Shift", "Super+Ctrl", "Super+Alt",
+                "Super+Shift", "Super+Ctrl+Alt", "Super+Ctrl+Shift", "Super+Alt+Shift", "Super+Ctrl+Alt+Shift" };
+            int written = 0;
+            for (const char* mod : mods) {
+                for (int key = 1; key <= 24 && written < 256; ++key, ++written) {
+                    out.write(QStringLiteral("%1+FK%2=command true\n").arg(QLatin1String(mod)).arg(key, 2, 10, QLatin1Char('0')).toUtf8());
+                }
+            }
+        }
+        auto shortcuts = make();
+        QCOMPARE(shortcuts->items().size(), 256);
+        QVERIFY(shortcuts->full());
+        // No new one; editing, replacing and removing still work.
+        QVERIFY(!shortcuts->save(-1, "Super+j", "command", "x"));
+        QVERIFY(shortcuts->save(0, "Super+j", "command", "x"));
+        QVERIFY(shortcuts->save(-1, "Super+j", "command", "y"));
+        QCOMPARE(shortcuts->items().size(), 256);
+        QVERIFY(shortcuts->remove(0));
+        QVERIFY(!shortcuts->full());
+        QVERIFY(shortcuts->save(-1, "Super+j", "command", "z"));
     }
 
     void recordsTheActiveLayout()
