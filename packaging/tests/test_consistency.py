@@ -70,5 +70,25 @@ class UbuntuBuildDepends(unittest.TestCase):
         self.assertEqual(sorted(installed), sorted(listed))
 
 
+class PortalRuntimeDependencies(unittest.TestCase):
+    """The selected screen capture portal must not be a weak dependency."""
+
+    def test_fedora_wlr_is_required_not_recommended(self):
+        spec = read("packaging/fedora/vela.spec")
+        self.assertRegex(spec, r"(?m)^Requires:\s+xdg-desktop-portal-wlr$")
+        self.assertNotRegex(spec, r"(?m)^Recommends:\s+xdg-desktop-portal-wlr$")
+
+    def test_ubuntu_wlr_is_a_hard_dependency(self):
+        cmake = read("CMakeLists.txt")
+        fields = {}
+        for kind in ("DEPENDS", "RECOMMENDS"):
+            match = re.search(
+                rf'set\(CPACK_DEBIAN_PACKAGE_{kind}\s+"([^"]+)"\)', cmake)
+            self.assertIsNotNone(match, f"CPack {kind} metadata not found")
+            fields[kind] = {name.strip() for name in match.group(1).split(",")}
+        self.assertIn("xdg-desktop-portal-wlr", fields["DEPENDS"])
+        self.assertNotIn("xdg-desktop-portal-wlr", fields["RECOMMENDS"])
+
+
 if __name__ == "__main__":
     unittest.main()

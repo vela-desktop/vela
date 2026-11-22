@@ -281,6 +281,19 @@ For Fedora, `dnf reinstall` handles a same-version forced reinstall.
 
 ## Other distributions
 
+Manual source installations do **not** resolve runtime package dependencies.
+Install `xdg-desktop-portal` and `xdg-desktop-portal-wlr` before launching
+Vela: `session/vela-portals.conf` routes ScreenCast and Screenshot to `wlr`.
+For generic portals such as file selection, Vela currently prefers
+`xdg-desktop-portal-gtk` (KDE is an optional fallback). Screen sharing also
+requires a working PipeWire/WirePlumber stack.
+
+For example, on Debian Unstable (forky/sid):
+
+```sh
+sudo apt install xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+```
+
 Follow the [source-build instructions](development.md#build), then:
 
 ```sh
