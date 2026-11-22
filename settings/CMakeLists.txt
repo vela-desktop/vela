@@ -40,6 +40,11 @@ add_custom_command(OUTPUT ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE}
     COMMAND ${DISPLAYS_WAYLAND_SCANNER} client-header ${SETTINGS_INHIBIT_XML} ${SETTINGS_INHIBIT_HEADER}
     COMMAND ${DISPLAYS_WAYLAND_SCANNER} private-code ${SETTINGS_INHIBIT_XML} ${SETTINGS_INHIBIT_CODE}
     DEPENDS ${SETTINGS_INHIBIT_XML})
+# One target compiles it, for Settings and its test: two targets with the
+# same custom command could run it at once.
+add_library(vela-settings-inhibit STATIC ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE})
+target_include_directories(vela-settings-inhibit PUBLIC ${DISPLAYS_GENERATED_DIR})
+target_link_libraries(vela-settings-inhibit PUBLIC PkgConfig::DISPLAYS_WAYLAND)
 add_library(vela-displays STATIC src/displays.cpp src/displays.h ${DISPLAYS_PROTOCOL_SOURCES})
 target_include_directories(vela-displays PUBLIC src PRIVATE ${DISPLAYS_GENERATED_DIR})
 target_link_libraries(vela-displays PUBLIC Qt6::Gui PRIVATE PkgConfig::DISPLAYS_WAYLAND)
@@ -55,8 +60,6 @@ qt_add_executable(vela-settings
     src/datetime.h
     src/customshortcuts.cpp
     src/customshortcuts.h
-    ${SETTINGS_INHIBIT_HEADER}
-    ${SETTINGS_INHIBIT_CODE}
     src/defaultapps.cpp
     src/defaultapps.h
     src/keyboardlayouts.cpp
@@ -181,6 +184,7 @@ qt_add_resources(vela-settings "images"
 target_link_libraries(vela-settings PRIVATE vela-alloc
     vela-shortcuts # the matcher and Vela's shortcut table (common/shortcuts)
     vela-terminal-lookup # Default apps > Terminal (common/terminal)
+    vela-settings-inhibit # keyboard-shortcuts-inhibit, while recording
     PkgConfig::DISPLAYS_WAYLAND
     Qt6::GuiPrivate
     PkgConfig::XKBREGISTRY
@@ -262,10 +266,10 @@ if(VELA_BUILD_TOOLS)
 
     # Custom shortcuts: recording, refusals, the file (docs/keyboard.md §9).
     qt_add_executable(vela-customshortcuts-test tests/customshortcuts_test.cpp src/customshortcuts.cpp
-        src/customshortcuts.h ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE})
-    target_include_directories(vela-customshortcuts-test PRIVATE src ${DISPLAYS_GENERATED_DIR})
+        src/customshortcuts.h)
+    target_include_directories(vela-customshortcuts-test PRIVATE src)
     target_compile_options(vela-customshortcuts-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-customshortcuts-test PRIVATE vela-shortcuts PkgConfig::DISPLAYS_WAYLAND Qt6::Gui
+    target_link_libraries(vela-customshortcuts-test PRIVATE vela-shortcuts vela-settings-inhibit Qt6::Gui
         Qt6::GuiPrivate Qt6::Test)
     add_test(NAME settings-customshortcuts COMMAND vela-customshortcuts-test)
 
