@@ -181,17 +181,16 @@ void setupTaskbar(QQuickWindow* window, QScreen* screen, const Config* config)
     QObject::connect(window, &QWindow::heightChanged, window, place);
     QObject::connect(window, &QWindow::widthChanged, window, place);
     QObject::connect(config, &Config::taskbarChanged, window, place);
-    // The API Qt Quick actually renders with, once per session in vela.log
-    // (rendering::configureVulkan). Emitted on the render thread.
-    QObject::connect(window, &QQuickWindow::sceneGraphInitialized, window, [window] {
-        static std::once_flag logged;
-        std::call_once(logged, [window] {
-            const auto api = window->rendererInterface()->graphicsApi();
-            qInfo("vela-shell: Qt Quick renders with %s",
-                api == QSGRendererInterface::Vulkan ? "Vulkan"
-                    : api == QSGRendererInterface::OpenGL ? "OpenGL" : "another API");
-        });
-    }, Qt::DirectConnection);
+    QObject::connect(
+        window, &QQuickWindow::sceneGraphInitialized, window,
+        [window] {
+            if (window->rendererInterface()->graphicsApi() != QSGRendererInterface::Vulkan) {
+                qFatal("vela-shell requires the Vulkan scene graph");
+            }
+            static std::once_flag logged;
+            std::call_once(logged, [] { qInfo("vela-shell: Qt Quick renders with Vulkan"); });
+        },
+        Qt::DirectConnection);
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -365,8 +364,10 @@ int main(int argc, char* argv[])
     }
 
     vela::rendering::configureApplication();
-    vela::rendering::configureVulkan();
     QGuiApplication app(argc, argv);
+    // Select the shell renderer locally so launched applications keep their own Qt settings.
+    QQuickWindow::setSceneGraphBackend(QStringLiteral("rhi"));
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);

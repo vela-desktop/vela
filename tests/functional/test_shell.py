@@ -103,8 +103,6 @@ class RealShell(unittest.TestCase):
         self.assertTrue(self.mapped(state, "vela-taskbar"))
         self.assertTrue(self.mapped(state, "vela-wallpaper"))
         self.assertNotIn("layer_surface has never been configured", self.vela.log_text())
-        # Like the compositor: Vulkan, never Qt's platform default
-        # (rendering::configureVulkan).
         self.assertIn("vela-shell: Qt Quick renders with Vulkan", self.vela.log_text())
 
     def slow_animations(self):
@@ -520,9 +518,12 @@ class CustomShortcuts(RealShell):
         os.makedirs(bin_dir)
         opener = os.path.join(bin_dir, "xdg-open")
         with open(opener, "w") as file:
-            file.write(f'#!/bin/sh\nprintf "%s" "$1" > {self.marks}/opened\n')
+            file.write(f'#!/bin/sh\nprintf "%s" "$QSG_RHI_BACKEND/$QT_QUICK_BACKEND" > {self.marks}/backend\n'
+                       f'printf "%s" "$1" > {self.marks}/opened\n')
         os.chmod(opener, 0o700)
-        self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin")}
+        # The shell requires Vulkan even when launched apps request a different backend.
+        self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                          "QSG_RHI_BACKEND": "opengl", "QT_QUICK_BACKEND": "software"}
         applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
         os.makedirs(applications, exist_ok=True)
         with open(os.path.join(applications, "vela-test-shortcut.desktop"), "w") as file:
@@ -569,7 +570,9 @@ class CustomShortcuts(RealShell):
             # shortcut, and nothing runs.
             send("key", "ctrl+alt+2")
             time.sleep(0.5 * TIME_SCALE)
-        self.assertEqual(sorted(os.listdir(self.marks)), ["app", "command", "opened"])
+        self.wait_for_text("backend", "opengl/software", "the launched process kept its Qt settings")
+        self.check_desktop()
+        self.assertEqual(sorted(os.listdir(self.marks)), ["app", "backend", "command", "opened"])
         self.assertIn("Custom shortcuts: line 5", self.vela.log_text())
 
     def test_vela_keeps_its_own(self):
@@ -1666,7 +1669,7 @@ class QtShell(RealShell):
             self.assertLess(configure.start(), ack.start())
             self.assertLess(ack.start(), attach.start())
             self.assertRegex(log, rf'wl_surface{surface}\.destroy\(\)',
-                          "hidden Start menu retained its native surface and EGL buffer queue")
+                          "hidden Start menu retained its native surface and buffer queue")
             # Blur must bind to the newly created surface on every reopening,
             # rather than retain hooks to a destroyed Qt platform window.
             effect = re.search(r'get_background_effect\(new id ext_background_effect_surface_v1'

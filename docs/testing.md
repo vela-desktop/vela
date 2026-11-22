@@ -560,7 +560,9 @@ leaves the group itself (`setsid`) is not followed.
 
 `tests/functional/test_shell.py` runs the actual Qt shell with a private D-Bus
 session and isolated configuration, using threaded Vulkan rendering, CPU
-compositor synchronization and a 100 Hz output. It checks repeated Super
+compositor synchronization and a 100 Hz output. The custom shortcut test checks
+that the shell renders with Vulkan while the launched process inherits the original
+Qt backend settings. The suite checks repeated Super
 toggles, reopening during the close animation, and the Wayland trace of each
 native surface lifetime: configure and ACK precede the first buffer, the hidden
 menu releases its native surface, and blur binds to the new surface on reopen.

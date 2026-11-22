@@ -16,10 +16,4 @@ void configureGrayscaleAntialiasing();
 // Explicit and idempotent: call before QGuiApplication / Qt Quick startup.
 void configureApplication();
 
-// Render Qt Quick through Vulkan, like the compositor. A Vela architecture
-// choice, not a platform default. An explicit QSG_RHI_BACKEND is respected
-// (debugging); launched apps do not inherit the default. Call before the
-// first QQuickWindow exists.
-void configureVulkan();
-
 } // namespace vela::rendering
