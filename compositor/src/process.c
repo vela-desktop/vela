@@ -19,6 +19,28 @@
 #include <wayland-server-core.h>
 #include <wlr/util/log.h>
 
+// `path` in single quotes for sh, a ' in it as '\''.
+static bool quote(char *command, size_t size, const char *path)
+{
+    if (size < 3) {
+        return false;
+    }
+    size_t n = 0;
+    command[n++] = '\'';
+    for (const char *c = path; *c; ++c) {
+        const char *piece = *c == '\'' ? "'\\''" : c;
+        const size_t length = *c == '\'' ? 4 : 1;
+        if (n + length + 2 > size) { // and the closing quote, the NUL
+            return false;
+        }
+        memcpy(command + n, piece, length);
+        n += length;
+    }
+    command[n++] = '\'';
+    command[n] = '\0';
+    return true;
+}
+
 bool vela_find_program(const char *name, const char *build_dir, char *command, size_t size)
 {
     char self[PATH_MAX];
@@ -34,10 +56,10 @@ bool vela_find_program(const char *name, const char *build_dir, char *command, s
     char path[PATH_MAX];
     if ((vela_format(path, sizeof(path), "%s/%s", self, name) && access(path, X_OK) == 0)
         || (vela_format(path, sizeof(path), "%s/../%s/%s", self, build_dir, name) && access(path, X_OK) == 0)) {
-        return vela_format(command, size, "'%s'", path);
+        return quote(command, size, path);
     }
     return vela_format(path, sizeof(path), "%s/%s", VELA_LIBEXECDIR, name) && access(path, X_OK) == 0
-        && vela_format(command, size, "'%s'", path);
+        && quote(command, size, path);
 }
 
 void vela_exec_shell(const char *command)
