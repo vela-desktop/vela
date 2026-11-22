@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Controls as C
 
 // The Windows 11 dialog inside a window (ContentDialog): above the content,
 // which darkens; title, text, any content (the default property) and up to
@@ -9,7 +10,8 @@ import QtQuick
 // enabled}]). `chosen(value)` with the pressed one; Esc chooses "cancel",
 // Enter the accent button. It grows in from 1.05 and fades out (PanelMotion);
 // close() without a value closes it without choosing. One choice per
-// opening: once it leaves, nothing chooses again.
+// opening: once it leaves, nothing chooses again. Taller than the window
+// allows (24 above and below), the body scrolls and the buttons stay.
 //
 // Expressive (M3's basic dialog): extra large corners (28), the headline in
 // headline small, 24 around and between the text and the actions, no
@@ -79,7 +81,7 @@ Item {
         Rectangle {
             id: panel
             width: parent.width
-            height: body.height + footer.height
+            height: scroller.height + footer.height
             radius: dialog.expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay
             color: Theme.dialog
             border.width: dialog.expressive ? 0 : 1
@@ -88,41 +90,56 @@ Item {
             Keys.onReturnPressed: dialog.accept()
             Keys.onEnterPressed: dialog.accept()
 
-            Column {
-                id: body
-                x: 24
-                width: parent.width - 48
-                topPadding: 24
-                bottomPadding: 24
-                // M3: 16 between the headline and the body.
-                spacing: dialog.expressive ? 16 : 12
-                Text {
-                    objectName: "title"
-                    width: parent.width
-                    text: dialog.title
-                    visible: text !== ""
-                    color: Theme.text
-                    // M3's headline small: 24 (Regular) where the body is
-                    // 14, scaled with a theme's body size.
-                    font.pixelSize: dialog.expressive ? Math.round(Theme.fontBody * 24 / 14) : Theme.fontSubtitle
-                    font.weight: dialog.expressive ? Font.Normal : Font.DemiBold
-                    wrapMode: Text.Wrap
+            Flickable {
+                id: scroller
+                objectName: "dialogBody"
+                width: parent.width
+                height: Math.min(body.height, Math.max(0, dialog.height - 48 - footer.height))
+                contentWidth: width
+                contentHeight: body.height
+                clip: contentHeight > height
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                C.ScrollBar.vertical: C.ScrollBar {
+                    policy: scroller.interactive ? C.ScrollBar.AsNeeded : C.ScrollBar.AlwaysOff
                 }
-                Text {
-                    objectName: "text"
-                    width: parent.width
-                    text: dialog.text
-                    visible: text !== ""
-                    // M3: the supporting text in on surface variant.
-                    color: dialog.expressive ? Theme.textSecondary : Theme.text
-                    font.pixelSize: Theme.fontBody
-                    wrapMode: Text.Wrap
-                }
-                Item {
-                    id: extra
-                    width: parent.width
-                    height: childrenRect.height
-                    visible: children.length > 0
+
+                Column {
+                    id: body
+                    x: 24
+                    width: scroller.width - 48
+                    topPadding: 24
+                    bottomPadding: 24
+                    // M3: 16 between the headline and the body.
+                    spacing: dialog.expressive ? 16 : 12
+                    Text {
+                        objectName: "title"
+                        width: parent.width
+                        text: dialog.title
+                        visible: text !== ""
+                        color: Theme.text
+                        // M3's headline small: 24 (Regular) where the body is
+                        // 14, scaled with a theme's body size.
+                        font.pixelSize: dialog.expressive ? Math.round(Theme.fontBody * 24 / 14) : Theme.fontSubtitle
+                        font.weight: dialog.expressive ? Font.Normal : Font.DemiBold
+                        wrapMode: Text.Wrap
+                    }
+                    Text {
+                        objectName: "text"
+                        width: parent.width
+                        text: dialog.text
+                        visible: text !== ""
+                        // M3: the supporting text in on surface variant.
+                        color: dialog.expressive ? Theme.textSecondary : Theme.text
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+                    Item {
+                        id: extra
+                        width: parent.width
+                        height: childrenRect.height
+                        visible: children.length > 0
+                    }
                 }
             }
             Rectangle {
