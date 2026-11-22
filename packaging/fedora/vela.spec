@@ -44,6 +44,7 @@ BuildRequires:  wayland-devel
 BuildRequires:  wayland-protocols-devel
 BuildRequires:  wlroots-devel >= 0.20
 BuildRequires:  libxkbcommon-devel
+BuildRequires:  pkgconfig(xkbregistry)
 BuildRequires:  pixman-devel
 BuildRequires:  libinput-devel
 BuildRequires:  libdrm-devel

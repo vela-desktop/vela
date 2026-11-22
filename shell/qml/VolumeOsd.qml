@@ -49,6 +49,15 @@ Window {
             root.show()
         }
     }
+    // The Caps Lock display (CapsLockOsd.qml) takes the place.
+    Connections {
+        target: Shell
+        function onCapsLockChanged() {
+            if (motion.opened) {
+                motion.close()
+            }
+        }
+    }
     function setVolume(value) {
         if (app) {
             if (app.muted) Audio.setAppMuted(app.key, false)

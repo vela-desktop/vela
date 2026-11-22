@@ -14,6 +14,7 @@
 #include <QDBusReply>
 #include <QDBusVariant>
 #include <QScopeGuard>
+#include <QStandardPaths>
 
 #include <csignal>
 #include <sys/stat.h>
@@ -296,12 +297,14 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
     }
 
-    // None in PATH, or one that can't be run.
+    // None in PATH nor in desktop files, or one that can't be run.
     void withoutTerminal()
     {
         QDir().mkpath(fake(QStringLiteral("empty")));
         QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), QString() },
-            { QStringLiteral("PATH"), fake(QStringLiteral("empty")) }, { QStringLiteral("VELA_TERMINAL"), QString() } }));
+            { QStringLiteral("PATH"), fake(QStringLiteral("empty")) }, { QStringLiteral("VELA_TERMINAL"), QString() },
+            { QStringLiteral("XDG_DATA_HOME"), fake(QStringLiteral("empty")) },
+            { QStringLiteral("XDG_DATA_DIRS"), fake(QStringLiteral("empty")) } }));
         QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).errorName(),
             QStringLiteral("org.vela.Updates.Error.NoTerminal"));
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
@@ -310,6 +313,23 @@ private Q_SLOTS:
         QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).errorName(),
             QStringLiteral("org.vela.Updates.Error.NoTerminal"));
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+    }
+
+    // Win+Enter and the updater both delegate terminal-specific arguments to XDG.
+    void installFindsTheTerminalOfWinEnter()
+    {
+        QDir().mkpath(fake(QStringLiteral("tools")));
+        QVERIFY(QFile::link(QStandardPaths::findExecutable(QStringLiteral("mv")), fake(QStringLiteral("tools/mv"))));
+        QVERIFY(QFile::link(fake(QStringLiteral("terminal-program")), fake(QStringLiteral("tools/xdg-terminal-exec"))));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), QString() },
+            { QStringLiteral("PATH"), fake(QStringLiteral("tools")) },
+            { QStringLiteral("VELA_TERMINAL"), QString() } }));
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).type(), QDBusMessage::ReplyMessage);
+        QTRY_VERIFY(QFile::exists(fake(QStringLiteral("terminal"))));
+        const QStringList terminal =
+            QString::fromUtf8(read(fake(QStringLiteral("terminal")))).split(u'\n', Qt::SkipEmptyParts);
+        QCOMPARE(terminal.mid(0, 2), (QStringList { QStringLiteral("sh"), QStringLiteral("-c") }));
+        QCOMPARE(terminal.value(4), fake(QStringLiteral("vela-update")));
     }
 
     void installRunsInTheTerminal()

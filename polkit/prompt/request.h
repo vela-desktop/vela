@@ -47,6 +47,9 @@ class Request : public QObject {
 
     // The prompt is fading out: it exits shortly.
     Q_PROPERTY(bool closing READ closing NOTIFY closingChanged)
+    // Caps Lock is on, from the keyboard's real state (capslock.h,
+    // docs/keyboard.md §8.2).
+    Q_PROPERTY(bool capsLock READ capsLock NOTIFY capsLockChanged)
 
 public:
     // No default constructor: QML must use create(), that is this
@@ -78,6 +81,8 @@ public:
     QString errorText() const { return m_errorText; }
     bool unavailable() const { return m_unavailable; }
     bool closing() const { return m_closing; }
+    bool capsLock() const { return m_capsLock; }
+    void setCapsLock(bool on);
 
     // From the interface.
     Q_INVOKABLE void respond(const QString& answer);
@@ -90,6 +95,7 @@ signals:
     void shownChanged();
     void conversationChanged();
     void closingChanged();
+    void capsLockChanged();
     // Wrong answer: the field empties and shakes.
     void retried();
     // A new question from PAM: the field empties and takes the focus.
@@ -116,6 +122,7 @@ private:
     bool m_asking = false;
     QString m_promptText;
     bool m_echo = false;
+    bool m_capsLock = false;
     bool m_checking = false;
     QString m_infoText;
     QString m_errorText;

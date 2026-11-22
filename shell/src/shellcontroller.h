@@ -169,6 +169,10 @@ signals:
     // The keyboard's media keys: "play-pause", "pause", "stop", "next",
     // "previous".
     void mediaKeyPressed(const QString& key);
+    // Caps Lock turned on or off by a key (docs/keyboard.md §8.3).
+    void capsLockChanged(bool on);
+    // A custom shortcut's combination, normalized (docs/keyboard.md §9.5).
+    void shortcutRequested(const QString& combo);
     // The window menu (right click on the title bar, Alt+Space): on which
     // output and where, in output coordinates.
     void windowMenuRequested(const QString& window, const QString& output, int x, int y, bool maximized,

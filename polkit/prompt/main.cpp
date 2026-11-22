@@ -15,6 +15,7 @@
 #include "renderingpolicy.h"
 #include "controls.h"
 #include "language.h"
+#include "capslock.h"
 #include "request.h"
 
 #include <LayerShellQt/Window>
@@ -162,12 +163,18 @@ int main(int argc, char* argv[])
 
     Windows windows(engine);
     bool shown = false;
+    CapsLock capsLock;
+    QObject::connect(&capsLock, &CapsLock::changed, &request, &Request::setCapsLock);
     QObject::connect(&request, &Request::shownChanged, &app, [&] {
         if (!shown && request.shown()) {
             shown = true;
             if (!windows.show()) {
                 request.cancel();
+                return;
             }
+            // The windows are up, on Wayland: from now on the warning
+            // follows the seat's keyboard, whenever it has one.
+            capsLock.start();
         }
     });
     QObject::connect(&request, &Request::closingChanged, &app, [&] {

@@ -8,7 +8,7 @@ import Vela.Controls
 // Dialog: the buttons it is given, Esc and Enter, a disabled accent button,
 // closing without choosing, and its panel's PanelMotion: it fades out and
 // hides, and a reopening during that keeps it (docs/visual-coherence.md
-// §6.9).
+// §6.9). Content taller than the window scrolls under fixed buttons.
 Item {
     id: root
     width: 800
@@ -27,6 +27,12 @@ Item {
         Rectangle { id: extra; width: parent.width; height: 40 }
     }
     SignalSpy { id: chosen; target: dialog; signalName: "chosen" }
+
+    Dialog {
+        id: tall
+        title: "Tall"
+        Rectangle { id: tallContent; width: parent.width; height: 1000 }
+    }
 
     TestCase {
         name: "Dialog"
@@ -117,6 +123,25 @@ Item {
             verify(!dialog.closing)
             wait(Theme.normal * 2)
             verify(dialog.visible)
+        }
+
+        function test_taller_than_the_window_scrolls() {
+            dialog.open()
+            verify(!findChild(dialog, "dialogBody").interactive, "short content doesn't scroll")
+            tall.open()
+            wait(Theme.normal * 2) // past the grow-in from 1.05
+            const body = findChild(tall, "dialogBody")
+            const button = findChild(tall, "button:ok")
+            const top = body.mapToItem(root, 0, 0).y
+            const bottom = button.mapToItem(root, 0, button.height).y
+            verify(top >= 24, "the panel starts at " + top)
+            verify(bottom <= root.height - 24, "the button ends at " + bottom)
+            verify(body.interactive)
+            body.contentY = body.contentHeight - body.height
+            const end = tallContent.mapToItem(root, 0, tallContent.height).y
+            verify(end <= button.mapToItem(root, 0, 0).y, "the end of the content scrolls into view")
+            tall.close()
+            tryCompare(tall, "visible", false, 3000)
         }
     }
 }

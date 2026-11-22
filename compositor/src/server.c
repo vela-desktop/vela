@@ -416,6 +416,13 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     }
 
     setenv("WAYLAND_DISPLAY", socket, 1);
+    // For Settings, which mustn't offer the nested Alt rows (Alt+E...) as
+    // free combinations; never inherited from a Vela this one runs in.
+    if (server->nested) {
+        setenv("VELA_NESTED", "1", 1);
+    } else {
+        unsetenv("VELA_NESTED");
+    }
     if (!vela_vulkan_configure_clients(server->vulkan)) return false;
     // Only in the real session (from SDDM or a console): nested or headless,
     // Vela stays a guest of the environment it finds.

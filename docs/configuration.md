@@ -40,9 +40,12 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
 | `update-check-interval` | `24` | Hours between automatic checks: `6`, `12`, `24`, `48` or `168` (7 days). Set in Settings > System > Updates; invalid values fall back to 24 hours. |
-| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
+| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. Empty: systemd-localed's layout (`localectl`), then `us`; other desktops' settings are not read. Settings > Keyboard > Layouts. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
-| `keyboard-options` | empty | XKB options. |
+| `keyboard-options` | system | XKB options, comma-separated. When the key is present, even empty, these are the options and systemd-localed's are not used; Settings > Keyboard > Typing writes its Caps Lock, Compose, bottom-left and keypad choices here and keeps the other options. |
+| `numlock` | `off` | Num Lock when Vela starts: `off`, `on`, or `last` (as it was at the end of the last session, kept in `$XDG_STATE_HOME/vela/numlock`). Settings > Keyboard > Typing. |
+| `caps-lock-osd` | `yes` | Shows *Caps Lock on* or *Caps Lock off* at the bottom of the screen for a moment each time Caps Lock changes, on the lock screen too. Settings > Keyboard > Typing. |
+| `super-opens-start` | `yes` | The Win key pressed and released by itself opens Start. With `no` it does nothing; Win shortcuts, the taskbar numbers while Win is held and the Start button are unchanged. Settings > Keyboard > Typing. |
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |
@@ -75,6 +78,10 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `touchpad-four-fingers` | `desktop` | Four-finger gesture mode. |
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
+
+### Custom shortcuts
+
+The user's own keyboard shortcuts live in `$XDG_CONFIG_HOME/vela/shortcuts.conf`, one `combination=kind target` per line: `Ctrl+Alt+t=app org.kde.konsole.desktop`, `Shift+Super+k=command kcalc`, `Super+FK01=open https://example.org/`. Settings > Keyboard > Custom shortcuts writes it; the compositor rereads it on `reload-config` and skips, with a log line, a line that doesn't parse ([keyboard](keyboard.md#94-the-file)).
 
 ### Theme files
 
@@ -335,8 +342,8 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_SCALE` | Force output scale. A single value applies to all outputs (`1.25`); per-output values can be supplied as `DP-1=1.5,HDMI-A-1=1`. Without it, Vela chooses a scale from each monitor's DPI. |
 | `VELA_OUTPUT_SIZE` | Resolution/refresh for nested or headless outputs, for example `1920x1080@144`. |
 | `VELA_NATURAL_SCROLL=0` | Force classic touchpad scrolling; this override wins over the stored natural-scrolling setting. |
-| `XKB_DEFAULT_LAYOUT` | Initial keyboard layout, for example `it`. |
-| `VELA_TERMINAL` | Terminal launched by Super+Enter. Default: `konsole`. |
+| `XKB_DEFAULT_LAYOUT` | Keyboard layout, for example `it`; wins over `keyboard-layout`, and Settings > Keyboard > Layouts says so. `XKB_DEFAULT_VARIANT`, `_OPTIONS`, `_MODEL` and `_RULES` work the same, field by field. |
+| `VELA_TERMINAL` | Terminal for Super+Enter and updates, a command with options, unless one is chosen in Settings > Apps > Default apps. The packaged `xdg-terminal-exec` resolves XDG preferences ([keyboard](keyboard.md#11-the-terminal)). |
 
 ### Presentation, VRR and power
 
@@ -369,6 +376,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 |---|---|
 | `VELA_WALLPAPER` | Override the wallpaper image. SVG, PNG, JPEG and other supported formats can be used. |
 | `VELA_ICON_THEME` | Fallback icon theme when Qt cannot resolve one. Default: `breeze-dark`. |
+| `VELA_NESTED=1` | Set by the compositor for its apps when it runs in a window of another desktop (never inherited otherwise): Settings then treats the nested Alt shortcuts (Alt+E...) as taken. |
 
 ## Development and renderer diagnostics
 

@@ -106,6 +106,19 @@ def type_and_enter(vela, text):
     vela.input("sleep", KEYMAP_PAUSE, "type", text, "sleep", "80", "key", "Return", "sleep", "80")
 
 
+def caution_pixels(image):
+    """Pixels in the caution color (Theme.caution, dark or light), every
+    other one: the Caps Lock warning's text."""
+    count = 0
+    for y in range(0, image.height, 2):
+        row = image.rows[y]
+        for x in range(0, image.width, 2):
+            r, g, b = row[x * 3], row[x * 3 + 1], row[x * 3 + 2]
+            if (r > 220 and 200 < g < 240 and b < 60) or (130 < r < 175 and 70 < g < 115 and b < 40):
+                count += 1
+    return count
+
+
 class PromptTests(unittest.TestCase):
     def setUp(self):
         self.vela = Session()
@@ -145,6 +158,26 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(prompt.read_line(), "response first")
         type_and_enter(self.vela, "second")  # PAM hasn't answered yet
         prompt.assert_silent()
+
+    def test_caps_lock_warning_follows_the_key(self):
+        """The warning under the field follows Caps Lock's real state
+        (docs/keyboard.md §8.2), not the letters typed."""
+        prompt = Prompt(self.vela)
+        prompt.show()
+        self.vela.input("sleep", KEYMAP_PAUSE)
+        before = caution_pixels(self.vela.pixels())
+        self.vela.input("key", "Caps_Lock", "sleep", "80")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) > before + 20,
+                           what="the Caps Lock warning")
+        # A digit typed meanwhile doesn't change it, and the answer keeps
+        # what was typed.
+        self.vela.input("type", "1", "sleep", "80")
+        self.assertGreater(caution_pixels(self.vela.pixels()), before + 20)
+        self.vela.input("key", "Caps_Lock", "sleep", "80")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) <= before + 5,
+                           what="the Caps Lock warning gone")
+        self.vela.input("key", "Return", "sleep", "80")
+        self.assertEqual(prompt.read_line(), "response 1")
 
     def test_escape_says_no(self):
         prompt = Prompt(self.vela)
@@ -255,6 +288,35 @@ class PromptTests(unittest.TestCase):
         self.vela.command("window active move")
         type_and_enter(self.vela, PASSWORD)
         self.assertEqual(prompt.read_line(), "response " + PASSWORD)
+
+
+class PromptKeyboardReplugged(unittest.TestCase):
+    """The Caps Lock warning after the last keyboard went and a mouse came
+    before the next keyboard: the seat loses its keyboard capability and
+    gets it back, with a new wl_keyboard for Qt and the prompt."""
+
+    def setUp(self):
+        self.vela = Session()
+        self.vela.start()
+        self.addCleanup(self.vela.stop)
+
+    def test_the_warning_follows_a_new_keyboard(self):
+        prompt = Prompt(self.vela)
+        with self.vela.input_session() as send:
+            prompt.show()
+            send("sleep", KEYMAP_PAUSE)
+            before = caution_pixels(self.vela.pixels())
+        # That keyboard is gone. A new vela-input adds its pointer first, then
+        # its keyboard: the seat drops the capability, then has it again.
+        Session.input(self.vela, "sleep", KEYMAP_PAUSE, "key", "Caps_Lock", "sleep", "200")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) > before + 20,
+                           what="the Caps Lock warning, with the new keyboard")
+        # Again: a virtual keyboard keeps its own locks (the compositor syncs
+        # real ones), so this one starts with Caps Lock off, and the warning
+        # goes with it. A prompt still on the old wl_keyboard would keep it.
+        Session.input(self.vela, "sleep", KEYMAP_PAUSE)
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) <= before + 5,
+                           what="the Caps Lock warning gone with the next keyboard")
 
 
 class PromptOnTwoOutputs(unittest.TestCase):

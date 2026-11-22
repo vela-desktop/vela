@@ -128,6 +128,21 @@ class Preferences : public QObject {
     Q_PROPERTY(QVariantList keyboardLayouts READ keyboardLayouts NOTIFY keyboardChanged)
     Q_PROPERTY(int repeatDelay READ repeatDelay WRITE setRepeatDelay NOTIFY keyboardChanged)
     Q_PROPERTY(int repeatRate READ repeatRate WRITE setRepeatRate NOTIFY keyboardChanged)
+    // Keyboard > Typing's keys (docs/keyboard.md §6): each a value of
+    // keyboardoptions.h's controls, or "custom" for an option of vela.conf
+    // they don't offer. keyboardOptions: all the XKB options, as the
+    // compositor gets them.
+    Q_PROPERTY(QString capsKey READ capsKey WRITE setCapsKey NOTIFY keyboardChanged)
+    Q_PROPERTY(QString composeKey READ composeKey WRITE setComposeKey NOTIFY keyboardChanged)
+    Q_PROPERTY(QString cornerKeys READ cornerKeys WRITE setCornerKeys NOTIFY keyboardChanged)
+    Q_PROPERTY(QString numpadKeys READ numpadKeys WRITE setNumpadKeys NOTIFY keyboardChanged)
+    Q_PROPERTY(QString keyboardOptions READ keyboardOptions NOTIFY keyboardChanged)
+    // Num Lock when Vela starts: "off", "on" or "last" (docs/keyboard.md §7).
+    Q_PROPERTY(QString numLock READ numLock WRITE setNumLock NOTIFY keyboardChanged)
+    // caps-lock-osd=: the Caps Lock display on every toggle (docs/keyboard.md §8.3).
+    Q_PROPERTY(bool capsLockOsd READ capsLockOsd WRITE setCapsLockOsd NOTIFY keyboardChanged)
+    // super-opens-start=: the Win key alone opens Start (docs/keyboard.md §10).
+    Q_PROPERTY(bool superOpensStart READ superOpensStart WRITE setSuperOpensStart NOTIFY keyboardChanged)
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
     // Kelvin, 1700-6500 (night-light-temperature; the older strength without it).
@@ -313,6 +328,21 @@ public:
     Q_INVOKABLE void removeKeyboardLayout(int index);
     Q_INVOKABLE void moveKeyboardLayoutUp(int index);
     int repeatDelay() const { return m_repeatDelay; }
+    QString capsKey() const;
+    QString composeKey() const;
+    QString cornerKeys() const;
+    QString numpadKeys() const;
+    void setCapsKey(const QString& value);
+    void setComposeKey(const QString& value);
+    void setCornerKeys(const QString& value);
+    void setNumpadKeys(const QString& value);
+    QString keyboardOptions() const { return m_keyboardOptions.join(u','); }
+    QString numLock() const { return m_numLock; }
+    bool capsLockOsd() const { return m_capsLockOsd; }
+    void setCapsLockOsd(bool on);
+    bool superOpensStart() const { return m_superOpensStart; }
+    void setSuperOpensStart(bool on);
+    void setNumLock(const QString& mode);
     void setRepeatDelay(int ms);
     int repeatRate() const { return m_repeatRate; }
     void setRepeatRate(int perSecond);
@@ -440,6 +470,7 @@ private:
         m_restoredFromFile = false;
     }
     QString compositorValue(const QString& key) const;
+    QStringList currentKeyboardOptions() const;
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
     void watchConfig();
@@ -496,6 +527,12 @@ private:
     QVariantMap m_surfaceStyles;
     QVariantList m_layouts;
     int m_repeatDelay = 400;
+    // vela.conf's keyboard-options, or the system's while it has none.
+    QStringList m_keyboardOptions;
+    QString m_numLock = QStringLiteral("off");
+    bool m_capsLockOsd = true;
+    bool m_superOpensStart = true;
+    void setKeyChoice(int control, const QString& value);
     int m_repeatRate = 30;
     bool m_nightLight = false;
     int m_nightTemperature = 4200;
