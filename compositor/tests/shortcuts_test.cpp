@@ -24,9 +24,10 @@ extern "C" {
 
 namespace {
 
-// A keyboard with a keymap, whose keys are pressed by evdev code.
+// A keyboard with a keymap, whose keys are pressed by evdev code. Only the
+// options given apply, whatever XKB_DEFAULT_* say.
 struct Keyboard {
-    xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
     xkb_keymap *keymap = nullptr;
     xkb_state *state = nullptr;
     explicit Keyboard(const char *layout, const char *options = nullptr)
@@ -35,7 +36,7 @@ struct Keyboard {
         names.rules = "evdev";
         names.model = "pc105";
         names.layout = layout;
-        names.options = options;
+        names.options = options ? options : "";
         keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
         state = keymap ? xkb_state_new(keymap) : nullptr;
     }
@@ -120,6 +121,59 @@ TEST(Shortcuts, ModifiersAreExact)
     row = vela_binding_taken(&press, &modes);
     ASSERT_NE(row, nullptr);
     EXPECT_EQ(row->action, VELA_ACTION_LOCK);
+}
+
+TEST(Shortcuts, WinPlusWithOrWithoutShift)
+{
+    const vela_modes modes = normal();
+    // us: + is Shift on the = key; Win+= and Win+Shift+= both zoom in.
+    Keyboard us("us");
+    ASSERT_NE(us.keymap, nullptr);
+    us.hold(KEY_LEFTMETA);
+    vela_press press = us.press(KEY_EQUAL);
+    const vela_binding *row = vela_binding_taken(&press, &modes);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->action, VELA_ACTION_ZOOM_IN);
+    us.hold(KEY_LEFTSHIFT);
+    press = us.press(KEY_EQUAL);
+    EXPECT_EQ(press.mods, VELA_MOD_SUPER | VELA_MOD_SHIFT);
+    row = vela_binding_taken(&press, &modes);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->action, VELA_ACTION_ZOOM_IN);
+    // it: + has its own key.
+    Keyboard it("it");
+    ASSERT_NE(it.keymap, nullptr);
+    it.hold(KEY_LEFTMETA);
+    press = it.press(KEY_RIGHTBRACE);
+    row = vela_binding_taken(&press, &modes);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->action, VELA_ACTION_ZOOM_IN);
+}
+
+TEST(Shortcuts, WinSpaceWithAnyOtherModifier)
+{
+    // grp:win_space_toggle's key type checks Win only: Win+Shift+Space and
+    // Win+Ctrl+Space switch the layout too, so they are taken; Space and
+    // Shift+Space aren't.
+    const vela_modes modes = normal();
+    Keyboard us("us");
+    ASSERT_NE(us.keymap, nullptr);
+    vela_press press = us.press(KEY_SPACE);
+    EXPECT_EQ(vela_binding_taken(&press, &modes), nullptr);
+    us.hold(KEY_LEFTSHIFT);
+    press = us.press(KEY_SPACE);
+    EXPECT_EQ(vela_binding_taken(&press, &modes), nullptr);
+    us.hold(KEY_LEFTMETA);
+    press = us.press(KEY_SPACE);
+    const vela_binding *row = vela_binding_taken(&press, &modes);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->action, VELA_ACTION_NEXT_LAYOUT);
+    us.release(KEY_LEFTSHIFT);
+    us.hold(KEY_LEFTCTRL);
+    press = us.press(KEY_SPACE);
+    row = vela_binding_taken(&press, &modes);
+    ASSERT_NE(row, nullptr);
+    EXPECT_EQ(row->action, VELA_ACTION_NEXT_LAYOUT);
 }
 
 TEST(Shortcuts, AltGrIsNotAModifier)
@@ -512,6 +566,7 @@ TEST(Shortcuts, EveryRowOfTheDocumentResolvesToItsAction)
     nested.nested = true;
     std::string line;
     std::string section;
+    size_t columns = 0; // the section's, from its header row
     size_t rows = 0;
     while (std::getline(file, line)) {
         if (line.rfind("## ", 0) == 0) {
@@ -523,7 +578,13 @@ TEST(Shortcuts, EveryRowOfTheDocumentResolvesToItsAction)
             continue;
         }
         const std::vector<std::string> cells = split_row(line);
-        if (cells.empty() || cells[0] == "Action") {
+        if (!cells.empty() && cells[0] == "Action") {
+            columns = cells.size();
+            continue;
+        }
+        if (cells.size() != columns || columns < 2) {
+            ADD_FAILURE() << "a row of docs/shortcuts.md with " << cells.size() << " cells where its section has "
+                          << columns << ": " << line;
             continue;
         }
         const auto it = expected.find(cells[0]);
@@ -534,7 +595,7 @@ TEST(Shortcuts, EveryRowOfTheDocumentResolvesToItsAction)
         }
         ++rows;
         check(cells[0], cells[1], it->second.first, real);
-        if (cells.size() > 2) {
+        if (columns > 2) {
             check(cells[0], cells[2], it->second.second, nested);
         }
     }

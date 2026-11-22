@@ -44,7 +44,7 @@ enum vela_action {
 
 // When a row applies.
 enum {
-    VELA_WHEN_ANY_MODS = 1 << 0, // whatever the modifiers (media keys)
+    VELA_WHEN_ANY_MODS = 1 << 0, // its modifiers and any others (media keys: none and any)
     VELA_WHEN_NESTED = 1 << 1, // Vela in a window of another desktop
     VELA_WHEN_COLOR_FILTER_SHORTCUT = 1 << 2, // color-filters-shortcut=yes
     VELA_WHEN_MAGNIFIER = 1 << 3, // the magnifier is on

@@ -14,11 +14,13 @@ struct xkb_keymap *vela_shortcuts_us_keymap(void)
 {
     static struct xkb_keymap *keymap;
     if (!keymap) {
-        struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        // Plain US whatever XKB_DEFAULT_* say: caps:swapescape there would
+        // move Escape's position.
+        struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_ENVIRONMENT_NAMES);
         if (!context) {
             return NULL;
         }
-        const struct xkb_rule_names names = { .rules = "evdev", .model = "pc105", .layout = "us" };
+        const struct xkb_rule_names names = { .rules = "evdev", .model = "pc105", .layout = "us", .options = "" };
         keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
         xkb_context_unref(context);
     }

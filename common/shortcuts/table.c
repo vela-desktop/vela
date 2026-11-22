@@ -75,6 +75,7 @@ static const struct vela_binding table[] = {
     SYM(NORMAL, SUPER | CTRL, XKB_KEY_c, VELA_WHEN_COLOR_FILTER_SHORTCUT, VELA_ACTION_COLOR_FILTERS, NULL),
     SYM(NORMAL, SUPER, XKB_KEY_plus, 0, VELA_ACTION_ZOOM_IN, NULL),
     SYM(NORMAL, SUPER, XKB_KEY_equal, 0, VELA_ACTION_ZOOM_IN, NULL), // the + key of us
+    SYM(NORMAL, SUPER | SHIFT, XKB_KEY_equal, 0, VELA_ACTION_ZOOM_IN, NULL), // ...where + takes Shift
     CODE(NORMAL, SUPER, KEY_KPPLUS, 0, VELA_ACTION_ZOOM_IN, NULL),
     SYM(NORMAL, SUPER, XKB_KEY_minus, VELA_WHEN_MAGNIFIER, VELA_ACTION_ZOOM_OUT, NULL),
     CODE(NORMAL, SUPER, KEY_KPMINUS, VELA_WHEN_MAGNIFIER, VELA_ACTION_ZOOM_OUT, NULL),
@@ -126,8 +127,9 @@ static const struct vela_binding table[] = {
         false },
     { NORMAL, SUPER | SHIFT, VELA_KEY_CODE, KEY_1, 10, VELA_WHEN_NUMBERS_DESKTOPS, VELA_ACTION_TASKBAR_NUMBER, "move",
         false },
-    // Win+Space: the next layout, by XKB itself when there are several.
-    CODE(NORMAL, SUPER, KEY_SPACE, 0, VELA_ACTION_NEXT_LAYOUT, NULL),
+    // Win+Space: the next layout, by XKB itself when there are several. Its
+    // key type looks at Win alone, so Win+Shift+Space switches too.
+    CODE(NORMAL, SUPER, KEY_SPACE, VELA_WHEN_ANY_MODS, VELA_ACTION_NEXT_LAYOUT, NULL),
 };
 
 const struct vela_binding *vela_bindings_table(size_t *count)
@@ -148,7 +150,7 @@ static bool applies(const struct vela_binding *row, const struct vela_modes *mod
 
 static bool matches(const struct vela_binding *row, const struct vela_press *press)
 {
-    if (!(row->when & VELA_WHEN_ANY_MODS) && row->mods != press->mods) {
+    if ((row->when & VELA_WHEN_ANY_MODS) ? (press->mods & row->mods) != row->mods : row->mods != press->mods) {
         return false;
     }
     const uint32_t key = row->kind == VELA_KEY_SYM ? press->sym

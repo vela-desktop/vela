@@ -65,6 +65,11 @@ private slots:
     void init()
     {
         qputenv("XDG_CONFIG_HOME", m_config.path().toUtf8());
+        // Plain keymaps, whatever the developer's XKB_DEFAULT_* say.
+        for (const char* name : { "XKB_DEFAULT_RULES", "XKB_DEFAULT_MODEL", "XKB_DEFAULT_LAYOUT", "XKB_DEFAULT_VARIANT",
+                 "XKB_DEFAULT_OPTIONS" }) {
+            qunsetenv(name);
+        }
         QFile::remove(CustomShortcuts::path());
         m_written = 0;
         m_modes = {};
