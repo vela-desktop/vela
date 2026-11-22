@@ -290,6 +290,35 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(prompt.read_line(), "response " + PASSWORD)
 
 
+class PromptKeyboardReplugged(unittest.TestCase):
+    """The Caps Lock warning after the last keyboard went and a mouse came
+    before the next keyboard: the seat loses its keyboard capability and
+    gets it back, with a new wl_keyboard for Qt and the prompt."""
+
+    def setUp(self):
+        self.vela = Session()
+        self.vela.start()
+        self.addCleanup(self.vela.stop)
+
+    def test_the_warning_follows_a_new_keyboard(self):
+        prompt = Prompt(self.vela)
+        with self.vela.input_session() as send:
+            prompt.show()
+            send("sleep", KEYMAP_PAUSE)
+            before = caution_pixels(self.vela.pixels())
+        # That keyboard is gone. A new vela-input adds its pointer first, then
+        # its keyboard: the seat drops the capability, then has it again.
+        Session.input(self.vela, "sleep", KEYMAP_PAUSE, "key", "Caps_Lock", "sleep", "200")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) > before + 20,
+                           what="the Caps Lock warning, with the new keyboard")
+        # Again: a virtual keyboard keeps its own locks (the compositor syncs
+        # real ones), so this one starts with Caps Lock off, and the warning
+        # goes with it. A prompt still on the old wl_keyboard would keep it.
+        Session.input(self.vela, "sleep", KEYMAP_PAUSE)
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) <= before + 5,
+                           what="the Caps Lock warning gone with the next keyboard")
+
+
 class PromptOnTwoOutputs(unittest.TestCase):
     def test_dialog_under_the_pointer_and_veils_elsewhere(self):
         with Session(scale="HEADLESS-1=1,HEADLESS-2=1") as vela:

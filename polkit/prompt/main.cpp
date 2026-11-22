@@ -172,13 +172,9 @@ int main(int argc, char* argv[])
                 request.cancel();
                 return;
             }
-            // The windows are up: Qt's seat is there, and its keyboard if
-            // the seat has one; otherwise when a keyboard gives a window
-            // the focus.
-            if (!capsLock.start()) {
-                QObject::connect(
-                    &app, &QGuiApplication::focusWindowChanged, &capsLock, [&capsLock] { capsLock.start(); });
-            }
+            // The windows are up, on Wayland: from now on the warning
+            // follows the seat's keyboard, whenever it has one.
+            capsLock.start();
         }
     });
     QObject::connect(&request, &Request::closingChanged, &app, [&] {
