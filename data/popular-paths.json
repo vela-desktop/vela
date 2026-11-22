@@ -1,18 +1,18 @@
 {
-  "collected_at": "2026-11-21T10:59:24+00:00",
+  "collected_at": "2026-11-22T11:23:04+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 449,
+      "count": 476,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 199
+      "uniques": 201
     },
     {
-      "count": 109,
+      "count": 110,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 21
+      "uniques": 22
     },
     {
       "count": 51,
@@ -21,22 +21,22 @@
       "uniques": 7
     },
     {
-      "count": 31,
+      "count": 33,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 8
+      "uniques": 9
     },
     {
-      "count": 20,
+      "count": 21,
       "path": "/vela-desktop/vela/pull/303",
       "title": "/pull/303",
       "uniques": 1
     },
     {
-      "count": 15,
+      "count": 16,
       "path": "/vela-desktop/vela/releases",
       "title": "/releases",
-      "uniques": 12
+      "uniques": 13
     },
     {
       "count": 14,
