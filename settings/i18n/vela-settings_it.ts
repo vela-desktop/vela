@@ -1907,6 +1907,10 @@ Specifiche sistema
         <translation>Nessun layout trovato</translation>
     </message>
     <message>
+        <source>This layout can&apos;t be loaded. Choose another one.</source>
+        <translation>Impossibile caricare questo layout. Scegline un altro.</translation>
+    </message>
+    <message>
         <source>Choose a layout to see its keys and try it.</source>
         <translation>Scegli un layout per vederne i tasti e provarlo.</translation>
     </message>

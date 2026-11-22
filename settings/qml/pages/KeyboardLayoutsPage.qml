@@ -88,6 +88,8 @@ Page {
         dialogWidth: 640
         // {layout, variant} of the entry tried, or null.
         property var selected: null
+        // The last entry tried couldn't be compiled.
+        property bool failed: false
         property bool previewOnly: false
         readonly property bool addable: selected !== null && !page.full && !page.installed(selected.layout, selected.variant)
         title: previewOnly && selected ? Layouts.name(selected.layout, selected.variant, Layouts.revision) : qsTr("Add a keyboard")
@@ -113,15 +115,18 @@ Page {
             o[layout] = !o[layout]
             opened = o
         }
+        // Tries the entry; false, with nothing selected, when its keymap
+        // doesn't compile.
         function choose(layout, variant) {
-            if (Preview.show(layout, variant, Prefs.keyboardOptions)) {
-                selected = { layout: layout, variant: variant }
-                tryField.text = ""
-            }
+            failed = !Preview.show(layout, variant, Prefs.keyboardOptions)
+            selected = failed ? null : { layout: layout, variant: variant }
+            tryField.text = ""
+            return !failed
         }
         function openToAdd() {
             previewOnly = false
             selected = null
+            failed = false
             opened = ({})
             layoutSearch.text = ""
             open()
@@ -195,7 +200,8 @@ Page {
                 visible: addDialog.selected === null
                 width: parent.width
                 height: 120
-                text: qsTr("Choose a layout to see its keys and try it.")
+                text: addDialog.failed ? qsTr("This layout can't be loaded. Choose another one.")
+                    : qsTr("Choose a layout to see its keys and try it.")
                 color: Theme.textSecondary
                 font.pixelSize: Theme.fontBody
                 horizontalAlignment: Text.AlignHCenter
@@ -247,8 +253,7 @@ Page {
         highlighted: addDialog.selected !== null && addDialog.selected.layout === layout && addDialog.selected.variant === variant
         onClicked: addDialog.choose(layout, variant)
         onDoubleClicked: {
-            addDialog.choose(layout, variant)
-            if (addDialog.addable) {
+            if (addDialog.choose(layout, variant) && addDialog.addable) {
                 addDialog.close("add")
             }
         }
