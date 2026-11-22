@@ -301,10 +301,6 @@ QVariantList layoutList(const QString& layouts, const QString& variants)
 
 QVariantMap KeyboardLayouts::sourceFrom(const QString& envLayout, const QString& envVariant, const QString& localed)
 {
-    if (!envLayout.isEmpty()) {
-        return { { QStringLiteral("source"), QStringLiteral("environment") },
-            { QStringLiteral("layouts"), layoutList(envLayout, envVariant) } };
-    }
     // Option "XkbLayout" "it,us", as the compositor reads it.
     static const QRegularExpression option(QStringLiteral(R"re(^\s*Option\s+"([^"]*)"\s+"([^"]*)")re"));
     QString layout;
@@ -320,12 +316,18 @@ QVariantMap KeyboardLayouts::sourceFrom(const QString& envLayout, const QString&
             variant = match.captured(2);
         }
     }
-    const QVariantList layouts = layoutList(layout, variant);
+    // Each XKB_DEFAULT_* replaces its own field, as in the compositor: a
+    // variant alone applies to localed's layout, a layout alone keeps
+    // localed's variant.
+    if (!envLayout.isEmpty()) {
+        return { { QStringLiteral("source"), QStringLiteral("environment") },
+            { QStringLiteral("layouts"), layoutList(envLayout, envVariant.isEmpty() ? variant : envVariant) } };
+    }
+    const QVariantList layouts = layoutList(layout, envVariant.isEmpty() ? variant : envVariant);
     if (layouts.isEmpty()) {
+        // libxkbcommon's default: us, and then XKB_DEFAULT_VARIANT.
         return { { QStringLiteral("source"), QStringLiteral("default") },
-            { QStringLiteral("layouts"),
-                QVariantList { QVariantMap { { QStringLiteral("layout"), QStringLiteral("us") },
-                    { QStringLiteral("variant"), QString() } } } } };
+            { QStringLiteral("layouts"), layoutList(QStringLiteral("us"), envVariant) } };
     }
     return { { QStringLiteral("source"), QStringLiteral("system") }, { QStringLiteral("layouts"), layouts } };
 }

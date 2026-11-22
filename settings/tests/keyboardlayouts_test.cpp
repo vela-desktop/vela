@@ -234,6 +234,24 @@ private slots:
         QCOMPARE(layouts(source), QStringLiteral("de(nodeadkeys)"));
     }
 
+    void eachEnvironmentFieldReplacesItsOwn()
+    {
+        // A variant alone: localed's layouts with it, as the compositor.
+        QVariantMap source = KeyboardLayouts::sourceFrom(QString(), QStringLiteral("dvorak"),
+            QStringLiteral("Option \"XkbLayout\" \"us\"\n"));
+        QCOMPARE(source.value(QStringLiteral("source")).toString(), QStringLiteral("system"));
+        QCOMPARE(layouts(source), QStringLiteral("us(dvorak)"));
+        // A layout alone keeps localed's variant.
+        source = KeyboardLayouts::sourceFrom(QStringLiteral("us"), QString(),
+            QStringLiteral("Option \"XkbLayout\" \"us\"\nOption \"XkbVariant\" \"dvorak\"\n"));
+        QCOMPARE(source.value(QStringLiteral("source")).toString(), QStringLiteral("environment"));
+        QCOMPARE(layouts(source), QStringLiteral("us(dvorak)"));
+        // Nothing configured: us with the variant.
+        source = KeyboardLayouts::sourceFrom(QString(), QStringLiteral("dvorak"), QString());
+        QCOMPARE(source.value(QStringLiteral("source")).toString(), QStringLiteral("default"));
+        QCOMPARE(layouts(source), QStringLiteral("us(dvorak)"));
+    }
+
     void systemdLocaledGivesEveryLayoutAndVariant()
     {
         const QVariantMap source = KeyboardLayouts::sourceFrom(QString(), QString(), localed);

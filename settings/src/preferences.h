@@ -470,6 +470,7 @@ private:
         m_restoredFromFile = false;
     }
     QString compositorValue(const QString& key) const;
+    QStringList currentKeyboardOptions() const;
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
     void watchConfig();

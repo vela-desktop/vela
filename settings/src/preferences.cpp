@@ -36,6 +36,8 @@ extern "C" {
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
+
+#include <optional>
 #include <QTemporaryFile>
 #include <QUrl>
 
@@ -272,6 +274,37 @@ QString modernLine(const QString& line)
 
 } // namespace
 
+namespace {
+
+// The system's XKB options, from systemd-localed's file.
+QStringList systemKeyboardOptions()
+{
+    QFile localed(QStringLiteral("/etc/X11/xorg.conf.d/00-keyboard.conf"));
+    return localed.open(QIODevice::ReadOnly)
+        ? vela::keyboardoptions::fromLocaled(QString::fromUtf8(localed.read(64 * 1024)))
+        : QStringList();
+}
+
+} // namespace
+
+// The options the compositor uses now, read again: vela.conf's when it has
+// the key, even empty, the system's until then (keymap_options.c).
+QStringList Preferences::currentKeyboardOptions() const
+{
+    QFile file(compositorConfigPath());
+    std::optional<QString> own;
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            const QString line = modernLine(in.readLine());
+            if (line.startsWith(QLatin1String("keyboard-options="))) {
+                own = line.mid(int(sizeof("keyboard-options=") - 1)); // the last one counts
+            }
+        }
+    }
+    return own ? vela::keyboardoptions::split(*own) : systemKeyboardOptions();
+}
+
 /** Refresh compositor settings, including the Night Light backend toggle. */
 void Preferences::reloadCompositor()
 {
@@ -344,10 +377,7 @@ void Preferences::reloadCompositor()
     if (ownOptions) {
         m_keyboardOptions = vela::keyboardoptions::split(compositorValue(QStringLiteral("keyboard-options")));
     } else {
-        QFile localed(QStringLiteral("/etc/X11/xorg.conf.d/00-keyboard.conf"));
-        m_keyboardOptions = localed.open(QIODevice::ReadOnly)
-            ? vela::keyboardoptions::fromLocaled(QString::fromUtf8(localed.read(64 * 1024)))
-            : QStringList();
+        m_keyboardOptions = systemKeyboardOptions();
     }
     const QString numLock = value(QStringLiteral("numlock"), QStringLiteral("off"));
     m_numLock = numLock == QLatin1String("on") || numLock == QLatin1String("last") ? numLock : QStringLiteral("off");
@@ -1573,15 +1603,20 @@ void Preferences::setNumpadKeys(const QString& value)
 void Preferences::setKeyChoice(int control, const QString& value)
 {
     const auto which = vela::keyboardoptions::Control(control);
-    if (value == vela::keyboardoptions::value(m_keyboardOptions, which)) {
-        return;
+    // On the list as it is now: another writer may have added an option
+    // since vela.conf was last loaded, and this write replaces the key.
+    const QStringList shown = m_keyboardOptions;
+    const QStringList current = currentKeyboardOptions();
+    const QStringList changed = vela::keyboardoptions::withValue(current, which, value);
+    if (value == vela::keyboardoptions::value(current, which) || changed == current) {
+        if (current != shown) {
+            m_keyboardOptions = current;
+            emit keyboardChanged();
+        }
+        return; // already so, or a value the control doesn't offer
     }
-    const QStringList previous = m_keyboardOptions;
-    m_keyboardOptions = vela::keyboardoptions::withValue(previous, which, value);
-    if (m_keyboardOptions == previous) {
-        return; // a value the control doesn't offer
-    }
-    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("keyboard-options") }), m_keyboardOptions, previous);
+    m_keyboardOptions = changed;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("keyboard-options") }), m_keyboardOptions, shown);
     emit keyboardChanged();
 }
 

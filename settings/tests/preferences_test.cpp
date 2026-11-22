@@ -1078,6 +1078,22 @@ private slots:
         QCOMPARE(again.capsKey(), QStringLiteral("capslock"));
     }
 
+    void aKeyChoiceKeepsAnOptionAddedMeanwhile()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(writeFile(QStringLiteral("config/vela/vela.conf"), "keyboard-options=ctrl:swapcaps\n"));
+        Preferences prefs;
+        // Another writer adds an option before Settings reloads the file.
+        QVERIFY(writeFile(
+            QStringLiteral("config/vela/vela.conf"), "keyboard-options=ctrl:swapcaps,terminate:ctrl_alt_bksp\n"));
+        prefs.setCapsKey(QStringLiteral("escape"));
+        QFile file(dir + QStringLiteral("/vela.conf"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("keyboard-options=terminate:ctrl_alt_bksp,caps:escape\n"));
+        QCOMPARE(prefs.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp,caps:escape"));
+    }
+
     void atMostFourKeyboardLayouts()
     {
         const QString dir = home().filePath(QStringLiteral("config/vela"));

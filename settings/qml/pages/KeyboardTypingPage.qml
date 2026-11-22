@@ -9,8 +9,11 @@ import Vela.Controls
 // Win key alone (docs/keyboard.md §4, §6, §7, §8.3, §10).
 Page {
     id: page
-    // The layouts in use: Settings', or the system's.
-    readonly property var layoutsInUse: Prefs.keyboardLayouts.length > 0 ? Prefs.keyboardLayouts : Layouts.source().layouts
+    // The layouts in use: XKB_DEFAULT_LAYOUT's first, as in the compositor,
+    // then Settings', then the system's.
+    readonly property var layoutSource: Layouts.source()
+    readonly property var layoutsInUse: layoutSource.source !== "environment" && Prefs.keyboardLayouts.length > 0
+        ? Prefs.keyboardLayouts : layoutSource.layouts
     readonly property bool altGrInUse: layoutsInUse.some(l => Preview.typesOnAltGr(l.layout, l.variant))
     readonly property string customText: qsTr("Custom (vela.conf)")
 
