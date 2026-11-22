@@ -203,6 +203,12 @@ private slots:
             QStringLiteral("[select-all][paste]"));
         QCOMPARE(
             type(preview, { QStringLiteral("+LALT"), QStringLiteral("AD01"), QStringLiteral("-LALT") }), QString());
+        // Ctrl with Alt or Win is a shortcut, not an edit.
+        QCOMPARE(type(preview,
+                     { QStringLiteral("+LCTL"), QStringLiteral("+LALT"), QStringLiteral("AD01"), QStringLiteral("-LALT"),
+                         QStringLiteral("+LWIN"), QStringLiteral("AD01"), QStringLiteral("-LWIN"),
+                         QStringLiteral("-LCTL") }),
+            QString());
     }
 
     void optionsChangeTheKeys()
@@ -217,6 +223,11 @@ private slots:
         QCOMPARE(labels(preview, QStringLiteral("LCTL")).first(), QStringLiteral("Alt"));
         QVERIFY(preview.show(QStringLiteral("us"), QString(), QStringLiteral("caps:escape")));
         QCOMPARE(labels(preview, QStringLiteral("CAPS")).first(), QStringLiteral("Esc"));
+        // No options means none, whatever XKB_DEFAULT_OPTIONS says.
+        qputenv("XKB_DEFAULT_OPTIONS", "ctrl:nocaps");
+        QVERIFY(preview.show(QStringLiteral("us"), QString(), QString()));
+        qunsetenv("XKB_DEFAULT_OPTIONS");
+        QCOMPARE(labels(preview, QStringLiteral("CAPS")).first(), QStringLiteral("Caps Lock"));
     }
 };
 

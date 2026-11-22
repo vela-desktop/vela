@@ -248,7 +248,8 @@ xkb_keymap* compile(xkb_context* context, const QString& layout, const QString& 
     xkb_rule_names names {};
     names.layout = layoutName.constData();
     names.variant = variantName.isEmpty() ? nullptr : variantName.constData();
-    names.options = optionNames.isEmpty() ? nullptr : optionNames.constData();
+    // "", not null: null would take XKB_DEFAULT_OPTIONS.
+    names.options = optionNames.constData();
     return xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
 }
 
@@ -423,6 +424,8 @@ QVariantMap KeyboardPreview::key(quint32 keycode, bool pressed, bool autoRepeat)
     QString action;
     if (isEditKey(sym, &action)) {
         result[QStringLiteral("action")] = action;
+    } else if (active(XKB_MOD_NAME_ALT) || active(XKB_MOD_NAME_LOGO)) {
+        // A shortcut (Ctrl+Alt+A too), neither typing nor editing.
     } else if (active(XKB_MOD_NAME_CTRL)) {
         switch (xkb_keysym_to_lower(sym)) {
         case XKB_KEY_a: result[QStringLiteral("action")] = QStringLiteral("select-all"); break;
@@ -431,7 +434,7 @@ QVariantMap KeyboardPreview::key(quint32 keycode, bool pressed, bool autoRepeat)
         case XKB_KEY_v: result[QStringLiteral("action")] = QStringLiteral("paste"); break;
         default: break; // a shortcut, not typing
         }
-    } else if (!active(XKB_MOD_NAME_ALT) && !active(XKB_MOD_NAME_LOGO)) {
+    } else {
         QString text;
         const auto status = m_compose && xkb_compose_state_feed(m_compose, sym) == XKB_COMPOSE_FEED_ACCEPTED
             ? xkb_compose_state_get_status(m_compose)
