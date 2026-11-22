@@ -116,7 +116,10 @@ static char *preference(const struct vela_terminal_env *env)
             }
             break;
         }
-        char *start = line + strspn(line, " \t");
+        const char *start = line;
+        while (*start == ' ' || *start == '\t') {
+            ++start;
+        }
         if (strchr("#+-/", *start)) {
             continue; // comments, directives, actions, blank lines
         }
