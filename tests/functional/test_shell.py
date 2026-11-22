@@ -541,6 +541,18 @@ class CustomShortcuts(RealShell):
             time.sleep(0.05)
         return path
 
+    def wait_for_text(self, name, text, what):
+        """Waits until the mark holds `text`: the fake xdg-open creates it
+        before writing."""
+        path = self.wait_for_mark(name, what)
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        while True:
+            with open(path) as file:
+                if file.read() == text:
+                    return
+            self.assertLess(time.monotonic(), deadline, f"{what}: {self.vela.log_text()[-3000:]}")
+            time.sleep(0.05)
+
     def test_each_kind_runs(self):
         with self.input_session() as send:
             send("key", "ctrl+alt+1")
@@ -549,8 +561,7 @@ class CustomShortcuts(RealShell):
             send("key", "super+shift+e")
             self.wait_for_mark("app", "the app")
             send("key", "super+F5")
-            with open(self.wait_for_mark("opened", "the link")) as file:
-                self.assertEqual(file.read(), "https://example.org/vela")
+            self.wait_for_text("opened", "https://example.org/vela", "the link")
             # A line without a target is skipped: the key reaches nobody's
             # shortcut, and nothing runs.
             send("key", "ctrl+alt+2")

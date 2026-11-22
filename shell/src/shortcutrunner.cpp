@@ -25,8 +25,13 @@ ShortcutRunner::Target ShortcutRunner::find(const QString& path, const QString& 
     if (!file.open(QIODevice::ReadOnly)) {
         return {};
     }
-    const QList<QByteArray> lines = file.read(1024 * 1024).split('\n');
-    for (const QByteArray& line : lines) {
+    // Whole lines, all of them, as the compositor reads the file: a line cut
+    // short could still match and run half a command.
+    while (!file.atEnd()) {
+        QByteArray line = file.readLine();
+        if (line.endsWith('\n')) {
+            line.chop(1);
+        }
         vela_custom_line parsed {};
         char text[128];
         if (!vela_custom_line_parse(line.constData(), size_t(line.size()), &parsed)

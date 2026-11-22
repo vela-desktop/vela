@@ -197,30 +197,33 @@ static void load_super_numbers(struct vela_input *input, const struct vela_confi
 }
 
 // shortcuts.conf's combinations; a line that doesn't parse is skipped, with
-// a warning (docs/keyboard.md §9.4).
+// a warning (docs/keyboard.md §9.4). Without the file, or one that can't be
+// opened (the shell couldn't read it either), there are none; a read that
+// fails halfway keeps the ones loaded before.
 static void load_custom_shortcuts(struct vela_input *input)
 {
-    free(input->custom);
-    input->custom = NULL;
-    input->custom_count = 0;
-    input->custom_capacity = 0;
     char path[4096];
-    if (!vela_custom_path(path, sizeof(path))) {
-        return;
-    }
-    bool missing = false;
-    FILE *file = vela_config_open(path, &missing);
+    bool missing = !vela_custom_path(path, sizeof(path));
+    FILE *file = missing ? NULL : vela_config_open(path, &missing);
     if (!file) {
         if (!missing) {
             wlr_log(WLR_ERROR, "Custom shortcuts: %s can't be read", path);
         }
+        free(input->custom);
+        input->custom = NULL;
+        input->custom_count = 0;
+        input->custom_capacity = 0;
         return;
     }
+    struct vela_custom_shortcut *custom = NULL;
+    size_t count = 0;
+    size_t capacity_items = 0;
     char *line = NULL;
     size_t capacity = 0;
     ssize_t length = 0;
     int number = 0;
-    while (vela_read_line(file, &line, &capacity, &length) > 0) {
+    int read = 0;
+    while ((read = vela_read_line(file, &line, &capacity, &length)) > 0) {
         ++number;
         while (length > 0 && line[length - 1] == '\n') {
             line[--length] = '\0';
@@ -235,17 +238,25 @@ static void load_custom_shortcuts(struct vela_input *input)
             wlr_log(WLR_ERROR, "Custom shortcuts: line %d of %s skipped", number, path);
             continue;
         }
-        if (input->custom_count >= VELA_CUSTOM_MAX) {
+        if (count >= VELA_CUSTOM_MAX) {
             wlr_log(WLR_ERROR, "Custom shortcuts: more than %d, the others are ignored", VELA_CUSTOM_MAX);
             break;
         }
         shortcut.combo = parsed.combo;
-        input->custom =
-            vela_grow(input->custom, &input->custom_capacity, input->custom_count + 1, sizeof(*input->custom));
-        input->custom[input->custom_count++] = shortcut;
+        custom = vela_grow(custom, &capacity_items, count + 1, sizeof(*custom));
+        custom[count++] = shortcut;
     }
     free(line);
     fclose(file);
+    if (read < 0) {
+        wlr_log(WLR_ERROR, "Custom shortcuts: reading %s failed, the previous ones stay", path);
+        free(custom);
+        return;
+    }
+    free(input->custom);
+    input->custom = custom;
+    input->custom_count = count;
+    input->custom_capacity = capacity_items;
 }
 
 // Num Lock at startup, the Caps Lock display and Win alone (docs/keyboard.md
