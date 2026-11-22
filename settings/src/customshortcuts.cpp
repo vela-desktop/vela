@@ -495,13 +495,7 @@ bool CustomShortcuts::save(int index, const QString& combo, const QString& kind,
         return false;
     }
     const QString text = QString::fromLatin1(normalized);
-    // The item `index` is the index-th line that parses.
-    qsizetype replaced = -1;
-    for (qsizetype i = 0, item = 0; i < m_lines.size(); ++i) {
-        if (!m_lines.at(i).combo.isEmpty() && item++ == index) {
-            replaced = i;
-        }
-    }
+    const qsizetype replaced = lineOf(index);
     QList<Line> lines;
     bool placed = false;
     for (qsizetype i = 0; i < m_lines.size(); ++i) {
@@ -525,18 +519,33 @@ bool CustomShortcuts::save(int index, const QString& combo, const QString& kind,
     return true;
 }
 
-bool CustomShortcuts::remove(int index)
+qsizetype CustomShortcuts::lineOf(int index) const
 {
-    QList<Line> lines;
-    bool removed = false;
-    for (qsizetype i = 0, item = 0; i < m_lines.size(); ++i) {
-        if (!m_lines.at(i).combo.isEmpty() && item++ == index) {
-            removed = true;
+    if (index < 0) {
+        return -1;
+    }
+    qsizetype item = 0;
+    for (qsizetype i = 0; i < m_lines.size(); ++i) {
+        if (m_lines.at(i).combo.isEmpty()) {
             continue;
         }
-        lines.append(m_lines.at(i));
+        if (item == index) {
+            return i;
+        }
+        ++item;
     }
-    if (!removed || !write(lines)) {
+    return -1;
+}
+
+bool CustomShortcuts::remove(int index)
+{
+    const qsizetype removed = lineOf(index);
+    if (removed < 0) {
+        return false;
+    }
+    QList<Line> lines = m_lines;
+    lines.removeAt(removed);
+    if (!write(lines)) {
         return false;
     }
     reload();

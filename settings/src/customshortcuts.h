@@ -101,6 +101,9 @@ private:
         QString target;
     };
     bool write(const QList<Line>& lines);
+    // Where the index-th shortcut (the index-th line that parses) sits in
+    // m_lines, or -1.
+    qsizetype lineOf(int index) const;
     void bindManager();
 
     AppsSource m_apps;
