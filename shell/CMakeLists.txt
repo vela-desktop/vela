@@ -514,7 +514,7 @@ endif()
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell vela-bluetooth-client vela-bluetooth-ui
-    TS_FILES i18n/vela-shell_it.ts
+    TS_FILES i18n/vela-shell_it.ts i18n/vela-shell_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-shell_lupdate
     LRELEASE_TARGET vela-shell_lrelease

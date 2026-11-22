@@ -46,7 +46,7 @@ install(TARGETS vela-polkit-prompt RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDI
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-polkit-prompt SOURCE_TARGETS vela-polkit-prompt
-    TS_FILES ../i18n/vela-polkit-prompt_it.ts
+    TS_FILES ../i18n/vela-polkit-prompt_it.ts ../i18n/vela-polkit-prompt_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-polkit-prompt_lupdate
     LRELEASE_TARGET vela-polkit-prompt_lrelease
