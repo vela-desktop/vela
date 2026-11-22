@@ -205,9 +205,9 @@ private slots:
             type(preview, { QStringLiteral("+LALT"), QStringLiteral("AD01"), QStringLiteral("-LALT") }), QString());
         // Ctrl with Alt or Win is a shortcut, not an edit.
         QCOMPARE(type(preview,
-                     { QStringLiteral("+LCTL"), QStringLiteral("+LALT"), QStringLiteral("AD01"), QStringLiteral("-LALT"),
-                         QStringLiteral("+LWIN"), QStringLiteral("AD01"), QStringLiteral("-LWIN"),
-                         QStringLiteral("-LCTL") }),
+                     { QStringLiteral("+LCTL"), QStringLiteral("+LALT"), QStringLiteral("AD01"),
+                         QStringLiteral("-LALT"), QStringLiteral("+LWIN"), QStringLiteral("AD01"),
+                         QStringLiteral("-LWIN"), QStringLiteral("-LCTL") }),
             QString());
     }
 

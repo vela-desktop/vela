@@ -237,8 +237,8 @@ private slots:
     void eachEnvironmentFieldReplacesItsOwn()
     {
         // A variant alone: localed's layouts with it, as the compositor.
-        QVariantMap source = KeyboardLayouts::sourceFrom(QString(), QStringLiteral("dvorak"),
-            QStringLiteral("Option \"XkbLayout\" \"us\"\n"));
+        QVariantMap source = KeyboardLayouts::sourceFrom(
+            QString(), QStringLiteral("dvorak"), QStringLiteral("Option \"XkbLayout\" \"us\"\n"));
         QCOMPARE(source.value(QStringLiteral("source")).toString(), QStringLiteral("system"));
         QCOMPARE(layouts(source), QStringLiteral("us(dvorak)"));
         // A layout alone keeps localed's variant.

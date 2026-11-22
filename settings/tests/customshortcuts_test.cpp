@@ -227,7 +227,10 @@ private slots:
             int written = 0;
             for (const char* mod : mods) {
                 for (int key = 1; key <= 24 && written < 256; ++key, ++written) {
-                    out.write(QStringLiteral("%1+FK%2=command true\n").arg(QLatin1String(mod)).arg(key, 2, 10, QLatin1Char('0')).toUtf8());
+                    out.write(QStringLiteral("%1+FK%2=command true\n")
+                                  .arg(QLatin1String(mod))
+                                  .arg(key, 2, 10, QLatin1Char('0'))
+                                  .toUtf8());
                 }
             }
         }
