@@ -66,6 +66,9 @@ struct vela_view {
     // Its process is a system prompt program, unsandboxed (set at map,
     // vela_view_is_system_prompt): the name alone gives no special place.
     bool prompt_program;
+    bool attention;
+    bool x11_urgent;
+    struct vela_output *taskbar_output;
     bool activated; // the active window (keyboard)
     bool maximized;
     bool fullscreen;
@@ -93,7 +96,7 @@ struct vela_view {
     } taskbar_buttons[VELA_TASKBAR_BUTTONS];
 
     // How the taskbar sees and commands this window (foreign-toplevel). It
-    // exists only while the window is mapped and on the current desktop.
+    // exists only while the window is mapped, on any desktop.
     struct wlr_foreign_toplevel_handle_v1 *handle;
     // The same window in the ext-foreign-toplevel-list protocol: it has a
     // unique identifier and is used to capture its image (Alt+Tab). It exists
@@ -162,6 +165,7 @@ struct vela_view {
     struct wl_listener dissociate;
     struct wl_listener request_configure;
     struct wl_listener request_activate;
+    struct wl_listener set_hints;
     struct wl_listener set_decorations;
     struct wl_listener set_override_redirect;
     struct wl_listener request_below;
@@ -197,6 +201,8 @@ struct wlr_box vela_view_geometry(const struct vela_view *view);
 struct wlr_box vela_view_frame_box(struct vela_view *view);
 // The output under the window's center, or the cursor's.
 struct vela_output *vela_view_output(struct vela_view *view);
+void vela_view_update_taskbar_output(struct vela_view *view);
+void vela_view_set_attention(struct vela_view *view, bool on);
 // Where it "goes" when minimized: its taskbar button.
 struct wlr_box vela_view_minimize_target(struct vela_view *view);
 // Where it returns when leaving maximized or fullscreen.
@@ -235,7 +241,7 @@ void vela_view_update_shape(struct vela_view *view);
 // window.
 void vela_view_update_decoration(struct vela_view *view);
 void vela_view_refresh_decoration(struct vela_view *view);
-// The taskbar shows only the current desktop's windows.
+// Off for windows that skip the taskbar (_NET_WM_STATE_SKIP_TASKBAR).
 void vela_view_show_in_taskbar(struct vela_view *view, bool on);
 
 // ------------------------------------------------------------ to the app --

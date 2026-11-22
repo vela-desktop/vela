@@ -25,7 +25,7 @@ target_compile_definitions(vela-update-core PUBLIC _GNU_SOURCE)
 target_compile_options(vela-update-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-update-core PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
 # vela.conf (update-check) is read and written as the compositor does.
-target_link_libraries(vela-update-core PUBLIC vela-pure vela-caller PkgConfig::UPDATES_SYSTEMD)
+target_link_libraries(vela-update-core PUBLIC vela-pure vela-caller vela-terminal-lookup PkgConfig::UPDATES_SYSTEMD)
 
 # vela-update: installed in bindir; a daemon run from its build directory
 # uses the source tree's.

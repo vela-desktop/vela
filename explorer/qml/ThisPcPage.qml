@@ -154,7 +154,7 @@ Flickable {
                                     entries.push(
                                         { text: qsTr("Open in new &tab"), icon: "tab-new", action: () => page.tab.openInNewTab(d.path) },
                                         { separator: true },
-                                        { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(d.path) })
+                                        { text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(d.path) })
                                     if (d.removable) entries.push({ text: qsTr("E&ject"), icon: "media-eject", action: () => Places.eject(d.device) })
                                     entries.push({ separator: true },
                                         { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([d.path]) })

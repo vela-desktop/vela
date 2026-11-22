@@ -145,6 +145,73 @@ class PreferencesTest : public QObject {
     }
 
 private slots:
+    void taskbarSettings()
+    {
+        write("[appearance]\nappTheme=dark\n"
+              "[taskbar]\nwindowsFrom=invalid\nappsOn=invalid\nclickActive=invalid\ntrayShown=discord,,discord\n"
+              "attention=unknown\n");
+        Preferences prefs;
+        QCOMPARE(prefs.taskbarWindowsFrom(), QStringLiteral("desktop"));
+        QCOMPARE(prefs.taskbarPosition(), QStringLiteral("bottom"));
+        QCOMPARE(prefs.taskbarAppsOn(), QStringLiteral("all"));
+        QCOMPARE(prefs.taskbarClickActive(), QStringLiteral("previews"));
+        QCOMPARE(prefs.taskbarTrayShown(), QStringList { QStringLiteral("discord") });
+        QVERIFY(prefs.taskbarAttention());
+
+        prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarPosition(QStringLiteral("diagonal"));
+        prefs.setTaskbarPosition(QStringLiteral("left"));
+        prefs.setTaskbarAppsOn(QStringLiteral("window"));
+        prefs.setTaskbarClickActive(QStringLiteral("next"));
+        prefs.setTrayIconShown(QStringLiteral("steam"), true);
+        prefs.setTrayIconShown(QStringLiteral("discord"), false);
+        prefs.setTrayIconShown(QStringLiteral("telegram"), true);
+        prefs.setTaskbarAttention(false);
+        prefs.setTaskbarBadges(false);
+        prefs.setTaskbarProgress(false);
+        prefs.setTaskbarNumberHints(false);
+        expectFreshShell({
+            { "taskbar/windowsFrom", "all" },
+            { "taskbar/position", "left" },
+            { "taskbar/appsOn", "window" },
+            { "taskbar/clickActive", "next" },
+            { "taskbar/trayShown", QStringList { QStringLiteral("steam"), QStringLiteral("telegram") } },
+            { "taskbar/attention", false },
+            { "taskbar/badges", false },
+            { "taskbar/progress", false },
+            { "taskbar/numberHints", false },
+        });
+        // Unknown values, and the values already chosen, write nothing.
+        QSignalSpy taskbar(&prefs, &Preferences::taskbarChanged);
+        prefs.setTaskbarPosition(QStringLiteral("left"));
+        prefs.setTaskbarWindowsFrom(QStringLiteral("all"));
+        prefs.setTaskbarWindowsFrom(QStringLiteral("everywhere"));
+        prefs.setTaskbarAppsOn(QStringLiteral("window"));
+        prefs.setTaskbarAppsOn(QStringLiteral("nowhere"));
+        prefs.setTaskbarClickActive(QStringLiteral("next"));
+        prefs.setTaskbarClickActive(QStringLiteral("twice"));
+        prefs.setTrayIconShown(QStringLiteral("steam"), true);
+        prefs.setTrayIconShown(QStringLiteral("discord"), false);
+        prefs.setTrayIconShown(QString(), true);
+        prefs.setTaskbarAttention(false);
+        prefs.setTaskbarBadges(false);
+        prefs.setTaskbarProgress(false);
+        prefs.setTaskbarNumberHints(false);
+        prefs.setSuperNumberKeys(QStringLiteral("apps"));
+        prefs.setSuperNumberKeys(QStringLiteral("letters"));
+        QCOMPARE(taskbar.count(), 0);
+        prefs.setSuperNumberKeys(QStringLiteral("desktops"));
+        QCOMPARE(taskbar.count(), 1);
+        Preferences reread;
+        QCOMPARE(reread.superNumberKeys(), QStringLiteral("desktops"));
+
+        BlockedDirectory blocker;
+        QVERIFY(blocker.block());
+        prefs.setTrayIconShown(QStringLiteral("steam"), false);
+        QCOMPARE(prefs.taskbarTrayShown(), (QStringList { QStringLiteral("steam"), QStringLiteral("telegram") }));
+        QVERIFY(blocker.restore());
+    }
+
     /** Missing desktop helpers must produce a diagnostic without opening another app. */
     void missingFolderOpener()
     {
@@ -392,6 +459,46 @@ private slots:
         QCOMPARE(desktop.count(), 1);
     }
 
+    // Personalization > Context menu: menus/hidden holds the hidden keys; a
+    // group hides and shows at once; "Show all" empties it.
+    void hiddenMenuEntries()
+    {
+        write("[appearance]\nappTheme=dark\n[menus]\nhidden=file.copy\n");
+        Preferences prefs;
+        QCOMPARE(prefs.hiddenMenuEntries(), QStringList { QStringLiteral("file.copy") });
+        prefs.setMenuEntriesHidden({ QStringLiteral("taskbar.recent"), QStringLiteral("taskbar.recentHeader") }, true);
+        const QStringList three { QStringLiteral("file.copy"), QStringLiteral("taskbar.recent"),
+            QStringLiteral("taskbar.recentHeader") };
+        QCOMPARE(prefs.hiddenMenuEntries(), three);
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), three);
+        prefs.setMenuEntriesHidden({ QStringLiteral("file.copy") }, false);
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), three.mid(1));
+        prefs.showAllMenuEntries();
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        QVERIFY(!saved(QStringLiteral("menus/hidden")).isValid());
+        Preferences again;
+        QVERIFY(again.hiddenMenuEntries().isEmpty());
+    }
+
+    // Another writer hid Cut after Settings read the file: hiding Copy keeps
+    // Cut hidden, and "Show all" brings back every key, the other writer's too.
+    void hiddenMenuEntriesKeepOtherWritersKeys()
+    {
+        write("[appearance]\nappTheme=dark\n");
+        Preferences prefs;
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        write("[appearance]\nappTheme=dark\n[menus]\nhidden=file.cut\n");
+        prefs.setMenuEntriesHidden({ QStringLiteral("file.copy") }, true);
+        const QStringList both { QStringLiteral("file.cut"), QStringLiteral("file.copy") };
+        QCOMPARE(saved(QStringLiteral("menus/hidden")).toStringList(), both);
+        QCOMPARE(prefs.hiddenMenuEntries(), both);
+        write("[appearance]\nappTheme=dark\n[menus]\nhidden=file.cut, file.copy, file.rename\n");
+        prefs.showAllMenuEntries();
+        QVERIFY(!saved(QStringLiteral("menus/hidden")).isValid());
+        QVERIFY(prefs.hiddenMenuEntries().isEmpty());
+        QCOMPARE(saved(QStringLiteral("appearance/appTheme")).toString(), QStringLiteral("dark"));
+    }
+
     void findsTheLogoOnceTheIconThemeIsSet()
     {
         // Vela.Controls sets the icon theme after Preferences starts
@@ -495,6 +602,14 @@ private slots:
             { "taskView", "taskbar/taskView", false },
             { "taskbarAllScreens", "taskbar/allScreens", false },
             { "showDesktopCorner", "taskbar/showDesktopCorner", false },
+            { "taskbarPosition", "taskbar/position", QStringLiteral("top") },
+            { "taskbarWindowsFrom", "taskbar/windowsFrom", QStringLiteral("all") },
+            { "taskbarAppsOn", "taskbar/appsOn", QStringLiteral("window") },
+            { "taskbarClickActive", "taskbar/clickActive", QStringLiteral("next") },
+            { "taskbarAttention", "taskbar/attention", false },
+            { "taskbarBadges", "taskbar/badges", false },
+            { "taskbarProgress", "taskbar/progress", false },
+            { "taskbarNumberHints", "taskbar/numberHints", false },
             { "desktopIcons", "desktop/showIcons", false },
             { "startPinned", "start/showPinned", false },
             { "clockDate", "taskbar/showDate", false },
@@ -506,7 +621,7 @@ private slots:
             { "batteryNotify", "battery/notify", false },
             { "batteryLowLevel", "battery/lowLevel", 10 },
             { "deviceBatteryNotify", "battery/devices", false },
-            { "clipboardHistory", "clipboard/history", true }
+            { "clipboardHistory", "clipboard/history", true },
         };
         for (const auto& choice : choices) {
             for (bool present : { false, true }) {
@@ -900,6 +1015,103 @@ private slots:
         QFile file(home().filePath(QStringLiteral("config/vela/vela.conf")));
         QVERIFY(file.open(QIODevice::ReadOnly));
         QVERIFY(QString::fromUtf8(file.readAll()).contains(QStringLiteral("screen-off=3")));
+    }
+
+    void keyChoicesRewriteOnlyTheirOptions()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(writeFile(
+            QStringLiteral("config/vela/vela.conf"), "keyboard-options=terminate:ctrl_alt_bksp,ctrl:swapcaps\n"));
+        Preferences prefs;
+        QCOMPARE(prefs.capsKey(), QStringLiteral("custom"));
+        QCOMPARE(prefs.composeKey(), QStringLiteral("none"));
+        QSignalSpy changed(&prefs, &Preferences::keyboardChanged);
+        prefs.setCapsKey(QStringLiteral("escape"));
+        QCOMPARE(prefs.capsKey(), QStringLiteral("escape"));
+        QCOMPARE(changed.count(), 1);
+        const auto conf = [&] {
+            QFile file(dir + QStringLiteral("/vela.conf"));
+            return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+        };
+        QVERIFY(conf().contains("keyboard-options=terminate:ctrl_alt_bksp,caps:escape\n"));
+        // Compose on Caps Lock takes the key from Caps Lock.
+        prefs.setComposeKey(QStringLiteral("caps"));
+        QCOMPARE(prefs.composeKey(), QStringLiteral("caps"));
+        QCOMPARE(prefs.capsKey(), QStringLiteral("capslock"));
+        prefs.setCornerKeys(QStringLiteral("alt-win"));
+        prefs.setNumpadKeys(QStringLiteral("digits"));
+        QCOMPARE(prefs.keyboardOptions(),
+            QStringLiteral("terminate:ctrl_alt_bksp,compose:caps,altwin:swap_lalt_lwin,numpad:mac"));
+        // The same value again, or one no control offers: nothing written.
+        const int before = changed.count();
+        prefs.setNumpadKeys(QStringLiteral("digits"));
+        prefs.setCornerKeys(QStringLiteral("custom"));
+        QCOMPARE(changed.count(), before);
+        // Back to the defaults: the key stays, empty of what Settings owns.
+        prefs.setComposeKey(QStringLiteral("none"));
+        prefs.setCornerKeys(QStringLiteral("standard"));
+        prefs.setNumpadKeys(QStringLiteral("default"));
+        QVERIFY(conf().contains("keyboard-options=terminate:ctrl_alt_bksp\n"));
+        // Num Lock when Vela starts.
+        QCOMPARE(prefs.numLock(), QStringLiteral("off"));
+        prefs.setNumLock(QStringLiteral("last"));
+        QVERIFY(conf().contains("numlock=last\n"));
+        prefs.setNumLock(QStringLiteral("sometimes"));
+        QCOMPARE(prefs.numLock(), QStringLiteral("last"));
+        // The Caps Lock display: on until turned off.
+        QVERIFY(prefs.capsLockOsd());
+        QVERIFY(!conf().contains("caps-lock-osd="));
+        prefs.setCapsLockOsd(false);
+        QVERIFY(conf().contains("caps-lock-osd=no\n"));
+        // The Win key alone: opens Start until turned off (§10).
+        QVERIFY(prefs.superOpensStart());
+        QVERIFY(!conf().contains("super-opens-start="));
+        prefs.setSuperOpensStart(false);
+        QVERIFY(conf().contains("super-opens-start=no\n"));
+        // A fresh read gives the same.
+        Preferences again;
+        QCOMPARE(again.numLock(), QStringLiteral("last"));
+        QVERIFY(!again.capsLockOsd());
+        QVERIFY(!again.superOpensStart());
+        QCOMPARE(again.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp"));
+        QCOMPARE(again.capsKey(), QStringLiteral("capslock"));
+    }
+
+    void aKeyChoiceKeepsAnOptionAddedMeanwhile()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(writeFile(QStringLiteral("config/vela/vela.conf"), "keyboard-options=ctrl:swapcaps\n"));
+        Preferences prefs;
+        // Another writer adds an option before Settings reloads the file.
+        QVERIFY(writeFile(
+            QStringLiteral("config/vela/vela.conf"), "keyboard-options=ctrl:swapcaps,terminate:ctrl_alt_bksp\n"));
+        prefs.setCapsKey(QStringLiteral("escape"));
+        QFile file(dir + QStringLiteral("/vela.conf"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("keyboard-options=terminate:ctrl_alt_bksp,caps:escape\n"));
+        QCOMPARE(prefs.keyboardOptions(), QStringLiteral("terminate:ctrl_alt_bksp,caps:escape"));
+    }
+
+    void atMostFourKeyboardLayouts()
+    {
+        const QString dir = home().filePath(QStringLiteral("config/vela"));
+        QDir(dir).removeRecursively();
+        QVERIFY(QDir().mkpath(dir));
+        Preferences prefs;
+        for (const char* layout : { "it", "us", "de", "fr", "es" }) {
+            prefs.addKeyboardLayout(QString::fromLatin1(layout), QString());
+        }
+        // XKB's v1 keymaps hold four (docs/keyboard.md §5.1): the fifth is
+        // refused, not saved to be ignored.
+        QCOMPARE(prefs.keyboardLayouts().size(), 4);
+        QFile file(dir + QStringLiteral("/vela.conf"));
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        QVERIFY(file.readAll().contains("keyboard-layout=it,us,de,fr\n"));
+        prefs.removeKeyboardLayout(3);
+        prefs.addKeyboardLayout(QStringLiteral("es"), QString());
+        QCOMPARE(prefs.keyboardLayouts().size(), 4);
     }
 
     void compositorSettingsRoundTrip()

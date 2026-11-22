@@ -12,6 +12,11 @@ Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20
 
 These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is installed for generic application portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required; an already installed KDE portal remains an optional fallback if GTK is missing. Optional extras include KDE Connect, BlueZ for native Bluetooth management, and Bluedevil plus BlueZ OBEX for file sending from Files. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. On unattended local builds pacman and makepkg use `--noconfirm` (sudo must already allow authentication without interaction); an installed pacman hook warns after `qt6-base` upgrades because `vela-shell` links `Qt6::GuiPrivate`, and `vela-update --force --build` rebuilds the current revision when Qt's private ABI changes. Keep them synchronized with the CI's build dependencies.
 
+For manual source installations, build dependencies alone are insufficient:
+install the runtime portal backends separately, especially
+`xdg-desktop-portal-wlr` for screen sharing and screenshots. See the
+[manual installation notes](installation.md#other-distributions).
+
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
 
@@ -54,7 +59,7 @@ GPU/DRM functionality.
 sudo apt update
 sudo apt install --no-install-recommends \
     ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
-    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev libxkbregistry-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
     libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
@@ -84,7 +89,7 @@ validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardw
 
 ```sh
 sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
+    libxkbcommon-devel libxkbregistry-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
     qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
     vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
     freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
@@ -512,6 +517,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   a11y.c            night light, color filters, magnifier and sticky keys
   input.c           seat, pointer, touchpad, gestures, pointer constraints
   keyboard.c        keyboards, layouts and key handling
+  super_numbers.c   Super+number: which taskbar app or desktop, kept keys
   shell.c           the supervised Qt shell and messages to it
   lock.c            session lock and idle handling
 

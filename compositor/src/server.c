@@ -126,6 +126,9 @@ static void handle_layout_change(struct wl_listener *listener, void *data)
     vela_output_manager_update(server);
     vela_lock_update_layout(server->lock);
     vela_views_check_outputs_later(server);
+    if (server->lid_closed) {
+        vela_output_manager_schedule_lid_update(server);
+    }
 }
 
 // The frame loop must wake at the right moment even with the CPU busy (a
@@ -413,6 +416,13 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     }
 
     setenv("WAYLAND_DISPLAY", socket, 1);
+    // For Settings, which mustn't offer the nested Alt rows (Alt+E...) as
+    // free combinations; never inherited from a Vela this one runs in.
+    if (server->nested) {
+        setenv("VELA_NESTED", "1", 1);
+    } else {
+        unsetenv("VELA_NESTED");
+    }
     if (!vela_vulkan_configure_clients(server->vulkan)) return false;
     // Only in the real session (from SDDM or a console): nested or headless,
     // Vela stays a guest of the environment it finds.

@@ -10,6 +10,88 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Keyboard settings have their own section in Settings, with Layouts and
+  Typing pages. When no layout is chosen, Settings shows the one in use and
+  where it comes from (the system, or the XKB_DEFAULT_* variables). Vela no
+  longer takes the layout from KDE's settings.
+
+- Adding a keyboard layout lists every layout the system has, including
+  EurKEY, APL, the phonetic alphabet and the layouts in your own XKB rules,
+  grouped with their variants, named in Vela's language and found by name,
+  language or country. Settings allows up to four layouts, as many as Vela
+  can switch between.
+
+- Before adding a layout, Settings draws its keyboard (ISO, ANSI, JIS or
+  ABNT2) with every level's characters and lets you type with it in a
+  test field, dead keys and Compose included, without changing the layout
+  in use. Installed layouts have the same Preview.
+
+- Settings > Keyboard > Typing chooses what the Caps Lock key does (Ctrl,
+  Esc, Backspace or nothing), a Compose key, swapped Ctrl and Alt or Alt
+  and Win, and a numeric keypad that always types digits. Other XKB
+  options in vela.conf are kept. The system's XKB options (localectl) now
+  apply with layouts chosen in Settings too, until Settings changes one.
+
+- Num Lock can be on when Vela starts, off, or as it was at the end of the
+  last session (Settings > Keyboard > Typing, as asked in #214). Caps Lock
+  and Num Lock are now shared by every keyboard, and changing the layout
+  no longer turns them off.
+
+- The lock screen says when Caps Lock is on, under the password field, and
+  the authorization dialog now reads Caps Lock's real state instead of
+  guessing it from the letters typed.
+
+- Turning Caps Lock on or off shows *Caps Lock on* or *Caps Lock off* at
+  the bottom of the screen for a moment, on the lock screen too, unless
+  the key does something else. *Show Caps Lock on screen* in Settings >
+  Keyboard > Typing turns it off.
+
+- Settings > Keyboard > Custom shortcuts: your own key combinations to
+  open an app, run a command, or open a link or file. Recording catches
+  Win and Vela's combinations; Vela's and the reserved ones are refused,
+  and those without Win need a confirmation, since apps use them.
+
+- Shortcut modifiers are now exact, so Win+Shift+E no longer opens Files
+  and Win+Shift+L no longer locks: those combinations are free for apps
+  and custom shortcuts. Letters follow the layout in use (Win+Z where the
+  Z is printed, on AZERTY too) and work with a Russian or Greek layout
+  active; Print alone opens the Snipping Tool.
+
+- *Open Start with the Win key* in Settings > Keyboard > Typing: turned
+  off, the Win key by itself no longer opens Start, while Win shortcuts,
+  the taskbar numbers and the Start button keep working.
+
+- Settings > Apps > Default apps has a *Terminal* row: *Automatic* or one
+  of the installed terminals. Win+Enter and updates now open the same
+  terminal. The packaged `xdg-terminal-exec` handles XDG choices and
+  profile actions. `VELA_TERMINAL` remains available as an override
+  when there is no explicit Vela preference.
+
+- Closing a laptop lid with an active external display temporarily turns off
+  the built-in panel. Reopening the lid restores its display settings.
+  System suspend on lid close follows the system's logind policy.
+
+- The Ubuntu package recommends the GTK and wlr portal backends, so file
+  choosers in sandboxed apps, screenshots and screen sharing work after a
+  normal installation.
+
+- Display layouts keep monitors from overlapping. Unplugging a monitor closes
+  gaps that would otherwise trap the pointer on one screen.
+
+- The taskbar filters windows by desktop and display, opens keyboard-accessible
+  previews on click, and adds Super+number shortcuts, attention indicators,
+  app badges and progress, a tray drawer chosen icon by icon (drag an icon in
+  or out of "^", its menu, or Settings), and drag-to-pin and drag-to-raise.
+  The taskbar can sit at the bottom, the top, the left or the right of the
+  screen (Settings > Personalization > Taskbar > Taskbar position).
+
+- Context menus: the entries apps add (KDE service menus) are in the menu
+  itself, with no "Show more options"; Settings > Personalization > Context
+  menu hides the entries it lists, menu by menu. Start shows one menu for every app, the window menu
+  can move a window to another desktop, and commands have monochrome icons.
+- Run (Win+R) is gone, with three Win+X entries that opened often-missing KDE
+  tools and the network icon's always-disabled troubleshooter.
+
 ## 0.1.2 — 16 November 2026
 
 - Fedora 45 packages, beside Fedora 44.

@@ -220,8 +220,9 @@ notification when there is something new; turn this off on the same page.
 
 **Install now** runs `vela-update` in a terminal, where the package manager
 asks for your password and the build stays readable; updates started by hand
-in a terminal show on the page too. `xdg-terminal-exec` (a dependency of the
-package) opens your default terminal, or Konsole without one. After an update,
+in a terminal show on the page too. The terminal is the one chosen in
+Settings > Apps > Default apps, else the default of `xdg-terminal-exec` (a
+dependency of the package). After an update,
 sign out and in again to use the new version: the page and a notification say
 so. The design is in [Updates](updates.md).
 
@@ -279,6 +280,19 @@ or on Fedora with `sudo dnf install /path/to/vela-git-*.x86_64.rpm`
 For Fedora, `dnf reinstall` handles a same-version forced reinstall.
 
 ## Other distributions
+
+Manual source installations do **not** resolve runtime package dependencies.
+Install `xdg-desktop-portal` and `xdg-desktop-portal-wlr` before launching
+Vela: `session/vela-portals.conf` routes ScreenCast and Screenshot to `wlr`.
+For generic portals such as file selection, Vela currently prefers
+`xdg-desktop-portal-gtk` (KDE is an optional fallback). Screen sharing also
+requires a working PipeWire/WirePlumber stack.
+
+For example, on Debian Unstable (forky/sid):
+
+```sh
+sudo apt install xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+```
 
 Follow the [source-build instructions](development.md#build), then:
 

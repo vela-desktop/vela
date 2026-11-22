@@ -30,6 +30,7 @@ QtObject {
     property var surfaceStyles: ({})
     property int themesRevision: 0
     property string taskbarAlignment: "center"
+    property string taskbarPosition: "bottom"
     // What styleGallery() lists: the themes ("") and each surface's styles.
     property var themes: []
     property var styles: ({})
@@ -48,6 +49,10 @@ QtObject {
     // "From the theme"'s pictures (themeSurfacePictures()), by "<theme> <surface>":
     // { images, from }.
     property var surfacePictures: ({})
+    // Context menu: the keys of the hidden entries.
+    property var hiddenMenuEntries: []
+    // The write fails, as with the file locked: the list stays as it was.
+    property bool refuseMenuWrites: false
     // The changes asked for, in order: [call, arguments...].
     property var calls: []
 
@@ -58,8 +63,11 @@ QtObject {
         appTheme = "dark"
         shellTheme = "dark"
         visualTheme = "vela"
+        hiddenMenuEntries = []
+        refuseMenuWrites = false
         surfaceStyles = { taskbar: "", startmenu: "", notifications: "" }
         taskbarAlignment = "center"
+        taskbarPosition = "bottom"
         startIcon = "vela"
         startIconSource = ""
         distributionName = "Test Linux"
@@ -89,6 +97,19 @@ QtObject {
         calls = calls.concat([call])
     }
 
+    function setMenuEntriesHidden(keys, hidden) {
+        record(["setMenuEntriesHidden", keys, hidden])
+        if (refuseMenuWrites) {
+            hiddenMenuEntriesChanged()
+            return
+        }
+        const list = hiddenMenuEntries.filter(k => keys.indexOf(k) < 0)
+        hiddenMenuEntries = hidden ? list.concat(keys) : list
+    }
+    function showAllMenuEntries() {
+        record(["showAllMenuEntries"])
+        hiddenMenuEntries = []
+    }
     function displayName(surface, name) {
         const entry = styleGallery(surface).find(e => e.name === name)
         return entry ? entry.text : ""

@@ -1079,10 +1079,11 @@ New questions will come up while writing the code: they are added here.
 
 ## 14. Context menus
 
-Vela copies Windows 11's context menus **in full**: same items, same order, same
-groups, same behavior. Where an item makes no sense on Linux it is translated
-into the closest equivalent (table in §14.11); it is removed only if no
-equivalent exists.
+Windows 11's context menus were the starting point for the items, their order
+and their groups, but they are a reference, not a rule: each menu is judged on
+its own merits, alongside what KDE Plasma, GNOME, macOS and COSMIC do, and
+departs from Windows wherever that makes it better. Where a Windows item makes no
+sense on Linux, §14.11 lists the closest equivalent.
 
 > **Status (September 2026):** done: the component (`Menus`, `ContextMenu`,
 > `MenuPanel` in the shell), the jump list, the taskbar's empty space, the clock,
@@ -1104,6 +1105,15 @@ equivalent exists.
 >
 > *(Several of these have since been done — Shortcut, Favorites, "Choose another
 > app", Share; see the README.)*
+>
+> **November 2026:** Windows stopped being the rule. "Show more options" is gone
+> (the entries apps add sit in the menu itself, §14.9), and so are Run (Win+R
+> and its window), the Win+X entries that opened KDE tools often missing (Device
+> manager, Disk management, Computer management) and the network icon's
+> always-disabled "Troubleshoot network problems". Start shows one flat menu
+> for every app (§14.7), the window menu gained the virtual desktops (§14.8),
+> commands have monochrome icons (§14.2), and the user can hide entries
+> (§14.12).
 
 ### 14.1 Who draws them: the shell
 
@@ -1143,6 +1153,10 @@ Like Windows 11's menus (WinUI), in the dark theme:
 - thin full-width separators between groups;
 - in file menus (§14.9) a **row of icons** at the top or bottom (near the click
   point): Cut, Copy, Rename, Share, Delete;
+- **icons**: commands have monochrome ones (the theme's `-symbolic` names where
+  it has them), so that no command stands out by color; things keep their own
+  colors: apps (Open with, jump lists, the tray), file types (New, Compress
+  to) and the entries apps add;
 - sharp at every scale like everything else (§3).
 
 ### 14.3 Behavior
@@ -1171,8 +1185,9 @@ remaining space; Start and Task View stay fixed. The space is recalculated when
 the output width, clock format, tray or indicators change. Scrolled buttons keep
 their activation, middle click, jump lists, previews, volume wheel and drag
 reordering. An app activated elsewhere is brought into view. Hidden apps minimize
-towards the corresponding navigation button. A large tray also scrolls its
-icons, leaving space for app navigation and the clock and status controls.
+towards the corresponding navigation button. The notification area keeps the
+icons the user didn't put on the taskbar in a four-column drawer behind "^". The [taskbar design](taskbar.md)
+describes the window filters, previews, shortcuts and drag targets.
 
 The menu rising from the button, from top to bottom:
 
@@ -1187,7 +1202,8 @@ The menu rising from the button, from top to bottom:
 - "Close window", or "Close all windows" if there is more than one;
 - "End task": closes the process without asking. In Windows 11 24H2 it must be
   enabled in settings; in Vela it is on by default (the user's choice), and it is
-  turned off with `endTask=false`.
+  turned off in Settings > Personalization > Taskbar (`endTask=false`), not in
+  the Context menu page (§14.12).
 
 Shift+right click on the button opens the window menu instead (§14.8).
 
@@ -1196,8 +1212,9 @@ Shift+right click on the button opens the window menu instead (§14.8).
 - **Empty space**: "Task Manager", "Taskbar settings".
 - **Date and time**: "Adjust date and time", "Notification settings".
 - **System icons** (done with quick settings): volume → "Open volume mixer"
-  (quick settings' sound page), "Sound settings" ("Troubleshoot sound problems" has no equivalent); network →
-  "Diagnose network problems" (disabled), "Network and Internet settings";
+  (quick settings' sound page), "Sound settings"; network → "Network and
+  Internet settings" (Windows' troubleshooters have no equivalent, and an entry
+  that is always disabled isn't shown);
   battery → "Power and sleep settings" (to do together with the battery in the
   laptop taskbar).
 - **App icons in the system tray**: the app decides the menu (dbusmenu, already
@@ -1205,30 +1222,32 @@ Shift+right click on the button opens the window menu instead (§14.8).
 
 ### 14.6 Start button (Win+X)
 
-Right click on the Start button or Win+X, with Windows 11's groups:
+Right click on the Start button or Win+X:
 
 - "Installed apps", "Mobility Center" (laptops only), "Power Options", "Event
-  Viewer", "System", "Device Manager", "Network Connections", "Disk Management",
-  "Computer Management"
+  Viewer", "System", "Network Connections"
 - ---
 - "Terminal", "Terminal (Admin)"
 - ---
-- "Task Manager", "Settings", "File Explorer", "Search", "Run"
+- "Task Manager", "Settings", "File Explorer", "Search"
 - ---
 - "Shut down or sign out" › "Sign out", "Sleep", "Shut down", "Restart"
 - "Desktop"
 
-Win+X followed by the underlined letter opens the item directly.
+Win+X followed by the underlined letter opens the item directly. Windows' Device
+Manager, Disk Management and Computer Management are left out: on Linux they
+only opened KDE tools that are often not installed, so they were usually
+disabled. Run (Win+R) is gone too, window included: Start's search opens apps,
+and a terminal runs commands.
 
 ### 14.7 Start menu
 
-- **Pinned apps**: the jump list items (§14.4, recent files and tasks), then
-  "Unpin from Start", "Move to front", "Pin to taskbar" / "Unpin from taskbar",
-  "Run as administrator", "Open file location", "Uninstall". On pinned app
-  folders: "Rename", "Unpin from Start".
-- **All apps** and **search results**: "Pin to Start", "More" › ("Pin to
-  taskbar", "Run as administrator", "Open file location", "App settings"),
-  "Uninstall".
+- **Any app** (pinned, all apps, search results), one flat menu: the jump list
+  items (§14.4, recent files and tasks), then "Pin to Start" / "Unpin from
+  Start", "Move to front" (pinned apps only), "Pin to taskbar" / "Unpin from
+  taskbar", "Add to desktop", then "Open file location", "Uninstall". Windows
+  hides some of these under "More" for all apps; one menu for the same app is
+  simpler. On pinned app folders: "Rename", "Unpin from Start".
 - **Recommended**: "Open file location", "Remove from list".
 - **Search box** (and every text field in the shell): "Undo", "Cut", "Copy",
   "Paste", "Select all".
@@ -1239,6 +1258,11 @@ Right click on the title bar (or on its icon), Alt+Space, or Shift+right click o
 the taskbar button:
 
 - "Restore", "Move", "Size", "Minimize", "Maximize"
+- ---
+- "Move to desktop" › (the other desktops, "New desktop"), "Show on all
+  desktops": KDE and GNOME have them here, where people look for them; before,
+  only Task View's window menu had them. Not from the taskbar button, which
+  doesn't know the window's id.
 - ---
 - "Close" (Alt+F4)
 
@@ -1267,18 +1291,26 @@ never received the release).
 - **Background**: "View" › ("Large icons", "Medium icons", "Small icons", "Auto
   arrange icons", "Align icons to grid", "Show desktop icons"); "Sort by" ›
   ("Name", "Size", "Item type", "Date modified"); "Refresh"; "Undo …" (the last
-  action, Ctrl+Z); "New" › ("Folder", "Shortcut", then the document types);
-  "Display settings"; "Personalize"; "Open in Terminal"; "Show more options".
+  action, Ctrl+Z); "Paste" and "Paste shortcut" (when there is something to
+  paste); "New" › ("Folder", "Shortcut", then the document types); "Display
+  settings"; "Personalize"; "Open in Terminal"; then the entries apps add for
+  the Desktop folder.
 - **Icons (files and folders)**: a row of icons (Cut, Copy, Rename, Share,
   Delete), then "Open", "Open with" ›, "Pin to Start", "Add to Favorites",
   "Compress to" › ("ZIP file", "7z file", "TAR file"), "Copy as path", "Open in
-  Terminal" (folders), "Properties", "Show more options".
-- **"Show more options"** (also Shift+F10 or Shift+right click): the full menu,
-  with every item added by apps. On Linux these are KDE's *service menus* (and the
-  actions apps declare for file types); in the modern menu only those that ask
-  for it appear, like registered apps in Windows 11.
+  Terminal" (folders), "Create shortcut"; the entries apps add; "Properties",
+  always last when shown.
+- **The entries apps add** are KDE's *service menus* (`kio/servicemenus`), a
+  group of their own before Properties; those with an `X-KDE-Submenu` stay in
+  that submenu. Windows 11 puts them behind "Show more options", a second,
+  "classic" menu: one click more and two menus to learn, which Vela no longer
+  has. Shift+F10 and Shift+right click open the same menu as the Menu key.
 
-Files uses the same file menu (milestone 3).
+Files uses the same file menu (milestone 3), with "Open in new tab", "Open in
+new window", "Open file location" (shortcuts), "Pin to Quick access" and
+"Extract all" (archives) of its own; the folder's empty space has View, Sort by,
+Refresh, Undo, Paste, Paste shortcut, New, Open in Terminal, the entries apps
+add, and Properties.
 
 ### 14.10 Task View and notifications
 
@@ -1303,14 +1335,43 @@ off all notifications for <app>", "Go to notification settings".
 | Mobility Center, Power Options | Settings > Power |
 | Event Viewer | the systemd journal viewer |
 | System | Settings > About |
-| Device Manager | system information (kinfocenter) |
 | Network Connections | Settings > Network and Internet (NetworkManager) |
-| Disk Management, Computer Management | the partition manager; "Computer Management" opens the system information |
 | Terminal / Terminal (Admin) | the default terminal / the same with a root shell requested through polkit |
 | Run as administrator | only for apps that support it (polkit); graphical apps as root under Wayland normally don't start, so elsewhere the item isn't there |
 | Task Manager | the system monitor (later Vela's own) |
-| Run | a small command box, like Win+R |
 | Pinned, Recent (jump list) | pinned files saved by Vela; recent files from `recently-used.xbel`, which records which app opened each file |
 | Tasks (jump list) | the `[Desktop Action …]` actions in the app's `.desktop` file |
 | Share | the sharing portal, once it exists; until then the item isn't there |
-| Show more options | the full menu with KDE's service menus |
+| Device Manager, Disk Management, Computer Management, Run | not there (§14.6) |
+| Show more options | not there: KDE's service menus are in the menu itself (§14.9) |
+
+### 14.12 Hiding entries
+
+Settings > Personalization > Context menu turns entries off, for whoever
+doesn't want to see them: one card per menu (the desktop, files and folders,
+a folder's empty space in Files, an app's taskbar button, an app in Start, the
+Start button), opened to a switch per entry, then "Added by apps" with every
+service menu installed, and "Show all" to bring everything back. Text fields,
+the window menu and the tray's menus aren't there: the first two are what is
+left when everything else fails, and the tray's belong to each app.
+
+- Each entry the user can hide has a **key** (`desktop.view`, `file.copy`,
+  `taskbar.recent`, `winx.files`; `service/<file>/<action>` for service menus),
+  the same in the desktop's and in Files' file menus. A group of the jump list
+  (Pinned, Recent, Tasks) is one key, its title included.
+- The keys turned off are `menus/hidden` in `vela-shell.conf`, which Settings
+  writes; `Style.hiddenMenuEntries` (Vela.Controls' `Appearance`) rereads it
+  when the file changes, so the shell and Files follow at once.
+- `MenuPanel` shows `visibleEntries`, its entries without the hidden ones
+  (`shell/qml/menufilter.js`): a submenu or icon row left empty goes, and so do
+  separators and group titles left with nothing to separate or title. A menu
+  left with nothing doesn't open. When the entries change while a menu is
+  open, its submenus close and the keyboard selection stays on its entry or
+  goes.
+- Opened from the keyboard (Menu key, Shift+F10), the icon row's buttons are
+  ordinary rows, so the arrows and letters reach Cut, Copy, Rename, Share and
+  Delete.
+- A menu taller than the output (8 from its edges) scrolls, with the wheel,
+  and with the keyboard keeping the current row in view.
+- `scripts/check-menu-keys.py` (ctest `context-menu-keys`) fails when a menu
+  gives a key Settings doesn't list, or the other way round.

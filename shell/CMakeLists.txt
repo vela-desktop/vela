@@ -27,6 +27,8 @@ qt_add_executable(vela-shell
     src/clipboard.h
     src/snip.cpp
     src/snip.h
+    src/shortcutrunner.cpp
+    src/shortcutrunner.h
     src/soundkeys.cpp
     src/soundkeys.h
     src/config.cpp
@@ -70,6 +72,8 @@ qt_add_executable(vela-shell
     src/brightness.h
     src/transfermonitor.cpp
     src/transfermonitor.h
+    src/launcherentry.cpp
+    src/launcherentry.h
     src/taskbarmodel.cpp
     src/tray.cpp
     src/taskbarmodel.h
@@ -93,7 +97,8 @@ qt_add_resources(vela-shell "images"
 
 # The list of open windows, published by the compositor.
 qt_generate_wayland_protocol_client_sources(vela-shell
-    FILES ${PROJECT_SOURCE_DIR}/protocols/wlr-foreign-toplevel-management-unstable-v1.xml)
+    FILES ${PROJECT_SOURCE_DIR}/protocols/wlr-foreign-toplevel-management-unstable-v1.xml
+          ${PROJECT_SOURCE_DIR}/protocols/vela-toplevel-identifier-v1.xml)
 
 # Window previews (Alt+Tab): ext-* protocols, used through libwayland directly
 # (see windowcapture.cpp).
@@ -133,13 +138,13 @@ set(VELA_QML_FILES
     qml/NotificationPopups.qml
     qml/NotificationToast.qml
     qml/Menus.qml
+    qml/menufilter.js
     qml/Styles.qml
     qml/ContextMenu.qml
     qml/MenuPanel.qml
     qml/MenuTextField.qml
     qml/MenuTextBox.qml
     qml/TextMenu.qml
-    qml/RunDialog.qml
     qml/ConfirmDialog.qml
     qml/BluetoothDialog.qml
     qml/BluetoothDevices.qml
@@ -153,11 +158,14 @@ set(VELA_QML_FILES
     qml/SmallButton.qml
     qml/NotificationList.qml
     qml/TaskView.qml
+    qml/CapsLockOsd.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml
     qml/SnapLayouts.qml
     qml/SnapAssist.qml
     qml/TaskbarPreview.qml
+    qml/TrayIcon.qml
+    qml/TrayOverflow.qml
     qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
@@ -179,6 +187,7 @@ qt_add_qml_module(vela-shell
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
 target_link_libraries(vela-shell PRIVATE vela-alloc
+    vela-shortcuts # custom shortcuts' file (common/shortcuts/custom.h)
     Qt6::DBus
     Qt6::Gui
     Qt6::Qml
@@ -214,6 +223,23 @@ if(VELA_BUILD_TOOLS)
             COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-transfer-monitor-test>)
     else()
         add_test(NAME shell-transfers COMMAND vela-transfer-monitor-test)
+    endif()
+
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        qt_add_executable(vela-launcherentry-test tests/launcherentry_test.cpp src/launcherentry.cpp src/launcherentry.h)
+        target_include_directories(vela-launcherentry-test PRIVATE src)
+        target_compile_options(vela-launcherentry-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-launcherentry-test PRIVATE Qt6::DBus Qt6::Test)
+        add_test(NAME shell-launcherentry COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-launcherentry-test>)
+
+        # The notification area: the shell's watcher and fake apps' icons.
+        qt_add_executable(vela-tray-test tests/tray_test.cpp src/tray.cpp src/tray.h
+            ${PROJECT_SOURCE_DIR}/common/tests/sniproperties.h)
+        target_include_directories(vela-tray-test PRIVATE src ${PROJECT_SOURCE_DIR}/common/tests)
+        target_compile_options(vela-tray-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-tray-test PRIVATE Qt6::DBus Qt6::Quick Qt6::Test)
+        add_test(NAME shell-tray COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-tray-test>)
+        set_tests_properties(shell-tray PROPERTIES TIMEOUT 30 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     endif()
 
     # Battery notifications (docs/battery-notifications.md §9): the policy
@@ -317,7 +343,7 @@ if(VELA_BUILD_TOOLS)
         set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name} QT_QML_SINGLETON_TYPE TRUE)
     endforeach()
     qt_add_qml_module(vela-taskbar-test URI Vela.Taskbar.Test VERSION 1.0
-        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml
+        QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml qml/TrayIcon.qml qml/TrayOverflow.qml
         qml/NotificationCenter.qml qml/NotificationList.qml qml/SmallButton.qml qml/ShadowRoom.qml ${taskbar_fakes})
     add_test(NAME shell-taskbar COMMAND vela-taskbar-test)
     add_test(NAME shell-taskbar-no-effects COMMAND vela-taskbar-test)
@@ -328,6 +354,31 @@ if(VELA_BUILD_TOOLS)
     # settings writes, independent of acrylic composition and the GPU driver.
     add_test(NAME shell-clock-formats COMMAND vela-taskbar-test -input ${PROJECT_SOURCE_DIR}/tests/clock)
     set_tests_properties(shell-clock-formats PROPERTIES TIMEOUT 60 ENVIRONMENT "VELA_TEST_SHELL_CONFIG=real")
+
+    # The taskbar's buttons from windows no compositor backs (ForeignToplevel
+    # with no handle), apps in a private home and badges on a private bus.
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        qt_add_executable(vela-taskbarmodel-test tests/taskbarmodel_test.cpp
+            src/taskbarmodel.cpp src/taskbarmodel.h src/foreigntoplevels.cpp src/foreigntoplevels.h
+            src/appmodel.cpp src/appmodel.h src/desktopexec.h src/mimeapps.h
+            src/config.cpp src/config.h src/batterysettings.h src/clockformat.h src/starticon.h src/defaults.h
+            src/launcherentry.cpp src/launcherentry.h src/workspaces.cpp src/workspaces.h
+            ${PROJECT_SOURCE_DIR}/common/tests/privatehome.h)
+        # The protocol code generated for vela-shell, in this same directory:
+        # after it, or Make compiles the test before the headers exist.
+        add_dependencies(vela-taskbarmodel-test vela-shell)
+        foreach(protocol wlr-foreign-toplevel-management-unstable-v1 vela-toplevel-identifier-v1)
+            target_sources(vela-taskbarmodel-test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/qwayland-${protocol}.cpp
+                ${CMAKE_CURRENT_BINARY_DIR}/wayland-${protocol}-protocol.c)
+        endforeach()
+        target_include_directories(vela-taskbarmodel-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src
+            ${CMAKE_CURRENT_BINARY_DIR})
+        target_compile_options(vela-taskbarmodel-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-taskbarmodel-test PRIVATE vela-process Qt6::DBus Qt6::Gui Qt6::GuiPrivate Qt6::Network
+            Qt6::WaylandClient Qt6::Test)
+        add_test(NAME shell-taskbarmodel COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-taskbarmodel-test>)
+        set_tests_properties(shell-taskbarmodel PROPERTIES TIMEOUT 60)
+    endif()
 
     # Config on a private vela-shell.conf, rewritten as Settings does.
     qt_add_executable(vela-config-test tests/config_test.cpp src/config.cpp src/config.h

@@ -12,7 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/util/log.h>
-#ifdef VELA_HAVE_SYSTEMD_LOCK_HINT
+#ifdef VELA_HAVE_LOGIND
 #include <systemd/sd-bus.h>
 #include <systemd/sd-login.h>
 #endif
@@ -39,14 +39,14 @@ void vela_bluetooth_start(struct vela_server *server)
     vela_child_start(&server->bluetooth, server->loop, command);
 }
 
-#ifdef VELA_HAVE_SYSTEMD_LOCK_HINT
+#ifdef VELA_HAVE_LOGIND
 static sd_bus *lock_bus;
 static char *lock_session_path;
 #endif
 
 void vela_bluetooth_report_lock(struct vela_server *server, bool locked)
 {
-#ifndef VELA_HAVE_SYSTEMD_LOCK_HINT
+#ifndef VELA_HAVE_LOGIND
     (void)server;
     (void)locked;
 #else
@@ -112,7 +112,7 @@ void vela_bluetooth_report_lock(struct vela_server *server, bool locked)
 
 void vela_bluetooth_finish(void)
 {
-#ifdef VELA_HAVE_SYSTEMD_LOCK_HINT
+#ifdef VELA_HAVE_LOGIND
     free(lock_session_path);
     lock_session_path = NULL;
     lock_bus = sd_bus_flush_close_unref(lock_bus);

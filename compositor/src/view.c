@@ -23,6 +23,7 @@
 #include "snapshot.h"
 #include "util.h"
 #include "workspace.h"
+#include "vela-toplevel-identifier-v1-protocol.h"
 
 #include <ctype.h>
 #include <limits.h>
@@ -78,12 +79,13 @@ struct wlr_box vela_view_geometry(const struct vela_view *view)
 #if WLR_HAS_XWAYLAND
     // X11: no shadow margins; Vela's bar, if any, sits on top. The window is
     // in pixels of its output.
-    double density = view->x11_density > 0.0 ? view->x11_density : 1.0;
-    return (struct wlr_box) { 0, -bar, (int)lround(view->x11->width / density),
-        (int)lround(view->x11->height / density) + bar };
-#else
-    return (struct wlr_box) { 0 };
+    if (view->x11) {
+        double density = view->x11_density > 0.0 ? view->x11_density : 1.0;
+        return (struct wlr_box) { 0, -bar, (int)lround(view->x11->width / density),
+            (int)lround(view->x11->height / density) + bar };
+    }
 #endif
+    return (struct wlr_box) { 0 };
 }
 
 bool vela_view_configurable(const struct vela_view *view)
@@ -327,6 +329,26 @@ struct vela_output *vela_view_output(struct vela_view *view)
     return output ? output : vela_output_under_cursor(view->server);
 }
 
+void vela_view_update_taskbar_output(struct vela_view *view)
+{
+    if (!view->mapped || !view->ext_handle) {
+        return;
+    }
+    struct vela_output *output = vela_view_output(view);
+    if (output != view->taskbar_output) {
+        view->taskbar_output = output;
+        vela_workspaces_announce(view->server);
+    }
+}
+
+void vela_view_set_attention(struct vela_view *view, bool on)
+{
+    if (view->mapped && (!on || !view->activated || view->server->locked) && view->attention != on) {
+        view->attention = on;
+        vela_workspaces_announce(view->server);
+    }
+}
+
 // The taskbar showing a window's button, if it still exists.
 static struct vela_layer_surface *taskbar_layer(struct vela_server *server, struct wlr_surface *surface)
 {
@@ -435,6 +457,7 @@ static struct vela_decoration_state decoration_state(struct vela_view *view)
 
 void vela_view_refresh_decoration(struct vela_view *view)
 {
+    vela_view_update_taskbar_output(view);
     if (view->decoration) {
         struct vela_decoration_state state = decoration_state(view);
         vela_decoration_update(view->decoration, &state);
@@ -764,9 +787,8 @@ static void create_handles(struct vela_view *view)
     } else {
         wlr_log(WLR_ERROR, "No ext-foreign-toplevel handle for \"%s\"", state.app_id ? state.app_id : "");
     }
-    if (vela_view_on_current_workspace(view)) {
-        create_taskbar_handle(view);
-    }
+    // Every desktop's windows: the shell filters them (docs/taskbar.md §4.2).
+    create_taskbar_handle(view);
 }
 
 static void destroy_handles(struct vela_view *view)
@@ -790,6 +812,9 @@ void vela_view_show_in_taskbar(struct vela_view *view, bool on)
 void vela_view_set_activated(struct vela_view *view, bool on)
 {
     view->activated = on;
+    if (on) {
+        vela_view_set_attention(view, false);
+    }
     send_activated(view, on);
     vela_view_refresh_decoration(view);
     if (view->handle) {
@@ -1127,7 +1152,7 @@ static void move_to_output(struct vela_view *view, struct vela_output *output, i
 
 // Every listener of a view: they all start disconnected, so all of them
 // can be disconnected at the end.
-enum { VIEW_LISTENERS = 32 };
+enum { VIEW_LISTENERS = 33 };
 
 static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTENERS])
 {
@@ -1154,6 +1179,7 @@ static void listeners(struct vela_view *view, struct wl_listener *out[VIEW_LISTE
         &view->request_configure,
         &view->map_request,
         &view->request_activate,
+        &view->set_hints,
         &view->set_decorations,
         &view->set_override_redirect,
         &view->request_below,
@@ -1267,6 +1293,7 @@ void vela_view_mapped(struct vela_view *view)
     // its parent maps again after a temporary unmap.
     vela_views_sync_transient_layers(server);
     create_handles(view);
+    view->taskbar_output = vela_view_output(view);
     if (vela_view_stays_below(view)) {
         vela_view_keep_below(view); // no keyboard either: it is a backdrop
     } else {
@@ -1293,6 +1320,8 @@ void vela_view_unmapped(struct vela_view *view)
         vela_snapshot_animate(view->server, view, VELA_SNAPSHOT_CLOSE);
     }
     view->close_animated = false;
+    view->attention = false;
+    view->x11_urgent = false;
     view->mapped = false;
     view->animating = false;
     if (view->minimized) {
@@ -1562,6 +1591,47 @@ void vela_views_revoke_capture_on_lock(struct vela_server *server)
     }
 }
 
+static void identify_toplevel(struct wl_client *client, struct wl_resource *resource, uint32_t id)
+{
+    struct vela_server *server = wl_resource_get_user_data(resource);
+    struct wl_resource *requested = wl_client_get_object(client, id);
+    struct vela_view *view;
+    if (requested) {
+        wl_list_for_each(view, &server->views, link)
+        {
+            if (!view->handle || !view->ext_handle) {
+                continue;
+            }
+            struct wl_resource *handle;
+            wl_resource_for_each(handle, &view->handle->resources)
+            {
+                if (handle == requested) {
+                    vela_toplevel_identifier_v1_send_identified(resource, id, view->ext_handle->identifier);
+                    return;
+                }
+            }
+        }
+    }
+    vela_toplevel_identifier_v1_send_identified(resource, id, "");
+}
+
+static void destroy_identifier(struct wl_client *client, struct wl_resource *resource)
+{
+    (void)client;
+    wl_resource_destroy(resource);
+}
+
+static void bind_identifier(struct wl_client *client, void *data, uint32_t version, uint32_t id)
+{
+    static const struct vela_toplevel_identifier_v1_interface impl = {
+        .identify = identify_toplevel,
+        .destroy = destroy_identifier,
+    };
+    struct wl_resource *resource =
+        VELA_MUST(wl_resource_create(client, &vela_toplevel_identifier_v1_interface, version, id));
+    wl_resource_set_implementation(resource, &impl, data, NULL);
+}
+
 void vela_views_init(struct vela_server *server)
 {
     struct wl_display *display = server->display;
@@ -1571,6 +1641,8 @@ void vela_views_init(struct vela_server *server)
 
     // The window list for the taskbar, with activate/minimize/close.
     server->foreign_toplevels = VELA_MUST(wlr_foreign_toplevel_manager_v1_create(display));
+
+    VELA_MUST(wl_global_create(display, &vela_toplevel_identifier_v1_interface, 1, server, bind_identifier));
 
     // Output and window capture (Alt+Tab previews, and later screen sharing):
     // the standard ext-* protocols.
@@ -1718,6 +1790,11 @@ void vela_views_check_outputs(struct vela_server *server)
     free(server->seen_outputs);
     server->seen_outputs = now;
     server->seen_output_count = n;
+    wl_list_for_each(view, &server->views, link)
+    {
+        view->taskbar_output = vela_view_output(view);
+    }
+    vela_workspaces_announce(server);
     // Hotplug rescue may have moved a fullscreen view into another monitor's
     // foreground without altering its Wayland fullscreen protocol state.
     vela_fullscreen_restack(server);

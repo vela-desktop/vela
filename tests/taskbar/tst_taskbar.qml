@@ -12,6 +12,8 @@ Item {
     height: 160
 
     Component { id: barComponent; Taskbar { visible: true; primary: true } }
+    Component { id: overflowComponent; TrayOverflow {} }
+    Component { id: buttonComponent; TaskbarButton {} }
 
     TestCase {
         name: "TaskbarOverflow"
@@ -34,6 +36,7 @@ Item {
             Sharing.active = false
             Audio.microphoneUsers = []
             Notifications.history.count = 0
+            Shell.superHintsHidden()
             Styles.taskbar.floating = false
             Styles.taskbar.fit = false
             Styles.taskbar.edge = 0
@@ -41,19 +44,29 @@ Item {
             Styles.taskbar.sideMargin = 0
             Styles.taskbar.splitGap = 0
             Styles.taskbar.height = 48
+            Styles.taskbar.position = "bottom"
             Menus.entries = []
             Menus.preview = null
+            Menus.trayOverflow = null
+            Config.taskbarTrayShown = []
+            Tray.menuRequest = null
+            Config.taskbarClickActive = "previews"
         }
 
         function addApps(count) {
             for (let i = Tasks.count; i < count; ++i) {
                 Tasks.append({ key: "app-" + i, name: "App " + i, iconName: "application-x-executable",
-                    windowCount: 1, windowActive: false, desktopId: "app-" + i + ".desktop" })
+                    windowIds: [], attention: false, activeWindowId: "", badgeCount: "", progress: -1, windowCount: 1, windowActive: false, pinned: false, hasWindows: true, desktopId: "app-" + i + ".desktop" })
             }
         }
         function addTray(count) {
             for (let i = Tray.count; i < count; ++i)
-                Tray.append({ icon: Qt.resolvedUrl("../../images/vela_splash_169.svg").toString(), title: "Tray " + i, attention: false })
+                Tray.append({ icon: Qt.resolvedUrl("../../images/vela_splash_169.svg").toString(), title: "Tray " + i, key: "tray-" + i, attention: false, passive: false })
+        }
+        function showTray(count) {
+            const keys = []
+            for (let i = 0; i < count; ++i) keys.push("tray-" + i)
+            Config.taskbarTrayShown = keys
         }
         function bar(width, primary) {
             const b = createTemporaryObject(barComponent, null, { width: width, primary: primary !== false })
@@ -116,6 +129,95 @@ Item {
             Styles.taskbar.margin = data.floating ? 10 : 0
             Styles.taskbar.sideMargin = data.floating ? 100 : 0
             Styles.taskbar.height = data.floating ? 68 : 48
+        }
+
+        // Super's numbers never cover the open-app indicator, on any edge;
+        // a vertical clock's badge sits above the time, inside the bar.
+        function test_numbers_and_badge_stay_clear_data() {
+            return [{ tag: "bottom" }, { tag: "top" }, { tag: "left" }, { tag: "right" }]
+        }
+        function test_numbers_and_badge_stay_clear(data) {
+            addApps(1)
+            Tasks.setProperty(0, "windowActive", true)
+            Notifications.history.count = 3
+            Styles.taskbar.position = data.tag
+            const vertical = Styles.taskbar.vertical
+            const b = createTemporaryObject(barComponent, null, { width: vertical ? 56 : 1200, height: vertical ? 700 : 48 })
+            verify(b)
+            tryVerify(() => b.visible)
+            const button = child(b, "taskButton-0")
+            Shell.primaryScreen = b.screenName
+            Shell.superHeld()
+            const number = findChild(button, "shortcutNumber")
+            const indicator = findChild(button, "indicator")
+            tryCompare(indicator, "opacity", 1)
+            const overlap = (a, c) => a.x < c.x + c.width && c.x < a.x + a.width && a.y < c.y + c.height && c.y < a.y + a.height
+            verify(number.visible)
+            verify(!overlap(number, indicator), JSON.stringify([number.x, number.y, indicator.x, indicator.y, indicator.width, indicator.height]))
+            Shell.superHintsHidden()
+            if (vertical) {
+                const time = child(b, "taskbarTime")
+                const clockItem = child(b, "taskbarClock")
+                const badge = child(b, "clockBadge")
+                tryVerify(() => clockItem.width > 0)
+                verify(badge && badge.visible)
+                verify(badge.x >= 0 && badge.x + badge.width <= clockItem.width,
+                       JSON.stringify(["the badge inside the column", badge.x, badge.width, clockItem.width]))
+                const t = time.mapToItem(clockItem, 0, 0)
+                verify(badge.y + badge.height <= t.y, "the badge above the time")
+            }
+        }
+
+        // Super's number and the count never cover each other: side by side
+        // when the button has room, the number in the count's place when not.
+        function test_number_and_count_on_small_buttons_data() {
+            const rows = []
+            for (const edge of ["bottom", "top", "left", "right"]) {
+                rows.push({ tag: edge + " small", edge: edge, size: 24, apart: false })
+                rows.push({ tag: edge + " default", edge: edge, size: 44, apart: true })
+            }
+            return rows
+        }
+        function test_number_and_count_on_small_buttons(data) {
+            Styles.taskbar.position = data.edge
+            const button = createTemporaryObject(buttonComponent, null,
+                { width: data.size, height: data.size, countBadge: "3", shortcutNumber: "1" })
+            verify(button)
+            const number = findChild(button, "shortcutNumber")
+            const count = findChild(button, "countBadge")
+            const overlap = (a, c) => a.x < c.x + c.width && c.x < a.x + a.width && a.y < c.y + c.height && c.y < a.y + a.height
+            verify(number.visible)
+            compare(count.visible, data.apart)
+            if (data.apart) {
+                verify(!overlap(number, count), JSON.stringify([number.x, number.y, count.x, count.y]))
+            } else {
+                compare(number.x + number.width, count.x + count.width)
+                compare(number.y, count.y)
+            }
+            verify(number.x >= 0 && number.x + number.width <= button.width)
+            verify(number.y >= 0 && number.y + number.height <= button.height)
+            // Super let go: the count is back.
+            button.shortcutNumber = ""
+            verify(count.visible)
+        }
+
+        // A vertical bar gives AM/PM a line of its own, still on a 12-hour
+        // clock, in the format's own case (Shell.now(): 23:59:59).
+        function test_vertical_clock_keeps_twelve_hours_data() {
+            return [{ tag: "upper", format: "h:mm AP", time: "11:59", meridiem: "PM" },
+                    { tag: "lower", format: "h:mm ap", time: "11:59", meridiem: "pm" },
+                    { tag: "24-hour", format: "HH:mm", time: "23:59", meridiem: "" }]
+        }
+        function test_vertical_clock_keeps_twelve_hours(data) {
+            Config.clockFormat = data.format
+            Styles.taskbar.position = "left"
+            const b = createTemporaryObject(barComponent, null, { width: 56, height: 700 })
+            verify(b)
+            tryVerify(() => b.visible)
+            const time = child(b, "taskbarTime")
+            compare(time.text, data.time)
+            const lines = time.parent.children.filter(c => c.visible && c.text !== undefined).map(c => c.text)
+            compare(lines.indexOf(data.meridiem) > 0, data.meridiem !== "", JSON.stringify(lines))
         }
 
         function test_crowded_layout_data() { return layouts() }
@@ -233,25 +335,203 @@ Item {
             verify(Shell.startMenuOpen)
         }
 
-        function test_oversized_tray_scrolls_without_taking_the_last_app_slot() {
+        function test_multiwindow_click_and_shortcuts() {
+            addApps(16)
+            Tasks.setProperty(0, "windowCount", 2)
+            Tasks.setProperty(0, "windowActive", true)
+            const b = bar(800)
+            const first = child(b, "taskButton-0")
+            mouseClick(first)
+            verify(Menus.preview.latched)
+            compare(Menus.preview.button, first)
+            mouseClick(first)
+            compare(Menus.preview, null)
+            compare(Tasks.activatedRows.length, 0)
+            Config.taskbarClickActive = "next"
+            mouseClick(first)
+            compare(Tasks.activatedRows, [0])
+
+            Shell.primaryScreen = b.screenName
+            Shell.superHeld()
+            compare(first.shortcutNumber, "1")
+            compare(child(b, "taskButton-9").shortcutNumber, "0")
+            compare(child(b, "taskButton-10").shortcutNumber, "")
+            Shell.superHintsHidden()
+            compare(first.shortcutNumber, "")
+            Shell.taskbarAppRequested(9, "new", b.screenName)
+            compare(Tasks.launchedRows, [9])
+        }
+
+        // After a round of edges the row is laid out as before: the time to
+        // the right, the drawer's button in the bar's middle (the real
+        // shell's round trip is TaskbarEdges in test_shell.py).
+        function test_back_on_a_row_after_other_edges() {
+            Config.clockDate = true
+            addTray(2)
+            showTray(1)
+            const b = bar(1200)
+            const time = child(b, "taskbarTime")
+            const button = child(b, "trayOverflowButton")
+            const check = () => {
+                compare(time.x + time.width, time.parent.width)
+                const middle = button.mapToItem(b.contentItem, 0, button.height / 2).y
+                compare(middle, b.height / 2)
+            }
+            check()
+            for (const edge of ["left", "right", "top", "bottom"]) {
+                Styles.taskbar.position = edge
+                b.height = Styles.taskbar.vertical ? 700 : 48
+                b.width = Styles.taskbar.vertical ? 56 : 1200
+                verify(waitForRendering(b.contentItem))
+            }
+            tryCompare(time.parent, "width", time.parent.implicitWidth)
+            check()
+        }
+
+        // Super+N on the app in front with one window: minimized, as a click
+        // (docs/taskbar.md §7.3); with several, the previews instead.
+        function test_super_number_toggles_the_app_in_front() {
+            addApps(2)
+            Tasks.setProperty(0, "windowActive", true)
+            Tasks.setProperty(1, "windowActive", true)
+            Tasks.setProperty(1, "windowCount", 2)
+            const b = bar(900)
+            Shell.primaryScreen = b.screenName
+            Shell.taskbarAppRequested(0, "activate", b.screenName)
+            compare(Tasks.activatedRows, [0])
+            Shell.taskbarAppRequested(1, "activate", b.screenName)
+            compare(Tasks.activatedRows, [0])
+            verify(Menus.preview && Menus.preview.cycling)
+        }
+
+        function test_attention_and_badge_roles() {
+            addApps(1)
+            Tasks.setProperty(0, "attention", true)
+            Tasks.setProperty(0, "badgeCount", "99+")
+            Tasks.setProperty(0, "progress", 0.4)
+            Notifications.silenced = true
+            const b = bar(1000)
+            const task = child(b, "taskButton-0")
+            verify(task.needsAttention)
+            verify(task.attentionLit)
+            verify(!task.flashAttention)
+            compare(task.countBadge, "99+")
+            compare(task.progressValue, 0.4)
+            Tasks.setProperty(0, "attention", false)
+            tryCompare(task, "needsAttention", false)
+            Notifications.silenced = false
+        }
+
+        function test_oversized_tray_keeps_room_for_an_app() {
             addApps(24)
             addTray(40)
+            showTray(40)
             const b = bar(800)
             const apps = child(b, "taskbarApps")
-            const tray = child(b, "taskbarTray")
-            tryVerify(() => tray.overflowing)
             verify(apps.viewportWidth >= Styles.taskbar.buttonWidth)
+            verify(b.hiddenTrayIcons.length > 0)
             separated(b)
             reachLast(b)
-            const next = findChild(tray, "nextApps")
-            for (let i = 0; i < Tray.count && next.enabled; ++i)
-                mouseClick(next)
-            compare(tray.contentX, tray.maximumX)
-            // The last icon is fully visible at the end of the tray viewport.
-            const viewport = findChild(tray, "appViewport")
-            mouseClick(viewport, viewport.width - 16, viewport.height / 2)
-            compare(Tray.activatedRow, 39)
-            separated(b)
+            mouseClick(child(b, "trayOverflowButton"))
+            compare(Menus.trayOverflow.bar, b)
+        }
+
+        function test_hidden_tray_icon_activates_before_the_panel_closes() {
+            addTray(1)
+            const b = bar(1000)
+            const overflow = createTemporaryObject(overflowComponent, null)
+            mouseClick(child(b, "trayOverflowButton"))
+            tryVerify(() => overflow.visible)
+            mouseClick(child(overflow, "trayOverflowIcon-0"))
+            compare(Tray.activatedRow, 0)
+            tryCompare(overflow, "visible", false)
+        }
+
+        function test_tray_icons_chosen_one_by_one() {
+            addTray(7)
+            Tray.setProperty(1, "passive", true)
+            Tray.setProperty(6, "attention", true)
+            // Chosen in their own order; a passive one waits in the drawer,
+            // one asking for attention comes out after them; an app not
+            // running keeps its key.
+            Config.taskbarTrayShown = ["tray-2", "gone", "tray-1", "tray-0"]
+            const b = bar(1000)
+            compare(b.trayIcons.shown.map(item => item.row), [2, 0, 6])
+            compare(b.hiddenTrayIcons.map(item => item.row), [1, 3, 4, 5])
+            Config.taskbarTrayShown = []
+            tryCompare(b.hiddenTrayIcons, "length", 6)
+            compare(b.trayIcons.shown.map(item => item.row), [6])
+            // New icons go in the drawer.
+            addTray(8)
+            tryCompare(b.hiddenTrayIcons, "length", 7)
+        }
+
+        function test_tray_icon_dragged_into_and_out_of_the_drawer() {
+            addTray(3)
+            Config.taskbarTrayShown = ["gone", "tray-0", "tray-1"]
+            const b = bar(1000)
+            tryCompare(b.trayIcons.shown, "length", 2)
+            const first = child(b, "trayIcon-0")
+            const button = child(b, "trayOverflowButton")
+            const from = first.mapToItem(b.contentItem, first.width / 2, first.height / 2)
+            mousePress(b.contentItem, from.x, from.y)
+            mouseMove(b.contentItem, from.x - 10, from.y, -1, Qt.LeftButton)
+            waitForRendering(b.contentItem)
+            const to = button.mapToItem(b.contentItem, button.width / 2, button.height / 2)
+            mouseMove(b.contentItem, to.x, to.y, -1, Qt.LeftButton)
+            compare(b.draggedTrayKey, "tray-0")
+            mouseRelease(b.contentItem, to.x, to.y)
+            tryCompare(Config, "taskbarTrayShown", ["gone", "tray-1"])
+            compare(b.draggedTrayKey, "")
+            // From the drawer onto the taskbar, before the shown icon.
+            tryCompare(b.trayIcons.shown, "length", 1)
+            waitForRendering(b.contentItem)
+            const shown = child(b, "trayIcon-0")
+            compare(shown.entry.key, "tray-1")
+            const at = shown.mapToItem(b.contentItem, 2, shown.height / 2)
+            b.trayDropped("tray-2", at.x, at.y, true)
+            tryCompare(Config, "taskbarTrayShown", ["gone", "tray-2", "tray-1"])
+            // Dragged up, towards the drawer.
+            b.trayDropped("tray-1", at.x, -20, true)
+            tryCompare(Config, "taskbarTrayShown", ["gone", "tray-2"])
+        }
+
+        function test_tray_icon_dragged_out_of_the_drawer() {
+            addTray(2)
+            showTray(1)
+            const b = bar(1000)
+            const overflow = createTemporaryObject(overflowComponent, null)
+            mouseClick(child(b, "trayOverflowButton"))
+            tryVerify(() => overflow.visible)
+            const icon = child(overflow, "trayOverflowIcon-0")
+            compare(icon.entry.key, "tray-1")
+            mousePress(icon, 10, 10)
+            mouseMove(icon, 10, 20, -1, Qt.LeftButton)
+            mouseMove(icon, 10, 40, -1, Qt.LeftButton)
+            verify(icon.dragging)
+            compare(b.draggedTrayKey, "tray-1")
+            mouseRelease(icon, 10, 40)
+            compare(b.draggedTrayKey, "")
+        }
+
+        function test_tray_menu_moves_an_icon() {
+            addTray(2)
+            showTray(1)
+            const b = bar(1000)
+            mouseClick(child(b, "trayIcon-0"), 5, 5, Qt.RightButton)
+            compare(Tray.menuRequest.row, 0)
+            verify(Tray.menuRequest.always)
+            Tray.menuReady(0, 100, [])
+            tryVerify(() => Menus.entries.length > 0)
+            const entry = Menus.entries.find(e => e.key === "tray.drawer")
+            verify(entry)
+            entry.action()
+            compare(Config.taskbarTrayShown, [])
+            Tray.menuReady(1, 100, [])
+            const show = Menus.entries.find(e => e.key === "tray.drawer")
+            verify(show)
+            show.action()
+            compare(Config.taskbarTrayShown, ["tray-1"])
         }
 
         function test_removing_apps_clamps_scroll_and_restores_the_unclipped_row() {

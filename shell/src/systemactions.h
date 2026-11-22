@@ -7,8 +7,6 @@
 #include <QString>
 #include <QStringList>
 
-class AppModel;
-
 namespace vela::trash {
 // Empty Vela Files' FreeDesktop home trash without external gio/ktrash tools.
 // Returns entries that could not be deleted; never follows symlinks.
@@ -28,21 +26,15 @@ class SystemActions : public QObject {
 
 public:
     explicit SystemActions(QObject* parent = nullptr);
-    void setAppModel(AppModel* apps) { m_apps = apps; }
 
-    // Names: installed-apps, mobility, power, events, system, devices,
-    // network, disks, computer, terminal, terminal-admin, task-manager,
+    // Names: installed-apps, mobility, power, events, system, network,
+    // terminal, terminal-admin, task-manager,
     // settings, files, datetime, display, notification-settings,
     // taskbar-settings, personalize, updates-settings.
     Q_INVOKABLE bool available(const QString& name) const;
     Q_INVOKABLE bool trigger(const QString& name) const;
     // A laptop (a battery that isn't a mouse's or the like).
     Q_INVOKABLE bool isLaptop() const;
-
-    // "Run" (Win+R): a program, a folder, a document or a URL.
-    Q_INVOKABLE bool run(const QString& text);
-    Q_INVOKABLE bool runOnScreen(const QString& text, const QString& screen);
-    Q_INVOKABLE QStringList runHistory() const;
 
     // "Open file location": the folder in the file manager, with the file
     // selected.
@@ -57,12 +49,7 @@ public:
     Q_INVOKABLE bool canUninstall(const QString& desktopFile) const;
     Q_INVOKABLE void uninstall(const QString& desktopFile) const;
 
-signals:
-    void chooseAppRequested(const QString& path);
-    void chooseAppOnScreenRequested(const QString& path, const QString& screen);
-
 private:
-    AppModel* m_apps = nullptr;
     QString command(const QString& name) const;
 };
 
