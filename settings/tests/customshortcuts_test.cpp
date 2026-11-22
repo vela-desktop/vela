@@ -140,6 +140,10 @@ private slots:
         QCOMPARE(shortcuts->press(scan(KEY_1), Qt::MetaModifier).value("state").toString(), "refused");
         m_modes.superNumberKeys = QStringLiteral("off");
         QCOMPARE(shortcuts->press(scan(KEY_1), Qt::MetaModifier).value("state").toString(), "ok");
+        // Alt+E: free in a session, Files when Vela runs in a window.
+        QCOMPARE(shortcuts->press(scan(KEY_E), Qt::AltModifier).value("state").toString(), "ok");
+        m_modes.nested = true;
+        QCOMPARE(shortcuts->press(scan(KEY_E), Qt::AltModifier).value("state").toString(), "refused");
     }
 
     void targets()

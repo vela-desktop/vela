@@ -171,6 +171,7 @@ vela_modes tableModes(const CustomShortcuts::Modes& modes)
     // taken. Alt+Tab's Esc isn't (the switcher is a moment).
     out.magnifier = true;
     out.numbers = vela_super_numbers_parse(modes.superNumberKeys.toUtf8().constData());
+    out.nested = modes.nested;
     return out;
 }
 

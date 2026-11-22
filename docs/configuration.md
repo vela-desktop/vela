@@ -376,6 +376,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 |---|---|
 | `VELA_WALLPAPER` | Override the wallpaper image. SVG, PNG, JPEG and other supported formats can be used. |
 | `VELA_ICON_THEME` | Fallback icon theme when Qt cannot resolve one. Default: `breeze-dark`. |
+| `VELA_NESTED=1` | Set by the compositor for its apps when it runs in a window of another desktop (never inherited otherwise): Settings then treats the nested Alt shortcuts (Alt+E...) as taken. |
 
 ## Development and renderer diagnostics
 

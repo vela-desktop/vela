@@ -38,6 +38,9 @@ public:
     struct Modes {
         bool colorFilterShortcut = false;
         QString superNumberKeys = QStringLiteral("apps");
+        // Vela runs in a window of another desktop (VELA_NESTED): its Alt
+        // rows (Alt+E...) are taken.
+        bool nested = false;
     };
     // The installed apps: [{id, name, icon, keys (more words to search)}].
     using AppsSource = std::function<QVariantList()>;

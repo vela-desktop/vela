@@ -203,7 +203,8 @@ int main(int argc, char* argv[])
             return own.isEmpty() ? layouts.source().value(QStringLiteral("layouts")).toList() : own;
         },
         [&preferences] {
-            return CustomShortcuts::Modes { preferences.colorFilterShortcut(), preferences.superNumberKeys() };
+            return CustomShortcuts::Modes { preferences.colorFilterShortcut(), preferences.superNumberKeys(),
+                qEnvironmentVariable("VELA_NESTED") == QLatin1String("1") };
         },
         [] { sendToCompositor("reload-config"); });
     // Apps installed or removed: their names and icons.
