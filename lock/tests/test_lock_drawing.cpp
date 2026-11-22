@@ -250,6 +250,26 @@ void testCapsDisplay()
     QImage image = paint(look, scene);
     check(near(at(image, 400, 503), look.surfaceContainerHighest, 3), "expressive: surface container highest");
     check(anyPixel(image, pillBox, look.onSurface, 30), "expressive: the text in on surface");
+    // After a failed sign-in with Caps Lock on, the message and the warning
+    // reach the bottom: the pill goes below the warning, never over it.
+    for (const Look& each : { defaultLook(), expressiveLook() }) {
+        Scene warned = loginScene();
+        warned.message = QStringLiteral("The password is incorrect. Try again.");
+        warned.capsLock = true;
+        const QImage plain = paint(each, warned);
+        int warningBottom = -1;
+        for (int y = 0; y < 600; ++y) {
+            if (anyPixel(plain, QRect(0, y, 800, 1), QColor(0xfc, 0xe1, 0x00), 40)) {
+                warningBottom = y;
+            }
+        }
+        check(warningBottom > 0, "the warning is drawn");
+        warned.capsDisplay = 1;
+        const QImage both = paint(each, warned);
+        check(both.copy(0, 0, 800, warningBottom + 1) == plain.copy(0, 0, 800, warningBottom + 1),
+            "the pill leaves the warning alone");
+        check(!(both == plain), "and still shows");
+    }
     // Half faded: halfway to what is behind.
     const QColor behind = at(paint(look, loginScene()), 400, 503);
     scene.capsDisplay = 0.5;

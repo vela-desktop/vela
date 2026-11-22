@@ -94,9 +94,12 @@ inline void paintCapsArrow(QPainter& p, const QRectF& box, const QColor& color, 
 
 // The Caps Lock display at the bottom in the middle, where the shell shows
 // it (CapsLockOsd.qml) with no taskbar under it: 52 tall, 48 from the
-// bottom. Expressive: a full pill on surface container highest, as the
-// field; otherwise the field's translucent white over a dark pill.
-inline void paintCapsDisplay(QPainter& p, QFont font, double lw, double lh, const Look& look, const Scene& scene)
+// bottom, lower when the login's lines reach there (`clearOf`, their
+// bottom), as far as 8 from the edge. Expressive: a full pill on surface
+// container highest, as the field; otherwise the field's translucent white
+// over a dark pill.
+inline void paintCapsDisplay(
+    QPainter& p, QFont font, double lw, double lh, const Look& look, const Scene& scene, double clearOf = 0)
 {
     if (scene.capsDisplay <= 0) {
         return;
@@ -109,7 +112,8 @@ inline void paintCapsDisplay(QPainter& p, QFont font, double lw, double lh, cons
     const double gap = 10;
     const double textWidth = QFontMetricsF(font).horizontalAdvance(text);
     const double width = std::max(180.0, icon + gap + textWidth + 40);
-    const QRectF pill(lw / 2 - width / 2, lh - 48 - 52, width, 52);
+    const double top = std::min(std::max(lh - 48 - 52, clearOf + 8), lh - 8 - 52);
+    const QRectF pill(lw / 2 - width / 2, top, width, 52);
     p.save();
     p.setOpacity(std::min(1.0, scene.capsDisplay));
     QPainterPath path;
@@ -160,6 +164,7 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
     const double lw = logical.width();
     const double lh = logical.height();
     QFont font = QGuiApplication::font();
+    double loginBottom = 0; // where the login's last line ends
 
     if (!login) {
         const QDateTime& now = scene.now;
@@ -265,9 +270,11 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
                 p.drawEllipse(QPointF(textBox.left() + dot / 2 + i * (dot + 5), textBox.center().y()), dot / 2, dot / 2);
             }
         }
+        loginBottom = field.bottom();
         if (!scene.message.isEmpty()) {
             p.setPen(QColor(255, 255, 255, 220));
             p.drawText(QRectF(0, field.bottom() + 16, lw, 30), Qt::AlignHCenter | Qt::AlignTop, scene.message);
+            loginBottom = field.bottom() + 16 + QFontMetricsF(font).height();
         }
         // Below the message, if there is one, a line of the font further
         // down, in the caution color of the dark theme: the lock is always
@@ -278,9 +285,10 @@ inline void paint(QImage& image, const QImage& background, const QImage& blurred
             p.setPen(QColor(0xfc, 0xe1, 0x00));
             p.drawText(QRectF(0, y, lw, 30), Qt::AlignHCenter | Qt::AlignTop,
                 QCoreApplication::translate("Lock", "Caps Lock is on."));
+            loginBottom = y + QFontMetricsF(font).height();
         }
     }
-    paintCapsDisplay(p, QGuiApplication::font(), lw, lh, look, scene);
+    paintCapsDisplay(p, QGuiApplication::font(), lw, lh, look, scene, loginBottom);
 }
 
 } // namespace vela::lock
