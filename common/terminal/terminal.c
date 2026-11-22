@@ -117,11 +117,16 @@ static char *preference(const struct vela_terminal_env *env)
             break;
         }
         char *start = line + strspn(line, " \t");
-        size_t length = strcspn(start, ": \t\r\n");
-        static const char suffix[] = ".desktop";
-        if (!strchr("#+-/", *start) && length > sizeof(suffix) - 1
-            && memcmp(start + length - (sizeof(suffix) - 1), suffix, sizeof(suffix) - 1) == 0) {
-            id = vela_strndup(start, length);
+        if (strchr("#+-/", *start)) {
+            continue; // comments, directives, actions, blank lines
+        }
+        // The id is the first word; it must name a .desktop file.
+        char *word = vela_strndup(start, strcspn(start, ": \t\r\n"));
+        const char *dot = strrchr(word, '.');
+        if (dot && dot != word && strcmp(dot, ".desktop") == 0) {
+            id = word;
+        } else {
+            free(word);
         }
     }
     free(line);
