@@ -155,6 +155,7 @@ set(SETTINGS_QML_FILES
     qml/pages/DateTimePage.qml
     qml/pages/KeyboardPage.qml
     qml/pages/KeyboardLayoutsPage.qml
+    qml/pages/Graphemes.js
     qml/pages/KeyboardTypingPage.qml
     qml/pages/KeyboardShortcutsPage.qml
     qml/pages/NightLightPage.qml

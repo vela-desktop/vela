@@ -4,6 +4,7 @@
 import QtQuick
 import QtQuick.Shapes
 import Vela.Controls
+import "Graphemes.js" as Graphemes
 
 // Keyboard > Layouts: the installed layouts (Win+Space switches between
 // them), where the layout in use comes from when it isn't one of them
@@ -17,6 +18,10 @@ Page {
     readonly property var source: Layouts.source()
     readonly property bool fromEnvironment: source.source === "environment"
     readonly property bool full: layouts.length >= Layouts.maxLayouts
+    // Vela adds grp:win_space_toggle only without a switch of the user's
+    // own (compositor/src/keymap_options.c).
+    readonly property bool winSpaceSwitches: !Prefs.keyboardOptions.split(",").some(o => o.trim().startsWith("grp:"))
+
     function names(list) {
         return list.map(l => Layouts.name(l.layout, l.variant, Layouts.revision)).join(", ")
     }
@@ -35,7 +40,7 @@ Page {
             description: page.fromEnvironment
                 ? qsTr("XKB_DEFAULT_LAYOUT chooses %1. It applies instead of the layouts below until it is removed.").arg(page.names(page.source.layouts))
                 : page.full ? qsTr("Vela can switch between up to %1 layouts: remove one to add another.").arg(Layouts.maxLayouts)
-                : page.layouts.length > 1 ? qsTr("Win+Space to switch between layouts")
+                : page.layouts.length > 1 && page.winSpaceSwitches ? qsTr("Win+Space to switch between layouts")
                 : page.layouts.length === 0 ? page.names(page.source.layouts)
                 : ""
             trailing: Button {
@@ -104,15 +109,16 @@ Page {
         // every layout the system has.
         readonly property var groups: visible && !previewOnly ? Layouts.groups(layoutSearch.text, Layouts.revision) : []
         readonly property bool searching: layoutSearch.text.trim() !== ""
-        // The groups opened by hand, by layout; a search opens those it
-        // finds only through their variants.
+        // The groups opened or closed by hand, by layout, for the current
+        // search; otherwise a search opens those it finds only through
+        // their variants.
         property var opened: ({})
         function isOpen(group) {
-            return opened[group.layout] === true || (searching && !group.matches)
+            return opened[group.layout] !== undefined ? opened[group.layout] : searching && !group.matches
         }
-        function toggle(layout) {
+        function toggle(layout, open) {
             const o = Object.assign({}, opened)
-            o[layout] = !o[layout]
+            o[layout] = !open
             opened = o
         }
         // Tries the entry; false, with nothing selected, when its keymap
@@ -148,6 +154,7 @@ Page {
                 visible: !addDialog.previewOnly
                 width: parent.width
                 placeholderText: qsTr("Search by name, language or country")
+                onTextChanged: addDialog.opened = ({})
             }
             Item {
                 visible: !addDialog.previewOnly
@@ -173,7 +180,7 @@ Page {
                             label: group.modelData.name
                             count: group.modelData.variants.length
                             open: group.open
-                            onExpandRequested: addDialog.toggle(group.modelData.layout)
+                            onExpandRequested: addDialog.toggle(group.modelData.layout, group.open)
                         }
                         Repeater {
                             model: group.open ? group.modelData.variants : []
@@ -452,22 +459,23 @@ Page {
                 return
             }
             switch (result.action) {
+            // By whole characters: an emoji isn't two UTF-16 halves.
             case "backspace":
                 if (selectedText !== "") {
                     replaceSelection("")
                 } else if (cursorPosition > 0) {
-                    replaceSelection("", cursorPosition - 1, cursorPosition)
+                    replaceSelection("", Graphemes.previous(text, cursorPosition), cursorPosition)
                 }
                 break
             case "delete":
                 if (selectedText !== "") {
                     replaceSelection("")
                 } else if (cursorPosition < length) {
-                    replaceSelection("", cursorPosition, cursorPosition + 1)
+                    replaceSelection("", cursorPosition, Graphemes.next(text, cursorPosition))
                 }
                 break
-            case "left": cursorPosition = Math.max(0, cursorPosition - 1); break
-            case "right": cursorPosition = Math.min(length, cursorPosition + 1); break
+            case "left": cursorPosition = Graphemes.previous(text, cursorPosition); break
+            case "right": cursorPosition = Graphemes.next(text, cursorPosition); break
             case "home": cursorPosition = 0; break
             case "end": cursorPosition = length; break
             case "select-all": selectAll(); break
