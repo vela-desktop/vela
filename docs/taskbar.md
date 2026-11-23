@@ -445,6 +445,18 @@ zone on any edge, so maximized and snapped windows follow. A tray icon is
 dragged off the bar towards the middle of the screen to go in the drawer,
 whichever edge that is.
 
+What opens from the **keyboard** (Start with Win, quick settings with
+Win+A, the notification center with Win+N, Task View, the clipboard, and
+the volume, Caps Lock and desktop indicators) opens on the display the
+user is working on, like Windows: the focused window's, else the pointer's.
+On a second monitor fullscreen, they would otherwise appear on the first
+one, where nobody is looking. The compositor sends that display's name
+before every message to the shell (`active-output <name>`,
+`vela_active_output_update()` in `focus.c`); the shell keeps it as
+`Shell.activeScreen`, and `Shell.panelScreen()` answers with it when no
+taskbar opened the panel (`Menus.targetScreen()`, the volume, Caps Lock and
+desktop indicators).
+
 ## 12. Settings > Personalization > Taskbar
 
 | Card | Settings |

@@ -332,6 +332,14 @@ void ShellController::handleCommand(const QByteArray& command)
         emit clipboardClearRequested();
     } else if (parts.first() == "volume" && parts.size() == 2) {
         emit volumeKeyPressed(QString::fromLatin1(parts.at(1)));
+    } else if (parts.first() == "active-output" && parts.size() == 2) {
+        // The display the user is working on (focus.c): what opens from the
+        // keyboard goes there, as on Windows, not on the main output.
+        const QString name = QString::fromUtf8(parts.at(1));
+        if (name != m_activeScreen) {
+            m_activeScreen = name;
+            emit activeScreenChanged();
+        }
     } else if (parts.first() == "shortcut" && parts.size() == 2) {
         emit shortcutRequested(QString::fromLatin1(parts.at(1)));
     } else if (command == "caps-lock on" || command == "caps-lock off") {
@@ -486,6 +494,14 @@ QString ShellController::primaryScreen() const
 {
     const QScreen* screen = vela::primaryOutputScreen(m_preferredPrimaryOutput);
     return screen ? screen->name() : QString();
+}
+
+QString ShellController::panelScreen() const
+{
+    // The compositor's word first (the focused window's display), then the
+    // main output: with a video fullscreen on the second monitor, the volume
+    // indicator and Start belong there, where the user is looking.
+    return m_activeScreen.isEmpty() ? primaryScreen() : m_activeScreen;
 }
 
 void ShellController::setPreferredPrimaryOutput(const QString& name)

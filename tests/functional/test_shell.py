@@ -1907,6 +1907,28 @@ class QtShell(RealShell):
         image = self.vela.pixels()
         self.assertEqual(self.panel_top(image, x, layer["y"] + 1, layer["y"] + layer["h"]), main_top)
 
+    def test_panels_opened_from_the_keyboard_follow_the_focused_display(self):
+        """The volume indicator, Start and quick settings belong on the display
+        the user is working on, like Windows: with a fullscreen video on the
+        second monitor they would otherwise open on the first one, where nobody
+        is looking (the volume keys seem to do nothing)."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.input("move", second["x"] + second["w"] // 2, second["y"] + second["h"] // 2)
+        window = self.vela.open_window(1920, 1080, command=[tool("vela-pattern"), "--fullscreen-parent", "1920", "1080"])
+        state = self.vela.wait_for(lambda s: s["focused"] == window and s.window(window)["fullscreen"],
+                                   what="a fullscreen window on the second display")
+        self.assertEqual(state.window(window)["output"], "HEADLESS-2")
+        for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings")):
+            with self.subTest(panel=namespace):
+                self.vela.input("key", key)
+                state = self.vela.wait_for(lambda s: self.layer(s, namespace), what=f"{namespace} open")
+                self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-2")
+                self.vela.input("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+        self.check_desktop()
+
 
 # Black and white stripes 4 pixels wide: blurred they become one gray, seen
 # through a translucent panel or a shadow they stay stripes.

@@ -29,6 +29,11 @@ class ShellController : public QObject {
     Q_PROPERTY(QStringList startPins READ startPins NOTIFY startPinsChanged)
     // The main output's name (panels asked for from the keyboard open there).
     Q_PROPERTY(QString primaryScreen READ primaryScreen NOTIFY primaryScreenChanged)
+    // The display the user is working on (the focused window's, else the
+    // pointer's), as the compositor says: the panels opened from the keyboard
+    // (the volume indicator, Start, quick settings) open there. Empty until
+    // the compositor says so: then the main output.
+    Q_PROPERTY(QString activeScreen READ activeScreen NOTIFY activeScreenChanged)
 
 public:
     explicit ShellController(QObject* parent = nullptr);
@@ -76,6 +81,10 @@ public:
 
     QString userName() const;
     QString primaryScreen() const;
+    QString activeScreen() const { return m_activeScreen; }
+    // The display a panel opens on when whoever opens it says nothing: the one
+    // the user is working on (activeScreen), else the main output.
+    Q_INVOKABLE QString panelScreen() const;
     void setPreferredPrimaryOutput(const QString& name);
     QString userInitial() const;
 
@@ -128,6 +137,7 @@ signals:
     void startMenuOpenChanged();
     void startPinsChanged();
     void primaryScreenChanged();
+    void activeScreenChanged();
     void chooseSourceRequested();
     void chooseSourceCancelled();
     // Windows shortcuts arriving from the compositor.
@@ -183,6 +193,8 @@ private Q_SLOTS:
 
 private:
     QString m_preferredPrimaryOutput;
+    // The display the compositor says the user is on (activeScreen).
+    QString m_activeScreen;
     void handleCommand(const QByteArray& command);
     void takeSleepDelay();
     void startChooser(QLocalSocket* socket);

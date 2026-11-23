@@ -51,7 +51,7 @@ Window {
     function show() {
         if (!motion.opened) {
             if (!motion.closing) {
-                Shell.placeOnScreen(root, Shell.primaryScreen)
+                Shell.placeOnScreen(root, Shell.panelScreen())
             }
             visible = true
             motion.open()

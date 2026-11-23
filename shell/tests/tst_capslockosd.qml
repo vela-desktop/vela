@@ -64,5 +64,17 @@ Item {
             Sound.osdRequested("")
             tryVerify(() => !osd.visible, 5000)
         }
+
+        // The display the user is working on, as the compositor says: the
+        // display appears there, not on the main one (the volume indicator,
+        // which shares the place, does the same).
+        function test_the_active_display() {
+            Shell.activeScreen = "second-output"
+            Shell.capsLockChanged(true)
+            verify(osd.visible)
+            compare(Shell.placed[Shell.placed.length - 1], "second-output")
+            Shell.activeScreen = ""
+            tryVerify(() => !osd.visible, osd.hold + 5000)
+        }
     }
 }

@@ -212,6 +212,10 @@ struct vela_server {
     // it returns to when the one above closes.
     struct vela_layer_surface *focused_layer;
     struct vela_layer_surface *previous_layer;
+    // The display the shell last heard about (focus.h): the focused window's
+    // or panel's, else the one under the pointer. Panels opened from the
+    // keyboard go there.
+    char active_output[64];
     // Super tap: show the taskbar before Qt finishes mapping Start. A bounded
     // timer restores fullscreen if no panel ever arrives.
     bool start_preview;

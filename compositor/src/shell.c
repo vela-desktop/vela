@@ -4,6 +4,7 @@
 #include "shell.h"
 
 #include "alloc/alloc.h"
+#include "focus.h"
 #include "process.h"
 #include "server.h"
 #include "util.h"
@@ -21,7 +22,8 @@
 #include <wayland-server-core.h>
 #include <wlr/util/log.h>
 
-bool vela_shell_send(struct vela_server *server, const char *line)
+// One line, as it is: no active-display update first (vela_shell_send below).
+static bool send_line(struct vela_server *server, const char *line)
 {
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
     if (!runtime_dir || !server->socket_name[0]) {
@@ -52,10 +54,26 @@ bool vela_shell_send(struct vela_server *server, const char *line)
     return sent;
 }
 
+bool vela_shell_send(struct vela_server *server, const char *line)
+{
+    // The display the user is working on goes first, when it changed: the
+    // panels the shell opens from the keyboard (the volume indicator, Start,
+    // quick settings) belong there, not on the primary output. Sent with
+    // every message, so it is never stale when one of them arrives.
+    char active[96];
+    if (vela_active_output_update(server, active, sizeof(active))) {
+        send_line(server, active);
+    }
+    return send_line(server, line);
+}
+
 // -------------------------------------------------------------- supervision --
 
 void vela_shell_start(struct vela_server *server, const char *command)
 {
+    // A new shell has heard about no display yet: the next message tells it,
+    // even if the user didn't move since (a relaunch after a crash).
+    server->active_output[0] = '\0';
     vela_child_start(&server->shell, server->loop, command);
 }
 

@@ -10,6 +10,13 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- The volume indicator, Start and the other panels opened from the keyboard
+  (Quick Settings, the notification center, Task View, the clipboard, the Caps
+  Lock and desktop displays) appear on the display you are working on (the
+  focused window's, else the pointer's), not always on the main one. With a
+  video fullscreen on a second monitor, the volume keys seemed to do nothing:
+  the indicator was appearing on the other screen.
+
 - Keyboard settings have their own section in Settings, with Layouts and
   Typing pages. When no layout is chosen, Settings shows the one in use and
   where it comes from (the system, or the XKB_DEFAULT_* variables). Vela no
