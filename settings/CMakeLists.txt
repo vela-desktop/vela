@@ -11,6 +11,10 @@ qt_standard_project_setup(REQUIRES 6.5)
 # Output configuration is native and built even when test tools are disabled.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(DISPLAYS_WAYLAND REQUIRED IMPORTED_TARGET wayland-client)
+# The keyboard layouts' catalogue (docs/keyboard.md §5.1).
+pkg_check_modules(XKBREGISTRY REQUIRED IMPORTED_TARGET xkbregistry)
+# Its preview: keymaps and Compose (§5.4).
+pkg_check_modules(XKBCOMMON REQUIRED IMPORTED_TARGET xkbcommon)
 find_program(DISPLAYS_WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 set(DISPLAYS_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${DISPLAYS_GENERATED_DIR})
@@ -25,6 +29,22 @@ foreach(name wlr-output-management-unstable-v1 vela-output-preview-v1)
         DEPENDS ${xml})
     list(APPEND DISPLAYS_PROTOCOL_SOURCES ${header} ${code})
 endforeach()
+# Recording a custom shortcut: the compositor's shortcuts stay off for
+# Settings' window meanwhile (docs/keyboard.md §9.1).
+pkg_get_variable(SETTINGS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+set(SETTINGS_INHIBIT_XML
+    ${SETTINGS_WAYLAND_PROTOCOLS_DIR}/unstable/keyboard-shortcuts-inhibit/keyboard-shortcuts-inhibit-unstable-v1.xml)
+set(SETTINGS_INHIBIT_HEADER ${DISPLAYS_GENERATED_DIR}/keyboard-shortcuts-inhibit-unstable-v1-client-protocol.h)
+set(SETTINGS_INHIBIT_CODE ${DISPLAYS_GENERATED_DIR}/keyboard-shortcuts-inhibit-unstable-v1-protocol.c)
+add_custom_command(OUTPUT ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE}
+    COMMAND ${DISPLAYS_WAYLAND_SCANNER} client-header ${SETTINGS_INHIBIT_XML} ${SETTINGS_INHIBIT_HEADER}
+    COMMAND ${DISPLAYS_WAYLAND_SCANNER} private-code ${SETTINGS_INHIBIT_XML} ${SETTINGS_INHIBIT_CODE}
+    DEPENDS ${SETTINGS_INHIBIT_XML})
+# One target compiles it, for Settings and its test: two targets with the
+# same custom command could run it at once.
+add_library(vela-settings-inhibit STATIC ${SETTINGS_INHIBIT_HEADER} ${SETTINGS_INHIBIT_CODE})
+target_include_directories(vela-settings-inhibit PUBLIC ${DISPLAYS_GENERATED_DIR})
+target_link_libraries(vela-settings-inhibit PUBLIC PkgConfig::DISPLAYS_WAYLAND)
 add_library(vela-displays STATIC src/displays.cpp src/displays.h ${DISPLAYS_PROTOCOL_SOURCES})
 target_include_directories(vela-displays PUBLIC src PRIVATE ${DISPLAYS_GENERATED_DIR})
 target_link_libraries(vela-displays PUBLIC Qt6::Gui PRIVATE PkgConfig::DISPLAYS_WAYLAND)
@@ -38,12 +58,20 @@ qt_add_executable(vela-settings
     src/about.h
     src/datetime.cpp
     src/datetime.h
+    src/customshortcuts.cpp
+    src/customshortcuts.h
     src/defaultapps.cpp
     src/defaultapps.h
     src/keyboardlayouts.cpp
     src/keyboardlayouts.h
+    src/keyboardoptions.cpp
+    src/keyboardoptions.h
+    src/keyboardpreview.cpp
+    src/keyboardpreview.h
     src/preferences.cpp
     src/preferences.h
+    src/trayicons.cpp
+    src/trayicons.h
     ${PROJECT_SOURCE_DIR}/compositor/src/color.c # night light's temperature, read as the compositor does
     ${PROJECT_SOURCE_DIR}/compositor/src/color.h
     ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c
@@ -55,13 +83,17 @@ qt_add_executable(vela-settings
     ${SHELL_SRC}/mica.h
     ${SHELL_SRC}/network.cpp
     ${SHELL_SRC}/network.h
+    ${SHELL_SRC}/desktopexec.h
+    ${SHELL_SRC}/servicemenus.cpp # Personalization > Context menu lists them
+    ${SHELL_SRC}/servicemenus.h
     ${SHELL_SRC}/systemactions.cpp
     ${SHELL_SRC}/systemactions.h
     ${SHELL_SRC}/systemstatus.cpp
     ${SHELL_SRC}/systemstatus.h
     ${SHELL_SRC}/brightness.cpp
     ${SHELL_SRC}/brightness.h)
-target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
+target_include_directories(vela-settings PRIVATE ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src
+    ${DISPLAYS_GENERATED_DIR})
 
 set(SETTINGS_QML_FILES
     qml/Main.qml
@@ -87,6 +119,7 @@ set(SETTINGS_QML_FILES
     qml/ThemeGallery.qml
     qml/StyleGallery.qml
     qml/StyleChooser.qml
+    qml/MenuEntriesCard.qml
     qml/StartIconCard.qml
     qml/AccentPicker.qml
     qml/TaskbarAlignmentCard.qml
@@ -110,6 +143,7 @@ set(SETTINGS_QML_FILES
     qml/pages/PersonalizationPage.qml
     qml/pages/BackgroundPage.qml
     qml/pages/ColorsPage.qml
+    qml/pages/ContextMenuPage.qml
     qml/pages/ThemesPage.qml
     qml/pages/TaskbarPage.qml
     qml/pages/StartPage.qml
@@ -120,6 +154,10 @@ set(SETTINGS_QML_FILES
     qml/pages/TimeLanguagePage.qml
     qml/pages/DateTimePage.qml
     qml/pages/KeyboardPage.qml
+    qml/pages/KeyboardLayoutsPage.qml
+    qml/pages/Graphemes.js
+    qml/pages/KeyboardTypingPage.qml
+    qml/pages/KeyboardShortcutsPage.qml
     qml/pages/NightLightPage.qml
     qml/pages/AccessibilityPage.qml
     qml/pages/MousePage.qml
@@ -145,6 +183,13 @@ qt_add_resources(vela-settings "images"
     BASE ${PROJECT_SOURCE_DIR}
     FILES ${PROJECT_SOURCE_DIR}/images/vela_splash_169.svg)
 target_link_libraries(vela-settings PRIVATE vela-alloc
+    vela-shortcuts # the matcher and Vela's shortcut table (common/shortcuts)
+    vela-terminal-lookup # Default apps > Terminal (common/terminal)
+    vela-settings-inhibit # keyboard-shortcuts-inhibit, while recording
+    PkgConfig::DISPLAYS_WAYLAND
+    Qt6::GuiPrivate
+    PkgConfig::XKBREGISTRY
+    PkgConfig::XKBCOMMON
     vela-displays
     Qt6::DBus
     Qt6::Gui
@@ -209,7 +254,7 @@ endif()
 if(VELA_BUILD_TOOLS)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
     qt_add_executable(vela-preferences-test tests/preferences_test.cpp
-        src/preferences.cpp src/preferences.h
+        src/preferences.cpp src/preferences.h src/keyboardoptions.cpp src/keyboardoptions.h
         ${PROJECT_SOURCE_DIR}/compositor/src/color.c
         ${PROJECT_SOURCE_DIR}/compositor/src/legacy_names.c)
     target_include_directories(vela-preferences-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src ${SHELL_SRC} ${PROJECT_SOURCE_DIR}/compositor/src)
@@ -219,6 +264,48 @@ if(VELA_BUILD_TOOLS)
         Qt6::DBus Qt6::Gui Qt6::Network Qt6::Quick Qt6::Test)
     add_test(NAME settings-preferences COMMAND vela-preferences-test)
     set_tests_properties(settings-preferences PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # Custom shortcuts: recording, refusals, the file (docs/keyboard.md §9).
+    qt_add_executable(vela-customshortcuts-test tests/customshortcuts_test.cpp src/customshortcuts.cpp
+        src/customshortcuts.h)
+    target_include_directories(vela-customshortcuts-test PRIVATE src)
+    target_compile_options(vela-customshortcuts-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-customshortcuts-test PRIVATE vela-shortcuts vela-settings-inhibit Qt6::Gui
+        Qt6::GuiPrivate Qt6::Test)
+    add_test(NAME settings-customshortcuts COMMAND vela-customshortcuts-test)
+
+    # The keyboard layouts and where the layout in use comes from.
+    qt_add_executable(vela-keyboardlayouts-test tests/keyboardlayouts_test.cpp src/keyboardlayouts.cpp src/keyboardlayouts.h)
+    target_include_directories(vela-keyboardlayouts-test PRIVATE src)
+    target_compile_options(vela-keyboardlayouts-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-keyboardlayouts-test PRIVATE Qt6::Core Qt6::Test PkgConfig::XKBREGISTRY)
+    target_compile_definitions(vela-keyboardlayouts-test PRIVATE KEYBOARD_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/tests/keyboard")
+    add_test(NAME settings-keyboardlayouts COMMAND vela-keyboardlayouts-test)
+    # Keyboard > Typing's keys over the XKB options.
+    qt_add_executable(vela-keyboardoptions-test tests/keyboardoptions_test.cpp src/keyboardoptions.cpp src/keyboardoptions.h)
+    target_include_directories(vela-keyboardoptions-test PRIVATE src)
+    target_compile_options(vela-keyboardoptions-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-keyboardoptions-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME settings-keyboardoptions COMMAND vela-keyboardoptions-test)
+    # Trying a layout: its keymap, drawing and typing (system XKB data).
+    qt_add_executable(vela-keyboardpreview-test tests/keyboardpreview_test.cpp src/keyboardpreview.cpp src/keyboardpreview.h)
+    target_include_directories(vela-keyboardpreview-test PRIVATE src)
+    target_compile_options(vela-keyboardpreview-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-keyboardpreview-test PRIVATE Qt6::Gui Qt6::Test PkgConfig::XKBCOMMON)
+    add_test(NAME settings-keyboardpreview COMMAND vela-keyboardpreview-test)
+    set_tests_properties(settings-keyboardpreview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+    # The notification area's icons, from a fake watcher on a private bus.
+    find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session)
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        qt_add_executable(vela-trayicons-test tests/trayicons_test.cpp src/trayicons.cpp src/trayicons.h
+            ${PROJECT_SOURCE_DIR}/common/tests/sniproperties.h)
+        target_include_directories(vela-trayicons-test PRIVATE src ${PROJECT_SOURCE_DIR}/common/tests)
+        target_compile_options(vela-trayicons-test PRIVATE -Wall -Wextra)
+        target_link_libraries(vela-trayicons-test PRIVATE Qt6::DBus Qt6::Test)
+        add_test(NAME settings-trayicons COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-trayicons-test>)
+        set_tests_properties(settings-trayicons PROPERTIES TIMEOUT 30)
+    endif()
 endif()
 
 if(VELA_BUILD_TOOLS AND VELA_BUILD_COMPOSITOR)

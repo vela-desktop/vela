@@ -846,6 +846,344 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>ContextMenuPage</name>
+    <message>
+        <source>Desktop</source>
+        <translation>Desktop</translation>
+    </message>
+    <message>
+        <source>A right click on the desktop&apos;s background</source>
+        <translation>Clic destro sullo sfondo del desktop</translation>
+    </message>
+    <message>
+        <source>View</source>
+        <translation>Visualizza</translation>
+    </message>
+    <message>
+        <source>Sort by</source>
+        <translation>Ordina per</translation>
+    </message>
+    <message>
+        <source>Refresh</source>
+        <translation>Aggiorna</translation>
+    </message>
+    <message>
+        <source>Undo</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Paste</source>
+        <translation>Incolla</translation>
+    </message>
+    <message>
+        <source>Paste shortcut</source>
+        <translation>Incolla collegamento</translation>
+    </message>
+    <message>
+        <source>New</source>
+        <translation>Nuovo</translation>
+    </message>
+    <message>
+        <source>Display settings</source>
+        <translation>Impostazioni schermo</translation>
+    </message>
+    <message>
+        <source>Personalize</source>
+        <translation>Personalizza</translation>
+    </message>
+    <message>
+        <source>Open in Terminal</source>
+        <translation>Apri in Terminale</translation>
+    </message>
+    <message>
+        <source>Files and folders</source>
+        <translation>File e cartelle</translation>
+    </message>
+    <message>
+        <source>On the desktop and in Files</source>
+        <translation>Sul desktop e in Esplora file</translation>
+    </message>
+    <message>
+        <source>Cut</source>
+        <translation>Taglia</translation>
+    </message>
+    <message>
+        <source>Copy</source>
+        <translation>Copia</translation>
+    </message>
+    <message>
+        <source>Rename</source>
+        <translation>Rinomina</translation>
+    </message>
+    <message>
+        <source>Share</source>
+        <translation>Condividi</translation>
+    </message>
+    <message>
+        <source>Delete</source>
+        <translation>Elimina</translation>
+    </message>
+    <message>
+        <source>Open</source>
+        <translation>Apri</translation>
+    </message>
+    <message>
+        <source>Open in new tab (Files)</source>
+        <translation>Apri in una nuova scheda (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Open in new window (Files)</source>
+        <translation>Apri in una nuova finestra (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Open with</source>
+        <translation>Apri con</translation>
+    </message>
+    <message>
+        <source>Open file location (Files)</source>
+        <translation>Apri percorso file (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Pin to Start (apps on the desktop)</source>
+        <translation>Aggiungi a Start (app sul desktop)</translation>
+    </message>
+    <message>
+        <source>Add to Favorites</source>
+        <translation>Aggiungi ai Preferiti</translation>
+    </message>
+    <message>
+        <source>Pin to Quick access (Files)</source>
+        <translation>Aggiungi ad Accesso rapido (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Extract all (Files)</source>
+        <translation>Estrai tutto (Esplora file)</translation>
+    </message>
+    <message>
+        <source>Compress to</source>
+        <translation>Comprimi in</translation>
+    </message>
+    <message>
+        <source>Copy as path</source>
+        <translation>Copia come percorso</translation>
+    </message>
+    <message>
+        <source>Create shortcut</source>
+        <translation>Crea collegamento</translation>
+    </message>
+    <message>
+        <source>Properties</source>
+        <translation>Proprietà</translation>
+    </message>
+    <message>
+        <source>Folder background</source>
+        <translation>Sfondo della cartella</translation>
+    </message>
+    <message>
+        <source>A right click on the empty space of a folder in Files</source>
+        <translation>Clic destro nello spazio vuoto di una cartella in Esplora file</translation>
+    </message>
+    <message>
+        <source>Taskbar apps</source>
+        <translation>App nella barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>A right click on an app&apos;s button in the taskbar</source>
+        <translation>Clic destro sul pulsante di un&apos;app nella barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Pinned files</source>
+        <translation>File aggiunti</translation>
+    </message>
+    <message>
+        <source>Recent files</source>
+        <translation>File recenti</translation>
+    </message>
+    <message>
+        <source>The app&apos;s tasks</source>
+        <translation>Le attività dell&apos;app</translation>
+    </message>
+    <message>
+        <source>The app, to open it again</source>
+        <translation>L&apos;app, per aprirla di nuovo</translation>
+    </message>
+    <message>
+        <source>Pin to taskbar</source>
+        <translation>Aggiungi alla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Close window</source>
+        <translation>Chiudi finestra</translation>
+    </message>
+    <message>
+        <source>Apps in Start</source>
+        <translation>App in Start</translation>
+    </message>
+    <message>
+        <source>A right click on an app in Start</source>
+        <translation>Clic destro su un&apos;app in Start</translation>
+    </message>
+    <message>
+        <source>Pin to Start</source>
+        <translation>Aggiungi a Start</translation>
+    </message>
+    <message>
+        <source>Move to front</source>
+        <translation>Sposta all&apos;inizio</translation>
+    </message>
+    <message>
+        <source>Add to desktop</source>
+        <translation>Aggiungi al desktop</translation>
+    </message>
+    <message>
+        <source>Open file location</source>
+        <translation>Apri percorso file</translation>
+    </message>
+    <message>
+        <source>Uninstall</source>
+        <translation>Disinstalla</translation>
+    </message>
+    <message>
+        <source>Start button</source>
+        <translation>Pulsante Start</translation>
+    </message>
+    <message>
+        <source>A right click on Start, or Win+X</source>
+        <translation>Clic destro su Start, oppure Win+X</translation>
+    </message>
+    <message>
+        <source>Installed apps</source>
+        <translation>App installate</translation>
+    </message>
+    <message>
+        <source>Mobility Center (laptops)</source>
+        <translation>Centro PC portatile (portatili)</translation>
+    </message>
+    <message>
+        <source>Power options</source>
+        <translation>Opzioni risparmio energia</translation>
+    </message>
+    <message>
+        <source>Event viewer</source>
+        <translation>Visualizzatore eventi</translation>
+    </message>
+    <message>
+        <source>System</source>
+        <translation>Sistema</translation>
+    </message>
+    <message>
+        <source>Network connections</source>
+        <translation>Connessioni di rete</translation>
+    </message>
+    <message>
+        <source>Terminal</source>
+        <translation>Terminale</translation>
+    </message>
+    <message>
+        <source>Terminal (Admin)</source>
+        <translation>Terminale (Admin)</translation>
+    </message>
+    <message>
+        <source>Task manager</source>
+        <translation>Gestione attività</translation>
+    </message>
+    <message>
+        <source>Settings</source>
+        <translation>Impostazioni</translation>
+    </message>
+    <message>
+        <source>File Explorer</source>
+        <translation>Esplora file</translation>
+    </message>
+    <message>
+        <source>Search</source>
+        <translation>Cerca</translation>
+    </message>
+    <message>
+        <source>Shut down or sign out</source>
+        <translation>Arresta il sistema o disconnetti</translation>
+    </message>
+    <message>
+        <source>Menus</source>
+        <translation>Menù</translation>
+    </message>
+    <message>
+        <source>Added by apps</source>
+        <translation>Aggiunte dalle app</translation>
+    </message>
+    <message>
+        <source>App entries</source>
+        <translation>Voci delle app</translation>
+    </message>
+    <message>
+        <source>In the menus of files and folders, before Properties</source>
+        <translation>Nei menù di file e cartelle, prima di Proprietà</translation>
+    </message>
+    <message>
+        <source>No app has added entries</source>
+        <translation>Nessuna app ha aggiunto voci</translation>
+    </message>
+    <message>
+        <source>Apps such as Ark or Filelight add theirs to the menus of files and folders</source>
+        <translation>App come Ark o Filelight aggiungono le loro ai menù di file e cartelle</translation>
+    </message>
+    <message>
+        <source>Show every entry again</source>
+        <translation>Mostra di nuovo tutte le voci</translation>
+    </message>
+    <message>
+        <source>All the entries you turned off come back in every menu</source>
+        <translation>Tutte le voci che hai disattivato tornano in ogni menù</translation>
+    </message>
+    <message>
+        <source>Show all</source>
+        <translation>Mostra tutte</translation>
+    </message>
+</context>
+<context>
+    <name>CustomShortcuts</name>
+    <message>
+        <source>This key can&apos;t be used for a shortcut.</source>
+        <translation>Questo tasto non si può usare per una scorciatoia.</translation>
+    </message>
+    <message>
+        <source>Vela already uses this combination.</source>
+        <translation>Vela usa già questa combinazione.</translation>
+    </message>
+    <message>
+        <source>This combination is reserved for Vela.</source>
+        <translation>Questa combinazione è riservata a Vela.</translation>
+    </message>
+    <message>
+        <source>Add Ctrl, Alt or Win: alone or with Shift, this key types.</source>
+        <translation>Aggiungi Ctrl, Alt o Win: da solo o con Maiusc, questo tasto scrive.</translation>
+    </message>
+    <message>
+        <source>Choose an app.</source>
+        <translation>Scegli un&apos;app.</translation>
+    </message>
+    <message>
+        <source>Write a command.</source>
+        <translation>Scrivi un comando.</translation>
+    </message>
+    <message>
+        <source>Write a link or choose a file.</source>
+        <translation>Scrivi un link o scegli un file.</translation>
+    </message>
+    <message>
+        <source>Too long.</source>
+        <translation>Troppo lungo.</translation>
+    </message>
+    <message>
+        <source>Write a link such as https://example.org, or a file&apos;s full path.</source>
+        <translation>Scrivi un link come https://example.org, o il percorso completo di un file.</translation>
+    </message>
+    <message>
+        <source>It can&apos;t hold line breaks or tabs, nor start or end with a space.</source>
+        <translation>Non può contenere a capo o tabulazioni, né iniziare o finire con uno spazio.</translation>
+    </message>
+</context>
+<context>
     <name>DateTimePage</name>
     <message>
         <source>Set time automatically</source>
@@ -993,6 +1331,10 @@ Specifiche sistema
         <source>%1 links:</source>
         <translation>Collegamenti %1:</translation>
     </message>
+    <message>
+        <source>System default</source>
+        <translation>Predefinito di sistema</translation>
+    </message>
 </context>
 <context>
     <name>DefaultAppsPage</name>
@@ -1043,6 +1385,26 @@ Specifiche sistema
     <message>
         <source>No installed app opens it</source>
         <translation>Nessuna app installata lo apre</translation>
+    </message>
+    <message>
+        <source>Terminal</source>
+        <translation>Terminale</translation>
+    </message>
+    <message>
+        <source>Opens with Win+Enter and for updates</source>
+        <translation>Si apre con Win+Invio e per gli aggiornamenti</translation>
+    </message>
+    <message>
+        <source>Automatic: %1</source>
+        <translation>Automatico: %1</translation>
+    </message>
+    <message>
+        <source>No terminal installed</source>
+        <translation>Nessun terminale installato</translation>
+    </message>
+    <message>
+        <source>Automatic</source>
+        <translation>Automatico</translation>
     </message>
     <message>
         <source>Apps</source>
@@ -1165,6 +1527,10 @@ Specifiche sistema
     <message>
         <source>Could not change display settings</source>
         <translation>Impossibile modificare le impostazioni degli schermi</translation>
+    </message>
+    <message>
+        <source>This move would leave a display unreachable. Keep all displays connected along their edges.</source>
+        <translation>Con questo spostamento uno schermo diventerebbe irraggiungibile. Mantieni tutti gli schermi collegati lungo i bordi.</translation>
     </message>
     <message>
         <source>Brightness &amp; color</source>
@@ -1332,10 +1698,6 @@ Specifiche sistema
 <context>
     <name>Displays</name>
     <message>
-        <source>Move this display to make room before changing its size or orientation.</source>
-        <translation>Sposta questo schermo per creare spazio prima di modificarne le dimensioni o l’orientamento.</translation>
-    </message>
-    <message>
         <source>The display connection was lost. Reopen Settings to try again.</source>
         <translation>La connessione agli schermi è stata interrotta. Riapri Impostazioni per riprovare.</translation>
     </message>
@@ -1475,26 +1837,34 @@ Specifiche sistema
     </message>
 </context>
 <context>
-    <name>KeyboardPage</name>
+    <name>KeyboardLayoutsPage</name>
     <message>
         <source>Keyboard layout</source>
         <translation>Layout di tastiera</translation>
     </message>
     <message>
-        <source>The system&apos;s</source>
-        <translation>Quello del sistema</translation>
+        <source>Set by environment variables</source>
+        <translation>Impostato dalle variabili d&apos;ambiente</translation>
     </message>
     <message>
         <source>Installed layouts</source>
         <translation>Layout installati</translation>
     </message>
     <message>
-        <source>Win+Space to switch between layouts</source>
-        <translation>Win+Spazio per passare da un layout all&apos;altro</translation>
+        <source>From the system</source>
+        <translation>Dal sistema</translation>
     </message>
     <message>
-        <source>Chosen by localectl or KDE</source>
-        <translation>Scelto da localectl o da KDE</translation>
+        <source>XKB_DEFAULT_LAYOUT chooses %1. It applies instead of the layouts below until it is removed.</source>
+        <translation>XKB_DEFAULT_LAYOUT sceglie %1. Vale al posto dei layout qui sotto finché non viene tolta.</translation>
+    </message>
+    <message>
+        <source>Vela can switch between up to %1 layouts: remove one to add another.</source>
+        <translation>Vela può passare fra al massimo %1 layout: togline uno per aggiungerne un altro.</translation>
+    </message>
+    <message>
+        <source>Win+Space to switch between layouts</source>
+        <translation>Win+Spazio per passare da un layout all&apos;altro</translation>
     </message>
     <message>
         <source>Add a keyboard</source>
@@ -1505,12 +1875,292 @@ Specifiche sistema
         <translation>Predefinito</translation>
     </message>
     <message>
+        <source>Preview</source>
+        <translation>Anteprima</translation>
+    </message>
+    <message>
         <source>Move up</source>
         <translation>Sposta su</translation>
     </message>
     <message>
         <source>Remove</source>
         <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>Add</source>
+        <translation>Aggiungi</translation>
+    </message>
+    <message>
+        <source>Search by name, language or country</source>
+        <translation>Cerca per nome, lingua o paese</translation>
+    </message>
+    <message>
+        <source>No layout found</source>
+        <translation>Nessun layout trovato</translation>
+    </message>
+    <message>
+        <source>This layout can&apos;t be loaded. Choose another one.</source>
+        <translation>Impossibile caricare questo layout. Scegline un altro.</translation>
+    </message>
+    <message>
+        <source>Choose a layout to see its keys and try it.</source>
+        <translation>Scegli un layout per vederne i tasti e provarlo.</translation>
+    </message>
+    <message>
+        <source>Keyboard shape</source>
+        <translation>Forma della tastiera</translation>
+    </message>
+    <message>
+        <source>Added</source>
+        <translation>Aggiunto</translation>
+    </message>
+    <message>
+        <source>Hide variants</source>
+        <translation>Nascondi le varianti</translation>
+    </message>
+    <message>
+        <source>Show variants</source>
+        <translation>Mostra le varianti</translation>
+    </message>
+    <message>
+        <source>Type here to try the layout</source>
+        <translation>Scrivi qui per provare il layout</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardPage</name>
+    <message>
+        <source>Layouts</source>
+        <translation>Layout</translation>
+    </message>
+    <message>
+        <source>The keyboard layouts you type with, and Win+Space between them</source>
+        <translation>I layout di tastiera con cui scrivi, e Win+Spazio per passare dall&apos;uno all&apos;altro</translation>
+    </message>
+    <message>
+        <source>Typing</source>
+        <translation>Digitazione</translation>
+    </message>
+    <message>
+        <source>Key repeat, Caps Lock, Compose and the keypad</source>
+        <translation>Ripetizione dei tasti, Bloc Maiusc, Compose e tastierino</translation>
+    </message>
+    <message>
+        <source>Custom shortcuts</source>
+        <translation>Scorciatoie personalizzate</translation>
+    </message>
+    <message>
+        <source>Your own key combinations to open apps, commands, links and files</source>
+        <translation>Le tue combinazioni di tasti per aprire app, comandi, link e file</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardShortcutsPage</name>
+    <message>
+        <source>Your shortcuts</source>
+        <translation>Le tue scorciatoie</translation>
+    </message>
+    <message>
+        <source>No custom shortcuts yet</source>
+        <translation>Ancora nessuna scorciatoia personalizzata</translation>
+    </message>
+    <message>
+        <source>You have as many shortcuts as Vela can run. Remove one to add another.</source>
+        <translation>Hai già tutte le scorciatoie che Vela può eseguire. Rimuovine una per aggiungerne un&apos;altra.</translation>
+    </message>
+    <message>
+        <source>Open an app, run a command, or open a link or file with a key combination</source>
+        <translation>Apri un&apos;app, esegui un comando o apri un link o un file con una combinazione di tasti</translation>
+    </message>
+    <message>
+        <source>Add a shortcut</source>
+        <translation>Aggiungi una scorciatoia</translation>
+    </message>
+    <message>
+        <source>Opens %1</source>
+        <translation>Apre %1</translation>
+    </message>
+    <message>
+        <source>Runs %1</source>
+        <translation>Esegue %1</translation>
+    </message>
+    <message>
+        <source>Edit</source>
+        <translation>Modifica</translation>
+    </message>
+    <message>
+        <source>Remove</source>
+        <translation>Rimuovi</translation>
+    </message>
+    <message>
+        <source>Edit the shortcut</source>
+        <translation>Modifica la scorciatoia</translation>
+    </message>
+    <message>
+        <source>Save</source>
+        <translation>Salva</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Annulla</translation>
+    </message>
+    <message>
+        <source>What it does</source>
+        <translation>Cosa fa</translation>
+    </message>
+    <message>
+        <source>Open an app</source>
+        <translation>Apri un&apos;app</translation>
+    </message>
+    <message>
+        <source>Run a command</source>
+        <translation>Esegui un comando</translation>
+    </message>
+    <message>
+        <source>Open a link or file</source>
+        <translation>Apri un link o un file</translation>
+    </message>
+    <message>
+        <source>Search apps</source>
+        <translation>Cerca app</translation>
+    </message>
+    <message>
+        <source>Such as kcalc, or notify-send Hello</source>
+        <translation>Come kcalc, o notify-send Ciao</translation>
+    </message>
+    <message>
+        <source>Such as https://example.org or a file</source>
+        <translation>Come https://example.org o un file</translation>
+    </message>
+    <message>
+        <source>Browse</source>
+        <translation>Sfoglia</translation>
+    </message>
+    <message>
+        <source>The combination</source>
+        <translation>La combinazione</translation>
+    </message>
+    <message>
+        <source>Press the keys…</source>
+        <translation>Premi i tasti…</translation>
+    </message>
+    <message>
+        <source>Record again</source>
+        <translation>Registra di nuovo</translation>
+    </message>
+    <message>
+        <source>Record</source>
+        <translation>Registra</translation>
+    </message>
+    <message>
+        <source>Not set</source>
+        <translation>Non impostata</translation>
+    </message>
+    <message>
+        <source>Another of your shortcuts has this combination: saving replaces it.</source>
+        <translation>Un&apos;altra tua scorciatoia ha questa combinazione: salvando la sostituisci.</translation>
+    </message>
+    <message>
+        <source>Apps use combinations without Win, such as Ctrl+Alt+T or Ctrl+Shift+Esc. This one will reach no app any more, in any window.</source>
+        <translation>Le app usano combinazioni senza Win, come Ctrl+Alt+T o Ctrl+Maiusc+Esc. Questa non arriverà più a nessuna app, in nessuna finestra.</translation>
+    </message>
+    <message>
+        <source>Take %1 from every app?</source>
+        <translation>Togliere %1 a tutte le app?</translation>
+    </message>
+    <message>
+        <source>Without Win, apps may use this combination. With this shortcut it opens what you chose, and no app gets it.</source>
+        <translation>Senza Win, le app possono usare questa combinazione. Con questa scorciatoia apre ciò che hai scelto, e nessuna app la riceve.</translation>
+    </message>
+    <message>
+        <source>Back</source>
+        <translation>Indietro</translation>
+    </message>
+    <message>
+        <source>Choose a file</source>
+        <translation>Scegli un file</translation>
+    </message>
+    <message>
+        <source>Shortcut changes could not be saved</source>
+        <translation>Impossibile salvare le modifiche alle scorciatoie</translation>
+    </message>
+    <message>
+        <source>Check the current shortcuts and try again. The file may have changed in another editor.</source>
+        <translation>Controlla le scorciatoie attuali e riprova. Il file potrebbe essere stato modificato in un altro editor.</translation>
+    </message>
+    <message>
+        <source>Close</source>
+        <translation>Chiudi</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardPreview</name>
+    <message>
+        <source>Shift</source>
+        <translation>Maiusc</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation>Ctrl</translation>
+    </message>
+    <message>
+        <source>Alt</source>
+        <translation>Alt</translation>
+    </message>
+    <message>
+        <source>Win</source>
+        <translation>Win</translation>
+    </message>
+    <message>
+        <source>AltGr</source>
+        <translation>Alt Gr</translation>
+    </message>
+    <message>
+        <source>Caps Lock</source>
+        <translation>Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Compose</source>
+        <translation>Compose</translation>
+    </message>
+    <message>
+        <source>Esc</source>
+        <translation>Esc</translation>
+    </message>
+    <message>
+        <source>Backspace</source>
+        <translation>Backspace</translation>
+    </message>
+    <message>
+        <source>Tab</source>
+        <translation>Tab</translation>
+    </message>
+    <message>
+        <source>Enter</source>
+        <translation>Invio</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>Menu</translation>
+    </message>
+    <message>
+        <source>Num Lock</source>
+        <translation>Bloc Num</translation>
+    </message>
+</context>
+<context>
+    <name>KeyboardTypingPage</name>
+    <message>
+        <source>Custom (vela.conf)</source>
+        <translation>Personalizzato (vela.conf)</translation>
     </message>
     <message>
         <source>Key repeat</source>
@@ -1541,16 +2191,171 @@ Specifiche sistema
         <translation>Tieni premuto un tasto qui</translation>
     </message>
     <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
+        <source>Keys</source>
+        <translation>Tasti</translation>
     </message>
     <message>
-        <source>Search (e.g. Italian, English)</source>
-        <translation>Cerca (es. Italian, English)</translation>
+        <source>Caps Lock key</source>
+        <translation>Tasto Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Used as the Compose key</source>
+        <translation>Usato come tasto Compose</translation>
+    </message>
+    <message>
+        <source>An option in vela.conf changes this key</source>
+        <translation>Un&apos;opzione in vela.conf cambia questo tasto</translation>
+    </message>
+    <message>
+        <source>Caps Lock</source>
+        <translation>Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Ctrl</source>
+        <translation>Ctrl</translation>
+    </message>
+    <message>
+        <source>Esc</source>
+        <translation>Esc</translation>
+    </message>
+    <message>
+        <source>Backspace</source>
+        <translation>Backspace</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Compose key</source>
+        <translation>Tasto Compose</translation>
+    </message>
+    <message>
+        <source>Your layout types characters with AltGr, which is Right Alt: they need another AltGr key now.</source>
+        <translation>Il tuo layout scrive caratteri con AltGr, che è Alt destro: ora serve un altro tasto AltGr per scriverli.</translation>
+    </message>
+    <message>
+        <source>Press it, then two keys, to type a character such as é or ©</source>
+        <translation>Premilo, poi due tasti, per scrivere un carattere come é o ©</translation>
+    </message>
+    <message>
+        <source>None</source>
+        <translation>Nessuno</translation>
+    </message>
+    <message>
+        <source>Right Alt</source>
+        <translation>Alt destro</translation>
+    </message>
+    <message>
+        <source>Right Win</source>
+        <translation>Win destro</translation>
+    </message>
+    <message>
+        <source>Menu</source>
+        <translation>Menu</translation>
+    </message>
+    <message>
+        <source>Right Ctrl</source>
+        <translation>Ctrl destro</translation>
+    </message>
+    <message>
+        <source>Scroll Lock</source>
+        <translation>Bloc Scorr</translation>
+    </message>
+    <message>
+        <source>Bottom-left keys</source>
+        <translation>Tasti in basso a sinistra</translation>
+    </message>
+    <message>
+        <source>The left Ctrl, Win and Alt; the right ones stay as they are</source>
+        <translation>Ctrl, Win e Alt di sinistra; quelli di destra restano come sono</translation>
+    </message>
+    <message>
+        <source>Standard</source>
+        <translation>Standard</translation>
+    </message>
+    <message>
+        <source>Swap Ctrl and Alt</source>
+        <translation>Scambia Ctrl e Alt</translation>
+    </message>
+    <message>
+        <source>Swap Alt and Win (Mac keyboards)</source>
+        <translation>Scambia Alt e Win (tastiere Mac)</translation>
+    </message>
+    <message>
+        <source>Numeric keypad always types digits</source>
+        <translation>Il tastierino numerico scrive sempre cifre</translation>
+    </message>
+    <message>
+        <source>An option in vela.conf changes the keypad</source>
+        <translation>Un&apos;opzione in vela.conf cambia il tastierino</translation>
+    </message>
+    <message>
+        <source>Whatever Num Lock says, like on a Mac</source>
+        <translation>Qualunque sia lo stato di Bloc Num, come su un Mac</translation>
+    </message>
+    <message>
+        <source>Num Lock when Vela starts</source>
+        <translation>Bloc Num all&apos;avvio di Vela</translation>
+    </message>
+    <message>
+        <source>The keypad always types digits, whatever Num Lock says</source>
+        <translation>Il tastierino scrive sempre cifre, qualunque sia lo stato di Bloc Num</translation>
+    </message>
+    <message>
+        <source>Every keyboard shares Num Lock and Caps Lock</source>
+        <translation>Tutte le tastiere condividono Bloc Num e Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <comment>Num Lock</comment>
+        <translation>Spento</translation>
+    </message>
+    <message>
+        <source>On</source>
+        <comment>Num Lock</comment>
+        <translation>Acceso</translation>
+    </message>
+    <message>
+        <source>As it was</source>
+        <comment>Num Lock</comment>
+        <translation>Com&apos;era</translation>
+    </message>
+    <message>
+        <source>Show Caps Lock on screen</source>
+        <translation>Mostra Bloc Maiusc sullo schermo</translation>
+    </message>
+    <message>
+        <source>For a moment, each time Caps Lock turns on or off</source>
+        <translation>Per un attimo, ogni volta che Bloc Maiusc si attiva o si disattiva</translation>
+    </message>
+    <message>
+        <source>Open Start with the Win key</source>
+        <translation>Apri Start con il tasto Win</translation>
+    </message>
+    <message>
+        <source>Pressing the Win key by itself opens Start; Win shortcuts work either way</source>
+        <translation>Premere solo il tasto Win apre Start; le scorciatoie con Win funzionano comunque</translation>
     </message>
 </context>
 <context>
     <name>Main</name>
+    <message>
+        <source>Custom shortcuts</source>
+        <translation>Scorciatoie personalizzate</translation>
+    </message>
+    <message>
+        <source>Show Caps Lock on screen</source>
+        <translation>Mostra Bloc Maiusc sullo schermo</translation>
+    </message>
+    <message>
+        <source>caps lock on screen display osd indicator notification</source>
+        <translation>bloc maiusc schermo indicatore avviso osd caps lock</translation>
+    </message>
+    <message>
+        <source>custom shortcuts keyboard combination hotkey launch app command link file</source>
+        <translation>scorciatoie personalizzate tastiera combinazione tasti rapidi avvia app comando link file</translation>
+    </message>
     <message>
         <source>Could not save settings</source>
         <translation>Impossibile salvare le impostazioni</translation>
@@ -1640,6 +2445,10 @@ Specifiche sistema
         <translation>Start</translation>
     </message>
     <message>
+        <source>Context menu</source>
+        <translation>Menù contestuale</translation>
+    </message>
+    <message>
         <source>Apps</source>
         <translation>App</translation>
     </message>
@@ -1662,6 +2471,14 @@ Specifiche sistema
     <message>
         <source>Keyboard</source>
         <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Layouts</source>
+        <translation>Layout</translation>
+    </message>
+    <message>
+        <source>Typing</source>
+        <translation>Digitazione</translation>
     </message>
     <message>
         <source>Mouse</source>
@@ -1912,6 +2729,90 @@ Specifiche sistema
         <translation>orologio 24 ore 12 ore am pm formato ora ore</translation>
     </message>
     <message>
+        <source>keyboard keys typing</source>
+        <translation>tastiera tasti digitazione</translation>
+    </message>
+    <message>
+        <source>Keyboard layout</source>
+        <translation>Layout di tastiera</translation>
+    </message>
+    <message>
+        <source>layout language input keyboard add win+space switch</source>
+        <translation>layout lingua input tastiera aggiungi win+spazio cambia</translation>
+    </message>
+    <message>
+        <source>Key repeat</source>
+        <translation>Ripetizione dei tasti</translation>
+    </message>
+    <message>
+        <source>key repeat delay rate typing hold</source>
+        <translation>ripetizione tasti ritardo velocità digitazione tenere premuto</translation>
+    </message>
+    <message>
+        <source>Caps Lock key</source>
+        <translation>Tasto Bloc Maiusc</translation>
+    </message>
+    <message>
+        <source>caps lock ctrl escape esc backspace disable remap</source>
+        <translation>bloc maiusc caps lock ctrl esc backspace disattiva rimappa</translation>
+    </message>
+    <message>
+        <source>Compose key</source>
+        <translation>Tasto Compose</translation>
+    </message>
+    <message>
+        <source>compose accents special characters right alt menu</source>
+        <translation>compose accenti caratteri speciali alt destro menu</translation>
+    </message>
+    <message>
+        <source>Swap Ctrl, Alt and Win</source>
+        <translation>Scambia Ctrl, Alt e Win</translation>
+    </message>
+    <message>
+        <source>swap ctrl alt win mac keyboard command option modifiers</source>
+        <translation>scambia ctrl alt win tastiera mac command option modificatori</translation>
+    </message>
+    <message>
+        <source>Numeric keypad</source>
+        <translation>Tastierino numerico</translation>
+    </message>
+    <message>
+        <source>numeric keypad numpad digits num lock</source>
+        <translation>tastierino numerico cifre bloc num num lock</translation>
+    </message>
+    <message>
+        <source>Num Lock at startup</source>
+        <translation>Bloc Num all&apos;avvio</translation>
+    </message>
+    <message>
+        <source>num lock numlock numpad startup login on off</source>
+        <translation>bloc num num lock tastierino avvio accesso acceso spento</translation>
+    </message>
+    <message>
+        <source>Choose your password manager</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Vela needs to know which existing password store your apps should use. KWallet is only a temporary fallback until you choose. No passwords will be transferred. Your choice will take effect after signing out and back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source> Unavailable providers are disabled; install the desired provider first.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KWallet (KDE)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GNOME Keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Decide later</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Show seconds</source>
         <translation>Mostra i secondi</translation>
     </message>
@@ -1976,6 +2877,10 @@ Specifiche sistema
         <translation>start menu app aggiunte fissate mostra nascondi</translation>
     </message>
     <message>
+        <source>right click right-click menu entries items hide show service menus</source>
+        <translation>clic destro tasto destro right-click menù menu contestuale voci nascondi mostra service menu</translation>
+    </message>
+    <message>
         <source>programs applications</source>
         <translation>programmi applicazioni</translation>
     </message>
@@ -2014,10 +2919,6 @@ Specifiche sistema
     <message>
         <source>language english italian italiano inglese translation</source>
         <translation>lingua inglese italiano english language traduzione</translation>
-    </message>
-    <message>
-        <source>layout language input typing key repeat</source>
-        <translation>layout lingua input digitazione ripetizione tasti</translation>
     </message>
     <message>
         <source>pointer speed primary button left-handed wheel scrolling lines acceleration precision</source>
@@ -2110,6 +3011,23 @@ Specifiche sistema
     <message>
         <source>Find a setting</source>
         <translation>Trova un&apos;impostazione</translation>
+    </message>
+</context>
+<context>
+    <name>MenuEntriesCard</name>
+    <message numerus="yes">
+        <source>%1. All %n entries shown</source>
+        <translation>
+            <numerusform>%1. %n voce mostrata</numerusform>
+            <numerusform>%1. Tutte le %n voci mostrate</numerusform>
+        </translation>
+    </message>
+    <message numerus="yes">
+        <source>%1. %n hidden</source>
+        <translation>
+            <numerusform>%1. %n nascosta</numerusform>
+            <numerusform>%1. %n nascoste</numerusform>
+        </translation>
     </message>
 </context>
 <context>
@@ -2486,6 +3404,14 @@ Specifiche sistema
     <message>
         <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>
         <translation>Elementi e comportamenti, stili della barra e delle impostazioni rapide</translation>
+    </message>
+    <message>
+        <source>Context menu</source>
+        <translation>Menù contestuale</translation>
+    </message>
+    <message>
+        <source>The entries of the right-click menus, those apps add too</source>
+        <translation>Le voci dei menù del tasto destro, anche quelle aggiunte dalle app</translation>
     </message>
     <message>
         <source>Start</source>
@@ -3170,6 +4096,54 @@ Specifiche sistema
         <translation>Cronologia degli Appunti (Win+V), cancella</translation>
     </message>
     <message>
+        <source>Password manager (temporary)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose your password manager. The temporary KWallet fallback is not installed on this computer. No passwords are transferred; sign out and back in after choosing.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Choose your existing password manager. KWallet is used only as a fallback until you choose. No passwords are transferred; sign out and back in to apply.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected password manager is not installed. Install it or choose the other provider, then sign out and back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>This password manager will be used after signing out and back in. The running session still uses the previous choice.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Another password manager owns Secret Service. Your choice is not active; check the Vela session log. No passwords were migrated.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KWallet&apos;s native API is available, but Secret Service is not. Some KDE/Chromium apps may work, but libsecret clients may fail. Enable KWallet&apos;s Secret Service support and sign in again.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>The selected password manager could not be verified or started. Check the session log. Changing the choice requires a new login.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Use this existing password store for apps. No passwords are transferred. Changes take effect after signing out and back in.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>KWallet (KDE)</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>GNOME Keyring</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Select password manager</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>Updates</source>
         <translation>Aggiornamenti</translation>
     </message>
@@ -3216,9 +4190,89 @@ Specifiche sistema
         <source>Left</source>
         <translation>A sinistra</translation>
     </message>
+    <message>
+        <source>Top</source>
+        <translation>In alto</translation>
+    </message>
 </context>
 <context>
     <name>TaskbarPage</name>
+    <message>
+        <source>Show windows from</source>
+        <translation>Mostra le finestre di</translation>
+    </message>
+    <message>
+        <source>This desktop</source>
+        <translation>Questo desktop</translation>
+    </message>
+    <message>
+        <source>All desktops</source>
+        <translation>Tutti i desktop</translation>
+    </message>
+    <message>
+        <source>Show apps on</source>
+        <translation>Mostra le app su</translation>
+    </message>
+    <message>
+        <source>All taskbars</source>
+        <translation>Tutte le barre delle applicazioni</translation>
+    </message>
+    <message>
+        <source>The taskbar where the window is open</source>
+        <translation>La barra dello schermo in cui è aperta la finestra</translation>
+    </message>
+    <message>
+        <source>When I click the app in front with several windows</source>
+        <translation>Al clic sull’app in primo piano con più finestre</translation>
+    </message>
+    <message>
+        <source>Show its windows</source>
+        <translation>Mostra le sue finestre</translation>
+    </message>
+    <message>
+        <source>Switch to the next one</source>
+        <translation>Passa alla finestra successiva</translation>
+    </message>
+    <message>
+        <source>Badges and attention</source>
+        <translation>Badge e richieste di attenzione</translation>
+    </message>
+    <message>
+        <source>Flash apps that need attention</source>
+        <translation>Fai lampeggiare le app che richiedono attenzione</translation>
+    </message>
+    <message>
+        <source>Show badges on apps</source>
+        <translation>Mostra i badge sulle app</translation>
+    </message>
+    <message>
+        <source>Show progress on apps</source>
+        <translation>Mostra l’avanzamento sulle app</translation>
+    </message>
+    <message>
+        <source>Keyboard</source>
+        <translation>Tastiera</translation>
+    </message>
+    <message>
+        <source>Super+1…9, 0</source>
+        <translation>Super+1…9, 0</translation>
+    </message>
+    <message>
+        <source>Taskbar apps</source>
+        <translation>App della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Virtual desktops</source>
+        <translation>Desktop virtuali</translation>
+    </message>
+    <message>
+        <source>Off</source>
+        <translation>Disattivato</translation>
+    </message>
+    <message>
+        <source>Show numbers while holding Super</source>
+        <translation>Mostra i numeri mentre tieni premuto Super</translation>
+    </message>
     <message>
         <source>Taskbar items</source>
         <translation>Elementi della barra delle applicazioni</translation>
@@ -3258,6 +4312,46 @@ Specifiche sistema
     <message>
         <source>Taskbar behaviors</source>
         <translation>Comportamenti della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Notification area</source>
+        <translation>Area di notifica</translation>
+    </message>
+    <message>
+        <source>Icons on the taskbar</source>
+        <translation>Icone sulla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>The others wait in the drawer behind ^. New icons start there; the icons of apps that aren&apos;t running show here once they start.</source>
+        <translation>Le altre aspettano nel cassetto dietro ^. Le icone nuove partono da lì; quelle delle app non aperte compaiono qui quando le app si avviano.</translation>
+    </message>
+    <message>
+        <source>No app shows an icon in the notification area right now. Icons show here once their apps start.</source>
+        <translation>Nessuna app mostra un&apos;icona nell&apos;area di notifica in questo momento. Le icone compaiono qui quando le loro app si avviano.</translation>
+    </message>
+    <message>
+        <source>Show %1 on the taskbar</source>
+        <translation>Mostra %1 sulla barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Taskbar position</source>
+        <translation>Posizione della barra delle applicazioni</translation>
+    </message>
+    <message>
+        <source>Bottom</source>
+        <translation>In basso</translation>
+    </message>
+    <message>
+        <source>Top</source>
+        <translation>In alto</translation>
+    </message>
+    <message>
+        <source>Left</source>
+        <translation>A sinistra</translation>
+    </message>
+    <message>
+        <source>Right</source>
+        <translation>A destra</translation>
     </message>
     <message>
         <source>Show the taskbar on all displays</source>
@@ -3486,14 +4580,6 @@ Specifiche sistema
     <message>
         <source>Same as the system</source>
         <translation>Come il sistema</translation>
-    </message>
-    <message>
-        <source>Keyboard</source>
-        <translation>Tastiera</translation>
-    </message>
-    <message>
-        <source>Keyboard layouts, key repeat</source>
-        <translation>Layout di tastiera, ripetizione dei tasti</translation>
     </message>
 </context>
 <context>

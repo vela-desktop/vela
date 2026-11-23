@@ -39,6 +39,9 @@ struct vela_saved_output {
 // file could not be read to the end.
 bool vela_output_config_load(const char *key, struct vela_saved_output *out);
 
+// Whether the saved layout includes an enabled output that is absent.
+bool vela_output_config_has_absent_output(bool (*present)(const char *key, void *data), void *data);
+
 // Writes the current configuration of these outputs, leaving the other
 // monitors' (unplugged now) as they were. For an output that is off only
 // enabled=no is written: the rest stays as before.

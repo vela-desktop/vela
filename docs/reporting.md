@@ -1,8 +1,12 @@
 # Vela Report
 
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing; the current implementation's boundaries are recorded below.
+
 A guided diagnostic report that users can share with a Vela maintainer.
 
-**Status: implemented.** The standalone Python core and guided CLI live in
+The standalone Python core and guided CLI live in
 `report/vela_report/`; the graphical frontend in `report/gui/` uses Qt Widgets
 and the same collection worker. This document records the design and the
 current implementation's boundaries. It does not introduce a renderer fix.
@@ -27,7 +31,7 @@ Additional options are `--state-dir`, `--description-file`, `--duration`
 Run `vela-report --help` for details. Options prefill the guided workflow;
 they do not bypass collection or export confirmation.
 
-The installed desktop entry is **Vela Report**. Python 3.10 or newer is the
+The installed desktop entry is **Vela Report**. Python 3.13 or newer is the
 only CLI dependency. The normal build includes the Qt Widgets frontend; a
 CLI-only build does not require Qt, Wayland, X11 or wlroots:
 

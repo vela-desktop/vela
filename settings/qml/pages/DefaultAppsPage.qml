@@ -83,6 +83,25 @@ Page {
                 }
             }
         }
+        // The terminal for Win+Enter and updates (docs/keyboard.md §11):
+        // Automatic, or one of the installed terminals.
+        Card {
+            id: terminalCard
+            readonly property var terminal: DefaultApps.terminal
+            readonly property string automaticName: (terminal.automatic || {}).name || ""
+            icon: terminal.current.icon || (terminal.automatic || {}).icon || "utilities-terminal"
+            title: qsTr("Terminal")
+            description: terminal.current.name ? qsTr("Opens with Win+Enter and for updates")
+                : automaticName ? qsTr("Automatic: %1").arg(automaticName) : qsTr("No terminal installed")
+            trailing: Choice {
+                objectName: "terminalChoice"
+                model: [{ text: qsTr("Automatic") }].concat(terminalCard.terminal.candidates.map(a => ({ text: a.name })))
+                currentIndex: terminalCard.terminal.current.id
+                    ? 1 + terminalCard.terminal.candidates.findIndex(a => a.id === terminalCard.terminal.current.id) : 0
+                displayText: currentIndex > 0 ? terminalCard.terminal.candidates[currentIndex - 1].name : qsTr("Automatic")
+                onChosen: index => DefaultApps.setTerminal(index === 0 ? "" : terminalCard.terminal.candidates[index - 1].id)
+            }
+        }
     }
 
     // --- per app ---

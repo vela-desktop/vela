@@ -9,12 +9,18 @@ expensive Build jobs after an inexpensive source-change check.
 ## Package and updater contracts
 
 The [Build workflow](../.github/workflows/build.yml) runs the offline
-`packaging/tests` suite before the full build. The regular Arch build excludes
-CTest's `packaging-update` to avoid running that same suite twice. It checks public HTTPS defaults, migration of old
+`packaging/tests` suite on Python 3.13 alongside the Arch and Fedora package
+builds. Beta publication requires the suite and the clean-install smoke tests
+to pass. The hosted distro CTest jobs exclude `packaging-update` because Build
+owns the suite. It checks public HTTPS defaults, migration of old
 SSH configuration and mirrors, revision selection, CI artifact selection and
 failure handling. It uses real Git with isolated configuration and rejects
 unexpected transports; package tools are simulated. See [testing.md](testing.md)
 for the local command and test isolation details.
+
+Fedora's test jobs exercise real DNF transactions with fixture RPMs alongside
+the native package builds. The Fedora smoke jobs install the generated RPM in
+a fresh container and check its runtime dependencies and files.
 
 ## Static analysis
 
@@ -163,13 +169,52 @@ The actual model and driver can vary between runs. During provisioning,
 an image that cannot start within six minutes is rejected; once the
 instance reports running, the JIT runner must register within 150 seconds.
 Known fatal image-pull errors (such as DNS failures) are rejected earlier,
-and the next eligible rental is tried. The GPU's proprietary
+and the next eligible rental is tried. The container also refuses to register a
+runner on a host where it has no NVIDIA render node, NVIDIA's Vulkan lacks
+the dmabuf extensions, or the kernel cannot verify a command socket peer the
+way the compositor does (`SO_PEERPIDFD`, Linux 6.5): there every functional
+test would be refused. The host is destroyed and the next offer tried. The GPU's proprietary
 driver, Vulkan ICD and DRM render nodes are provided by the rental host;
 build and test dependencies come from the
 [NVIDIA CI image](../.github/images/nvidia-ci/Dockerfile). The
 [image publishing workflow](../.github/workflows/nvidia-ci-image.yml)
-must first publish the image matching the selected revision's image tree;
-the rental step verifies its availability before incurring costs.
+must first publish the image matching the selected revision's image tree.
+Before renting, the orchestration job resolves that tag to an immutable OCI
+SHA256 manifest digest; the rented host pulls that exact image. Tree tags
+identify source configuration, not dependency versions: a scheduled weekly
+rebuild intentionally refreshes Arch packages even if the Dockerfile has not
+changed. Each publication also receives a unique run tag, and `latest` is
+updated only from `main`. The publish job saves package versions, an SPDX
+SBOM, an `arch-audit` report and a Trivy report as artifacts, and blocks
+publication when either finds a fixable high or critical vulnerability. Trivy
+has no Arch Linux driver and cannot see pacman packages, so those are checked
+by `arch-audit --upgradable` against the
+[Arch security tracker](https://security.archlinux.org/) and
+[scripts/ci-arch-audit-gate.py](../scripts/ci-arch-audit-gate.py); Trivy then
+covers only packages installed outside pacman. If the tracker cannot be
+reached or its report cannot be read, publication fails too. The image leaves out
+libcap's `captree`: Arch builds it with Go only when libcap changes, so its Go
+standard library falls behind Go's security fixes, and nothing in the CI
+uses it.
+
+The image qualification step checks both the mandatory Vulkan/CTest tools
+and optional promo recording prerequisites before publication. In particular,
+Arch's `pipewire-audio` package supplies `pw-cat` (not the base `pipewire`
+package); this was missing in NVIDIA GPU run #131 on 16 November 2026, where
+the full GPU CTest suite succeeded but optional promo smoke failed. The
+container runner uses `runuser` without a passwordless-sudo rule and checks
+the runner archive against the SHA256 published with its GitHub release before
+extracting it. These checks do not replace a real NVIDIA hardware run.
+
+The promo smoke test cannot complete on the rented containers yet. Its
+recordings start the shell and Settings through unprivileged user and mount
+namespaces (`unshare --user --mount`), so that they see a neutral user and a
+private `/usr/share/applications`. Docker's default seccomp profile refuses
+those namespaces to a process without `CAP_SYS_ADMIN`, and Vast.ai does not
+let the rental change it. On 20 November 2026 (run 44787645288, RTX 2060S)
+the full GPU suite passed and every promo dependency, `pw-cat` included, was
+found. The recording then stopped at that namespace check, before any frame
+was captured. Run the promo smoke on the AMD or Intel runners.
 
 The NVIDIA test job sizes Ninja parallelism from the offered effective CPU
 allocation, container CPU affinity/quota and available host/cgroup memory,

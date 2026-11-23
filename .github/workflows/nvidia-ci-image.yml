@@ -13,7 +13,11 @@ on:
     paths:
       - .github/images/nvidia-ci/**
       - .github/workflows/nvidia-ci-image.yml
+      - scripts/ci-arch-audit-gate.py
   workflow_dispatch:
+  # Refresh rolling Arch packages even when the Dockerfile has not changed.
+  schedule:
+    - cron: '17 4 * * 1'
 
 permissions:
   contents: read
@@ -35,30 +39,100 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build
+      - name: Calculate image tags
+        shell: bash
         run: |
-          # Also tagged with the Git tree of the image's directory: gpu-nvidia.yml
-          # rents the image built from the files of the revision it tests.
-          tree=$(git rev-parse HEAD:.github/images/nvidia-ci)
-          echo "TREE=$tree" >> "$GITHUB_ENV"
-          docker build --pull -t "$IMAGE:latest" -t "$IMAGE:${GITHUB_SHA::12}" -t "$IMAGE:tree-$tree" \
-            .github/images/nvidia-ci
-      - name: Check what the runner and the GPU suites need
+          set -euo pipefail
+          echo "TREE=$(git rev-parse HEAD:.github/images/nvidia-ci)" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${GITHUB_SHA::12}" >> "$GITHUB_ENV"
+          echo "BUILD_TAG=run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_ENV"
+      - name: Rebuild from up-to-date Arch packages
+        shell: bash
         run: |
-          docker run --rm "$IMAGE:latest" sh -c '
-            set -e
-            for tool in sudo curl git cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus; do
+          set -euo pipefail
+          # no-cache is intentional: the Arch base image may be unchanged
+          # while pacman repos have advanced. A cached -Syu layer goes stale.
+          docker build --pull --no-cache \
+            -t "$IMAGE:$BUILD_TAG" -t "$IMAGE:tree-$TREE" \
+            -t "$IMAGE:$SHORT_SHA" .github/images/nvidia-ci
+      - name: Check GPU suite and optional promo prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint /bin/sh "$IMAGE:$BUILD_TAG" -ec '
+            for tool in runuser sha256sum curl git cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus; do
               command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
             done
-            python3 -c "import numpy, PIL, dbus; from gi.repository import GLib"
+            for tool in ffmpeg ffprobe pipewire wireplumber pw-cat pw-dump unshare; do
+              command -v "$tool" >/dev/null || { echo "missing promo dependency: $tool"; exit 1; }
+            done
+            python3 -c "import sys, numpy, PIL, dbus; from gi.repository import GLib; sys.exit(sys.version_info < (3, 13))"
             id runner && test -x /usr/local/bin/vela-ci-runner
-            pkg-config --modversion wlroots-0.20 vulkan'
-      - name: Publish
+            sh -n /usr/local/bin/vela-ci-runner
+            test ! -e /etc/sudoers.d/runner
+            pkg-config --modversion wlroots-0.20 vulkan
+          '
+      - name: Save exact Arch package versions
+        shell: bash
+        run: |
+          docker run --rm --entrypoint /bin/sh "$IMAGE:$BUILD_TAG" -c 'pacman -Q | sort' > nvidia-ci-packages.txt
+          grep -E '^(pipewire-audio|qt6-base|wlroots0.20|mesa|vulkan-icd-loader|python) ' nvidia-ci-packages.txt
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          image: ${{ env.IMAGE }}:${{ env.BUILD_TAG }}
+          format: spdx-json
+          output-file: nvidia-ci.spdx.json
+          upload-artifact: false
+      - name: Audit pacman packages for fixable high/critical advisories
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Trivy has no Arch Linux driver, so its scan below covers only
+          # non-pacman packages. arch-audit reads the image's own pacman
+          # database against security.archlinux.org and exits non-zero when
+          # the tracker cannot be reached, so this fails closed.
+          docker run --rm --entrypoint arch-audit "$IMAGE:$BUILD_TAG" \
+            --upgradable --json > nvidia-ci-arch-audit.json
+          python3 scripts/ci-arch-audit-gate.py < nvidia-ci-arch-audit.json
+      - name: Scan non-pacman packages for fixable high/critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE }}:${{ env.BUILD_TAG }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: json
+          output: nvidia-ci-trivy.json
+          exit-code: '1'
+      - name: Preserve dependency evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: vela-nvidia-image-dependencies
+          path: |
+            nvidia-ci-packages.txt
+            nvidia-ci.spdx.json
+            nvidia-ci-arch-audit.json
+            nvidia-ci-trivy.json
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Publish the qualified image
+        shell: bash
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
           echo "$TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker push "$IMAGE:latest"
-          docker push "$IMAGE:${GITHUB_SHA::12}"
           docker push "$IMAGE:tree-$TREE"
+          docker push "$IMAGE:$SHORT_SHA"
+          docker push "$IMAGE:$BUILD_TAG"
+          # Only main owns latest; builds from release branches must not
+          # silently replace the default image.
+          if [[ "$GITHUB_REF" == 'refs/heads/main' ]]; then
+            docker tag "$IMAGE:$BUILD_TAG" "$IMAGE:latest"
+            docker push "$IMAGE:latest"
+          fi
           docker logout ghcr.io
+          echo "Published $IMAGE:$BUILD_TAG (tree-$TREE)" >> "$GITHUB_STEP_SUMMARY"

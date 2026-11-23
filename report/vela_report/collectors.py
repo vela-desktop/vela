@@ -348,7 +348,7 @@ class Collector:
             return Result("partial", reason="Selected log rotated during collection; original snapshot retained.")
         self.report.add_text("logs", "logs/vela.log", data, path, metadata)
         session = {"last_log_write": dt.datetime.fromtimestamp(
-            metadata["mtime_ns"] / 1e9, dt.timezone.utc).isoformat()}
+            metadata["mtime_ns"] / 1e9, dt.UTC).isoformat()}
         header = re.search(r"^vela-session: started_at=(\S+) boot_id=([0-9a-fA-F-]{36})$", data, re.M)
         if header:
             # Log contents are untrusted: accept only a valid timestamp and UUID.
@@ -496,11 +496,11 @@ class Collector:
                     match = re.match(r"\s*(-?\d+)\s+([0-9a-fA-F]{32})\b", line)
                     dates = re.findall(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}", line)
                     if match and len(dates) == 2:
-                        start, end = [dt.datetime.fromisoformat(d).replace(tzinfo=dt.timezone.utc) for d in dates]
+                        start, end = [dt.datetime.fromisoformat(d).replace(tzinfo=dt.UTC) for d in dates]
                         boots.append((start, end, match[2]))
                 boots.sort()
                 for index, (start, end, identifier) in enumerate(boots):
-                    upper = boots[index + 1][0] if index + 1 < len(boots) else dt.datetime.now(dt.timezone.utc)
+                    upper = boots[index + 1][0] if index + 1 < len(boots) else dt.datetime.now(dt.UTC)
                     if start <= when < upper:
                         boot, source = identifier, time_source
                         break

@@ -45,5 +45,11 @@ Page {
             description: qsTr("Taskbar items and behaviors, styles of the taskbar and quick settings")
             onClicked: root.navigate("taskbar")
         }
+        LinkCard {
+            icon: "application-menu"
+            title: qsTr("Context menu")
+            description: qsTr("The entries of the right-click menus, those apps add too")
+            onClicked: root.navigate("context-menu")
+        }
     }
 }

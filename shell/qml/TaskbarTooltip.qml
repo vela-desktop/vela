@@ -15,10 +15,11 @@ Window {
     visible: false
     // The tooltip with room for its shadow around it, cut where the window
     // meets the taskbar (docs/visual-coherence.md §6.9): it rests 8 units
-    // above it.
+    // from it, on whichever edge it is.
     readonly property real room: shadow.reach
-    width: room + panel.width + room
-    height: room + panel.height + 8
+    readonly property QtObject bar: Styles.taskbar
+    width: bar.pad("left", 0, 8, room) + panel.width + bar.pad("right", 0, 8, room)
+    height: bar.pad("top", 0, 8, room) + panel.height + bar.pad("bottom", 0, 8, room)
     color: "transparent"
 
     readonly property string text: Menus.tooltip ? Menus.tooltip.text : ""
@@ -41,16 +42,15 @@ Window {
             visible = false
             Shell.placeOnScreen(root, screen.name)
         }
-        const screenWidth = screen ? screen.width : Screen.width
-        Shell.placeAtLeft(root, Math.round(Math.max(0, Math.min(screenWidth - width, info.center - width / 2))))
+        Menus.placeBesideBar(root, info.center, screen)
         visible = true
         motion.open()
     }
 
     PanelMotion {
         id: motion
-        x: root.room
-        y: root.room
+        x: root.bar.pad("left", 0, 8, root.room)
+        y: root.bar.pad("top", 0, 8, root.room)
         width: label.width + 2 * label.x
         height: label.height + 2 * label.y
         instantExit: true

@@ -96,13 +96,6 @@ const char *vela_up_options_invalid(const struct vela_up_options *options, const
 void vela_up_options_argv(const struct vela_up_options *options, const char *command, const char **argv,
     char tag[64]);
 
-// The terminal that runs a command given after it (§4): xdg-terminal-exec,
-// else `vela_terminal` (VELA_TERMINAL, words split on spaces) then -e,
-// else konsole -e, each looked up in `path` (PATH). A NULL-terminated,
-// allocated list (vela_up_strv_free), or NULL when there's none.
-char **vela_up_terminal(const char *path, const char *vela_terminal);
-void vela_up_strv_free(char **strv);
-
 // The session's compositor: from `pid` upwards, the first process whose
 // executable is named vela-compositor. 0 if there's none.
 pid_t vela_up_session_process(const char *proc, pid_t pid);

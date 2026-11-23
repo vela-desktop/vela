@@ -23,11 +23,5 @@ Page {
                 onChosen: index => Prefs.language = ["", "it", "en"][index]
             }
         }
-        LinkCard {
-            icon: "input-keyboard"
-            title: qsTr("Keyboard")
-            description: qsTr("Keyboard layouts, key repeat")
-            onClicked: root.navigate("keyboard")
-        }
     }
 }

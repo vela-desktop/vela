@@ -25,7 +25,7 @@ see the [roadmap](roadmap.md).
 <table>
 <tr>
 <td width="34%" valign="top"><img src="screenshots/snap-layouts.webp" alt="Snap layouts flyout over the maximize button"><br><sub><b>Snap layouts</b>: hover the maximize button or press Super+Z.</sub></td>
-<td width="33%" valign="top"><img src="screenshots/context-menu.webp" alt="Vela desktop context menu"><br><sub><b>Context menus</b> with a compact primary view and KDE service menus under "Show more options".</sub></td>
+<td width="33%" valign="top"><img src="screenshots/context-menu.webp" alt="Vela desktop context menu"><br><sub><b>Context menus</b> with KDE service menus right in the menu, and the entries you don't use hidden from Settings.</sub></td>
 <td width="33%" valign="top"><img src="screenshots/panels.webp" alt="Quick settings and the notification center"><br><sub><b>Quick settings</b> (Super+A) and the <b>notification center</b> (Super+N).</sub></td>
 </tr>
 </table>
@@ -50,9 +50,12 @@ see the [roadmap](roadmap.md).
   menu (Alt+Space) with keyboard move and resize.
 
 ## Shell
-- **Taskbar**: pinned and running apps centered (or left-aligned), drag to reorder, jump
-  lists with recent files, **hover previews**, a system tray (StatusNotifierItem), and
-  one taskbar per monitor.
+- **[Taskbar](taskbar.md)**: per-desktop and per-monitor window filters, jump
+  lists, keyboard-accessible previews, Super+number shortcuts, attention
+  indicators, badges and progress, and a tray whose icons go on the bar or
+  into a drawer, one by one. Drag a launcher to pin it, or hover a dragged
+  file over an app to bring its window forward. The bar sits on any edge
+  of the screen.
 - **App launcher**: instant search, pinned apps, keyboard navigation, and a Super+X power-user menu.
 - **Quick settings** (Super+A): Wi-Fi network picker, Bluetooth, airplane mode, power
   mode, Night light, accessibility, brightness, volume and battery, and a sound page
@@ -67,7 +70,7 @@ see the [roadmap](roadmap.md).
 - **Snipping tool** (Super+Shift+S or PrtSc): capture a rectangle, a window or a full
   screen, straight to the clipboard and to `Pictures/Screenshots`.
 - **Desktop icons** with thumbnails, drag and drop to and from apps, Properties, and
-  undo. Also **Run** (Super+R) and **Show desktop** (Super+D).
+  undo. Also **Show desktop** (Super+D).
 - **Light and dark** modes and a coordinated accent palette, applied to KDE and GTK apps
   too.
 - **Themes**: Vela Official, Vela Floating, Window Glass and Vela Expressive (inspired by
@@ -99,7 +102,13 @@ see the [roadmap](roadmap.md).
   channel, and an update that runs in a terminal. Vela checks in the background and
   sends a notification when an update is available ([design](updates.md)).
 - **Personalization**: wallpaper, colors, taskbar. **Apps**: installed and default apps.
-  **Time and language**: date and time, keyboard layouts.
+  **Time and language**: date, time and language.
+- **Keyboard**: every layout the system has (extras and the user's own
+  included), named in Vela's language and found by name, language or
+  country, drawn and tried by typing before it is added; where the layout in use comes from when none is chosen; key
+  repeat; what the Caps Lock key does, a Compose key, swapped Ctrl, Alt
+  and Win, a keypad that always types digits; Num Lock at startup, and
+  Caps Lock and Num Lock shared by every keyboard ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming

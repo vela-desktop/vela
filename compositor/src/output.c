@@ -86,21 +86,23 @@ void vela_output_key(const struct wlr_output *output, char *out, size_t size)
 // The initial state: what the user chose last time for this monitor (only in
 // the real session), otherwise the best mode and the scale from DPI. `saved`
 // is NULL when nothing was saved.
-static void initial_state(struct wlr_output *wlr, const struct vela_saved_output *saved,
-    struct wlr_output_state *state)
+static void initial_state(
+    struct vela_output *output, const struct vela_saved_output *saved, struct wlr_output_state *state)
 {
+    struct wlr_output *wlr = output->wlr;
     bool enabled = !saved || saved->enabled;
     wlr_output_state_set_enabled(state, enabled);
     struct wlr_output_mode *saved_mode
         = saved && saved->width > 0 ? find_mode(wlr, saved->width, saved->height, saved->refresh_mhz) : NULL;
-    struct wlr_output_mode *best = NULL;
+    struct wlr_output_mode *mode = saved_mode ? saved_mode : pick_mode(wlr);
     const char *size = getenv("VELA_OUTPUT_SIZE");
     if (!enabled) {
-        // Off, as the user left it.
-    } else if (saved_mode) {
-        wlr_output_state_set_mode(state, saved_mode);
-    } else if ((best = pick_mode(wlr))) {
-        wlr_output_state_set_mode(state, best);
+        // A newly detected connector may have no current CRTC mode. Keep
+        // the mode available to output management without lighting it up.
+        output->startup_mode = mode;
+        output->startup_transform = (enum wl_output_transform)saved->transform;
+    } else if (mode) {
+        wlr_output_state_set_mode(state, mode);
     } else if (size) {
         // An output without modes (nested window, headless): we choose the
         // size, such as VELA_OUTPUT_SIZE=1920x1080, with an optional refresh
@@ -228,6 +230,8 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     output->server = server;
     output->wlr = wlr;
     output->powered = true;
+    output->drm_connector = wlr_output_is_drm(wlr);
+    output->internal_panel = output->drm_connector && vela_is_internal_panel(wlr->name);
     output->latch_fd = -1;
     output->vblank_fd = -1;
     wl_list_init(&output->link);
@@ -244,7 +248,7 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     bool enabled = !saved || saved->enabled;
     struct wlr_output_state state;
     wlr_output_state_init(&state);
-    initial_state(wlr, saved, &state);
+    initial_state(output, saved, &state);
     // The frame cycle turns VRR on and off (vrr_state).
     if (vela_env_one("VELA_DEBUG_DMABUF")) {
         wlr_log(WLR_INFO, "DMABUF trace: before initial wlr_output_commit_state output=%s committed=0x%x enabled=%d",
@@ -306,11 +310,18 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // In the list before entering the layout: the layout change notifies the
     // output configuration programs, and this output must already be there.
     wl_list_insert(server->outputs.prev, &output->link);
+    if (saved && saved->has_position) {
+        output->has_preferred_position = true;
+        output->preferred_x = saved->x;
+        output->preferred_y = saved->y;
+        output->has_last_position = true;
+        output->last_x = saved->x;
+        output->last_y = saved->y;
+    }
+    vela_output_manager_hotplug(server);
     if (!enabled) {
         // Out of the layout until someone turns it back on.
         vela_output_manager_update(server);
-    } else if (saved && saved->has_position) {
-        wlr_output_layout_add(server->output_layout, wlr, saved->x, saved->y);
     } else {
         wlr_output_layout_add_auto(server->output_layout, wlr);
     }
@@ -327,9 +338,13 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 static void handle_output_commit(struct wl_listener *listener, void *data)
 {
     struct vela_output *output = wl_container_of(listener, output, commit);
-    (void)data;
+    const struct wlr_output_event_commit *event = data;
     if (!output->wlr->enabled) {
         output->cursor_setup_attempted = false;
+        if (event->state->committed & WLR_OUTPUT_STATE_ENABLED) {
+            // A blanked output counts as black for an in-flight screen lock.
+            vela_server_output_rendered(output->server, output);
+        }
     } else if (!output->cursor_setup_attempted) {
         output->cursor_setup_attempted = true;
         prepare_cursor_swapchain(output->server, output->wlr);
@@ -344,6 +359,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
     // for black on this output.
     vela_server_output_destroyed(server, output);
     wl_list_remove(&output->link);
+    vela_output_manager_hotplug(server);
     vela_output_manager_update(server);
     output->wlr->data = NULL;
     wl_list_remove(&output->frame_event.link);
@@ -441,7 +457,7 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
 
 void vela_output_set_powered(struct vela_output *output, bool on)
 {
-    if (on == output->powered) {
+    if (on == output->powered || !wlr_output_layout_get(output->server->output_layout, output->wlr)) {
         return;
     }
     struct wlr_output *wlr = output->wlr;

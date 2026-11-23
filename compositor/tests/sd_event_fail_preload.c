@@ -6,7 +6,7 @@
 // callers' local paths (docs/memory-allocation-policy.md, point 2b).
 //
 // VELA_TEST_SD_EVENT_FAIL lists what fails, separated by spaces:
-// "defer", "child", "time_after=<usec>" (sd_event_add_time for a time at
+// "defer", "child", "pidfd_io", "time_after=<usec>" (sd_event_add_time for a time at
 // least that far ahead), and "time_relative=<usec>"
 // (sd_event_add_time_relative with that delay). The values pick one timer,
 // so the others of the same clock still work. The failures return -EMFILE.
@@ -22,6 +22,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <time.h>
+#include <unistd.h>
 
 // Whether `word` is listed: alone when `value` is NULL, or as
 // "<word>=<n>" with n == *value (or n <= *value when `at_least`).
@@ -67,6 +68,22 @@ int sd_event_add_child(void *e, void **s, pid_t pid, int options, void *callback
 int sd_event_add_child(void *e, void **s, pid_t pid, int options, void *callback, void *userdata)
 {
     return listed("child", NULL) ? -EMFILE : REAL(sd_event_add_child)(e, s, pid, options, callback, userdata);
+}
+
+int sd_event_add_io(void *e, void **s, int fd, uint32_t events, void *callback, void *userdata);
+int sd_event_add_io(void *e, void **s, int fd, uint32_t events, void *callback, void *userdata)
+{
+    if (listed("pidfd_io", NULL)) {
+        char path[64];
+        char target[32];
+        const char pidfd[] = "anon_inode:[pidfd]";
+        snprintf(path, sizeof(path), "/proc/self/fd/%d", fd);
+        ssize_t size = readlink(path, target, sizeof(target));
+        if (size == sizeof(pidfd) - 1 && memcmp(target, pidfd, sizeof(pidfd) - 1) == 0) {
+            return -EMFILE;
+        }
+    }
+    return REAL(sd_event_add_io)(e, s, fd, events, callback, userdata);
 }
 
 int sd_event_add_time(void *e, void **s, clockid_t clock, uint64_t usec, uint64_t accuracy, void *callback,

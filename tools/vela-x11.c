@@ -9,11 +9,13 @@
 //                 [--clicks PATH] [--ask-size] [WIDTH HEIGHT]
 //        vela-x11 --fullscreen XID on|off
 //        vela-x11 --activate XID
+//        vela-x11 --urgency XID on|off
 //        vela-x11 --state XID below|skip-taskbar on|off
 //        vela-x11 --override-redirect XID on|off
 //        vela-x11 --set-wine-style XID HEX
 //        vela-x11 --delete-wine-style XID
 //        vela-x11 --geometry XID (root-relative X11 x y width height)
+//        vela-x11 --move XID X Y (a ConfigureRequest for the position alone)
 //        vela-x11 --root-size (current X11 root width height)
 //        vela-x11 [--start-fullscreen] [WIDTH HEIGHT]
 //
@@ -149,11 +151,12 @@ int main(int argc, char** argv)
     int askSize = 0;
     const char* clicksFile = NULL;
     int control = (argc == 4
-        && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
-            || !strcmp(argv[1], "--override-redirect")))
-        || (argc == 5 && !strcmp(argv[1], "--state"))
-        || (argc == 3 && (!strcmp(argv[1], "--delete-wine-style")
-            || !strcmp(argv[1], "--geometry") || !strcmp(argv[1], "--activate")))
+                      && (!strcmp(argv[1], "--fullscreen") || !strcmp(argv[1], "--set-wine-style")
+                          || !strcmp(argv[1], "--override-redirect") || !strcmp(argv[1], "--urgency")))
+        || (argc == 5 && (!strcmp(argv[1], "--state") || !strcmp(argv[1], "--move")))
+        || (argc == 3
+            && (!strcmp(argv[1], "--delete-wine-style") || !strcmp(argv[1], "--geometry")
+                || !strcmp(argv[1], "--activate")))
         || (argc == 2 && !strcmp(argv[1], "--root-size"));
     int arg = 1;
     if (!control) {
@@ -263,6 +266,35 @@ int main(int argc, char** argv)
             cookie = xcb_send_event_checked(connection, 0, screen->root,
                 XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY,
                 (const char*)&event);
+        } else if (!strcmp(argv[1], "--urgency")) {
+            if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
+                fprintf(stderr, "vela-x11: expected on or off\n");
+                xcb_disconnect(connection);
+                return 2;
+            }
+            // WM_HINTS is nine 32-bit fields. XUrgencyHint is bit 8 of flags:
+            // only that bit changes, the window's other hints stay.
+            uint32_t hints[9] = { 0 };
+            xcb_get_property_reply_t *current = xcb_get_property_reply(connection,
+                xcb_get_property(connection, 0, target, XCB_ATOM_WM_HINTS, XCB_GET_PROPERTY_TYPE_ANY, 0, 9), NULL);
+            if (current && current->format == 32) {
+                int length = xcb_get_property_value_length(current) / 4;
+                memcpy(hints, xcb_get_property_value(current), (size_t)(length < 9 ? length : 9) * 4);
+            }
+            free(current);
+            if (!strcmp(argv[3], "on")) {
+                hints[0] |= 1u << 8;
+            } else {
+                hints[0] &= ~(1u << 8);
+            }
+            cookie = xcb_change_property_checked(
+                connection, XCB_PROP_MODE_REPLACE, target, XCB_ATOM_WM_HINTS, XCB_ATOM_WM_HINTS, 32, 9, hints);
+        } else if (!strcmp(argv[1], "--move")) {
+            // Like an app moving itself (a dialog centering on another
+            // output): the size stays.
+            const int32_t position[2] = { atoi(argv[3]), atoi(argv[4]) };
+            cookie = xcb_configure_window_checked(
+                connection, target, XCB_CONFIG_WINDOW_X | XCB_CONFIG_WINDOW_Y, (const uint32_t *)position);
         } else if (!strcmp(argv[1], "--override-redirect")) {
             if (strcmp(argv[3], "on") && strcmp(argv[3], "off")) {
                 fprintf(stderr, "vela-x11: expected on or off\n");

@@ -15,8 +15,12 @@ Window {
     // meets the taskbar and the output's edge (docs/visual-coherence.md
     // §6.9): the panel rests 12 units from both.
     readonly property real room: shadow.reach
-    width: room + 360 + 12
-    height: Math.min(room + panel.height + 12, Screen.height - Styles.taskbar.height)
+    // In the clock's corner, wherever the taskbar is (docs/taskbar.md §11.3;
+    // main.cpp anchors it there).
+    readonly property QtObject bar: Styles.taskbar
+    readonly property int edges: bar.trayCorner
+    width: bar.pad("left", edges, 12, room) + 360 + bar.pad("right", edges, 12, room)
+    height: Math.min(room + panel.height + 12, Screen.height - (bar.vertical ? 0 : bar.thickness))
     color: "transparent"
 
     property int current: 0
@@ -55,11 +59,11 @@ Window {
         if (!active && motion.opened && !Menus.isOpen) close()
     }
 
-    // At the bottom right, above the taskbar: from panel to output coordinates
-    // (menus).
+    // In its corner: from panel to output coordinates (menus).
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point(Screen.width - root.width + p.x, Screen.height - Styles.taskbar.height - root.height + p.y)
+        const o = bar.origin(edges, root.width, root.height, Screen.width, Screen.height, 0, 0)
+        return Qt.point(o.x + p.x, o.y + p.y)
     }
 
     ShadowRoom {
@@ -71,11 +75,11 @@ Window {
     // like Quick Settings, and leaves the same way.
     PanelMotion {
         id: motion
-        x: root.room
-        y: root.height - 12 - height
+        x: root.bar.pad("left", root.edges, 12, root.room)
+        y: (root.edges & 1) ? 12 : root.height - 12 - height
         width: 360
         height: panel.height
-        offset: Qt.point(0, 48)
+        offset: root.bar.towards(48)
         onClosed: root.visible = false
         onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], Theme.expressive ? Theme.radiusOverlay : 0) // the travel while it moves, the panel at rest
 

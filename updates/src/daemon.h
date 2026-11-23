@@ -52,7 +52,7 @@ struct vela_up_daemon {
     ino_t file_seen_ino;
     struct timespec file_seen_mtime;
     struct vela_up_run run; // running now, by anyone
-    sd_event_source *run_watch; // its pidfd
+    sd_event_source *run_watch; // its pidfd or a timer to retry watching
     struct vela_up_install install; // the last install's end
     bool loaded; // the state files were read once
     // install.json's identity, as check.json's: two installs can end in

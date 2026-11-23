@@ -73,15 +73,15 @@ Flickable {
                     const path = row.modelData.path
                     const favorite = Places.isFavorite(path)
                     page.tab.menus.open([
-                        { text: qsTr("&Open"), icon: "document-open", action: () => Ops.open([path]) },
-                        { text: qsTr("Open file &location"), icon: "folder-open", action: () => page.tab.navigate(row.modelData.location, path) },
+                        { key: "file.open", text: qsTr("&Open"), icon: "document-open", action: () => Ops.open([path]) },
+                        { key: "file.location", text: qsTr("Open file &location"), icon: "folder-open-symbolic", action: () => page.tab.navigate(row.modelData.location, path) },
                         { separator: true },
                         favorite
-                            ? { text: qsTr("Remove from &Favorites"), icon: "starred-symbolic", action: () => Places.setFavorite(path, false) }
-                            : { text: qsTr("Add to &Favorites"), icon: "starred-symbolic", action: () => Places.setFavorite(path, true) },
-                        { text: qsTr("&Share"), icon: "document-share", action: () => Ops.share([path]) },
-                        { text: qsTr("Copy as &path"), icon: "edit-copy-path", action: () => Ops.copyAsPath([path]) },
-                        { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([path]) }
+                            ? { key: "file.favorite", text: qsTr("Remove from &Favorites"), icon: "starred-symbolic", action: () => Places.setFavorite(path, false) }
+                            : { key: "file.favorite", text: qsTr("Add to &Favorites"), icon: "starred-symbolic", action: () => Places.setFavorite(path, true) },
+                        { key: "file.share", text: qsTr("&Share"), icon: "document-share", action: () => Ops.share([path]) },
+                        { key: "file.copyPath", text: qsTr("Copy as &path"), icon: "edit-copy-path", action: () => Ops.copyAsPath([path]) },
+                        { key: "file.properties", text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([path]) }
                     ], p.x, p.y)
                 }
             }

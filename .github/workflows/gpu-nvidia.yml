@@ -5,6 +5,9 @@
 # Each run rents a fresh single-GPU Vast.ai container (scripts/vast-runner.py)
 # from the image of nvidia-ci-image.yml, and destroys it at the end.
 name: GPU CI - NVIDIA (manual)
+# A full suite keeps the plain name; release.py status accepts only that
+# (docs/release-automation.md §6, R3).
+run-name: GPU CI - NVIDIA (manual)${{ inputs.tests && format(' - only {0}', inputs.tests) || '' }}
 
 on:
   workflow_dispatch:
@@ -14,7 +17,7 @@ on:
         type: boolean
         default: false
       record_promo_smoke:
-        description: Record and verify isolated promo scenes at 100% and 125% scaling
+        description: Record and verify isolated promo scenes at 100% and 125% scaling (not yet possible on Vast containers, docs/ci-quality.md)
         type: boolean
         default: false
       tests:
@@ -48,10 +51,14 @@ jobs:
     outputs:
       gpu: ${{ steps.rent.outputs.gpu }}
       cpu_cores: ${{ steps.rent.outputs.cpu_cores }}
+      image_digest: ${{ steps.rent.outputs.image_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.13'
       - name: Token for the organization's runners
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -70,18 +77,36 @@ jobs:
           LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          version=$(gh api repos/actions/runner/releases/latest --jq '.tag_name | ltrimstr("v")')
+          release=$(gh api repos/actions/runner/releases/latest)
+          version=$(jq -er '.tag_name | ltrimstr("v")' <<< "$release")
+          asset="actions-runner-linux-x64-$version.tar.gz"
+          checksum=$(jq -er --arg asset "$asset" \
+            '.assets[] | select(.name == $asset) | .digest | select(startswith("sha256:")) | ltrimstr("sha256:")' <<< "$release")
+          if [[ ! "$checksum" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "::error::GitHub runner release does not publish a valid SHA256 for $asset"
+            exit 1
+          fi
           # The image built from this revision's .github/images/nvidia-ci (see
           # nvidia-ci-image.yml), not whichever was published last. Checked
           # before renting: a missing image would cost a rental.
           tag="tree-$(git rev-parse HEAD:.github/images/nvidia-ci)"
           token=$(curl -fsS "https://ghcr.io/token?scope=repository:$ORG/vela-ci-nvidia:pull" | jq -r .token)
-          curl -fsS -o /dev/null -H "Authorization: Bearer $token" \
+          headers=$(mktemp)
+          curl -fsSI -o "$headers" -H "Authorization: Bearer $token" \
             -H "Accept: application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json" \
             "https://ghcr.io/v2/$ORG/vela-ci-nvidia/manifests/$tag" \
-            || { echo "::error::No vela-ci-nvidia:$tag yet: run nvidia-ci-image.yml on this revision first"; exit 1; }
+            || { rm -f "$headers"; echo "::error::No vela-ci-nvidia:$tag yet: run nvidia-ci-image.yml first"; exit 1; }
+          digest=$(awk 'tolower($1) == "docker-content-digest:" {gsub("\r", "", $2); print $2}' "$headers" | tail -n 1)
+          rm -f "$headers"
+          if [[ ! "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::GHCR did not return a valid OCI manifest digest for $tag"
+            exit 1
+          fi
+          echo "image_digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "Pinned NVIDIA CI image: ghcr.io/$ORG/vela-ci-nvidia@$digest" >> "$GITHUB_STEP_SUMMARY"
           python3 scripts/vast-runner.py start --org "$ORG" --label "$LABEL" --gpu "$GPU" \
-            --image "ghcr.io/$ORG/vela-ci-nvidia:$tag" --runner-version "$version" --max-price 0.12
+            --image "ghcr.io/$ORG/vela-ci-nvidia@$digest" --runner-version "$version" \
+            --runner-sha256 "$checksum" --max-price 0.12
 
   gpu-nvidia:
     name: NVIDIA functional and sharpness tests
@@ -93,7 +118,10 @@ jobs:
       - name: Rented GPU
         env:
           GPU: ${{ needs.start-runner.outputs.gpu }}
-        run: echo "Rented on Vast.ai - $GPU" | tee -a "$GITHUB_STEP_SUMMARY"
+          IMAGE_DIGEST: ${{ needs.start-runner.outputs.image_digest }}
+        run: |
+          echo "Rented on Vast.ai - $GPU" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "OCI image: ghcr.io/${{ github.repository_owner }}/vela-ci-nvidia@$IMAGE_DIGEST" >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout selected revision (without persisting credentials)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -107,6 +135,7 @@ jobs:
           set -euo pipefail
           command -v vulkaninfo >/dev/null || { echo '::error::Install vulkan-tools'; exit 1; }
           command -v python3 >/dev/null || { echo '::error::Install python'; exit 1; }
+          python3 -c 'import sys; sys.exit(sys.version_info < (3, 13))' || { echo '::error::Python 3.13 or newer is required'; exit 1; }
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow'; exit 1; }
@@ -441,7 +470,8 @@ jobs:
     name: Destroy the Vast.ai GPU
     needs: [start-runner, gpu-nvidia]
     if: always()
-    runs-on: ubuntu-latest
+    # Ubuntu 26.04 includes Python >= 3.13; cleanup must not depend on a download.
+    runs-on: ubuntu-26.04
     environment: gpu-nvidia
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -461,7 +491,7 @@ jobs:
           VAST_API_KEY: ${{ secrets.VAST_API_KEY }}
           ORG: ${{ github.repository_owner }}
           LABEL: vela-vast-${{ github.run_id }}-${{ github.run_attempt }}
-        run: python3 scripts/vast-runner.py stop --org "$ORG" --label "$LABEL"
+        run: /usr/bin/python3 scripts/vast-runner.py stop --org "$ORG" --label "$LABEL"
 
   publish-nvidia-coverage:
     name: Codecov NVIDIA upload (GitHub hosted)

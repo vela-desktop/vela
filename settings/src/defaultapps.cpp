@@ -5,11 +5,18 @@
 
 #include "appmodel.h"
 #include "mimeapps.h"
+#include "processlaunch.h"
+#include "terminal.h"
 
 #include <QCoreApplication>
 #include <QCollator>
+#include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QSaveFile>
 #include <QMimeDatabase>
 #include <QSet>
+#include <QTimer>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -133,6 +140,11 @@ DefaultApps::DefaultApps(AppModel* apps, QObject* parent)
     : QObject(parent)
     , m_apps(apps)
 {
+    connect(apps, &AppModel::catalogRevisionChanged, this, [this] {
+        m_terminalKnown = false;
+        ++m_terminalRevision;
+        emit changed();
+    });
 }
 
 QVariantMap DefaultApps::appInfo(const QString& appId) const
@@ -316,4 +328,142 @@ QString DefaultApps::selectedIcon() const
 {
     const AppModel::Entry* entry = m_apps->find(m_selected);
     return entry ? entry->icon : QString();
+}
+
+QVariantMap DefaultApps::terminalInfo(const QString& appId) const
+{
+    QVariantMap info = appInfo(appId);
+    if (info.isEmpty()) {
+        QString name = appId;
+        name.chop(QStringLiteral(".desktop").size());
+        info = { { QStringLiteral("id"), appId }, { QStringLiteral("name"), name },
+            { QStringLiteral("icon"), QStringLiteral("utilities-terminal") } };
+    }
+    return info;
+}
+
+namespace {
+constexpr char choiceHeader[] = "# The terminal chosen in Vela Settings > Apps > Default apps.\n";
+
+QString choicePath(const vela_terminal_env& env)
+{
+    char* path = vela_terminal_choice_path(&env);
+    const QString result = QString::fromUtf8(path);
+    free(path);
+    return result;
+}
+} // namespace
+
+void DefaultApps::queryAutomaticTerminal(const QString& program)
+{
+    // Older versions treat --print-id as a command to open in a terminal.
+    QFile launcher(program);
+    if (!launcher.open(QIODevice::ReadOnly) || !launcher.read(4 << 20).contains("--print-id")) {
+        return;
+    }
+    auto* process = new vela::process::ExternalProcess(this);
+    connect(process, &QProcess::errorOccurred, process, [process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            process->deleteLater();
+        }
+    });
+    connect(process, &QProcess::finished, this,
+        [this, process, revision = m_terminalRevision](int code, QProcess::ExitStatus status) {
+            process->deleteLater();
+            if (revision != m_terminalRevision || code != 0 || status != QProcess::NormalExit) {
+                return;
+            }
+            const QString id = QString::fromUtf8(process->readAllStandardOutput()).trimmed().section(u':', 0, 0);
+            if (id.endsWith(QLatin1String(".desktop"))) {
+                m_terminal.insert(QStringLiteral("automatic"), terminalInfo(id));
+                emit changed();
+            }
+        });
+    process->start(program, { QStringLiteral("--print-id") });
+    QTimer::singleShot(2000, process, &QProcess::kill);
+}
+
+QVariantMap DefaultApps::terminal()
+{
+    if (m_terminalKnown) {
+        return m_terminal;
+    }
+    QVariantList candidates;
+    for (const auto& entry : m_apps->all()) {
+        if (entry.terminalEmulator) {
+            candidates.append(appInfo(entry.id));
+        }
+    }
+    vela_terminal_env env;
+    vela_terminal_env_get(&env);
+    QVariantMap current;
+    QVariantMap automatic;
+    vela_terminal found;
+    QString probe;
+    if (vela_terminal_find(&env, &found)) {
+        const QString program = QString::fromUtf8(found.argv[0]);
+        QFile preferences(choicePath(env));
+        if (found.id && preferences.open(QIODevice::ReadOnly) && preferences.readLine() == choiceHeader) {
+            current = terminalInfo(QString::fromUtf8(found.id));
+            if (std::none_of(candidates.cbegin(), candidates.cend(), [&](const QVariant& candidate) {
+                    return candidate.toMap().value(QStringLiteral("id")) == current.value(QStringLiteral("id"));
+                })) {
+                candidates.prepend(current);
+            }
+        } else if (found.source == VELA_TERMINAL_VARIABLE) {
+            automatic.insert(QStringLiteral("name"), QFileInfo(program).fileName());
+        } else {
+            automatic.insert(QStringLiteral("name"), tr("System default"));
+            probe = program;
+        }
+        vela_terminal_free(&found);
+    }
+    m_terminal = { { QStringLiteral("current"), current }, { QStringLiteral("automatic"), automatic },
+        { QStringLiteral("candidates"), candidates } };
+    m_terminalKnown = true;
+    if (!probe.isEmpty()) {
+        queryAutomaticTerminal(probe);
+    }
+    return m_terminal;
+}
+
+void DefaultApps::setTerminal(const QString& appId)
+{
+    vela_terminal_env env;
+    vela_terminal_env_get(&env);
+    const QString path = choicePath(env);
+    if (path.isEmpty() || !QDir().mkpath(QFileInfo(path).absolutePath())) {
+        return;
+    }
+    // Replace only the entry Settings owns. Keep user profiles, alternatives and directives.
+    QFile previous(path);
+    QByteArray rest;
+    if (previous.exists()) {
+        if (!previous.open(QIODevice::ReadOnly)) {
+            return;
+        }
+        if (previous.peek(sizeof(choiceHeader) - 1) == choiceHeader) {
+            previous.readLine();
+            previous.readLine();
+        }
+        rest = previous.readAll();
+        if (previous.error() != QFile::NoError) {
+            return;
+        }
+    }
+    if (!appId.isEmpty()) {
+        const auto* entry = m_apps->find(appId);
+        if (!entry || !entry->terminalEmulator || appId.contains(u'\n') || appId.contains(u'\r')) {
+            return;
+        }
+        rest.prepend(QByteArray(choiceHeader) + appId.toUtf8() + '\n');
+    }
+    QSaveFile out(path);
+    if (!out.open(QIODevice::WriteOnly) || out.write(rest) != rest.size() || !out.commit()) {
+        qWarning("Settings: can't write %s", qPrintable(path));
+        return;
+    }
+    m_terminalKnown = false;
+    ++m_terminalRevision;
+    emit changed();
 }

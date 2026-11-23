@@ -4,11 +4,18 @@ Vela uses Super for desktop-level actions in a normal session. When Vela runs ne
 
 Those nested alternatives are active only in nested mode; in a normal Vela session, ordinary Alt+letter combinations remain available to applications.
 
+The modifiers of a shortcut are exact: <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> is not <kbd>Super</kbd>+<kbd>E</kbd>, and stays free for the apps and for custom shortcuts. Caps Lock, Num Lock and AltGr don't count. Letters are where they are printed on the layout in use (<kbd>Super</kbd>+<kbd>Z</kbd> on AZERTY too), and work with Russian, Greek or another non-Latin layout active; the number row, the function keys and the other keys are matched by their position. One table in `common/shortcuts/table.c` holds them all, and a test checks every row of this page against it ([keyboard](keyboard.md#92-matching-a-key)).
+
+Your own combinations, to open an app, run a command or open a link or file, are added in Settings > Keyboard > Custom shortcuts. Vela's combinations and the reserved ones (consoles, Lock, Quit, media keys) can't be taken; combinations without <kbd>Super</kbd> are allowed after a warning, since apps use them ([keyboard](keyboard.md#9-custom-shortcuts)).
+
 ## Windows and multitasking
 
 | Action | Normal session | Nested session |
 |---|---|---|
 | App launcher | <kbd>Super</kbd> | <kbd>Alt</kbd>+<kbd>S</kbd> |
+| Activate a taskbar app / open its window previews | <kbd>Super</kbd>+<kbd>1</kbd>…<kbd>9</kbd>, <kbd>0</kbd> | — |
+| Open a new instance of a taskbar app | <kbd>Super</kbd>+<kbd>Shift</kbd>+number | — |
+| Open a taskbar app's jump list | <kbd>Super</kbd>+<kbd>Alt</kbd>+number | — |
 | Task View | <kbd>Super</kbd>+<kbd>Tab</kbd> | <kbd>Alt</kbd>+<kbd>W</kbd> |
 | Switch windows | <kbd>Alt</kbd>+<kbd>Tab</kbd> | <kbd>Alt</kbd>+<kbd>J</kbd> |
 | Snap left / right | <kbd>Super</kbd>+<kbd>←</kbd> / <kbd>→</kbd> | <kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> |
@@ -23,6 +30,12 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Window menu | <kbd>Alt</kbd>+<kbd>Space</kbd> | <kbd>Alt</kbd>+<kbd>Space</kbd> |
 | Close window | <kbd>Alt</kbd>+<kbd>F4</kbd> | <kbd>Alt</kbd>+<kbd>Q</kbd> |
 
+In Taskbar settings, the number keys can switch to the corresponding virtual
+desktop, move the focused window there with Shift, or be turned off.
+See [taskbar shortcuts](taskbar.md#7-super19-and-super0).
+
+<kbd>Super</kbd> by itself opens Start unless *Open Start with the Win key* is turned off in Settings > Keyboard > Typing; the other <kbd>Super</kbd> shortcuts and the taskbar numbers work either way ([keyboard](keyboard.md#10-the-win-key-alone)).
+
 ## Shell and apps
 
 | Action | Normal session | Nested session |
@@ -34,7 +47,6 @@ Those nested alternatives are active only in nested mode; in a normal Vela sessi
 | Clipboard history | <kbd>Super</kbd>+<kbd>V</kbd> | — |
 | Sound output and volume mixer | <kbd>Super</kbd>+<kbd>Ctrl</kbd>+<kbd>V</kbd> | — |
 | Snipping tool | <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd> or <kbd>PrtSc</kbd> | <kbd>PrtSc</kbd> |
-| Run | <kbd>Super</kbd>+<kbd>R</kbd> | <kbd>Alt</kbd>+<kbd>R</kbd> |
 | Power-user menu | <kbd>Super</kbd>+<kbd>X</kbd> | <kbd>Alt</kbd>+<kbd>X</kbd> |
 | Terminal | <kbd>Super</kbd>+<kbd>Enter</kbd> | <kbd>Alt</kbd>+<kbd>Enter</kbd> |
 | Lock | <kbd>Super</kbd>+<kbd>L</kbd> | <kbd>Alt</kbd>+<kbd>L</kbd> |

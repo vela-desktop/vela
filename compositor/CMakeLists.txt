@@ -70,6 +70,7 @@ endfunction()
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-background-effect/ext-background-effect-v1.xml
     ext-background-effect-v1)
 vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-output-preview-v1.xml vela-output-preview-v1)
+vela_own_protocol(${PROJECT_SOURCE_DIR}/protocols/vela-toplevel-identifier-v1.xml vela-toplevel-identifier-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-image-capture-source/ext-image-capture-source-v1.xml
     ext-image-capture-source-v1)
 vela_own_protocol(${WAYLAND_PROTOCOLS_DIR}/staging/ext-foreign-toplevel-list/ext-foreign-toplevel-list-v1.xml
@@ -130,9 +131,12 @@ add_library(vela-pure STATIC
     src/frame_clock.c
     src/geometry.c
     src/icon_cache.c
+    src/keymap_options.c
     src/legacy_names.c
+    src/lock_keys.c
     src/lock_state.c
     src/motion.c
+    src/output_arrangement.c
     src/output_config.c
     src/output_key.c
     src/path_security.c
@@ -146,7 +150,7 @@ target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-pure PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(vela-pure PUBLIC vela-alloc)
+target_link_libraries(vela-pure PUBLIC vela-alloc vela-shortcuts PkgConfig::XKBCOMMON)
 find_library(MATH_LIBRARY m)
 if(MATH_LIBRARY)
     target_link_libraries(vela-pure PUBLIC ${MATH_LIBRARY})
@@ -224,11 +228,11 @@ target_compile_definitions(vela-compositor-objects PRIVATE WLR_USE_UNSTABLE
 target_compile_options(vela-compositor-objects PRIVATE -Wall -Wextra -Wno-unused-parameter
     -Wno-missing-field-initializers)
 set_target_properties(vela-compositor-objects PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-# logind lock hints are best-effort when libsystemd is available.
-pkg_check_modules(VELA_LOCK_SYSTEMD IMPORTED_TARGET libsystemd)
-if(VELA_LOCK_SYSTEMD_FOUND)
-    target_compile_definitions(vela-compositor-objects PRIVATE VELA_HAVE_SYSTEMD_LOCK_HINT=1)
-    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::VELA_LOCK_SYSTEMD)
+# Logind lock hints and initial lid state are best-effort.
+pkg_check_modules(VELA_COMPOSITOR_SYSTEMD IMPORTED_TARGET libsystemd)
+if(VELA_COMPOSITOR_SYSTEMD_FOUND)
+    target_compile_definitions(vela-compositor-objects PRIVATE VELA_HAVE_LOGIND=1)
+    target_link_libraries(vela-compositor-objects PUBLIC PkgConfig::VELA_COMPOSITOR_SYSTEMD)
 endif()
 
 target_link_libraries(vela-compositor-objects PUBLIC
@@ -401,6 +405,7 @@ if(VELA_BUILD_TOOLS)
     target_compile_definitions(vela-display-test-server PRIVATE WLR_USE_UNSTABLE
         VELA_OUTPUT_PREVIEW_TIMEOUT_MS=1200)
     target_compile_options(vela-display-test-server PRIVATE -Wall -Wextra -Wno-unused-parameter)
+    target_link_options(vela-display-test-server PRIVATE -Wl,--wrap=wlr_output_test_state)
     target_link_libraries(vela-display-test-server PRIVATE vela-pure PkgConfig::WLROOTS
         PkgConfig::WAYLAND_SERVER)
 
@@ -667,6 +672,7 @@ if(VELA_BUILD_TOOLS)
             tests/geometry_test.cpp
             tests/color_sun_test.cpp
             tests/settings_test.cpp
+            tests/output_arrangement_test.cpp
             tests/output_config_test.cpp
             tests/output_key_test.cpp
             tests/path_security_test.cpp
@@ -674,13 +680,18 @@ if(VELA_BUILD_TOOLS)
             tests/lock_state_test.cpp
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
+            tests/super_numbers_test.cpp
+            tests/shortcuts_test.cpp
+            tests/keymap_options_test.cpp
+            tests/lock_keys_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)
         target_compile_options(vela-compositor-tests PRIVATE -Wall -Wextra)
         target_include_directories(vela-compositor-tests PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
         target_compile_definitions(vela-compositor-tests PRIVATE
-            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
+            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures"
+            VELA_DOCS_DIR="${PROJECT_SOURCE_DIR}/docs")
         target_link_libraries(vela-compositor-tests PRIVATE vela-pure GTest::gtest_main)
         include(GoogleTest)
         gtest_discover_tests(vela-compositor-tests TEST_PREFIX "compositor.")

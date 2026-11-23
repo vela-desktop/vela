@@ -1,5 +1,9 @@
 # The C core
 
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** the input paths ported line by line in step 9 of §4 (gestures, wheel lines, touchpad settings, pointer constraints, paste and keyboard layouts) need a check by hand on real hardware.
+
 The compositor has been rewritten in plain C, one subsystem at a time, with
 the behavior that users and tests can observe left exactly as it is. This
 document records where it started, the rules the C code follows, the order
@@ -139,7 +143,8 @@ compositor/src/
   output.c/h      struct vela_output: frame cycle, vblank, VRR, power,
                   hotplug; output_config.c, nested.c
   input.c/h       seat, pointers, gestures, constraints, drag icon, paste
-  keyboard.c/h    keyboards, layouts, key handling
+  keyboard.c/h    keyboards, layouts, key handling; super_numbers.c/h
+                  the Super+number rules
   shell.c/h       the supervised shell and one-line messages to it
   polkit.c/h      starting Vela's polkit agent (docs/polkit-agent.md)
   view.c/h        struct vela_view: windows (xdg-shell), handles, animation;

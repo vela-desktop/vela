@@ -10,7 +10,7 @@
 # Needs Python 3 with numpy and Pillow.
 
 set -u
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 BUILD="${VELA_BUILD:-build}"
 # CTest forwards its selected Python; standalone runs keep the PATH default.
 PYTHON="${VELA_TEST_PYTHON:-python3}"
@@ -35,7 +35,7 @@ for scale in $SCALES; do
     WLR_BACKENDS=headless WLR_LIBINPUT_NO_DEVICES=1 VELA_DEBUG_INPUT=1 VELA_SCALE=$scale \
         VELA_OUTPUT_SIZE=2560x1440@60 "$BUILD/compositor/vela-compositor" > "$TMP/log" 2>&1 &
     PID=$!
-    for i in 1 2 3 4 5 6 7 8 9 10; do
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
         sleep 0.2
         DISPLAY_NAME=$(grep -o "WAYLAND_DISPLAY=[a-z0-9-]*" "$TMP/log" | head -1 | cut -d= -f2)
         [ -n "$DISPLAY_NAME" ] && break

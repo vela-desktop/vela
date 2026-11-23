@@ -11,7 +11,11 @@ find_package(LayerShellQt REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_executable(vela-polkit-prompt main.cpp request.cpp request.h ../protocol.hpp)
+# Caps Lock's real state (capslock.h): a wl_keyboard of our own.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PROMPT_WAYLAND REQUIRED IMPORTED_TARGET wayland-client xkbcommon)
+
+qt_add_executable(vela-polkit-prompt main.cpp request.cpp request.h capslock.cpp capslock.h ../protocol.hpp)
 set_target_properties(vela-polkit-prompt PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/..)
 
 set(PROMPT_QML_FILES qml/Dialog.qml qml/Veil.qml)
@@ -31,7 +35,8 @@ target_link_libraries(vela-polkit-prompt PRIVATE vela-alloc
     Qt6::Quick
     vela-controls
     vela-controlsplugin
-    LayerShellQt::Interface)
+    LayerShellQt::Interface
+    PkgConfig::PROMPT_WAYLAND)
 
 install(TARGETS vela-polkit-prompt RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 

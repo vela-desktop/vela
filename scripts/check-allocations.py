@@ -32,7 +32,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BASELINE = ROOT / "common/alloc/legacy-sites.txt"
 # The C code of the session and the update daemon. Test programs and tools
 # are out of scope.
-SCOPE = ("compositor", "bluetooth", "brightness", "capture", "updates", "common/alloc", "common/caller")
+SCOPE = ("compositor", "bluetooth", "brightness", "capture", "updates", "common/alloc", "common/caller",
+         "common/terminal")
 EXEMPT = {"common/alloc/alloc.c"}
 
 ALLOCATORS = ("malloc", "calloc", "realloc", "reallocarray", "strdup", "strndup", "asprintf",
