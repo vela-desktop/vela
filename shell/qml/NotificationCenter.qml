@@ -257,10 +257,21 @@ Window {
                     // The grid: the week starts on Monday.
                     Grid {
                         id: days
+                        objectName: "calendarDays"
                         columns: 7
                         readonly property real cell: (parent.width) / 7
                         readonly property int offset: (new Date(root.month.getFullYear(), root.month.getMonth(), 1).getDay() + 6) % 7
                         readonly property int length: new Date(root.month.getFullYear(), root.month.getMonth() + 1, 0).getDate()
+
+                        HoverHandler { id: dayHover }
+                        readonly property int hoveredDay: {
+                            if (!dayHover.hovered || cell <= 0) return -1
+                            const p = dayHover.point.position
+                            const row = Math.floor((p.y - 28) / 36)
+                            const col = Math.floor(p.x / cell)
+                            if (row < 0 || row >= 6 || col < 0 || col >= 7) return -1
+                            return row * 7 + (effectiveLayoutDirection === Qt.RightToLeft ? 6 - col : col)
+                        }
 
                         Repeater {
                             // Monday first, as the grid; two letters of the
@@ -287,7 +298,8 @@ Window {
                         }
                         Repeater {
                             model: 42
-                            delegate: Item {
+                            delegate: Text {
+                                id: dayNumber
                                 required property int index
                                 readonly property date day: new Date(root.month.getFullYear(), root.month.getMonth(), index - days.offset + 1)
                                 readonly property bool inMonth: day.getMonth() === root.month.getMonth()
@@ -298,30 +310,40 @@ Window {
                                 }
                                 width: days.cell
                                 height: 36
-                                Fill {
+                                horizontalAlignment: Text.AlignHCenter
+                                verticalAlignment: Text.AlignVCenter
+                                text: day.getDate()
+                                color: {
+                                    const ink = today ? (Styles.notifications.expressive ? Theme.primaryText : Theme.readableOn(Theme.accent, "white"))
+                                        : inMonth ? Theme.text : Theme.textSecondary
+                                    return Qt.rgba(ink.r, ink.g, ink.b, ink.a * (inMonth || today ? 1 : 0.5))
+                                }
+                                font.pixelSize: Theme.fontCaption
+                                Loader {
+                                    id: highlight
                                     anchors.centerIn: parent
+                                    z: -1
                                     width: 32
                                     height: 32
-                                    radius: Styles.notifications.todayRadius
-                                    // Expressive: today a full primary circle
-                                    // (todayRadius 16 is round), hover a state
-                                    // layer.
-                                    color: parent.today ? (Styles.notifications.expressive ? Theme.primary : Theme.accent)
-                                        : dayMouse.containsMouse ? (Styles.notifications.expressive ? Theme.hoverLayer : Theme.subtleHover)
-                                        : Styles.notifications.expressive ? Theme.restLayer : Theme.subtleRest
-                                }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: parent.day.getDate()
-                                    color: parent.today ? (Styles.notifications.expressive ? Theme.primaryText : Theme.readableOn(Theme.accent, "white"))
-                                        : parent.inMonth ? Theme.text : Theme.textSecondary
-                                    opacity: parent.inMonth || parent.today ? 1 : 0.5
-                                    font.pixelSize: Theme.fontCaption
-                                }
-                                MouseArea {
-                                    id: dayMouse
-                                    anchors.fill: parent
-                                    hoverEnabled: true
+                                    // Each outgoing cell keeps its own fill until transparent.
+                                    readonly property bool highlighted: dayNumber.today || days.hoveredDay === dayNumber.index
+                                    active: false
+                                    function sync() {
+                                        active = highlighted || (item !== null && item.color.a > 0)
+                                    }
+                                    onHighlightedChanged: sync()
+                                    Component.onCompleted: sync()
+                                    onLoaded: item.ready = true
+                                    sourceComponent: Fill {
+                                        property bool ready: false
+                                        onColorChanged: {
+                                            if (color.a === 0 && !highlight.highlighted) Qt.callLater(highlight.sync)
+                                        }
+                                        radius: Styles.notifications.todayRadius
+                                        color: dayNumber.today ? (Styles.notifications.expressive ? Theme.primary : Theme.accent)
+                                            : ready && days.hoveredDay === dayNumber.index ? (Styles.notifications.expressive ? Theme.hoverLayer : Theme.subtleHover)
+                                            : Styles.notifications.expressive ? Theme.restLayer : Theme.subtleRest
+                                    }
                                 }
                             }
                         }

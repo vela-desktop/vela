@@ -8,6 +8,10 @@
 #include "notifications.h"
 
 #include <QColor>
+#include <QDBusArgument>
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingReply>
 #include <QTest>
 
 #include <limits>
@@ -65,6 +69,12 @@ private slots:
         QVERIFY(decodeNotificationImage(64, 64, rowStride, 8, 4, pixels(64 * 4)).isNull());
     }
 
+    void largeIconsKeepAspectRatioAtMaximumDisplayScale()
+    {
+        const QImage image = decodeNotificationImage(1024, 512, 4096, 8, 4, pixels(4096 * 512));
+        QCOMPARE(image.size(), QSize(448, 224));
+    }
+
     void shortBufferIsRefused()
     {
         QVERIFY(decodeNotificationImage(4, 4, 16, 8, 4, pixels(16 * 4 - 1)).isNull());
@@ -78,6 +88,38 @@ private slots:
         QVERIFY(decodeNotificationImage(1, maxNotificationImageSide + 1, 4, 8, 4, pixels(4)).isNull());
         QVERIFY(decodeNotificationImage(0, 4, 0, 8, 4, pixels(64)).isNull());
         QVERIFY(decodeNotificationImage(4, -1, 16, 8, 4, pixels(64)).isNull());
+    }
+
+    void replacementsReleaseThePreviousImage()
+    {
+        QDBusConnection serverBus = QDBusConnection::sessionBus();
+        if (!serverBus.isConnected()) QSKIP("requires a session bus");
+        const QString path = QStringLiteral("/ImageTest");
+        NotificationServer server;
+        QVERIFY(serverBus.registerObject(path, &server, QDBusConnection::ExportScriptableSlots));
+        const QDBusConnection client =
+            QDBusConnection::connectToBus(QDBusConnection::SessionBus, QStringLiteral("image-test"));
+        QDBusArgument hint;
+        hint.beginStructure();
+        hint << 64 << 32 << 256 << true << 8 << 4 << pixels(256 * 32);
+        hint.endStructure();
+        const QVariantMap withPixels { { QStringLiteral("image-data"), QVariant::fromValue(hint) } };
+        uint id = 0;
+        for (bool history : { false, true }) {
+            QDBusMessage notify = QDBusMessage::createMethodCall(serverBus.baseService(), path,
+                QStringLiteral("org.freedesktop.Notifications"), QStringLiteral("Notify"));
+            notify << QStringLiteral("test") << id << QString() << QStringLiteral("summary") << QString()
+                   << QStringList() << withPixels << 0;
+            QDBusPendingReply<uint> reply = client.asyncCall(notify);
+            QTRY_VERIFY(reply.isFinished());
+            QVERIFY2(!reply.isError(), qPrintable(reply.error().message()));
+            if (id) QCOMPARE(reply.value(), id);
+            id = reply.value();
+            QCOMPARE(server.image(id).size(), QSize(64, 32));
+            if (history) server.collectPopups();
+            QCOMPARE(server.Notify("test", id, "dialog-information", "replacement", { }, { }, { }, 0), id);
+            QVERIFY(server.image(id).isNull());
+        }
     }
 
     void largestStrideDoesNotOverflow()

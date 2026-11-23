@@ -480,7 +480,11 @@ if(VELA_BUILD_TOOLS)
     target_include_directories(vela-notification-image-test PRIVATE src)
     target_compile_options(vela-notification-image-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-notification-image-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
-    add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        add_test(NAME shell-notification-image COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-notification-image-test>)
+    else()
+        add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    endif()
     set_tests_properties(shell-notification-image PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).
