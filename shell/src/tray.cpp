@@ -382,7 +382,7 @@ void TrayModel::refresh(Item* item)
             if (name.isEmpty()) image = decodePixmaps(properties.value(QStringLiteral("IconPixmap")));
         }
         if (!name.isEmpty()) {
-            item->pixmap = { };
+            item->pixmap = {};
             item->icon = iconSource(name, themePath);
         } else if (!image.isNull()) {
             const QString key = QString::number(++m_serial);
@@ -401,7 +401,7 @@ QImage TrayModel::pixmap(const QString& key) const
     for (const auto& item : m_items) {
         if (item->icon == url) return item->pixmap;
     }
-    return { };
+    return {};
 }
 
 int TrayModel::rowOf(const Item* item) const
