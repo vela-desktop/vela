@@ -1,122 +1,131 @@
-# Shell memory follow-ups
+# Shell memory use
 
-The code references below were checked on 23 November 2026 against `8f49a36b`.
-These are proposals. The roughly 143 MiB idle PSS in the [performance notes](performance.md)
-was a historical observation. Take a fresh baseline on the revision under test.
+On the test desktop with 24 files and the Recycle Bin, idle shell PSS fell by
+6.0 MiB. With 25 pinned screenshots, opening clipboard history used 137 MiB
+less PSS in a separate run. Image content, output scale, driver and allocator
+all affect these figures. The older 143 MiB idle observation is described in
+the [performance notes](performance.md).
 
-Use the same workload, icon count, outputs and scales on both builds. Verify the
-shell PID for the session under test and sample `Pss` and `Private_Dirty` from
-`/proc/<pid>/smaps_rollup` at the same points. For textures, also compare the
-shell's per-region `drm-resident-*` counters in `/proc/<pid>/fdinfo/` when the
-driver exports them. Count each DRM client once per device. A reduction in
-resident GPU memory can leave PSS unchanged. Record repeated samples, frame
-times and first-open latency using the [performance methodology](performance.md).
-Keep effects, sharpness and next-frame opening of warm panels across all trials.
+## Measured session
 
-## 1. Keep a full-resolution clipboard payload and a separate preview
+Medians of three independent starts per build on 23 November 2026.
+The baseline was `bcc72452`, the implementation `d9e3782a`.
 
-[`Clipboard::readOffer`, `setSelection` and `loadPinned`](../shell/src/clipboard.cpp)
-retain both original bytes and a decoded image for incoming PNGs. JPEG, WebP
-and BMP offers keep only decoded pixels and are encoded as PNG on paste. Pinned
-images loaded at startup also start with only decoded pixels. A 2560×1440
-32-bit image takes about 14 MiB before any encoded bytes.
+| Metric | Baseline | Implementation |
+|---|---:|---:|
+| Idle PSS | 117.32 MiB | 111.30 MiB |
+| Idle private dirty memory | 99.08 MiB | 93.03 MiB |
+| PSS after five opens and closes of Notification Center | 129.85 MiB | 121.82 MiB |
+| Idle shell DRM resident VRAM | 102.28 MiB | 100.29 MiB |
+| First notification-center map | 12.58 ms | 12.68 ms |
+| Subsequent maps | 2.12 ms | 2.14 ms |
+| Qt render-loop frame time, p95 / p99 | 9 / 10 ms | 9 / 10 ms |
 
-Keep the original bytes for PNG offers. Encode other accepted images at full
-resolution before discarding the decoded image, and read existing pinned PNGs
-as bytes. Persist that full payload when pinning. Generate the panel preview at
-the required physical size and regenerate it from the payload if the output
-scale increases. Preserve `add()`'s pixel-based duplicate detection, including
-re-encoded copies and distinct images with identical previews.
+The session used a Ryzen 9 9950X, amdgpu (PCI 1002:7550), CachyOS kernel
+7.3.5-2-cachyos, Mesa 26.3.1, Qt 6.12.0 and glibc 2.44. Both builds used GCC
+16.2.1, CMake Release and x86-64-v3. The compositor used its headless backend
+with a 1920×1080 primary output at 100 Hz and scale 1. The shell used the
+threaded Qt Quick OpenGL backend. Each run used a private bus and a fresh
+profile. The timings measure when the layer maps, with 2 ms polling. The Qt
+render-loop timings have millisecond resolution and include all shell windows.
+The VRAM figures cover the whole shell. [Individual samples](benchmarks/shell-memory-2026-11-23.csv)
 
-With history enabled, copy several large images and compare `Private_Dirty`.
-Check byte-identical paste for PNG input and full dimensions and pixel equality
-with the decoded source for JPEG, WebP and BMP. Repeat after pinning and
-restarting, including an entry saved by the previous build.
+To reproduce, build `vela-shell` for each revision. Build `vela-compositor`
+and `vela-screen-dump` once and use the same tools for all runs. Run from a
+GPU-capable session, alternating the two shell executables.
 
-## 2. Size notification images for the toast and the center
+```sh
+VELA_BUILD=/absolute/path/to/tools-build python3 docs/benchmarks/shell-memory.py /absolute/path/to/build/shell/vela-shell
+```
 
-[`decodeNotificationImage`](../shell/src/notifications.cpp) accepts validated
-8-bit RGB or RGBA data up to 4096 pixels per side. `iconFor()` keeps the entire
-decoded image in `m_images`. The [toast](../shell/qml/NotificationToast.qml) and
-[center](../shell/qml/NotificationList.qml) request 16 and 28 logical pixels,
-respectively. Preserve aspect ratio and retain a rendition sufficient for the
-largest supported output scale, including a scale change while an entry is in
-history. Keep the decoder's size and buffer checks.
+## 1. Clipboard images
 
-Send a valid 4096×4096 RGB image over the session bus and confirm the image
-appears in the center before sampling retained memory. Check the toast and
-the history entry at 200% and after changing scale. Run `shell-notification-image`
-to check that oversized sides and invalid layouts are still rejected.
+The [clipboard](../shell/src/clipboard.cpp) keeps the full PNG payload and a
+preview bounded at 544×192 pixels. Incoming PNGs retain their original bytes.
+JPEG, WebP and BMP offers are encoded at their original dimensions. The async
+provider reads a snapshot and uses the PNG when a larger preview is required.
+A matching thumbnail triggers a full-pixel comparison before two different
+encodings can be treated as duplicates.
 
-## 3. Share calendar hover handling while preserving overlapping fades
+Pinned images use the same payload. Existing numbered PNG files still load.
+New pins use content-addressed PNG files. The manifest is replaced atomically
+before obsolete files are removed. A Wayland round trip preserved PNG bytes
+and the dimensions and decoded pixels of JPEG, WebP and BMP. The functional
+test also pastes an old pin selected beyond the viewport.
+[Clipboard test](../tests/functional/test_shell.py)
 
-The [month grid](../shell/qml/NotificationCenter.qml) has 42 day delegates,
-with a `Text`, an animated `Fill` and a hovering `MouseArea` each. Use one grid
-hover handler, accounting for the weekday header. Keep a background for today
-and a fill for each cell whose hover is active or still fading. Release or
-reuse a fill when its fade completes. On re-entry, reverse from the cell's
-current color, as [Fill](../common/controls/Fill.qml) does today.
+## 2. Notification image size
 
-Compare both styles at the same intermediate animation times as the pointer
-moves A → B → C → A before the first fade finishes. Include pointer exit and
-a pass over today. Check the outgoing and incoming cells against the baseline
-and confirm the idle QML object count falls. See [visual coherence §6.8](visual-coherence.md#68-controls-qt-behaves-vela-looks-d12).
+The [decoder](../shell/src/notifications.cpp) validates the D-Bus layout and
+the 4096-pixel limit on each input side. It retains at most 448×448 pixels,
+preserving aspect ratio. The center draws 28 logical pixels, so the same image
+can serve a later output at up to 16× scale. Smaller images keep their native
+size.
 
-## 4. Measure glibc arenas and memory left after startup
+In separate baseline and candidate sessions, a single valid 4096×4096 RGB
+notification was sent on a private bus sized for the 48 MiB message. From idle
+to the center showing its history, private dirty memory rose by 70.9 MiB on
+the baseline and 17.9 MiB on the candidate. This comparison includes opening
+the center. The full input and decode buffer still exist during delivery.
+[Image decoding and replacement tests](../shell/tests/notification_image.cpp)
 
-The shell starts several threads. On glibc, freed allocations can stay in
-arenas after startup. Compare the current build with `MALLOC_ARENA_MAX=2` set
-for the shell process. In a separate experimental build, call `malloc_trim(0)`
-once after the initially visible surfaces have drawn. Sample after the same
-startup interval, then open panels and compare frame times and `Private_Dirty`
-with the baseline. Check the [allocation policy](memory-allocation-policy.md)
-before adopting either change.
+## 3. Calendar hover
 
-## 5. Measure the GPU cost of desktop label shadows
+The [month grid](../shell/qml/NotificationCenter.qml) uses one hover handler
+for all 42 days. Each day retains its text and creates a background for today,
+an active hover or an outgoing fade. A quick return to a cell reverses its
+existing fade. After pointer exit, only today's background remains. The
+[calendar test](../tests/taskbar/tst_calendar.qml) exercises adjacent days,
+re-entry and the weekday header.
 
-Each desktop icon [label](../shell/qml/Wallpaper.qml) enables a Qt Quick layer
-for its `MultiEffect` drop shadow. Try rendering the shadow without a permanent
-per-label texture. Compare resident GPU bytes and frame times on identical
-desktops with zero icons and with a populated grid, at each tested scale. Also
-record PSS. Check cropped label pixels against the current renderer on light
-and dark wallpapers, including wrapped and selected labels. A scene-graph trace
-can confirm the layer count, while the memory counters establish the saving.
+## 4. glibc at startup
 
-## 6. Release superseded tray pixmaps
+On glibc the [shell](../shell/src/main.cpp) selects two malloc arenas before
+Qt starts, respecting an explicit arena limit in the environment. This setting
+is local to the shell process. Once the initially visible Qt Quick windows
+have submitted their first frames, the GUI thread calls `malloc_trim(0)` once.
 
-[`TrayModel::refresh`](../shell/src/tray.cpp) inserts a new serial-keyed image
-into `m_pixmaps` on each pixmap-backed refresh. Replacing the icon, switching
-to a named icon and removing the tray item all leave the previous image in the
-map. Even one long-lived item can accumulate images over the session.
+Separate three-run trials on the baseline measured median idle private dirty
+memory of 99.1 MiB with allocator defaults, 95.6 MiB with
+`MALLOC_ARENA_MAX=2` alone and 96.5 MiB with a one-time experimental trim
+1.2 seconds after startup. The table above measures the shipped combination
+and all other shell changes together.
 
-Tie each retained pixmap to its live tray item and retire the previous key when
-the displayed icon changes. Keep a fresh image URL on replacement so QML picks
-up the new pixels. Extend the [tray test](../shell/tests/tray_test.cpp) with a
-pixmap-only item that changes its icon, switches to a named icon and disconnects.
-Check the displayed pixels and that obsolete keys stop resolving. With a fixed
-number of items, compare retained bytes over successive batches of updates.
+## 5. Desktop label shadows
 
-## 7. Drop notification pixels when a replacement uses another icon source
+Visible [desktop labels](../shell/qml/Wallpaper.qml) keep the blurred shadow.
+The static eight-pixel radius uses one fewer Qt blur level. The padding
+preserves the original sampling positions. Hiding a label during rename also
+disables its layer. A native raised-text shadow and a cached composite both
+changed the output pixels more, especially after a scale change.
 
-[`NotificationServer::iconFor`](../shell/src/notifications.cpp) replaces the
-stored image when a new `image-data` hint arrives. If the same ID switches to
-`image-path`, a named icon or the default, the model changes the URL but the old
-pixels remain in `m_images` until final closure. This also affects replacements
-of entries already in history.
+Across 28 label crops on light and dark wallpapers, with wrapped labels
+selected and unselected, 26 matched exactly. The other two differed by at
+most one level in an 8-bit channel. The tested scales were 100%, 125%, 150%,
+175%, 200%, 250% and 300%. Each visible label still has a source layer.
 
-Release the ID's old image when choosing a non-provider URL. Replace a live
-notification and a history entry in turn. Check the new icon, unchanged ID and
-a null `image(id)` for both. Test replacing it again with fresh image data.
-Measure before and after replacement separately from the resizing trial in §2.
+## 6. Tray pixmaps
 
-## 8. Create clipboard cards for the viewport
+Each [tray item](../shell/src/tray.cpp) owns the pixmap for its current icon.
+Updating a pixmap assigns a fresh provider URL, switching to a named icon
+releases the pixels, and removing the item releases its last image. The
+[private-bus tray test](../shell/tests/tray_test.cpp) checks updated pixels
+and the retirement of old keys at all three transitions.
 
-The [clipboard panel](../shell/qml/ClipboardPanel.qml) uses a `Repeater` inside
-a `Flickable` capped at 420 logical pixels high. It creates a card for every
-entry, including every pin. Most cards in a long history are outside the view.
+## 7. Replacement notifications
 
-Try a `ListView` with visible and nearby delegates, keeping the panel itself
-warm. Compare QML object count, PSS, first-open and scroll frame times with the
-same mix of text and image entries, first with a short list and then with many
-pins. Check variable card heights, keyboard navigation across viewport edges,
-paste by ID, pin reordering, deletion and the menu anchor after scrolling.
+When an existing notification switches from embedded pixels to a file or
+theme icon, the [server](../shell/src/notifications.cpp) drops the old image
+for that ID. Replacement keeps the notification and its actions addressable
+both in the popup and in history. The image test checks both lifetimes.
+
+## 8. Clipboard viewport
+
+The [clipboard panel](../shell/qml/ClipboardPanel.qml) uses a variable-height
+`ListView` for visible and nearby cards. Pin ordering and keyboard selection
+use the complete history, including rows whose delegates have not been created.
+
+With 25 low-compression-cost 1600×900 RGB screenshots saved as pins, one run
+per build measured idle PSS of 241.7 MiB before and 111.9 MiB after. With the
+panel open the readings were 257.7 MiB and 120.6 MiB. This workload measures
+the combined effect of image storage, the viewport and allocator changes.
