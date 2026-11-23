@@ -117,7 +117,7 @@ private slots:
             id = reply.value();
             QCOMPARE(server.image(id).size(), QSize(64, 32));
             if (history) server.collectPopups();
-            QCOMPARE(server.Notify("test", id, "dialog-information", "replacement", { }, { }, { }, 0), id);
+            QCOMPARE(server.Notify("test", id, "dialog-information", "replacement", {}, {}, {}, 0), id);
             QVERIFY(server.image(id).isNull());
         }
     }
