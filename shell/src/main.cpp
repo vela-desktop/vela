@@ -69,6 +69,7 @@
 #include <QPointer>
 #include <QScreen>
 #include <QStyleHints>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
@@ -368,6 +369,12 @@ int main(int argc, char* argv[])
     // Select the shell renderer locally so launched applications keep their own Qt settings.
     QQuickWindow::setSceneGraphBackend(QStringLiteral("rhi"));
     QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+    // A covered layer surface can stop receiving Wayland frame callbacks.
+    // Prefer mailbox so a FIFO present on that surface cannot stall the other
+    // windows during Qt Quick's GUI/render thread synchronization.
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setSwapInterval(0);
+    QSurfaceFormat::setDefaultFormat(format);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
