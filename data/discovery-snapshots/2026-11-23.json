@@ -1,0 +1,120 @@
+{
+  "collected_at": "2026-11-23T12:36:37+00:00",
+  "coverage": "top_10_only",
+  "popular_paths": [
+    {
+      "count": 488,
+      "path": "/vela-desktop/vela",
+      "title": "Overview",
+      "uniques": 199
+    },
+    {
+      "count": 114,
+      "path": "/vela-desktop/vela/issues",
+      "title": "/issues",
+      "uniques": 22
+    },
+    {
+      "count": 55,
+      "path": "/vela-desktop/vela/pulls",
+      "title": "/pulls",
+      "uniques": 6
+    },
+    {
+      "count": 35,
+      "path": "/vela-desktop/vela/commits/main",
+      "title": "/commits/main",
+      "uniques": 9
+    },
+    {
+      "count": 21,
+      "path": "/vela-desktop/vela/pull/303",
+      "title": "/pull/303",
+      "uniques": 1
+    },
+    {
+      "count": 16,
+      "path": "/vela-desktop/vela/releases",
+      "title": "/releases",
+      "uniques": 13
+    },
+    {
+      "count": 14,
+      "path": "/vela-desktop/vela/issues/214",
+      "title": "/issues/214",
+      "uniques": 3
+    },
+    {
+      "count": 11,
+      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
+      "title": "/blob/main/docs/installation.md",
+      "uniques": 8
+    },
+    {
+      "count": 11,
+      "path": "/vela-desktop/vela/blob/main/docs/development.md",
+      "title": "/blob/main/docs/development.md",
+      "uniques": 6
+    },
+    {
+      "count": 10,
+      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
+      "title": "/releases/tag/v0.1.2",
+      "uniques": 9
+    }
+  ],
+  "referrers": [
+    {
+      "count": 59,
+      "referrer": "velade.org",
+      "uniques": 43
+    },
+    {
+      "count": 27,
+      "referrer": "reddit.com",
+      "uniques": 23
+    },
+    {
+      "count": 24,
+      "referrer": "github.com",
+      "uniques": 17
+    },
+    {
+      "count": 21,
+      "referrer": "com.reddit.frontpage",
+      "uniques": 16
+    },
+    {
+      "count": 20,
+      "referrer": "news.ycombinator.com",
+      "uniques": 20
+    },
+    {
+      "count": 17,
+      "referrer": "youtube.com",
+      "uniques": 15
+    },
+    {
+      "count": 7,
+      "referrer": "Google",
+      "uniques": 6
+    },
+    {
+      "count": 4,
+      "referrer": "DuckDuckGo",
+      "uniques": 2
+    },
+    {
+      "count": 2,
+      "referrer": "Bing",
+      "uniques": 2
+    },
+    {
+      "count": 1,
+      "referrer": "app.raindrop.io",
+      "uniques": 1
+    }
+  ],
+  "schema_version": 1,
+  "window": "rolling_14_days"
+}
