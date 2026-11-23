@@ -15,8 +15,7 @@ Window {
     objectName: "wallpaper"
 
     visible: false
-    width: Screen.width
-    height: Screen.height
+    // The layer-shell configure supplies the size, including during output rearrangement.
     color: Theme.desktop // while the image is being prepared
 
     property bool primary: false // set by screenwindows.cpp

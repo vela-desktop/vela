@@ -269,12 +269,20 @@ class Personalization(ShellChoices):
         # Between the search box (its caret blinks) and the footer.
         box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
         shown = self.settled_region(box)
+
+        # Edge pixels can round differently when Qt redraws the same layout.
+        def matches_pinned(rows):
+            for actual, reference in zip(rows, shown, strict=True):
+                if actual != reference and any(abs(a - b) > 2 for a, b in zip(actual, reference, strict=True)):
+                    return False
+            return True
+
         self.write_shell_conf("[start]\nshowPinned=false\n")
-        self.wait_region(box, lambda r: r != shown, "Start without its pinned apps")
+        self.wait_region(box, lambda r: not matches_pinned(r), "Start without its pinned apps")
         hidden = self.settled_region(box)
-        self.assertNotEqual(shown, hidden, "Start looks the same with its pinned apps hidden")
+        self.assertFalse(matches_pinned(hidden), "Start looks the same with its pinned apps hidden")
         self.write_shell_conf("[start]\nshowPinned=true\n")
-        self.wait_region(box, lambda r: r == shown, "the pinned apps back in Start")
+        self.wait_region(box, matches_pinned, "the pinned apps back in Start")
         self.close_start()
         self.check_desktop()
 
