@@ -312,7 +312,7 @@ QImage Clipboard::image(int id, const QSize& requested) const
             }
         }
     }
-    if (snapshot.png.isEmpty()) return { };
+    if (snapshot.png.isEmpty()) return {};
     const QSize target = requested.isEmpty()
         ? snapshot.originalSize
         : snapshot.originalSize.scaled(requested, Qt::KeepAspectRatio).expandedTo(QSize(1, 1));
