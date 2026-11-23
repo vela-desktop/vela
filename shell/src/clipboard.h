@@ -71,7 +71,7 @@ private:
         QString text;
         QImage preview;
         QSize originalSize;
-        bool setImage(const QImage& image, QByteArray originalPng = { });
+        bool setImage(const QImage& image, QByteArray originalPng = {});
         bool sameImage(const Item& other) const;
         QByteArray png; // the image as it arrived (or encoded), to put it back
         bool pinned = false;
