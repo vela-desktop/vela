@@ -87,7 +87,8 @@ namespace {
 
 using LayerWindow = LayerShellQt::Window;
 
-Q_STATIC_LOGGING_CATEGORY(lcPanels, "vela.shell.panels", QtInfoMsg)
+// Q_LOGGING_CATEGORY, not Q_STATIC_LOGGING_CATEGORY (Qt 6.9): the shell builds with Qt 6.5.
+Q_LOGGING_CATEGORY(lcPanels, "vela.shell.panels", QtInfoMsg)
 
 // Opt-in diagnostics for the real functional test: observe the event *before*
 // Qt Quick maps it into MouseArea coordinates. Never adjust or consume input.
@@ -121,13 +122,17 @@ private:
 // How long a hidden panel keeps its graphics (docs/shell-graphics-memory.md).
 // Each window renders with its own QRhi, whose allocator holds about 80 MiB of
 // VRAM and 32 MiB of GTT on RADV, mostly empty blocks. Reopened sooner, a
-// panel opens as fast as ever; later, its first frame comes about 4 ms later,
-// as on its first opening.
+// panel keeps its surface and swapchain too and maps with its first frame
+// (about 2 ms); later it opens as the first time (about 8 ms).
 constexpr std::chrono::seconds panelGraphicsKept { 10 };
 
 void releaseHiddenPanel(QQuickWindow* window)
 {
-    // Hidden for panelGraphicsKept, the window gives its QRhi back.
+    // Hidden, the window keeps its wl_surface, swapchain and QRhi; shown
+    // again, LayerShellQt gives the surface a new layer role, configured
+    // before its first buffer. After panelGraphicsKept, destroy() gives back
+    // the surface and swapchain and releaseResources() the QRhi. The QML
+    // window, models and LayerShellQt settings stay.
     auto* release = new QTimer(window);
     release->setSingleShot(true);
     release->setInterval(panelGraphicsKept);
@@ -135,30 +140,20 @@ void releaseHiddenPanel(QQuickWindow* window)
         if (window->isVisible()) {
             return;
         }
+        window->destroy();
         window->setPersistentGraphics(false);
         window->setPersistentSceneGraph(false);
         window->releaseResources();
     });
     QObject::connect(window, &QWindow::visibleChanged, window, [window, release](bool visible) {
         if (visible) {
-            // Kept from the next hide on: destroy() below would otherwise
-            // release them at once.
+            // Kept from the next hide on, until the timer.
             release->stop();
             window->setPersistentGraphics(true);
             window->setPersistentSceneGraph(true);
-            return;
+        } else {
+            release->start();
         }
-        release->start();
-        // Qt can retain the wl_surface and its buffers after hide(). A new
-        // layer role then shares that native surface with the previous
-        // rendering cycle. Use a fresh surface on reopen, including its
-        // configure handshake. Keep the QML window, models and LayerShellQt
-        // settings intact.
-        QTimer::singleShot(0, window, [window] {
-            if (!window->isVisible()) {
-                window->destroy();
-            }
-        });
     });
     // On the render thread, once the QRhi is gone: what the tests wait for.
     QObject::connect(
@@ -344,9 +339,9 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     if (panel.clickThrough) {
         window->setFlag(Qt::WindowTransparentForInput);
     }
-    // Panels come and go: a hidden one gives its surface back, and later its
-    // graphics. The taskbar and the wallpapers (ScreenWindows) stay mapped
-    // all session.
+    // Panels come and go: a hidden one gives its surface and graphics back
+    // after a while. The taskbar and the wallpapers (ScreenWindows) stay
+    // mapped all session.
     releaseHiddenPanel(window);
     return window;
 }
