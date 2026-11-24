@@ -158,7 +158,7 @@ install(FILES vela-files.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applicatio
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-files SOURCE_TARGETS vela-files vela-files-core vela-controls
-    TS_FILES i18n/vela-files_it.ts
+    TS_FILES i18n/vela-files_it.ts i18n/vela-files_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-files_lupdate
     LRELEASE_TARGET vela-files_lrelease
