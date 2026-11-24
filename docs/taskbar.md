@@ -451,8 +451,9 @@ the volume, Caps Lock and desktop indicators) opens on the display the
 user is working on, like Windows: the focused window's, else the pointer's.
 On a second monitor fullscreen, they would otherwise appear on the first
 one, where nobody is looking. The compositor sends that display's name
-with every command in the same socket stream (`active-output <name>`,
-or an empty name when no output exists, in `shell.c`); the shell keeps it as
+with every command in a single newline-terminated IPC frame
+(`active-output <name>\t<command>`, tab-separated, or an empty name
+when no output exists, in `shell.c`); the shell keeps it as
 `Shell.activeScreen`, and `Shell.panelScreen()` answers with it when no
 taskbar opened the panel (`Menus.targetScreen()`, the volume, Caps Lock and
 desktop indicators).

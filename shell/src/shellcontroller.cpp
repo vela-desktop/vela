@@ -100,9 +100,10 @@ ShellController::ShellController(QObject* parent)
                     m_chooser = nullptr;
                     emit chooseSourceCancelled(); // the portal gave up
                 }
-                // A possible command without a final newline.
+                // Legacy clients may send a command without a final newline.
+                // A truncated compositor frame must never be dispatched.
                 const QByteArray rest = socket->readAll().trimmed();
-                if (!rest.isEmpty()) {
+                if (!rest.isEmpty() && !rest.startsWith("active-output")) {
                     handleCommand(rest);
                 }
                 socket->deleteLater();
@@ -288,8 +289,24 @@ bool ShellController::listen()
     return true;
 }
 
-void ShellController::handleCommand(const QByteArray& command)
+void ShellController::handleCommand(const QByteArray& line)
 {
+    QByteArray command = line;
+    // The compositor frames the output and command together. Only a whole
+    // frame can change the active output or dispatch its command.
+    if (line.startsWith("active-output ")) {
+        constexpr qsizetype prefixLength = 14;
+        const qsizetype separator = line.indexOf('\t', prefixLength);
+        if (separator < 0 || separator + 1 == line.size()) {
+            return;
+        }
+        const QString name = QString::fromUtf8(line.mid(prefixLength, separator - prefixLength));
+        if (name != m_activeScreen) {
+            m_activeScreen = name;
+            emit activeScreenChanged();
+        }
+        command = line.mid(separator + 1);
+    }
     const QList<QByteArray> parts = command.split(' ');
     if (command == "toggle-start") {
         emit toggleStartRequested();
@@ -337,14 +354,6 @@ void ShellController::handleCommand(const QByteArray& command)
         emit clipboardClearRequested();
     } else if (parts.first() == "volume" && parts.size() == 2) {
         emit volumeKeyPressed(QString::fromLatin1(parts.at(1)));
-    } else if (command == "active-output" || command.startsWith("active-output ")) {
-        // The following command carries a fresh output snapshot. An empty
-        // snapshot explicitly clears it (no output available).
-        const QString name = QString::fromUtf8(command.mid(14));
-        if (name != m_activeScreen) {
-            m_activeScreen = name;
-            emit activeScreenChanged();
-        }
     } else if (parts.first() == "shortcut" && parts.size() == 2) {
         emit shortcutRequested(QString::fromLatin1(parts.at(1)));
     } else if (command == "caps-lock on" || command == "caps-lock off") {

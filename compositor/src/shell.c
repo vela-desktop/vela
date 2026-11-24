@@ -41,15 +41,15 @@ bool vela_shell_send(struct vela_server *server, const char *line)
     }
     bool sent = false;
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
-        // Each command carries its own output snapshot in the same stream.
-        // No state to resynchronize after an unavailable or restarted shell.
+        // One newline-terminated frame: even if stream reads split or interleave,
+        // the shell cannot dispatch the command with another frame's output.
         struct vela_output *output = vela_active_output(server);
         const char *name = output ? output->wlr->name : "";
         const char prefix[] = "active-output ";
         size_t length = vela_size_add(sizeof(prefix), strlen(name));
         length = vela_size_add(length, vela_size_add(strlen(line), 1));
         char *message = VELA_NEW_N(char, length);
-        snprintf(message, length, "%s%s\n%s", prefix, name, line);
+        snprintf(message, length, "%s%s\t%s", prefix, name, line);
         message[length - 1] = '\n';
         sent = send(fd, message, length, MSG_NOSIGNAL) == (ssize_t)length;
         free(message);

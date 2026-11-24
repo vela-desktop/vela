@@ -86,12 +86,16 @@ Window {
 
     // Shown again while leaving, it turns back from where it is.
     function show() {
-        if (!motion.opened) {
-            if (!motion.closing) {
-                Menus.placeOnTargetScreen(root)
-            }
+        // Resolve each request, even during the hold/exit animation: the
+        // user may already have moved focus to a different monitor.
+        const screen = Menus.targetScreen()
+        const moves = screen && (!root.screen || root.screen.name !== screen.name)
+        if (screen && (moves || (!motion.opened && !motion.closing))) {
+            Shell.placeOnScreen(root, screen.name)
+        }
+        if (!motion.opened || moves) {
             visible = true
-            motion.open()
+            if (!motion.opened) motion.open()
             Effects.setBlur(root, [motion.visibleArea])
         }
         hideTimer.restart()

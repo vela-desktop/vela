@@ -85,7 +85,12 @@ class RealShell(unittest.TestCase):
         icons = subprocess.run([SHELL, "--check-icons"], env=dict(env, QT_QPA_PLATFORM="offscreen"),
                                capture_output=True, text=True, timeout=10 * TIME_SCALE)
         self.assertEqual(icons.returncode, 0, icons.stderr)
-        self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
+        self.shell_environment = env
+        self.start_shell()
+
+    def start_shell(self):
+        self.shell = subprocess.Popen([SHELL], env=self.shell_environment,
+                                      stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
         # In a session the shell is the compositor's child; here, this one is
         # (its previews are not screen sharing, docs/screen-sharing.md §4.2).
@@ -1928,6 +1933,17 @@ class QtShell(RealShell):
                 self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-2")
                 self.vela.input("key", "Escape")
                 self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+        # Restart the real receiver with the same focused fullscreen client.
+        self.shell.kill()
+        self.shell.wait(timeout=5 * TIME_SCALE)
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar"), what="old shell gone")
+        self.start_shell()
+        self.vela.wait_for(lambda s: s["focused"] == window, what="fullscreen still focused")
+        self.vela.input("key", "super")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start after shell restart")
+        self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
+        self.vela.input("key", "Escape")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), what="Start closed")
         self.vela.command("test-output remove HEADLESS-2")
         self.vela.wait_for(lambda s: len(s["outputs"]) == 1, what="secondary display removed")
         self.vela.input("key", "super+a")
@@ -1935,6 +1951,62 @@ class QtShell(RealShell):
                                    what="quick settings after hotplug")
         self.assertEqual(self.layer(state, "vela-quick-settings")["output"], "HEADLESS-1")
         self.check_desktop()
+
+
+class VolumeDisplay(RealShell):
+    """The real volume OSD with a private PipeWire graph."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(ROOT, "tests", "audio"))
+        try:
+            from fixture import AudioFixture, missing_tools
+        finally:
+            sys.path.pop(0)
+        if missing := missing_tools():
+            self.skipTest("Missing audio fixture tools: " + ", ".join(missing))
+        self.audio = AudioFixture()
+        self.audio.start()
+        self.addCleanup(self.audio.stop)
+        self.shell_env = {"PIPEWIRE_RUNTIME_DIR": self.audio.env["XDG_RUNTIME_DIR"],
+                          "PIPEWIRE_REMOTE": "pipewire-0",
+                          "DBUS_SYSTEM_BUS_ADDRESS": self.audio.env["DBUS_SYSTEM_BUS_ADDRESS"]}
+        super().setUp()
+
+    def test_volume_osd_follows_fullscreen_and_focus_changes(self):
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        main, second = (next(o for o in state["outputs"] if o["name"] == name)
+                        for name in ("HEADLESS-1", "HEADLESS-2"))
+        self.vela.input("move", main["x"] + 200, main["y"] + 200)
+        first = self.vela.open_window(300, 200)
+        self.vela.wait_for(lambda s: s["focused"] == first and s.window(first)["output"] == "HEADLESS-1")
+        self.vela.input("move", second["x"] + 200, second["y"] + 200)
+        window = self.vela.open_window(1920, 1080, command=[tool("vela-pattern"), "--fullscreen-parent", "1920", "1080"])
+        self.vela.wait_for(lambda s: s["focused"] == window and s.window(window)["fullscreen"]
+                           and s.window(window)["output"] == "HEADLESS-2")
+
+        namespace = "vela-volume-osd"
+
+        def request_volume(s):
+            if self.layer(s, namespace):
+                return True
+            # The asynchronous audio client may not yet have received defaults.
+            self.vela.keys("XF86AudioRaiseVolume")
+            return False
+
+        state = self.vela.wait_for(request_volume, timeout=10, interval=0.25, what="volume OSD on fullscreen")
+        self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-2")
+        self.vela.input("move", *self._window_center(first), "click", "left")
+        self.vela.wait_for(lambda s: s["focused"] == first, what="first display focused")
+        self.vela.keys("XF86AudioLowerVolume")
+        state = self.vela.wait_for(lambda s: (layer := self.layer(s, namespace))
+                                   and layer["output"] == "HEADLESS-1", what="volume OSD on first display")
+        self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-1")
+        self.check_desktop()
+
+    def _window_center(self, identifier):
+        window = self.vela.state().window(identifier)
+        return window["x"] + window["w"] // 2, window["y"] + window["h"] // 2
 
 
 # Black and white stripes 4 pixels wide: blurred they become one gray, seen

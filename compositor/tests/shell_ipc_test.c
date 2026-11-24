@@ -90,28 +90,28 @@ int main(void)
     int fd = listener(&addr);
 
     pointer_output = &first;
-    expect_command(server, fd, "active-output DP-1\nvolume up\n");
+    expect_command(server, fd, "active-output DP-1\tvolume up\n");
     focused = &view;
     window_output = &second;
-    expect_command(server, fd, "active-output DP-2\nvolume up\n");
-    expect_command(server, fd, "active-output DP-2\nvolume up\n");
+    expect_command(server, fd, "active-output DP-2\tvolume up\n");
+    expect_command(server, fd, "active-output DP-2\tvolume up\n");
 
     // Failed delivery and a replacement listener on the same display.
     close(fd);
     CHECK(unlink(addr.sun_path) == 0);
     CHECK(!vela_shell_send(server, "volume up"));
     fd = listener(&addr);
-    expect_command(server, fd, "active-output DP-2\nvolume up\n");
+    expect_command(server, fd, "active-output DP-2\tvolume up\n");
 
     focused = NULL;
     server->focused_layer = &layer;
     layer_output = &second;
-    expect_command(server, fd, "active-output DP-2\nvolume up\n");
+    expect_command(server, fd, "active-output DP-2\tvolume up\n");
     layer_output = NULL;
-    expect_command(server, fd, "active-output DP-1\nvolume up\n");
+    expect_command(server, fd, "active-output DP-1\tvolume up\n");
     server->focused_layer = NULL;
     pointer_output = NULL;
-    expect_command(server, fd, "active-output \nvolume up\n");
+    expect_command(server, fd, "active-output \tvolume up\n");
 
     close(fd);
     CHECK(unlink(addr.sun_path) == 0);

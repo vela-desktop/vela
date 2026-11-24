@@ -49,12 +49,14 @@ Window {
 
     // Shown again while leaving, it turns back from where it is.
     function show() {
-        if (!motion.opened) {
-            if (!motion.closing) {
-                Shell.placeOnScreen(root, Shell.panelScreen())
-            }
+        const name = Shell.panelScreen()
+        const moves = name !== "" && (!root.screen || root.screen.name !== name)
+        if (moves || (!motion.opened && !motion.closing)) {
+            Shell.placeOnScreen(root, name)
+        }
+        if (!motion.opened || moves) {
             visible = true
-            motion.open()
+            if (!motion.opened) motion.open()
             Effects.setBlur(root, [motion.visibleArea])
         }
         hideTimer.restart()
