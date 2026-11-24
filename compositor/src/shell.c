@@ -5,6 +5,7 @@
 
 #include "alloc/alloc.h"
 #include "focus.h"
+#include "output.h"
 #include "process.h"
 #include "server.h"
 #include "util.h"
@@ -21,9 +22,9 @@
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/util/log.h>
+#include <wlr/types/wlr_output.h>
 
-// One line, as it is: no active-display update first (vela_shell_send below).
-static bool send_line(struct vela_server *server, const char *line)
+bool vela_shell_send(struct vela_server *server, const char *line)
 {
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
     if (!runtime_dir || !server->socket_name[0]) {
@@ -40,12 +41,17 @@ static bool send_line(struct vela_server *server, const char *line)
     }
     bool sent = false;
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
-        // Line and newline in a single send: the shell reads by lines.
-        size_t length = strlen(line);
-        char *message = VELA_NEW_N(char, vela_size_add(length, 1));
-        memcpy(message, line, length);
-        message[length] = '\n';
-        sent = send(fd, message, length + 1, MSG_NOSIGNAL) == (ssize_t)(length + 1);
+        // Each command carries its own output snapshot in the same stream.
+        // No state to resynchronize after an unavailable or restarted shell.
+        struct vela_output *output = vela_active_output(server);
+        const char *name = output ? output->wlr->name : "";
+        const char prefix[] = "active-output ";
+        size_t length = vela_size_add(sizeof(prefix), strlen(name));
+        length = vela_size_add(length, vela_size_add(strlen(line), 1));
+        char *message = VELA_NEW_N(char, length);
+        snprintf(message, length, "%s%s\n%s", prefix, name, line);
+        message[length - 1] = '\n';
+        sent = send(fd, message, length, MSG_NOSIGNAL) == (ssize_t)length;
         free(message);
     } else {
         wlr_log(WLR_DEBUG, "Shell not reachable on %s", address.sun_path);
@@ -54,26 +60,10 @@ static bool send_line(struct vela_server *server, const char *line)
     return sent;
 }
 
-bool vela_shell_send(struct vela_server *server, const char *line)
-{
-    // The display the user is working on goes first, when it changed: the
-    // panels the shell opens from the keyboard (the volume indicator, Start,
-    // quick settings) belong there, not on the primary output. Sent with
-    // every message, so it is never stale when one of them arrives.
-    char active[96];
-    if (vela_active_output_update(server, active, sizeof(active))) {
-        send_line(server, active);
-    }
-    return send_line(server, line);
-}
-
 // -------------------------------------------------------------- supervision --
 
 void vela_shell_start(struct vela_server *server, const char *command)
 {
-    // A new shell has heard about no display yet: the next message tells it,
-    // even if the user didn't move since (a relaunch after a crash).
-    server->active_output[0] = '\0';
     vela_child_start(&server->shell, server->loop, command);
 }
 

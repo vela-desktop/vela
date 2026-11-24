@@ -11,12 +11,9 @@
 #include "server.h"
 #include "snap.h"
 #include "switcher.h"
-#include "util.h"
 #include "view.h"
 #include "workspace.h"
 
-#include <stdio.h>
-#include <string.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 #include <wlr/types/wlr_seat.h>
@@ -322,17 +319,6 @@ struct vela_output *vela_active_output(struct vela_server *server)
     }
     // No window and no panel (the desktop, the lock screen): the pointer's.
     return output ? output : vela_output_under_cursor(server);
-}
-
-bool vela_active_output_update(struct vela_server *server, char *line, size_t size)
-{
-    struct vela_output *output = vela_active_output(server);
-    const char *name = output ? output->wlr->name : "";
-    if (strcmp(server->active_output, name) == 0) {
-        return false;
-    }
-    snprintf(server->active_output, sizeof(server->active_output), "%s", name);
-    return name[0] && vela_format(line, size, "active-output %s", name);
 }
 
 void vela_focus_refocus(struct vela_server *server)

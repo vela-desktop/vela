@@ -27,7 +27,7 @@ class ShellController : public QObject {
     Q_PROPERTY(bool startMenuOpen READ startMenuOpen WRITE setStartMenuOpen NOTIFY startMenuOpenChanged)
     // The apps pinned to Start (.desktop ids), in the chosen order.
     Q_PROPERTY(QStringList startPins READ startPins NOTIFY startPinsChanged)
-    // The main output's name (panels asked for from the keyboard open there).
+    // The main output's name (fallback for panels).
     Q_PROPERTY(QString primaryScreen READ primaryScreen NOTIFY primaryScreenChanged)
     // The display the user is working on (the focused window's, else the
     // pointer's), as the compositor says: the panels opened from the keyboard

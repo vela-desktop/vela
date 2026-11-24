@@ -77,7 +77,7 @@ ShellController::ShellController(QObject* parent)
     connect(qGuiApp, &QGuiApplication::screenRemoved, this, &ShellController::primaryScreenChanged);
     connect(&m_server, &QLocalServer::newConnection, this, [this] {
         while (QLocalSocket* socket = m_server.nextPendingConnection()) {
-            connect(socket, &QLocalSocket::readyRead, this, [this, socket] {
+            const auto readCommands = [this, socket] {
                 while (socket->canReadLine()) {
                     const QByteArray line = socket->readLine().trimmed();
                     if (line == "choose-source") {
@@ -91,8 +91,11 @@ ShellController::ShellController(QObject* parent)
                         handleCommand(line);
                     }
                 }
-            });
-            connect(socket, &QLocalSocket::disconnected, this, [this, socket] {
+            };
+            connect(socket, &QLocalSocket::readyRead, this, readCommands);
+            connect(socket, &QLocalSocket::disconnected, this, [this, socket, readCommands] {
+                // A peer can close immediately after writing multiple lines.
+                readCommands();
                 if (m_chooser == socket) {
                     m_chooser = nullptr;
                     emit chooseSourceCancelled(); // the portal gave up
@@ -104,6 +107,8 @@ ShellController::ShellController(QObject* parent)
                 }
                 socket->deleteLater();
             });
+            // Also drain bytes already buffered when the connection is accepted.
+            readCommands();
         }
     });
 }
@@ -332,10 +337,10 @@ void ShellController::handleCommand(const QByteArray& command)
         emit clipboardClearRequested();
     } else if (parts.first() == "volume" && parts.size() == 2) {
         emit volumeKeyPressed(QString::fromLatin1(parts.at(1)));
-    } else if (parts.first() == "active-output" && parts.size() == 2) {
-        // The display the user is working on (focus.c): what opens from the
-        // keyboard goes there, as on Windows, not on the main output.
-        const QString name = QString::fromUtf8(parts.at(1));
+    } else if (command == "active-output" || command.startsWith("active-output ")) {
+        // The following command carries a fresh output snapshot. An empty
+        // snapshot explicitly clears it (no output available).
+        const QString name = QString::fromUtf8(command.mid(14));
         if (name != m_activeScreen) {
             m_activeScreen = name;
             emit activeScreenChanged();
@@ -501,7 +506,14 @@ QString ShellController::panelScreen() const
     // The compositor's word first (the focused window's display), then the
     // main output: with a video fullscreen on the second monitor, the volume
     // indicator and Start belong there, where the user is looking.
-    return m_activeScreen.isEmpty() ? primaryScreen() : m_activeScreen;
+    if (!m_activeScreen.isEmpty()) {
+        for (const QScreen* screen : QGuiApplication::screens()) {
+            if (screen->name() == m_activeScreen) {
+                return m_activeScreen;
+            }
+        }
+    }
+    return primaryScreen();
 }
 
 void ShellController::setPreferredPrimaryOutput(const QString& name)

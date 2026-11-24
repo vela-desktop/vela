@@ -397,6 +397,20 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-cursor-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.cursor-policy COMMAND vela-cursor-policy-test)
 
+    # Real focus selection and Unix socket framing, without a renderer/GPU.
+    add_executable(vela-shell-ipc-test tests/shell_ipc_test.c src/focus.c src/shell.c
+        ${VELA_PROTOCOL_HEADERS})
+    target_include_directories(vela-shell-ipc-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-shell-ipc-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-shell-ipc-test PRIVATE -ffunction-sections -fdata-sections
+        -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers)
+    target_link_options(vela-shell-ipc-test PRIVATE -Wl,--gc-sections)
+    target_link_libraries(vela-shell-ipc-test PRIVATE vela-pure PkgConfig::WLROOTS
+        PkgConfig::WAYLAND_SERVER PkgConfig::VULKAN PkgConfig::LIBDRM PkgConfig::PIXMAN)
+    set_target_properties(vela-shell-ipc-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.shell-ipc COMMAND vela-shell-ipc-test)
+    set_tests_properties(compositor.shell-ipc PROPERTIES TIMEOUT 10)
+
     # Exercise the actual display protocol and watchdog without Vulkan/DRM.
     add_executable(vela-display-test-server
         ${PROJECT_SOURCE_DIR}/settings/tests/display_server.c

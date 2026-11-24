@@ -1013,8 +1013,8 @@ class QtShell(RealShell):
                          [(notification_id, 2) for notification_id in ids], signals)
         self.assertEqual(self.notification_action_events(signals), [(ids[0], "default")], signals)
 
-    def test_selected_primary_controls_keyboard_panel_and_notification_remap(self):
-        """The real Qt layers follow the selected output across off/on."""
+    def test_selected_primary_controls_notification_remap_and_keyboard_follows_pointer(self):
+        """Notifications follow the selected output; keyboard panels follow the pointer."""
         if not shutil.which("gdbus"):
             self.skipTest("gdbus required for desktop notification")
 
@@ -1025,12 +1025,13 @@ class QtShell(RealShell):
         # Allow Config's QFileSystemWatcher/debounce to deliver the update.
         time.sleep(0.5)
 
+        main = next(o for o in self.vela.state()["outputs"] if o["name"] == "HEADLESS-1")
         with self.input_session() as send:
-            send("key", "super+v")
+            send("move", main["x"] + 200, main["y"] + 200, "key", "super+v")
             self.vela.wait_for(
-                lambda s: (layer := self.layer(s, "vela-clipboard")) and layer["output"] == "HEADLESS-2"
+                lambda s: (layer := self.layer(s, "vela-clipboard")) and layer["output"] == "HEADLESS-1"
                           and s["focusedLayer"] == "vela-clipboard",
-                timeout=8, what="clipboard focused on explicitly selected output")
+                timeout=8, what="clipboard focused on the pointer's output")
             send("key", "Escape")
             self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="clipboard closed")
 
@@ -1927,6 +1928,12 @@ class QtShell(RealShell):
                 self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-2")
                 self.vela.input("key", "Escape")
                 self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+        self.vela.command("test-output remove HEADLESS-2")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 1, what="secondary display removed")
+        self.vela.input("key", "super+a")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-quick-settings"),
+                                   what="quick settings after hotplug")
+        self.assertEqual(self.layer(state, "vela-quick-settings")["output"], "HEADLESS-1")
         self.check_desktop()
 
 

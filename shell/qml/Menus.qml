@@ -52,7 +52,8 @@ QtObject {
     function targetScreen() {
         const name = panelScreen !== "" ? panelScreen : Shell.panelScreen()
         panelScreen = ""
-        return Qt.application.screens.find(s => s.name === name) || null
+        return Qt.application.screens.find(s => s.name === name)
+            || Qt.application.screens.find(s => s.name === Shell.primaryScreen) || null
     }
     // Puts `window` (hidden) on the panel's output; that output.
     function placeOnTargetScreen(window) {

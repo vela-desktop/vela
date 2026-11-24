@@ -211,7 +211,15 @@ install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # The tests (ctest): the Exec key of .desktop files, default apps, the
 # volume's steps and the animation effects switch Style reads.
 if(VELA_BUILD_TOOLS)
-    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test Network)
+    qt_add_executable(vela-shell-controller-test tests/shellcontroller_test.cpp
+        src/shellcontroller.cpp src/shellcontroller.h)
+    target_include_directories(vela-shell-controller-test PRIVATE src)
+    target_compile_options(vela-shell-controller-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-shell-controller-test PRIVATE vela-color
+        Qt6::Gui Qt6::DBus Qt6::Network Qt6::Test LayerShellQt::Interface)
+    add_test(NAME shell-controller COMMAND vela-shell-controller-test)
+    set_tests_properties(shell-controller PROPERTIES TIMEOUT 15 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(vela-transfer-monitor-test
         tests/transfers.cpp src/transfermonitor.cpp src/transfermonitor.h)
     target_include_directories(vela-transfer-monitor-test PRIVATE src)

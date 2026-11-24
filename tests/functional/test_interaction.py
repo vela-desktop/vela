@@ -270,7 +270,7 @@ class Interaction(unittest.TestCase):
         """Before its messages the compositor says which display the user is
         working on (focus.c): the volume indicator, Start and quick settings
         open there, on the focused window's display, not on the main one.
-        Only when it changes."""
+        Every command carries its own snapshot, including after reconnect."""
         self.vela.command("test-output add 1920x1080")
         state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
         second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
@@ -285,11 +285,26 @@ class Interaction(unittest.TestCase):
         self.assertIn("active-output HEADLESS-2", lines)
         self.assertLess(lines.index("active-output HEADLESS-2"), lines.index("volume up"),
                         "the display came after the command it belongs to")
-        # Same display again: nothing is repeated.
-        self.shell.clear()
+        # The snapshot must survive a missing receiver and a fresh shell.
+        self.shell.close()
+        self.vela.keys("XF86AudioLowerVolume")
+        self.shell = self.vela.fake_shell()
         self.vela.keys("XF86AudioLowerVolume")
         self.shell.wait_for("volume down")
-        self.assertEqual(self.shell.received("active-output"), [])
+        lines = self.shell.received()
+        self.assertEqual(lines[lines.index("volume down") - 1], "active-output HEADLESS-2")
+
+        # Focus moves to the other output, even if the pointer moves back.
+        main = next(o for o in state["outputs"] if o["name"] == "HEADLESS-1")
+        self.vela.input("move", main["x"] + 200, main["y"] + 200)
+        other = self.vela.open_window(300, 200)
+        self.vela.wait_for(lambda s: s["focused"] == other and s.window(other)["output"] == "HEADLESS-1")
+        self.vela.input("move", second["x"] + 200, second["y"] + 200)
+        self.shell.clear()
+        self.vela.keys("XF86AudioRaiseVolume")
+        self.shell.wait_for("volume up")
+        lines = self.shell.received()
+        self.assertEqual(lines[lines.index("volume up") - 1], "active-output HEADLESS-1")
 
     def test_win_ctrl_v_opens_the_sound_page(self):
         self.vela.keys("super+ctrl+v")
