@@ -4,7 +4,7 @@
 # File Explorer (vela-files): Qt Quick without Qt Quick Controls, to start
 # fast. It reuses shell pieces: installed apps ("Open with"), thumbnails, KDE
 # service menus, system actions and the right-click menu component
-# (MenuPanel.qml).
+# (MenuPanel.qml, with menufilter.js).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Gui GuiPrivate Network Qml Quick QuickControls2 Svg)
 
 qt_standard_project_setup(REQUIRES 6.5)
@@ -32,6 +32,7 @@ add_library(vela-files-core OBJECT
     src/peek.h
     src/places.cpp
     src/places.h
+    ${PROJECT_SOURCE_DIR}/common/filetransferrequest.h # its notification's title is translated here
     ${SHELL_SRC}/appmodel.cpp
     ${SHELL_SRC}/appmodel.h
     ${SHELL_SRC}/filethumbnails.cpp
@@ -92,7 +93,8 @@ set(FILES_QML_FILES
     qml/QuickPeek.qml
     ${PEEK_PDF_QML}
     ${PEEK_MEDIA_QML}
-    ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml)
+    ${PROJECT_SOURCE_DIR}/shell/qml/MenuPanel.qml
+    ${PROJECT_SOURCE_DIR}/shell/qml/menufilter.js)
 
 foreach(file IN LISTS FILES_QML_FILES)
     get_filename_component(name ${file} NAME)
@@ -156,7 +158,7 @@ install(FILES vela-files.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applicatio
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-files SOURCE_TARGETS vela-files vela-files-core vela-controls
-    TS_FILES i18n/vela-files_it.ts
+    TS_FILES i18n/vela-files_it.ts i18n/vela-files_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-files_lupdate
     LRELEASE_TARGET vela-files_lrelease

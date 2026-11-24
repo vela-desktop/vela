@@ -26,6 +26,10 @@ void vela_commands_stop(struct vela_server *server);
 // (capture_watch.h).
 void vela_commands_notify(struct vela_server *server, const char *topic);
 
+// Whether the compositor was started for the functional tests
+// (VELA_TEST_COMMANDS=1 on the headless backend): test-only hooks apply.
+bool vela_commands_test_mode(struct vela_server *server);
+
 
 
 #endif

@@ -55,6 +55,10 @@ class Appearance : public QObject {
     // "l/" or "d/" for image://icon: changes a moment after the mode, once the
     // icon caches are emptied (applyIconTheme).
     Q_PROPERTY(QString iconMode READ iconMode NOTIFY iconModeChanged)
+    // The context menu entries the user hid (menus/hidden in vela-shell.conf,
+    // Settings > Personalization > Context menu): the entries' keys, which
+    // MenuPanel leaves out (menufilter.js, docs/renderer.md §14.12).
+    Q_PROPERTY(QStringList hiddenMenuEntries READ hiddenMenuEntries NOTIFY hiddenMenuEntriesChanged)
 
 public:
     enum class Mode { Apps, Shell };
@@ -74,6 +78,7 @@ public:
     bool animationEffects() const { return m_animationEffects; }
     qreal animationDuration() const { return m_animationDuration; }
     QString iconMode() const { return m_iconMode; }
+    QStringList hiddenMenuEntries() const { return m_hiddenMenuEntries; }
     QVariantMap theme() const { return m_theme; }
     // The theme with only one surface's style (its blur look, main.cpp).
     QVariantMap themeFor(vela::themes::Layer layer) const { return m_loaded.withStyle(layer); }
@@ -95,6 +100,7 @@ public:
 signals:
     void changed();
     void iconModeChanged();
+    void hiddenMenuEntriesChanged();
 
 private:
     void reload();
@@ -119,4 +125,5 @@ private:
     bool m_animationEffects = true;
     qreal m_animationDuration = 1.0;
     QString m_iconMode = QStringLiteral("d/");
+    QStringList m_hiddenMenuEntries;
 };

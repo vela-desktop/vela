@@ -17,7 +17,8 @@ The `gpu` label groups `functional`, `sharpness` and `sharpness-cpu`; the latter
 uses CPU fence synchronization while rendering still requires a GPU.
 The separate `rhi` label covers Qt Quick's OpenGL glyph rendering, which is
 verified with Mesa software OpenGL under Xvfb in hosted CI, not the real-GPU
-compositor suites.
+compositor suites. It is the path of Files, Settings and the polkit prompt;
+the shell renders with Vulkan, which this test does not cover yet.
 
 ```sh
 ctest --test-dir build -LE 'gpu|rhi' --output-on-failure # GPU/RHI-independent suites
@@ -51,11 +52,12 @@ xvfb-run -a env LIBGL_ALWAYS_SOFTWARE=1 ctest --test-dir build -L '^rhi$' --outp
 | **Polkit agent / GoogleTest** (`polkit.*`) | The agent's queue, cancellations by polkit and by the user, a crashed dialog counting as "No", retries after a wrong password, sessions that fail by themselves, identity order and choice, the dialog protocol. | No |
 | **Sharpness** (`sharpness`) | Pixel-level checks that windows reach the expected physical pixels across fractional scales and common window states. | Yes |
 
-The compositor currently contains 83 GoogleTest cases and the polkit agent 23;
-the functional harness runs 103 end-to-end scenarios when the Qt shell is built.
-A complete build registers 143 CTest entries; some entries contain multiple
-scenarios. Every scenario requires the expected compositor exit status, normally
-0, even if it exited before cleanup. The deliberate three-crash supervisor test
+`ctest --test-dir build -N` lists the CTest entries of a build.
+`ctest --test-dir build -N -R '^compositor\.'` lists the compositor entries,
+including the individual GoogleTest cases. Each functional test module is
+registered as a `functional-*` entry and can contain multiple scenarios.
+Every scenario requires the expected compositor exit status, normally 0,
+even if it exited before cleanup. The deliberate three-crash supervisor test
 explicitly requires status 1. Unexpected crashes cannot become passing tests.
 
 CPU tests of the harness and scripts are included in CTest even on GPU-less CI.
@@ -175,7 +177,7 @@ python3 -m unittest discover -s packaging/tests -v
 ctest --test-dir build -R '^packaging-update$' --output-on-failure
 ```
 
-These tests require Python 3.10+, Git, Bash and a POSIX shell. Each scenario uses
+These tests require Python 3.13+, Git, Bash and a POSIX shell. Each scenario uses
 temporary repositories and an isolated home/config/cache. Git's global and
 system configuration is disabled; only file transport is allowed. The test
 adapter records the requested clone/fetch URL, rejects SSH and unexpected
@@ -380,7 +382,7 @@ DRM/KMS, and this matrix cannot represent every GPU generation or setup
 
 `scripts/run-headless.sh` starts a real Vela session on wlroots' headless backend. No Vela window appears on the current desktop, but apps can be opened, moved, snapped and captured exactly as in a visible session.
 
-The manual headless and nested launchers (Python 3.9+ and Linux 5.3+ with
+The manual headless and nested launchers (Python 3.13+ and Linux 5.3+ with
 procfs/pidfd support required) give every run a
 temporary home, configuration, data, cache, and state directory. A Linux subreaper
 terminates/reaps detached descendants before removal; unresponsive processes
@@ -562,8 +564,10 @@ connected to the session the tests run in. The bus runs without the host's
 leaves the group itself (`setsid`) is not followed.
 
 `tests/functional/test_shell.py` runs the actual Qt shell with a private D-Bus
-session and isolated configuration, using threaded OpenGL rendering, CPU
-compositor synchronization and a 100 Hz output. It checks repeated Super
+session and isolated configuration, using threaded Vulkan rendering, CPU
+compositor synchronization and a 100 Hz output. The custom shortcut test checks
+that the shell renders with Vulkan while the launched process inherits the original
+Qt backend settings. The suite checks repeated Super
 toggles, reopening during the close animation, and the Wayland trace of each
 native surface lifetime: configure and ACK precede the first buffer, the hidden
 menu releases its native surface, and blur binds to the new surface on reopen.
@@ -628,6 +632,38 @@ and evicts the least recently used
 the test writes, including a held icon whose entry is evicted (the cases
 that draw an icon need librsvg). `functional-decorations` (GPU) has a
 client cycle through 600 app ids with `vela-pattern --cycle-app-ids`.
+
+## Fuzzing
+
+`fuzz/` holds libFuzzer targets for parsers of bytes Vela doesn't control:
+
+| Target | Parser | Input |
+| --- | --- | --- |
+| `config` | `vela_config_read` (`compositor/src/config.c`) | `vela.conf` |
+| `ini` | `vela_ini_read`, `vela_desktop_conf_read` | `.desktop` files of installed apps, `desktop.conf` |
+| `ddc` | `vela_ddc_parse_reply`, `vela_ddc_parse_request` | DDC/CI bytes from a monitor |
+
+Each target also checks properties, not only crashes. For example, a DDC
+reply that parses re-encodes to one that parses the same. ctest replays each
+target over `fuzz/corpus/<target>` plus 5,000 seeded inputs
+(`fuzz-replay.<target>`, any compiler), so the sanitizer CI covers them too.
+Run the file-based targets from a writable working directory you control,
+with no control characters (such as tabs) in its path.
+They create a private fixture directory there and remove it on normal exit.
+For a libFuzzer run:
+
+```sh
+sh fuzz/build.sh build-fuzz        # Clang with libFuzzer; no wlroots or Qt needed
+build-fuzz/vela-fuzz-config -max_total_time=60 fuzz/corpus/config
+```
+
+`-DVELA_BUILD_FUZZERS=ON` builds the same binaries with CMake when using
+Clang and `VELA_BUILD_COMPOSITOR=ON`.
+The [fuzzing workflow](../.github/workflows/fuzz.yml) runs each target for a
+minute on PRs that touch these parsers and for ten minutes every night. A
+crash's reproducer is uploaded as an artifact; it goes into the target's
+corpus with the fix. The notification image decoder (`shell/`) is Qt code
+and is covered by its unit tests instead.
 
 ## Frame-path allocations
 

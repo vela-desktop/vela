@@ -11,20 +11,28 @@
 
 // KDE "service menus" (kio/servicemenus/*.desktop): the entries apps add to
 // the file menu (such as Filelight's "Show disk usage statistics"). In Vela
-// they're under "Show more options", like classic extensions in the Windows 11
-// menu (docs/renderer.md §14.9).
+// they're a group of their own in the file and folder menus, before
+// Properties (docs/renderer.md §14.9); each one can be hidden in Settings by
+// its key (§14.12).
 class ServiceMenus : public QObject {
     Q_OBJECT
 
 public:
     explicit ServiceMenus(QObject* parent = nullptr);
 
-    // The entries that apply to these files: [{id, text, icon, submenu}].
+    // The entries that apply to these files: [{id, key, text, icon, submenu}].
+    // id is for run(); key, "service/<file name>/<action>", stays the same
+    // across sessions (the hidden entries in Settings).
     Q_INVOKABLE QVariantList actionsFor(const QStringList& paths);
+    // Every entry installed, whatever it applies to: [{key, text, icon,
+    // submenu}] (Settings > Personalization > Context menu), read again at
+    // each call.
+    Q_INVOKABLE QVariantList all();
     Q_INVOKABLE void run(int id, const QStringList& paths) const;
 
 private:
     struct Action {
+        QString key;
         QString name;
         QString icon;
         QString exec;
@@ -35,6 +43,7 @@ private:
         QList<int> requiredUrls;
     };
     void load();
+    static QList<Action> scan();
 
     QList<Action> m_actions;
     bool m_loaded = false;

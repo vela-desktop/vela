@@ -7,11 +7,11 @@
 // Virtual desktops, like Windows 11.
 //
 // Each window is on one desktop (or all: "Show this window on all desktops");
-// only those on the current desktop are visible, the other trees are off. The
-// taskbar shows only the current desktop's windows (their wlr-foreign-toplevel
-// handle exists only for them), while the ext-foreign-toplevel list has them
-// all: the shell's Task View shows their previews and knows where each is from
-// the "workspaces" message (JSON) the compositor sends it on every change.
+// only those on the current desktop are visible, the other trees are off. Both
+// the wlr-foreign-toplevel handles and the ext-foreign-toplevel list have every
+// desktop's windows: the shell knows where each is from the "workspaces"
+// message (JSON) the compositor sends it on every change, and its taskbar
+// filters them ("Show windows from", docs/taskbar.md §4).
 //
 // The switch: the windows being left go to layers.windows_out, which slides
 // away fading; the new ones (layers.windows) come from the other side. At the

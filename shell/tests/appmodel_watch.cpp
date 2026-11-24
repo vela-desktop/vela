@@ -18,6 +18,7 @@
 #include <QTest>
 
 #include <cstdio>
+#include <unistd.h>
 
 namespace {
 
@@ -232,6 +233,116 @@ private slots:
         QVERIFY(writeDesktop(flatpakPath, entry("Flatpak Example")));
         QTRY_COMPARE_WITH_TIMEOUT(apps.name(QStringLiteral("org.example.Flatpak.desktop")),
             QStringLiteral("Flatpak Example"), 5000);
+    }
+
+    void droppedLaunchersKeepTheirIdentity()
+    {
+        QVERIFY(writeDesktop(
+            userApplications() + QStringLiteral("/org.other.CustomEditor.desktop"), entry("Other Editor")));
+        QVERIFY(writeDesktop(userApplications() + QStringLiteral("/copyable.desktop"), entry("Copyable")));
+        AppModel apps;
+        apps.reload();
+        QCOMPARE(apps.name(QStringLiteral("copyable.desktop")), QStringLiteral("Copyable"));
+
+        QTemporaryDir drops;
+        QVERIFY(drops.isValid());
+        const auto drop = [&](const QString& file, const QByteArray& text) {
+            const QString path = drops.filePath(file);
+            return writeDesktop(path, text) ? apps.importTaskbarLauncher(QUrl::fromLocalFile(path)) : QString();
+        };
+
+        // An unchanged copy moves the installed app's pin; one with actions
+        // of its own is a launcher of its own.
+        QCOMPARE(drop(QStringLiteral("copyable.desktop"), entry("Copyable")), QStringLiteral("copyable.desktop"));
+        const QString withAction = drop(QStringLiteral("copyable.desktop"),
+            entry("Copyable", "Actions=private;\n\n[Desktop Action private]\nName=Private\nExec=true --private\n"));
+        QVERIFY(AppModel::isImportedLauncher(withAction));
+
+        // An imported launcher's StartupWMClass beats an installed app whose
+        // id only ends the same way.
+        const QString custom =
+            drop(QStringLiteral("custom.desktop"), entry("Custom Editor", "StartupWMClass=CustomEditor\n"));
+        QVERIFY(AppModel::isImportedLauncher(custom));
+        QCOMPARE(apps.findDesktopId(QStringLiteral("CustomEditor")), custom);
+    }
+
+    // What a drop on the taskbar refuses, reuses or fails to keep
+    // (docs/taskbar.md §9.2).
+    void droppedLaunchersRefusedOrReused()
+    {
+        const QByteArray withAction =
+            entry("Actioned", "Actions=private;\n\n[Desktop Action private]\nName=Private\nExec=true --private\n");
+        const QString installed = userApplications() + QStringLiteral("/installed.desktop");
+        QVERIFY(writeDesktop(installed, entry("Installed")));
+        QVERIFY(writeDesktop(userApplications() + QStringLiteral("/actioned.desktop"), withAction));
+        AppModel apps;
+        apps.reload();
+        QCOMPARE(apps.entry(QStringLiteral("installed.desktop")).value(QStringLiteral("name")).toString(),
+            QStringLiteral("Installed"));
+        QCOMPARE(apps.entry(QStringLiteral("missing.desktop")), QVariantMap());
+        QCOMPARE(apps.desktopUrl(QStringLiteral("installed.desktop")), QUrl::fromLocalFile(installed));
+        QCOMPARE(apps.desktopUrl(QStringLiteral("missing.desktop")), QUrl());
+        QVERIFY(!apps.launchId(QStringLiteral("missing.desktop")));
+
+        QTemporaryDir drops;
+        QVERIFY(drops.isValid());
+        const auto url = [&](const QString& file) { return QUrl::fromLocalFile(drops.filePath(file)); };
+        const auto drop = [&](const QString& file, const QByteArray& text) {
+            return writeDesktop(drops.filePath(file), text) ? apps.importTaskbarLauncher(url(file)) : QString();
+        };
+
+        // Not a launcher, or no such file.
+        QCOMPARE(apps.importTaskbarLauncher(QUrl(QStringLiteral("https://example.org/app.desktop"))), QString());
+        QCOMPARE(apps.importTaskbarLauncher(url(QStringLiteral("notes.txt"))), QString());
+        QCOMPARE(apps.importTaskbarLauncher(url(QStringLiteral("absent.desktop"))), QString());
+        QCOMPARE(apps.importTaskbarLauncher(QUrl(QStringLiteral("file:relative.desktop"))), QString());
+        QVERIFY(QDir().mkpath(drops.filePath(QStringLiteral("folder.desktop"))));
+        QCOMPARE(apps.importTaskbarLauncher(url(QStringLiteral("folder.desktop"))), QString());
+        // Not an application, or too big to be one.
+        QCOMPARE(
+            drop(QStringLiteral("link.desktop"), "[Desktop Entry]\nType=Link\nName=Link\nURL=https://x\n"), QString());
+        QCOMPARE(drop(QStringLiteral("huge.desktop"), entry("Huge") + QByteArray(1024 * 1024, '#')), QString());
+
+        // An installed app's own file is that app.
+        QCOMPARE(apps.importTaskbarLauncher(QUrl::fromLocalFile(installed)), QStringLiteral("installed.desktop"));
+        // A copy with the same actions moves its pin too.
+        QCOMPARE(drop(QStringLiteral("actioned.desktop"), withAction), QStringLiteral("actioned.desktop"));
+
+        // A launcher of its own, kept once: dropping it again, or its copy,
+        // is the same pin.
+        const QString own = drop(QStringLiteral("own.desktop"), entry("Own"));
+        QVERIFY(AppModel::isImportedLauncher(own));
+        QCOMPARE(apps.importTaskbarLauncher(url(QStringLiteral("own.desktop"))), own);
+        QCOMPARE(drop(QStringLiteral("own-again.desktop"), entry("Own")), own);
+        const QString copy = apps.desktopFile(own);
+        QVERIFY(QFileInfo(copy).isFile());
+        QCOMPARE(QFileInfo(copy).permissions() & (QFileDevice::ReadOther | QFileDevice::WriteOther),
+            QFileDevice::Permissions());
+        QCOMPARE(apps.importTaskbarLauncher(QUrl::fromLocalFile(copy)), own);
+        // Read again by a new model.
+        AppModel later;
+        later.reload();
+        QCOMPARE(later.name(own), QStringLiteral("Own"));
+
+        if (geteuid() != 0) {
+            // Unreadable, or nowhere to keep the copy.
+            QVERIFY(writeDesktop(drops.filePath(QStringLiteral("secret.desktop")), entry("Secret")));
+            QVERIFY(QFile::setPermissions(drops.filePath(QStringLiteral("secret.desktop")), QFileDevice::WriteOwner));
+            QCOMPARE(apps.importTaskbarLauncher(url(QStringLiteral("secret.desktop"))), QString());
+            const QString directory = QFileInfo(copy).absolutePath();
+            QVERIFY(QFile::setPermissions(directory, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+            const QString refused = drop(QStringLiteral("refused.desktop"), entry("Refused"));
+            QVERIFY(QFile::setPermissions(
+                directory, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+            QCOMPARE(refused, QString());
+            QVERIFY(QDir(directory).removeRecursively());
+            const QString parent = QFileInfo(directory).absolutePath();
+            QVERIFY(QFile::setPermissions(parent, QFileDevice::ReadOwner | QFileDevice::ExeOwner));
+            const QString nowhere = drop(QStringLiteral("nowhere.desktop"), entry("Nowhere"));
+            QVERIFY(QFile::setPermissions(
+                parent, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+            QCOMPARE(nowhere, QString());
+        }
     }
 
     void symlinkedRootReplacementReattachesNestedWatches()

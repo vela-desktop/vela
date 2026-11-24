@@ -40,9 +40,12 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
 | `update-check-interval` | `24` | Hours between automatic checks: `6`, `12`, `24`, `48` or `168` (7 days). Set in Settings > System > Updates; invalid values fall back to 24 hours. |
-| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
+| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. Empty: systemd-localed's layout (`localectl`), then `us`; other desktops' settings are not read. Settings > Keyboard > Layouts. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
-| `keyboard-options` | empty | XKB options. |
+| `keyboard-options` | system | XKB options, comma-separated. When the key is present, even empty, these are the options and systemd-localed's are not used; Settings > Keyboard > Typing writes its Caps Lock, Compose, bottom-left and keypad choices here and keeps the other options. |
+| `numlock` | `off` | Num Lock when Vela starts: `off`, `on`, or `last` (as it was at the end of the last session, kept in `$XDG_STATE_HOME/vela/numlock`). Settings > Keyboard > Typing. |
+| `caps-lock-osd` | `yes` | Shows *Caps Lock on* or *Caps Lock off* at the bottom of the screen for a moment each time Caps Lock changes, on the lock screen too. Settings > Keyboard > Typing. |
+| `super-opens-start` | `yes` | The Win key pressed and released by itself opens Start. With `no` it does nothing; Win shortcuts, the taskbar numbers while Win is held and the Start button are unchanged. Settings > Keyboard > Typing. |
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |
@@ -56,6 +59,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `color-filters-shortcut` | `no` | Allow Super+Ctrl+C to toggle color filters. |
 | `magnifier-step` | `100` | Magnifier step in percent. |
 | `sticky-keys` | `no` | Sticky modifier keys. |
+| `super-number-keys` | `apps` | `apps` opens taskbar apps, `desktops` switches desktops, `off` releases the digit shortcuts. Settings > Personalization > Taskbar. |
 | `animation-effects` | `yes` | Windows and the shell's panels move as they open, close and change. `no`: nothing moves (no rise, slide, scale, flight to the taskbar or magnifier zoom) and what fades takes at most 120 ms ([visual coherence](visual-coherence.md#65-animation-effects-one-switch-d11)). Settings > Accessibility > Visual effects. |
 | `animation-duration` | `100` | How long animations take, in percent of Vela's durations: 50–300 (Settings' slider, in steps of 25). With `animation-effects=no` fades stay at 120 ms. |
 | `tearing` | `yes` | Allow fullscreen apps that explicitly request tearing. |
@@ -74,6 +78,10 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `touchpad-four-fingers` | `desktop` | Four-finger gesture mode. |
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
+
+### Custom shortcuts
+
+The user's own keyboard shortcuts live in `$XDG_CONFIG_HOME/vela/shortcuts.conf`, one `combination=kind target` per line: `Ctrl+Alt+t=app org.kde.konsole.desktop`, `Shift+Super+k=command kcalc`, `Super+FK01=open https://example.org/`. Settings > Keyboard > Custom shortcuts writes it; the compositor rereads it on `reload-config` and skips, with a log line, a line that doesn't parse ([keyboard](keyboard.md#94-the-file)).
 
 ### Theme files
 
@@ -124,6 +132,7 @@ Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 | `card`, `cardHover`, `cardPressed`, `cardStroke`, `flyout`, `dialog`, `dialogFooter`, `field` | color |
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
+| `attention` (the taskbar's highlight for an app asking for attention; the mode's caution color if unset). A theme token only: a taskbar style can't set it | color |
 | `primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`, `secondary`, `onSecondary`, `secondaryContainer`, `onSecondaryContainer`, `tertiary`, `onTertiary`, `tertiaryContainer`, `onTertiaryContainer`, `error`, `onError`, `errorContainer`, `onErrorContainer` | color: Material's tonal roles ([Expressive look](#expressive-look)) |
 | `surfaceBase` (Material's `surface`), `surfaceContainerLowest`, `surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest`, `onSurface`, `onSurfaceVariant`, `outline`, `outlineVariant`, `inverseSurface`, `inverseOnSurface`, `inversePrimary` | color: Material's surface roles |
 | `radius` (controls) | pixels, 0–24 |
@@ -214,6 +223,15 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | Key | Default | Meaning |
 |---|---|---|
 | `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/position` | `bottom` | The edge of every display the taskbar sits on: `bottom`, `top`, `left` or `right`. Start, the previews and the tray's panels open from that edge; on the left and the right the bar is a column at least 56 wide. |
+| `taskbar/windowsFrom` | `desktop` | `desktop` shows windows on the current desktop, `all` shows windows on every desktop. |
+| `taskbar/appsOn` | `all` | `window` limits windows to their display's taskbar when taskbars are on all displays. |
+| `taskbar/clickActive` | `previews` | On an active app with several windows, show `previews` or cycle to the `next` window. |
+| `taskbar/attention` | `true` | Highlight apps asking for attention. |
+| `taskbar/trayShown` | empty | The notification area icons on the taskbar, in order, by their StatusNotifierItem `Id` (the title when there is none); the others are in the drawer behind "^". New icons start in the drawer. |
+| `taskbar/badges` | `true` | Count badges on app buttons. |
+| `taskbar/progress` | `true` | Progress indicators on app buttons. |
+| `taskbar/numberHints` | `true` | Show shortcut numbers while holding Super in the `apps` mode. |
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
@@ -280,10 +298,19 @@ so the upper-left corner of the enabled display group is always at (0,0).
 For example, a 1920×1080 monitor physically **above** a 2048×1152 primary
 will appear as (0,0) and (0,1080) respectively. This avoids exposing
 negative monitor coordinates to XWayland/Wine while leaving the perceived
-screen arrangement unchanged. Existing saved configurations with negative
-positions are normalized when loaded; new positions are saved normalized.
+screen arrangement unchanged. Saved positions keep their own origin, so a
+save while a monitor is unplugged keeps that monitor in the same arrangement.
 Windows on a translated output move with it, including during Settings
-preview/revert.
+preview and revert. Settings snaps dragged displays to a free edge that keeps
+every monitor reachable. Changing a monitor's scale, resolution, or rotation
+can move its neighbors to make room. The compositor rejects explicitly
+positioned configurations with intersecting active displays.
+
+At startup and when monitors are plugged or unplugged, Vela moves overlapping
+or isolated displays to a shared edge so the pointer can still reach every
+screen. Disabling a monitor in Settings closes gaps within the preview, so
+Revert restores the prior positions. These temporary positions keep the saved
+arrangement available when the original set of monitors returns.
 
 Settings talks directly to `wlr-output-management`; no external display utility
 is required. Changes are previewed for 15 seconds. Vela's compositor keeps the
@@ -294,8 +321,8 @@ to `outputs.conf`.
 
 The preview uses `protocols/vela-output-preview-v1.xml`, bound on the same
 Wayland connection as the output configuration. While a preview is pending,
-competing display changes are rejected. If monitors are unplugged, restoration
-covers the surviving original outputs and leaves newly connected outputs alone.
+competing display changes are rejected. Plugging or unplugging an active
+monitor cancels the preview before Vela rearranges the current outputs.
 If a confirmed change cannot be saved, the active display configuration is
 kept, but Settings warns that it may be lost after a restart. A failed apply
 whose rollback also fails is reported distinctly.
@@ -315,8 +342,8 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_SCALE` | Force output scale. A single value applies to all outputs (`1.25`); per-output values can be supplied as `DP-1=1.5,HDMI-A-1=1`. Without it, Vela chooses a scale from each monitor's DPI. |
 | `VELA_OUTPUT_SIZE` | Resolution/refresh for nested or headless outputs, for example `1920x1080@144`. |
 | `VELA_NATURAL_SCROLL=0` | Force classic touchpad scrolling; this override wins over the stored natural-scrolling setting. |
-| `XKB_DEFAULT_LAYOUT` | Initial keyboard layout, for example `it`. |
-| `VELA_TERMINAL` | Terminal launched by Super+Enter. Default: `konsole`. |
+| `XKB_DEFAULT_LAYOUT` | Keyboard layout, for example `it`; wins over `keyboard-layout`, and Settings > Keyboard > Layouts says so. `XKB_DEFAULT_VARIANT`, `_OPTIONS`, `_MODEL` and `_RULES` work the same, field by field. |
+| `VELA_TERMINAL` | Terminal for Super+Enter and updates, a command with options, unless one is chosen in Settings > Apps > Default apps. The packaged `xdg-terminal-exec` resolves XDG preferences ([keyboard](keyboard.md#11-the-terminal)). |
 
 ### Presentation, VRR and power
 
@@ -349,6 +376,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 |---|---|
 | `VELA_WALLPAPER` | Override the wallpaper image. SVG, PNG, JPEG and other supported formats can be used. |
 | `VELA_ICON_THEME` | Fallback icon theme when Qt cannot resolve one. Default: `breeze-dark`. |
+| `VELA_NESTED=1` | Set by the compositor for its apps when it runs in a window of another desktop (never inherited otherwise): Settings then treats the nested Alt shortcuts (Alt+E...) as taken. |
 
 ## Development and renderer diagnostics
 

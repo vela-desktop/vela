@@ -6,11 +6,16 @@ For renderer design and frame scheduling, see [renderer.md](renderer.md). For th
 
 ## Build
 
-Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
+Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3.13 or newer. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
 
 ## Distribution dependencies
 
 These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is installed for generic application portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required; an already installed KDE portal remains an optional fallback if GTK is missing. Optional extras include KDE Connect, BlueZ for native Bluetooth management, and Bluedevil plus BlueZ OBEX for file sending from Files. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. On unattended local builds pacman and makepkg use `--noconfirm` (sudo must already allow authentication without interaction); an installed pacman hook warns after `qt6-base` upgrades because `vela-shell` links `Qt6::GuiPrivate`, and `vela-update --force --build` rebuilds the current revision when Qt's private ABI changes. Keep them synchronized with the CI's build dependencies.
+
+For manual source installations, build dependencies alone are insufficient:
+install the runtime portal backends separately, especially
+`xdg-desktop-portal-wlr` for screen sharing and screenshots. See the
+[manual installation notes](installation.md#other-distributions).
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
@@ -54,7 +59,7 @@ GPU/DRM functionality.
 sudo apt update
 sudo apt install --no-install-recommends \
     ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
-    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev libxkbregistry-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
     libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
@@ -84,7 +89,7 @@ validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardw
 
 ```sh
 sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
+    libxkbcommon-devel libxkbregistry-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
     qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
     vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
     freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
@@ -116,7 +121,7 @@ To set an option when configuring a build, use `-DNAME=VALUE` (for example,
 | `VELA_BUILD_COMPOSITOR` | `ON` | Build the Wayland compositor and session integration. |
 | `VELA_BUILD_SHELL` | `ON` | Build the Qt Quick shell, Settings, Files and lock screen. |
 | `VELA_BUILD_TOOLS` | `ON` | Build development tools and enable the CTest suites. |
-| `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.10 or newer. |
+| `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.13 or newer. |
 | `VELA_REPORT_GUI` | Same as `VELA_BUILD_SHELL` | Build the ordinary Qt Widgets reporting window, also usable in other desktops. |
 | `VELA_WLROOTS` | `wlroots-0.20` | pkg-config name used for wlroots. Only wlroots 0.20 is supported. |
 | `VELA_CPU_TARGET` | `x86-64-v3` | x86-64 ISA/codegen baseline; optional local override such as `native` or `znver5` for single-machine builds. The installed `vela-session` performs a v3 CPU preflight before launching the compositor. |
@@ -143,7 +148,7 @@ Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh tempor
 `XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
 including on SIGTERM. A Linux subreaper supervises all session descendants;
 unresponsive processes are SIGKILLed after a bounded grace period. The manual
-launchers require Python 3.9+ and Linux kernel 5.3+ with procfs and pidfd
+launchers require Python 3.13+ and Linux kernel 5.3+ with procfs and pidfd
 support for identity-safe descendant signalling. This keeps test wallpaper/cache writes away from
 your real Vela state.
 The test starts with default settings. To **copy** your existing Vela configuration
@@ -512,6 +517,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   a11y.c            night light, color filters, magnifier and sticky keys
   input.c           seat, pointer, touchpad, gestures, pointer constraints
   keyboard.c        keyboards, layouts and key handling
+  super_numbers.c   Super+number: which taskbar app or desktop, kept keys
   shell.c           the supervised Qt shell and messages to it
   lock.c            session lock and idle handling
 

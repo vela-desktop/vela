@@ -15,6 +15,7 @@ libwlroots-0.20-dev
 libwayland-dev
 wayland-protocols
 libxkbcommon-dev
+libxkbregistry-dev
 libpixman-1-dev
 libinput-dev
 libgbm-dev

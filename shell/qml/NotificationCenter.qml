@@ -16,8 +16,12 @@ Window {
     // too short for it (docs/visual-coherence.md §6.9): the panels rest 12
     // units from both.
     readonly property real room: notificationsShadow.reach
-    width: room + 360 + 12
-    height: Math.min(room + motion.height + 12, Screen.height - Styles.taskbar.height)
+    // In the clock's corner, wherever the taskbar is (docs/taskbar.md §11.3).
+    readonly property QtObject bar: Styles.taskbar
+    readonly property int edges: bar.trayCorner
+    readonly property real usableHeight: Screen.height - (bar.vertical ? 0 : bar.thickness)
+    width: bar.pad("left", edges, 12, room) + 360 + bar.pad("right", edges, 12, room)
+    height: Math.min(room + motion.height + 12, usableHeight)
     color: "transparent"
 
     readonly property var history: Notifications.history
@@ -50,6 +54,12 @@ Window {
         function onNotificationCenterRequested() { motion.opened ? root.close() : root.open() }
         function onQuickSettingsRequested() { root.close() }
     }
+    // The taskbar moved to another edge: the panel's place, and the origin
+    // its menus open from, belong to the old one. Placed again on reopening.
+    Connections {
+        target: Styles.taskbar
+        function onPositionChanged() { root.close() }
+    }
 
     onActiveChanged: {
         if (!active && motion.opened && !Menus.isOpen) {
@@ -74,11 +84,12 @@ Window {
     // Both panels come 24 units from the right edge, and leave that way.
     PanelMotion {
         id: motion
-        x: root.room
-        y: root.height - 12 - height
+        x: root.bar.pad("left", root.edges, 12, root.room)
+        y: (root.edges & 1) ? 12 : root.height - 12 - height
         width: 360
         height: calendar.y + calendar.height
-        offset: Qt.point(24, 0)
+        // From the screen's side edge it rests against.
+        offset: Qt.point((root.edges & 4) ? -24 : 24, 0)
         onClosed: root.visible = false
         onVisibleAreaChanged: root.updateBlur()
         onMovingChanged: root.updateBlur()
@@ -105,7 +116,7 @@ Window {
             Rectangle {
                 id: notifications
                 width: parent.width
-                height: Math.min(Screen.height - Styles.taskbar.height - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
+                height: Math.min(root.usableHeight - calendar.height - 60, header.height + Math.max(list.contentHeight, 64) + 24)
                 radius: Styles.notifications.radius
                 color: Styles.notifications.surface
                 border.width: Styles.notifications.expressive ? 0 : 1 // M3's surfaces have no outline

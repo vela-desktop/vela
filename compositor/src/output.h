@@ -17,6 +17,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <wayland-server-core.h>
+#include <wlr/types/wlr_output_management_v1.h>
+#include <wayland-server-protocol.h>
 #include <wlr/util/box.h>
 
 struct vela_brightness_output;
@@ -58,11 +60,20 @@ struct vela_output {
     struct wlr_output *wlr;
     struct wlr_box usable; // area free of panels (global coordinates)
     bool powered;
+    bool drm_connector, internal_panel;
+    // The configured state of a panel temporarily removed by the lid policy.
+    struct wlr_output_head_v1_state lid_saved;
     // Where it was in the layout before being turned off (Settings,
     // wlr-randr): it's still announced, so whoever turns it back on puts it
     // there and not over another output at (0, 0).
     bool has_last_position;
     int last_x, last_y;
+    // The layout to recover when a temporarily missing output returns.
+    bool has_preferred_position;
+    int preferred_x, preferred_y;
+    // Startup configuration for a connector that was saved as disabled.
+    struct wlr_output_mode *startup_mode;
+    enum wl_output_transform startup_transform;
     // Only when Vela runs in a window inside another session.
     struct vela_nested *nested;
     // Its brightness (brightness.h); NULL: none to drive.

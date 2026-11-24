@@ -3,6 +3,11 @@
 
 #include "processlaunch.h"
 #include "preferences.h"
+
+#include "keyboardlayouts.h"
+#include "keyboardoptions.h"
+
+#include "../../common/taskbarsettings.h"
 #include "../../common/privatefile.h"
 
 extern "C" {
@@ -31,6 +36,8 @@ extern "C" {
 #include <QSettings>
 #include <QStandardPaths>
 #include <QTextStream>
+
+#include <optional>
 #include <QTemporaryFile>
 #include <QUrl>
 
@@ -174,13 +181,39 @@ void Preferences::loadShell(const QSettings& settings)
     m_taskbarAlignment = settings.value(QStringLiteral("taskbar/alignment")).toString() == QLatin1String("left")
         ? QStringLiteral("left")
         : QStringLiteral("center");
+    m_taskbarPosition = vela::taskbar::position(settings);
     m_endTask = settings.value(QStringLiteral("taskbar/endTask"), true).toBool();
     m_taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     m_taskbarAllScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     m_showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
+    m_taskbarWindowsFrom = settings.value(QStringLiteral("taskbar/windowsFrom")).toString() == QLatin1String("all")
+        ? QStringLiteral("all")
+        : QStringLiteral("desktop");
+    m_taskbarAppsOn = settings.value(QStringLiteral("taskbar/appsOn")).toString() == QLatin1String("window")
+        ? QStringLiteral("window")
+        : QStringLiteral("all");
+    m_taskbarClickActive = settings.value(QStringLiteral("taskbar/clickActive")).toString() == QLatin1String("next")
+        ? QStringLiteral("next")
+        : QStringLiteral("previews");
+    m_taskbarTrayShown = settings.value(QStringLiteral("taskbar/trayShown")).toStringList();
+    for (QString& key : m_taskbarTrayShown) {
+        key = key.trimmed();
+    }
+    m_taskbarTrayShown.removeAll(QString());
+    m_taskbarTrayShown.removeDuplicates();
+    m_taskbarAttention = vela::taskbar::enabled(settings, QStringLiteral("taskbar/attention"));
+    m_taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
+    m_taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
+    m_taskbarNumberHints = vela::taskbar::enabled(settings, QStringLiteral("taskbar/numberHints"));
     emit taskbarChanged();
     m_desktopIcons = settings.value(QStringLiteral("desktop/showIcons"), true).toBool();
     emit desktopChanged();
+    QStringList hidden = settings.value(QStringLiteral("menus/hidden")).toStringList();
+    hidden.removeAll(QString());
+    if (hidden != m_hiddenMenuEntries) {
+        m_hiddenMenuEntries = hidden;
+        emit menusChanged();
+    }
     m_startPinned = settings.value(QStringLiteral("start/showPinned"), true).toBool();
     const vela::start::Icon startIcon = vela::start::icon(settings);
     m_startIcon = startIcon.kind;
@@ -241,6 +274,37 @@ QString modernLine(const QString& line)
 
 } // namespace
 
+namespace {
+
+// The system's XKB options, from systemd-localed's file.
+QStringList systemKeyboardOptions()
+{
+    QFile localed(QStringLiteral("/etc/X11/xorg.conf.d/00-keyboard.conf"));
+    return localed.open(QIODevice::ReadOnly)
+        ? vela::keyboardoptions::fromLocaled(QString::fromUtf8(localed.read(64 * 1024)))
+        : QStringList();
+}
+
+} // namespace
+
+// The options the compositor uses now, read again: vela.conf's when it has
+// the key, even empty, the system's until then (keymap_options.c).
+QStringList Preferences::currentKeyboardOptions() const
+{
+    QFile file(compositorConfigPath());
+    std::optional<QString> own;
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            const QString line = modernLine(in.readLine());
+            if (line.startsWith(QLatin1String("keyboard-options="))) {
+                own = line.mid(int(sizeof("keyboard-options=") - 1)); // the last one counts
+            }
+        }
+    }
+    return own ? vela::keyboardoptions::split(*own) : systemKeyboardOptions();
+}
+
 /** Refresh compositor settings, including the Night Light backend toggle. */
 void Preferences::reloadCompositor()
 {
@@ -265,6 +329,11 @@ void Preferences::reloadCompositor()
         const QString v = value(key, fallback ? QStringLiteral("yes") : QStringLiteral("no"));
         return v == QLatin1String("yes") || v == QLatin1String("1") || v == QLatin1String("true");
     };
+    const QString numberKeys = value(QStringLiteral("super-number-keys"), {});
+    m_superNumberKeys = numberKeys == QLatin1String("desktops") || numberKeys == QLatin1String("off")
+        ? numberKeys
+        : QStringLiteral("apps");
+    emit taskbarChanged();
     m_screenOffMinutes = value(QStringLiteral("screen-off"), QStringLiteral("10")).toInt();
     const QString lock = value(QStringLiteral("lock-on-idle"), QStringLiteral("yes"));
     m_lockOnIdle = lock != QLatin1String("0") && lock != QLatin1String("no");
@@ -301,6 +370,19 @@ void Preferences::reloadCompositor()
         m_layouts.append(QVariantMap { { QStringLiteral("layout"), layouts[i].trimmed() },
             { QStringLiteral("variant"), i < variants.size() ? variants[i].trimmed() : QString() } });
     }
+    // The options the compositor uses: vela.conf's when it has the key, even
+    // empty, the system's until then (compositor/src/keymap_options.c).
+    const bool ownOptions = std::any_of(m_compositor.cbegin(), m_compositor.cend(),
+        [](const auto& entry) { return entry.first == QLatin1String("keyboard-options"); });
+    if (ownOptions) {
+        m_keyboardOptions = vela::keyboardoptions::split(compositorValue(QStringLiteral("keyboard-options")));
+    } else {
+        m_keyboardOptions = systemKeyboardOptions();
+    }
+    const QString numLock = value(QStringLiteral("numlock"), QStringLiteral("off"));
+    m_numLock = numLock == QLatin1String("on") || numLock == QLatin1String("last") ? numLock : QStringLiteral("off");
+    m_capsLockOsd = flag(QStringLiteral("caps-lock-osd"), true);
+    m_superOpensStart = flag(QStringLiteral("super-opens-start"), true);
     m_repeatDelay = value(QStringLiteral("keyboard-repeat-delay"), QStringLiteral("400")).toInt();
     m_repeatRate = value(QStringLiteral("keyboard-repeat-rate"), QStringLiteral("30")).toInt();
     emit keyboardChanged();
@@ -402,6 +484,15 @@ bool Preferences::setShell(const QString& key, const QVariant& value)
 
 bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
 {
+    return saveShell([&changes](QSettings& staged) {
+        for (const auto& [key, value] : changes) {
+            staged.setValue(key, value);
+        }
+    });
+}
+
+bool Preferences::saveShell(const std::function<void(QSettings&)>& edit)
+{
     QSettings current = shellSettings();
     current.sync();
     const QString path = current.fileName();
@@ -462,9 +553,7 @@ bool Preferences::saveShell(const QList<QPair<QString, QVariant>>& changes)
         if (staged.status() != QSettings::NoError) {
             return failed();
         }
-        for (const auto& [key, value] : changes) {
-            staged.setValue(key, value);
-        }
+        edit(staged);
         staged.sync();
         if (staged.status() != QSettings::NoError) {
             return failed();
@@ -647,11 +736,121 @@ void Preferences::setTaskbarAlignment(const QString& alignment)
     }
 }
 
+void Preferences::setTaskbarPosition(const QString& position)
+{
+    const bool known = position == QLatin1String("bottom") || position == QLatin1String("top")
+        || position == QLatin1String("left") || position == QLatin1String("right");
+    if (known && position != m_taskbarPosition) {
+        if (setShell(QStringLiteral("taskbar/position"), position)) {
+            m_taskbarPosition = position;
+        }
+        emit taskbarChanged();
+    }
+}
+
 void Preferences::setEndTask(bool on)
 {
     if (on != m_endTask) {
         if (setShell(QStringLiteral("taskbar/endTask"), on)) {
             m_endTask = on;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarWindowsFrom(const QString& value)
+{
+    if ((value == QLatin1String("desktop") || value == QLatin1String("all")) && value != m_taskbarWindowsFrom) {
+        if (setShell(QStringLiteral("taskbar/windowsFrom"), value)) {
+            m_taskbarWindowsFrom = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarAppsOn(const QString& value)
+{
+    if ((value == QLatin1String("all") || value == QLatin1String("window")) && value != m_taskbarAppsOn) {
+        if (setShell(QStringLiteral("taskbar/appsOn"), value)) {
+            m_taskbarAppsOn = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarClickActive(const QString& value)
+{
+    if ((value == QLatin1String("previews") || value == QLatin1String("next")) && value != m_taskbarClickActive) {
+        if (setShell(QStringLiteral("taskbar/clickActive"), value)) {
+            m_taskbarClickActive = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTrayIconShown(const QString& key, bool shown)
+{
+    if (key.isEmpty() || m_taskbarTrayShown.contains(key) == shown) {
+        return;
+    }
+    QStringList keys = m_taskbarTrayShown;
+    if (shown) {
+        keys.append(key);
+    } else {
+        keys.removeAll(key);
+    }
+    if (setShell(QStringLiteral("taskbar/trayShown"), keys)) {
+        m_taskbarTrayShown = keys;
+    }
+    emit taskbarChanged();
+}
+
+void Preferences::setTaskbarAttention(bool value)
+{
+    if (value != m_taskbarAttention) {
+        if (setShell(QStringLiteral("taskbar/attention"), value)) {
+            m_taskbarAttention = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarBadges(bool value)
+{
+    if (value != m_taskbarBadges) {
+        if (setShell(QStringLiteral("taskbar/badges"), value)) {
+            m_taskbarBadges = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarProgress(bool value)
+{
+    if (value != m_taskbarProgress) {
+        if (setShell(QStringLiteral("taskbar/progress"), value)) {
+            m_taskbarProgress = value;
+        }
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setSuperNumberKeys(const QString& mode)
+{
+    if ((mode == QLatin1String("apps") || mode == QLatin1String("desktops") || mode == QLatin1String("off"))
+        && mode != m_superNumberKeys) {
+        const auto previous = m_superNumberKeys;
+        m_superNumberKeys = mode;
+        keepOrRestore(saveCompositor({ { QStringLiteral("super-number-keys"), mode } }), m_superNumberKeys, previous);
+        emit taskbarChanged();
+    }
+}
+
+void Preferences::setTaskbarNumberHints(bool value)
+{
+    if (value != m_taskbarNumberHints) {
+        if (setShell(QStringLiteral("taskbar/numberHints"), value)) {
+            m_taskbarNumberHints = value;
         }
         emit taskbarChanged();
     }
@@ -685,6 +884,45 @@ void Preferences::setDesktopIcons(bool on)
         }
         emit desktopChanged();
     }
+}
+
+void Preferences::setMenuEntriesHidden(const QStringList& keys, bool hidden)
+{
+    // On the list in the file, under its lock: keys another writer hid
+    // since Settings read it stay hidden.
+    QStringList committed;
+    const bool saved = saveShell([&](QSettings& staged) {
+        QStringList list = staged.value(QStringLiteral("menus/hidden")).toStringList();
+        list.removeAll(QString());
+        for (const QString& key : keys) {
+            if (key.isEmpty()) {
+                continue;
+            }
+            list.removeAll(key);
+            if (hidden) {
+                list.append(key);
+            }
+        }
+        if (list.isEmpty()) {
+            staged.remove(QStringLiteral("menus/hidden"));
+        } else {
+            staged.setValue(QStringLiteral("menus/hidden"), list);
+        }
+        committed = list;
+    });
+    if (saved) {
+        m_hiddenMenuEntries = committed;
+    }
+    emit menusChanged(); // a switch the write refused goes back
+}
+
+void Preferences::showAllMenuEntries()
+{
+    // Every key in the file, those hidden elsewhere too.
+    if (saveShell([](QSettings& staged) { staged.remove(QStringLiteral("menus/hidden")); })) {
+        m_hiddenMenuEntries.clear();
+    }
+    emit menusChanged();
 }
 
 void Preferences::setStartPinned(bool on)
@@ -928,6 +1166,14 @@ bool Preferences::saveCompositorKeys(const QStringList& keys)
                 values << value.toMap()[key == QLatin1String("keyboard-layout") ? QStringLiteral("layout") : QStringLiteral("variant")].toString();
             }
             changes.append({ key, values.join(u',') });
+        } else if (key == QLatin1String("numlock")) {
+            changes.append({ key, m_numLock });
+        } else if (key == QLatin1String("caps-lock-osd")) {
+            changes.append({ key, m_capsLockOsd ? QStringLiteral("yes") : QStringLiteral("no") });
+        } else if (key == QLatin1String("super-opens-start")) {
+            changes.append({ key, m_superOpensStart ? QStringLiteral("yes") : QStringLiteral("no") });
+        } else if (key == QLatin1String("keyboard-options")) {
+            changes.append({ key, m_keyboardOptions.join(u',') });
         } else if (key == QLatin1String("keyboard-repeat-delay")) {
             changes.append({ key, QString::number(m_repeatDelay) });
         } else if (key == QLatin1String("keyboard-repeat-rate")) {
@@ -1229,6 +1475,10 @@ bool Preferences::saveLayouts()
 
 void Preferences::addKeyboardLayout(const QString& layout, const QString& variant)
 {
+    // More than XKB's v1 keymaps hold would be ignored (docs/keyboard.md §5.1).
+    if (m_layouts.size() >= KeyboardLayouts::MaxLayouts) {
+        return;
+    }
     for (const QVariant& value : std::as_const(m_layouts)) {
         const QVariantMap entry = value.toMap();
         if (entry[QStringLiteral("layout")] == layout && entry[QStringLiteral("variant")] == variant) {
@@ -1272,6 +1522,102 @@ void Preferences::moveKeyboardLayoutUp(int index)
         }
         emit keyboardChanged();
     }
+}
+
+void Preferences::setNumLock(const QString& mode)
+{
+    if (mode == m_numLock
+        || (mode != QLatin1String("off") && mode != QLatin1String("on") && mode != QLatin1String("last"))) {
+        return;
+    }
+    const QString previous = m_numLock;
+    m_numLock = mode;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("numlock") }), m_numLock, previous);
+    emit keyboardChanged();
+}
+
+void Preferences::setCapsLockOsd(bool on)
+{
+    if (on == m_capsLockOsd) {
+        return;
+    }
+    const bool previous = m_capsLockOsd;
+    m_capsLockOsd = on;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("caps-lock-osd") }), m_capsLockOsd, previous);
+    emit keyboardChanged();
+}
+
+void Preferences::setSuperOpensStart(bool on)
+{
+    if (on == m_superOpensStart) {
+        return;
+    }
+    const bool previous = m_superOpensStart;
+    m_superOpensStart = on;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("super-opens-start") }), m_superOpensStart, previous);
+    emit keyboardChanged();
+}
+
+QString Preferences::capsKey() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Caps);
+}
+
+QString Preferences::composeKey() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Compose);
+}
+
+QString Preferences::cornerKeys() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Corner);
+}
+
+QString Preferences::numpadKeys() const
+{
+    return vela::keyboardoptions::value(m_keyboardOptions, vela::keyboardoptions::Control::Numpad);
+}
+
+void Preferences::setCapsKey(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Caps), value);
+}
+
+void Preferences::setComposeKey(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Compose), value);
+}
+
+void Preferences::setCornerKeys(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Corner), value);
+}
+
+void Preferences::setNumpadKeys(const QString& value)
+{
+    setKeyChoice(int(vela::keyboardoptions::Control::Numpad), value);
+}
+
+// Writes the whole option list to vela.conf, the system's options it was
+// showing included, so the compositor then takes Settings' alone.
+void Preferences::setKeyChoice(int control, const QString& value)
+{
+    const auto which = vela::keyboardoptions::Control(control);
+    // On the list as it is now: another writer may have added an option
+    // since vela.conf was last loaded, and this write replaces the key.
+    const QStringList shown = m_keyboardOptions;
+    const QStringList current = currentKeyboardOptions();
+    const QStringList changed = vela::keyboardoptions::withValue(current, which, value);
+    if (value == vela::keyboardoptions::value(current, which) || changed == current) {
+        if (current != shown) {
+            m_keyboardOptions = current;
+            emit keyboardChanged();
+        }
+        return; // already so, or a value the control doesn't offer
+    }
+    m_keyboardOptions = changed;
+    keepOrRestore(saveCompositorKeys(QStringList { QStringLiteral("keyboard-options") }), m_keyboardOptions, shown);
+    emit keyboardChanged();
 }
 
 void Preferences::setRepeatDelay(int ms)

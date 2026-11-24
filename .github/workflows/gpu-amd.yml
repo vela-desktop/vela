@@ -4,6 +4,9 @@
 # Opt-in real-hardware GPU tests. Never run automatically on PRs or pushes.
 # The self-hosted runner must have the custom 'vela-amd' label.
 name: GPU CI - AMD (manual)
+# A full suite keeps the plain name; release.py status accepts only that
+# (docs/release-automation.md §6, R3).
+run-name: GPU CI - AMD (manual)${{ inputs.tests && format(' - only {0}', inputs.tests) || '' }}
 
 on:
   workflow_dispatch:
@@ -55,6 +58,7 @@ jobs:
           # Pillow packages install into /usr/bin/python3, while CMake might
           # auto-detect a different ~/.local/bin/python3.12.
           test -x /usr/bin/python3 || { echo '::error::Install the system python package'; exit 1; }
+          /usr/bin/python3 -c 'import sys; sys.exit(sys.version_info < (3, 13))' || { echo '::error::Python 3.13 or newer is required'; exit 1; }
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
           command -v ccache >/dev/null || { echo '::error::Install ccache on the GPU runner'; exit 1; }

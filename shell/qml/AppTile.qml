@@ -13,6 +13,22 @@ Item {
     required property string iconName
     required property string comment
     property bool current: false
+    property url launcherUrl
+    signal launcherDropped()
+
+    Drag.active: launcherDrag.active
+    Drag.dragType: Drag.Automatic
+    Drag.supportedActions: Qt.CopyAction
+    Drag.proposedAction: Qt.CopyAction
+    Drag.mimeData: ({ "text/uri-list": launcherUrl.toString() })
+    Drag.onDragFinished: action => { if (action === Qt.CopyAction) root.launcherDropped() }
+
+    DragHandler {
+        id: launcherDrag
+        enabled: root.launcherUrl.toString() !== ""
+        acceptedButtons: Qt.LeftButton
+        target: null
+    }
 
     signal activated()
     signal contextRequested(real x, real y) // right button, in the tile's coordinates

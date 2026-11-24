@@ -170,7 +170,8 @@ static void pointerButton(int code, int pressed)
 static int setupKeyboard(void)
 {
     struct xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    struct xkb_rule_names names = { .rules = "evdev", .model = "pc105", .layout = "us" };
+    const char *layout = getenv("VELA_TEST_XKB_LAYOUT");
+    struct xkb_rule_names names = { .rules = "evdev", .model = "pc105", .layout = layout ? layout : "us" };
     keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
     if (!keymap) {
         fprintf(stderr, "vela-input: can't create the keyboard layout\n");

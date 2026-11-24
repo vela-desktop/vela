@@ -18,11 +18,25 @@ class Config : public QObject {
     Q_PROPERTY(QString wallpaper READ wallpaper NOTIFY wallpaperChanged)
     // "center" or "left", like "Taskbar alignment".
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment NOTIFY taskbarChanged)
+    // The edge it sits on: "bottom", "top", "left" or "right" (§11 of
+    // docs/taskbar.md).
+    Q_PROPERTY(QString taskbarPosition READ taskbarPosition NOTIFY taskbarChanged)
     // "End task" in the taskbar buttons' menu.
     Q_PROPERTY(bool endTask READ endTask NOTIFY taskbarChanged)
     // The Task View button on the taskbar.
     Q_PROPERTY(bool taskView READ taskView NOTIFY taskbarChanged)
     // The taskbar on all outputs (like Windows) or only on the main one.
+    Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive NOTIFY taskbarChanged)
+    // The notification area's icons on the taskbar, in order, by their
+    // StatusNotifierItem key (Tray's `key`); the others are in the drawer
+    // (docs/taskbar.md §8).
+    Q_PROPERTY(QStringList taskbarTrayShown READ taskbarTrayShown NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarAttention READ taskbarAttention NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarBadges READ taskbarBadges NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarProgress READ taskbarProgress NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarNumberHints READ taskbarNumberHints NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(QString primaryOutput READ primaryOutput NOTIFY primaryOutputChanged)
     // Clickable right-hand taskbar corner that toggles the desktop.
@@ -58,8 +72,19 @@ public:
 
     QString wallpaper() const { return m_wallpaper; }
     QString taskbarAlignment() const { return m_taskbarAlignment; }
+    QString taskbarPosition() const { return m_taskbarPosition; }
     bool endTask() const { return m_endTask; }
     bool taskView() const { return m_taskView; }
+    QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
+    QString taskbarAppsOn() const { return m_taskbarAppsOn; }
+    QString taskbarClickActive() const { return m_taskbarClickActive; }
+    QStringList taskbarTrayShown() const { return m_taskbarTrayShown; }
+    // Saves taskbar/trayShown; taskbarChanged follows once written.
+    Q_INVOKABLE bool setTaskbarTrayShown(const QStringList& keys);
+    bool taskbarAttention() const { return m_taskbarAttention; }
+    bool taskbarBadges() const { return m_taskbarBadges; }
+    bool taskbarProgress() const { return m_taskbarProgress; }
+    bool taskbarNumberHints() const { return m_taskbarNumberHints; }
     bool taskbarAllScreens() const { return m_taskbarAllScreens; }
     QString primaryOutput() const { return m_primaryOutput; }
     bool showDesktopCorner() const { return m_showDesktopCorner; }
@@ -114,9 +139,18 @@ private:
     QString m_path;
     QString m_wallpaper;
     QString m_taskbarAlignment;
+    QString m_taskbarPosition = QStringLiteral("bottom");
     QString m_primaryOutput;
     bool m_endTask = true;
     bool m_taskView = true;
+    QString m_taskbarWindowsFrom = QStringLiteral("desktop");
+    QString m_taskbarAppsOn = QStringLiteral("all");
+    QString m_taskbarClickActive = QStringLiteral("previews");
+    QStringList m_taskbarTrayShown;
+    bool m_taskbarAttention = true;
+    bool m_taskbarBadges = true;
+    bool m_taskbarProgress = true;
+    bool m_taskbarNumberHints = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_clipboardHistory = false;

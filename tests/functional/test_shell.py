@@ -16,11 +16,13 @@ import shutil
 import socket
 import subprocess
 import time
+import sys
 import unittest
 
 from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, tool
 
 SHELL = os.path.join(BUILD, "shell", "vela-shell")
+HERE = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_CASES = (("normal", 1, "above"), ("90", 1, "above"), ("180", 1.25, "right"),
                 ("270", 1.5, "left"), ("flipped", 1, "below"), ("flipped-90", 1.25, "right"),
                 ("flipped-180", 1.5, "left"), ("flipped-270", 1, "below"))
@@ -39,6 +41,10 @@ class RealShell(unittest.TestCase):
     wallpaper = GRADIENT
     compositor_env = {} # more for the compositor (fake monitors, test_brightness.py)
     shell_env = {} # more for the shell (a stopped clock, test_personalization.py)
+    shell_settings = ""
+
+    def prepare_shell(self):
+        pass
 
     def setUp(self):
         # Nothing it would activate may reach the session these tests run in.
@@ -57,7 +63,12 @@ class RealShell(unittest.TestCase):
         os.makedirs(desktop)
         os.makedirs(self.vela.env["XDG_CONFIG_HOME"], exist_ok=True)
         # Config watches this directory for atomic preference updates.
-        os.makedirs(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela"), exist_ok=True)
+        shell_config_dir = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela")
+        os.makedirs(shell_config_dir, exist_ok=True)
+        if self.shell_settings:
+            with open(os.path.join(shell_config_dir, "vela-shell.conf"), "w") as file:
+                file.write(self.shell_settings)
+        self.prepare_shell()
         with open(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "user-dirs.dirs"), "w") as file:
             file.write(f'XDG_PICTURES_DIR="{pictures}"\nXDG_DESKTOP_DIR="{desktop}"\n')
         wallpaper = os.path.join(self.vela.directory, "wallpaper.svg")
@@ -65,7 +76,7 @@ class RealShell(unittest.TestCase):
             file.write(self.wallpaper)
         env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland",
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
-                   QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
+                   QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
                    VELA_DEBUG_SELECTION="1", **self.shell_env)
         # Check with this private HOME/config/bus, not the developer's theme
@@ -92,6 +103,7 @@ class RealShell(unittest.TestCase):
         self.assertTrue(self.mapped(state, "vela-taskbar"))
         self.assertTrue(self.mapped(state, "vela-wallpaper"))
         self.assertNotIn("layer_surface has never been configured", self.vela.log_text())
+        self.assertIn("vela-shell: Qt Quick renders with Vulkan", self.vela.log_text())
 
     def slow_animations(self):
         """animation-duration=300 (Settings' slider), so captures land inside
@@ -127,6 +139,453 @@ class RealShell(unittest.TestCase):
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TaskbarShortcuts(RealShell):
+    shell_settings = "[taskbar]\npinned=\nappsOn=window\n"
+
+    def test_taskbar_number_activates_and_cycles_app_windows(self):
+        first = self.vela.open_window(app_id="taskbar-shortcuts")
+        second = self.vela.open_window(app_id="taskbar-shortcuts")
+        self.assertEqual(self.vela.state()["focused"], second)
+        with self.input_session() as send:
+            send("keydown", "super", "key", "1")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                               what="the taskbar window chooser")
+            send("keyup", "super")
+            self.vela.wait_for(lambda s: s["focused"] == first,
+                               what="the chosen taskbar window")
+            send("keydown", "super", "key", "1")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                               what="the reopened taskbar window chooser")
+            send("key", "1", "keyup", "super")
+            self.vela.wait_for(lambda s: s["focused"] == first and not self.mapped(s, "vela-taskbar-preview"),
+                               what="the next taskbar result")
+
+    def test_taskbar_cycling_keeps_the_chosen_window_when_another_closes(self):
+        first = self.vela.open_window(app_id="taskbar-cycle-close")
+        second = self.vela.open_window(app_id="taskbar-cycle-close")
+        third = self.vela.open_window(app_id="taskbar-cycle-close")
+        self.vela.wait_for(lambda s: s["focused"] == third, what="the last window in front")
+        with self.input_session() as send:
+            # Cycling from the one in front: the first, then the second.
+            send("keydown", "super", "key", "1")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                               what="the taskbar window chooser")
+            send("key", "1")
+            time.sleep(0.3)
+            # The first closes before Super is let go: the choice stays on
+            # the second, not on the card that slid into its place.
+            self.vela.command(f"window {first} close")
+            self.vela.wait_for(lambda s: not s.has(first),
+                               what="the first window closed")
+            time.sleep(0.5)
+            send("keyup", "super")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar-preview"),
+                               what="the chooser closed")
+        state = self.vela.wait_for(lambda s: s["focused"] in (second, third), what="a window chosen")
+        self.assertEqual(state["focused"], second, {"first": first, "second": second, "third": third})
+
+    def test_taskbar_number_toggles_a_single_window(self):
+        window = self.vela.open_window(app_id="taskbar-toggle")
+        self.vela.wait_for(lambda s: s["focused"] == window, what="the app in front")
+        # In front with one window: a press minimizes it, the next brings it
+        # back, as clicking its button does.
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: s.window(window)["minimized"], what="the app minimized")
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: not s.window(window)["minimized"] and s["focused"] == window,
+                           what="the app back in front")
+
+    def test_taskbar_number_uses_the_focused_windows_display(self):
+        first = self.vela.open_window(app_id="taskbar-first-display")
+        second = self.vela.open_window(app_id="taskbar-second-display")
+        self.vela.command("test-output add 1280x800")
+        state = self.vela.wait_for(
+            lambda s: sum(layer["namespace"] == "vela-taskbar" and layer["mapped"] for layer in s["layers"]) == 2,
+            what="both taskbars mapped")
+        extra = next(output for output in state["outputs"] if output["name"] == "HEADLESS-2")
+        window = state.window(second)
+        x, y = window["x"] + 50, window["y"] + 50
+        tx, ty = extra["x"] + extra["w"] // 2, extra["y"] + 250
+        self.vela.input("move", x, y, "keydown", "super", "down", "sleep", "50",
+                        "move", tx, ty, "sleep", "150", "up", "keyup", "super")
+        self.vela.wait_for(lambda s: s.window(second)["output"] == "HEADLESS-2",
+                           what="the second app moved to the second display")
+        # A third app focused on the second display: Super+1 is that
+        # display's first button, the second app, not the first display's.
+        third = self.vela.open_window(app_id="taskbar-third-display")
+        self.vela.wait_for(lambda s: s["focused"] == third and s.window(third)["output"] == "HEADLESS-2",
+                           what="the third app focused on the second display")
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: s["focused"] == second,
+                           what="the second display's first app activated")
+        self.vela.command(f"window {first} activate")
+        self.vela.wait_for(lambda s: s["focused"] == first, what="the first display focused")
+        self.shell_command("taskbar-app 1 activate HEADLESS-2")
+        self.vela.wait_for(lambda s: s["focused"] == second,
+                           what="the only app on the second taskbar activated")
+
+    def test_taskbar_number_falls_back_to_the_only_shown_window(self):
+        first = self.vela.open_window(app_id="taskbar-desktops")
+        self.vela.command("workspace new switch")
+        second = self.vela.open_window(app_id="taskbar-desktops")
+        # Another app in front: the first button has two windows, one of them
+        # on this desktop, which Super+1 brings back without a chooser.
+        other = self.vela.open_window(app_id="taskbar-desktops-other")
+        self.vela.wait_for(lambda s: s["focused"] == other, what="the other app focused")
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: s["focused"] == second, what="the window on this desktop activated")
+        for _ in range(5):
+            time.sleep(0.1)
+            self.assertFalse(self.mapped(self.vela.state(), "vela-taskbar-preview"))
+        self.assertNotEqual(first, second)
+
+class TaskbarAllDesktops(RealShell):
+    shell_settings = "[taskbar]\npinned=\nwindowsFrom=all\n"
+
+    def test_taskbar_number_reaches_a_window_on_another_desktop(self):
+        first = self.vela.open_window(app_id="taskbar-all-first")
+        self.vela.command("workspace new switch")
+        self.vela.open_window(app_id="taskbar-all-second")
+        # The first app's button is still the first one: Super+1 goes back to
+        # its desktop.
+        self.vela.keys("super+1")
+        self.vela.wait_for(lambda s: s["focused"] == first and s["workspace"] == 0,
+                           what="the window on the other desktop activated")
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TrayDrawer(RealShell):
+    shell_settings = "[taskbar]\npinned=\ntrayShown=vela-fake\n"
+
+    def fake_item(self):
+        item = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_tray_item.py"), "vela-fake", "ff00ff"],
+                                env=dict(self.vela.client_env, DBUS_SESSION_BUS_ADDRESS=self.bus.address),
+                                stdout=subprocess.PIPE, stderr=self.vela.log, text=True)
+        self.addCleanup(item.wait)
+        self.addCleanup(item.kill)
+        self.assertEqual(item.stdout.readline().strip(), "ready")
+
+    def magenta(self, region):
+        """The center of the fake icon's pixels in (x0, y0, x1, y1), or None."""
+        image = self.vela.pixels()
+        x0, y0, x1, y1 = region
+        found = [(x, y) for y in range(y0, y1) for x in range(x0, x1, 2)
+                 if image.at(x, y) == (255, 0, 255)]
+        if not found:
+            return None
+        return (sum(x for x, _ in found) // len(found), sum(y for _, y in found) // len(found))
+
+    def wait_magenta(self, region, what):
+        """The icon's center once it stays put: the bar settles its layout
+        (the tray, the clock) after the icon appears."""
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        last = None
+        while time.monotonic() < deadline:
+            found = self.magenta(region)
+            if found and found == last:
+                return found
+            last = found
+            time.sleep(0.25)
+        self.fail(f"timed out waiting for {what}")
+
+    def shown_keys(self):
+        path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(path) as file:
+            line = next((line for line in file if line.startswith("trayShown=")), "trayShown=")
+        return [key.strip() for key in line.strip()[len("trayShown="):].split(",") if key.strip()]
+
+    # The bar's region on the 1920x1080 output, the drawer's beside it, and
+    # where "off the bar" is: overridden for a bar on another edge.
+    bar_region = (0, 1080 - 48, 1920, 1080)
+    drawer_region = (0, 1080 - 48 - 300, 1920, 1080 - 48)
+    away = (0, -120)
+    into_bar = (0, 20)
+
+    def test_an_icon_dragged_into_the_drawer_and_back(self):
+        self.fake_item()
+        x, y = self.wait_magenta(self.bar_region, "the chosen icon on the taskbar")
+        # One virtual keyboard for the whole scene: a new one would take the
+        # keyboard from the drawer, which then closes.
+        with self.input_session() as send:
+            # Off the taskbar, towards the screen: into the drawer.
+            ax, ay = self.away
+            send("move", x, y, "sleep", "100", "down", "move", x + ax // 6, y + ay // 6, "sleep", "50",
+                 "move", x + ax, y + ay, "sleep", "100", "up")
+            self.vela.wait_for(lambda s: "vela-fake" not in self.shown_keys(), what="the icon saved in the drawer")
+            self.vela.wait_for(lambda s: self.magenta(self.bar_region) is None, what="the icon off the taskbar")
+            # "^" took its place; the drawer opens beside it, with the icon.
+            send("move", x, y, "sleep", "100", "click")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-tray-overflow"), what="the drawer")
+            dx, dy = self.wait_magenta(self.drawer_region, "the icon in the drawer")
+            # Back onto the taskbar: out of the drawer.
+            bx, by = self.into_bar
+            send("move", dx, dy, "sleep", "100", "down", "move", dx + bx, dy + by, "sleep", "50", "move", x, y,
+                 "sleep", "100", "up")
+            self.vela.wait_for(lambda s: self.shown_keys() == ["vela-fake"], what="the icon saved on the taskbar")
+            self.wait_magenta(self.bar_region, "the icon back on the taskbar")
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TrayDrawerOnTheLeft(TrayDrawer):
+    """The same with the taskbar on the left (docs/taskbar.md §11): a column
+    56 wide, the drawer to its right."""
+    shell_settings = "[taskbar]\npinned=\ntrayShown=vela-fake\nposition=left\n"
+    bar_region = (0, 0, 56, 1080)
+    drawer_region = (56, 0, 400, 1080)
+    away = (120, 0)
+    into_bar = (-20, 0)
+
+    def test_the_bar_reserves_its_edge(self):
+        window = self.vela.open_window(app_id="taskbar-left")
+        self.vela.command(f"window {window} maximize")
+        self.vela.wait_for(lambda s: (s.window(window)["x"], s.window(window)["w"]) == (56, 1920 - 56),
+                           what="a maximized window right of the bar")
+        state = self.vela.state()
+        bar = self.layer(state, "vela-taskbar")
+        self.assertEqual((bar["x"], bar["y"], bar["w"], bar["h"]), (0, 0, 56, 1080))
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class TaskbarEdges(RealShell):
+    """The bar moved to every edge and back to the bottom is laid out as at
+    first (docs/taskbar.md §11): the clock's lines still end on the right."""
+    shell_settings = "[taskbar]\npinned=\nshowDate=true\n"
+
+    def move_to(self, position):
+        path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+        with open(path) as file:
+            lines = [line for line in file.read().splitlines() if not line.startswith("position=")]
+        lines.insert(lines.index("[taskbar]") + 1, f"position={position}")
+        with open(path + ".new", "w") as file:
+            file.write("\n".join(lines) + "\n")
+        os.replace(path + ".new", path)
+        vertical = position in ("left", "right")
+        self.vela.wait_for(lambda s: (self.layer(s, "vela-taskbar") or {}).get("w") == (56 if vertical else 1920),
+                           what=f"the taskbar on the {position}")
+        time.sleep(0.5)
+
+    def line_ends(self):
+        """Where the time's and the date's text ends, in the clock's corner."""
+        image = self.vela.pixels()
+        ends = []
+        for top, bottom in ((1080 - 40, 1080 - 26), (1080 - 22, 1080 - 6)):
+            xs = [x for y in range(top, bottom) for x in range(1700, 1915)
+                  if sum(image.at(x, y)) > 600]
+            ends.append(max(xs) if xs else None)
+        return ends
+
+    def test_back_at_the_bottom_after_every_edge(self):
+        self.vela.wait_for(lambda s: self.layer(s, "vela-taskbar"), what="the taskbar")
+        time.sleep(1)
+        time_end, date_end = self.line_ends()
+        self.assertIsNotNone(time_end)
+        self.assertLessEqual(abs(time_end - date_end), 2, "the time ends with the date at first")
+        for position in ("left", "right", "top", "bottom"):
+            self.move_to(position)
+        time_end, date_end = self.line_ends()
+        self.assertLessEqual(abs(time_end - date_end), 2, "the time still ends with the date")
+
+
+class TaskbarDrag(RealShell):
+    shell_settings = "[taskbar]\npinned=\nalignment=left\n"
+
+    def prepare_shell(self):
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications)
+        with open(os.path.join(applications, "vela-test-taskbar.desktop"), "w") as file:
+            file.write("[Desktop Entry]\nType=Application\nName=TaskbarDragFixture\n"
+                       f"Exec={tool('vela-pattern')} --app-id vela-test-taskbar 400 300\n"
+                       "Icon=application-x-executable\n")
+
+    def test_taskbar_drag_raises_a_window_and_rejects_the_file_drop(self):
+        source = os.path.join(self.vela.directory, "Desktop", "drag-source.txt")
+        with open(source, "w") as file:
+            file.write("Keep this file on the desktop.")
+        target = self.vela.open_window(app_id="taskbar-drop-target")
+        other = self.vela.open_window(app_id="taskbar-drop-other")
+        self.assertEqual(self.vela.state().windows[0]["id"], other)
+        self.vela.wait_still(target)
+        # The recycle bin is the first desktop cell; the file is the second.
+        taskbar = self.layer(self.vela.state(), "vela-taskbar")
+        mark = len(self.vela.log_text())
+        with self.input_session() as send:
+            send("move", 45, 127, "down", "sleep", "100", "move", 74, 134, "sleep", "200",
+                 "move", taskbar["x"] + 120, taskbar["y"] + 24)
+            # The Wayland drag keeps the keyboard grab. Test stacking while
+            # the button is held, so releasing it cannot explain the raise.
+            self.vela.wait_for(lambda s: s.windows[0]["id"] == target,
+                               what="the dragged file raises its hovered app")
+            send("up")
+        self.vela.wait_for(lambda _: re.search(r"wl_data_source#\d+\.destroy", self.vela.log_text()[mark:]),
+                           read_state=False, what="the source drag ended")
+        self.assertNotRegex(self.vela.log_text()[mark:], r"wl_data_offer#\d+\.finish")
+        self.assertTrue(os.path.isfile(source))
+
+    def test_taskbar_drop_on_a_preview_card_raises_nothing(self):
+        source = os.path.join(self.vela.directory, "Desktop", "drag-card.txt")
+        with open(source, "w") as file:
+            file.write("Dropped on a preview card.")
+        first = self.vela.open_window(app_id="taskbar-drop-cards")
+        second = self.vela.open_window(app_id="taskbar-drop-cards")
+        other = self.vela.open_window(app_id="taskbar-drop-cards-other")
+        self.assertEqual(self.vela.state().windows[0]["id"], other)
+        self.vela.wait_still(second)
+        taskbar = self.layer(self.vela.state(), "vela-taskbar")
+        with self.input_session() as send:
+            # A second move on the button: the drag may start after the first.
+            send("move", 45, 127, "down", "sleep", "100", "move", 74, 134, "sleep", "200",
+                 "move", taskbar["x"] + 120, taskbar["y"] + 24, "sleep", "200",
+                 "move", taskbar["x"] + 122, taskbar["y"] + 24)
+            state = self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-preview"),
+                                       what="the previews of the hovered app")
+            preview = self.layer(state, "vela-taskbar-preview")
+            # On a card, let go before its raise (600 ms): the drop is
+            # refused, the previews close, and no window comes up after.
+            send("move", preview["x"] + preview["w"] // 2 - 110, preview["y"] + preview["h"] // 2, "sleep", "200", "up")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar-preview"), what="the previews closed")
+        for _ in range(10):
+            time.sleep(0.1)
+            self.assertEqual(self.vela.state().windows[0]["id"], other)
+        self.assertTrue(os.path.isfile(source))
+        self.assertNotEqual(first, second)
+
+    def test_taskbar_drag_pins_a_start_tile(self):
+        with self.input_session() as send:
+            send("key", "super")
+            state = self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-start-menu",
+                                       what="focused Start menu")
+            start = self.layer(state, "vela-start-menu")
+            taskbar = self.layer(state, "vela-taskbar")
+            x, y = start["x"] + 86, start["y"] + 165
+            send("type", "TaskbarDragFixture", "sleep", "400",
+                 "move", x, y, "down", "sleep", "100",
+                 "move", x + 30, y + 10, "sleep", "200",
+                 "move", taskbar["x"] + 160, taskbar["y"] + 24, "sleep", "300", "up")
+            path = os.path.join(self.vela.env["XDG_CONFIG_HOME"], "Vela", "vela-shell.conf")
+
+            def pinned(_):
+                with open(path) as file:
+                    return "pinned=vela-test-taskbar.desktop" in file.read()
+
+            self.vela.wait_for(pinned, read_state=False, what="Start tile pinned to the taskbar")
+            send("key", "super+1")
+            self.vela.wait_for(lambda s: any(w["app"] == "vela-test-taskbar" for w in s.windows),
+                               what="the pinned launcher started through Super+1")
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class CapsLockDisplay(RealShell):
+    """The Caps Lock display (docs/keyboard.md §8.3): each change of Caps
+    Lock by a key shows it for a moment, other keys don't, and
+    caps-lock-osd=no turns it off."""
+
+    def caps_shown(self, state):
+        return self.mapped(state, "vela-caps-lock-osd")
+
+    def test_each_toggle_shows_it_until_turned_off(self):
+        with self.input_session() as send:
+            for what in ("on", "off"):
+                send("key", "Caps_Lock")
+                self.vela.wait_for(self.caps_shown, what=f"the display for Caps Lock {what}")
+                self.vela.wait_for(lambda s: not self.caps_shown(s), timeout=10,
+                                   what=f"the display for Caps Lock {what} gone by itself")
+            send("key", "a", "key", "shift+b")
+            time.sleep(1.0 * TIME_SCALE)
+            self.assertFalse(self.caps_shown(self.vela.state()), "other keys show nothing")
+            os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+            # command() doesn't wait, and the key comes on another connection:
+            # wait for a change "reload-config" applies after the keyboard's
+            # (vela_a11y_load), harmless headless, before pressing it.
+            with open(self.vela.config_path(), "a") as conf:
+                conf.write("caps-lock-osd=no\nnight-light-nvidia-fix=yes\n")
+            self.vela.command("reload-config")
+            self.vela.wait_for(lambda _: self.vela.query("accessibility")["nightLightNvidiaFix"],
+                               what="vela.conf reloaded", read_state=False)
+            send("key", "Caps_Lock")
+            time.sleep(1.0 * TIME_SCALE)
+            self.assertFalse(self.caps_shown(self.vela.state()), "caps-lock-osd=no")
+
+
+class CustomShortcuts(RealShell):
+    """The user's custom shortcuts (docs/keyboard.md §9.5): the compositor
+    matches the combination from shortcuts.conf and sends only that to the
+    shell, which runs the line: a command, an app, a link."""
+
+    def prepare_shell(self):
+        self.marks = os.path.join(self.vela.directory, "marks")
+        os.makedirs(self.marks)
+        # The default app for links: a fake xdg-open that notes the link.
+        bin_dir = os.path.join(self.vela.directory, "bin")
+        os.makedirs(bin_dir)
+        opener = os.path.join(bin_dir, "xdg-open")
+        with open(opener, "w") as file:
+            file.write(f'#!/bin/sh\nprintf "%s" "$QSG_RHI_BACKEND/$QT_QUICK_BACKEND" > {self.marks}/backend\n'
+                       f'printf "%s" "$1" > {self.marks}/opened\n')
+        os.chmod(opener, 0o700)
+        # The shell requires Vulkan even when launched apps request a different backend.
+        self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                          "QSG_RHI_BACKEND": "opengl", "QT_QUICK_BACKEND": "software"}
+        applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
+        os.makedirs(applications, exist_ok=True)
+        with open(os.path.join(applications, "vela-test-shortcut.desktop"), "w") as file:
+            file.write(f"[Desktop Entry]\nType=Application\nName=Shortcut probe\nExec=touch {self.marks}/app\n")
+        os.makedirs(os.path.dirname(self.vela.config_path()), exist_ok=True)
+        with open(self.vela.config_path("shortcuts.conf"), "w") as file:
+            file.write("# made by the test\n"
+                       f"Ctrl+Alt+AE01=command touch {self.marks}/command\n"
+                       "Shift+Super+e=app vela-test-shortcut.desktop\n"
+                       "Super+FK05=open https://example.org/vela\n"
+                       "Ctrl+Alt+AE02=command\n")  # no target: skipped
+        self.vela.command("reload-config")
+
+    def wait_for_mark(self, name, what):
+        path = os.path.join(self.marks, name)
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        while not os.path.exists(path):
+            self.assertLess(time.monotonic(), deadline, f"{what}: {self.vela.log_text()[-3000:]}")
+            time.sleep(0.05)
+        return path
+
+    def wait_for_text(self, name, text, what):
+        """Waits until the mark holds `text`: the fake xdg-open creates it
+        before writing."""
+        path = self.wait_for_mark(name, what)
+        deadline = time.monotonic() + 10 * TIME_SCALE
+        while True:
+            with open(path) as file:
+                if file.read() == text:
+                    return
+            self.assertLess(time.monotonic(), deadline, f"{what}: {self.vela.log_text()[-3000:]}")
+            time.sleep(0.05)
+
+    def test_each_kind_runs(self):
+        with self.input_session() as send:
+            send("key", "ctrl+alt+1")
+            self.wait_for_mark("command", "the command")
+            # Win+Shift+E is free since the modifiers are exact.
+            send("key", "super+shift+e")
+            self.wait_for_mark("app", "the app")
+            send("key", "super+F5")
+            self.wait_for_text("opened", "https://example.org/vela", "the link")
+            # A line without a target is skipped: the key reaches nobody's
+            # shortcut, and nothing runs.
+            send("key", "ctrl+alt+2")
+            time.sleep(0.5 * TIME_SCALE)
+        self.wait_for_text("backend", "opengl/software", "the launched process kept its Qt settings")
+        self.check_desktop()
+        self.assertEqual(sorted(os.listdir(self.marks)), ["app", "backend", "command", "opened"])
+        self.assertIn("Custom shortcuts: line 5", self.vela.log_text())
+
+    def test_vela_keeps_its_own(self):
+        """A hand-written line with one of Vela's combinations: Vela's wins."""
+        with open(self.vela.config_path("shortcuts.conf"), "a") as file:
+            file.write(f"Super+d=command touch {self.marks}/stolen\n")
+        self.vela.command("reload-config")
+        with self.input_session() as send:
+            send("key", "super+d")
+            time.sleep(1.0 * TIME_SCALE)
+        self.assertFalse(os.path.exists(os.path.join(self.marks, "stolen")))
+
+
 class QtShell(RealShell):
     def test_snap_assist_closes_when_origin_closes(self):
         self.vela.open_window(401, 301)
@@ -567,7 +1026,7 @@ class QtShell(RealShell):
                          [(notification_id, 2) for notification_id in ids], signals)
         self.assertEqual(self.notification_action_events(signals), [(ids[0], "default")], signals)
 
-    def test_selected_primary_controls_run_dialog_and_notification_remap(self):
+    def test_selected_primary_controls_keyboard_panel_and_notification_remap(self):
         """The real Qt layers follow the selected output across off/on."""
         if not shutil.which("gdbus"):
             self.skipTest("gdbus required for desktop notification")
@@ -580,13 +1039,13 @@ class QtShell(RealShell):
         time.sleep(0.5)
 
         with self.input_session() as send:
-            send("key", "super+r")
+            send("key", "super+v")
             self.vela.wait_for(
-                lambda s: (layer := self.layer(s, "vela-run")) and layer["output"] == "HEADLESS-2"
-                          and s["focusedLayer"] == "vela-run",
-                timeout=8, what="Run dialog focused on explicitly selected output")
+                lambda s: (layer := self.layer(s, "vela-clipboard")) and layer["output"] == "HEADLESS-2"
+                          and s["focusedLayer"] == "vela-clipboard",
+                timeout=8, what="clipboard focused on explicitly selected output")
             send("key", "Escape")
-            self.vela.wait_for(lambda s: not self.mapped(s, "vela-run"), what="Run dialog closed")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="clipboard closed")
 
         self.send_notification("Hotplug notification", body="Must remain actionable after remapping")
         self.vela.wait_for(
@@ -1223,7 +1682,7 @@ class QtShell(RealShell):
             self.assertLess(configure.start(), ack.start())
             self.assertLess(ack.start(), attach.start())
             self.assertRegex(log, rf'wl_surface{surface}\.destroy\(\)',
-                          "hidden Start menu retained its native surface and EGL buffer queue")
+                          "hidden Start menu retained its native surface and buffer queue")
             # Blur must bind to the newly created surface on every reopening,
             # rather than retain hooks to a destroyed Qt platform window.
             effect = re.search(r'get_background_effect\(new id ext_background_effect_surface_v1'
@@ -1233,7 +1692,7 @@ class QtShell(RealShell):
                                  r'\.set_blur_region\(wl_region')
 
     def test_other_panels_can_reopen_after_native_surface_release(self):
-        for key, namespace in [("super+r", "vela-run"), ("super+a", "vela-quick-settings"),
+        for key, namespace in [("super+a", "vela-quick-settings"),
                                ("super+n", "vela-notification-center"), ("super+v", "vela-clipboard")]:
             with self.subTest(panel=namespace):
                 for _ in range(3):
@@ -1363,10 +1822,11 @@ class QtShell(RealShell):
         an animation (`normal`, 600 ms at 300%), menus and Task View vanish
         at once."""
         self.slow_animations()
-        cases = (("Run", lambda: self.vela.input("key", "super+r"), "vela-run", True),
+        # A panel opened from the keyboard first: a new virtual keyboard's
+        # first key may be lost, and Properties is closed with one.
+        cases = (("the clipboard", lambda: self.vela.input("key", "super+v"), "vela-clipboard", True),
                  ("Properties", lambda: self.shell_command(f'properties {json.dumps([self.vela.directory])}'),
                   "vela-properties", True),
-                 ("the clipboard", lambda: self.vela.input("key", "super+v"), "vela-clipboard", True),
                  ("the desktop menu", lambda: self.vela.input("move", 900, 500, "sleep", "300", "click", "right"),
                   "vela-context-menu", False),
                  ("Task View", lambda: self.vela.input("key", "super+Tab"), "vela-task-view", False))
@@ -1375,8 +1835,10 @@ class QtShell(RealShell):
             show()
             self.vela.wait_for(lambda s: self.mapped(s, namespace), what=f"{name} open")
             time.sleep(1.5)
-            start = time.monotonic()
+            # From the moment Escape was sent: vela-input's own startup
+            # mustn't count as the panel's exit animation.
             self.vela.input("key", "Escape")
+            start = time.monotonic()
             self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{name} closed")
             took[name] = time.monotonic() - start
             time.sleep(0.5)

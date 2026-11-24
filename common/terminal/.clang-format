@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# C code: as the project root, with "type *name" (docs/c-core.md).
+BasedOnStyle: InheritParentConfig
+PointerAlignment: Right

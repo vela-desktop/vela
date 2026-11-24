@@ -77,7 +77,7 @@ install(FILES vela-lock.pam DESTINATION /etc/pam.d RENAME vela-lock)
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-lock SOURCE_TARGETS vela-lock
-    TS_FILES i18n/vela-lock_it.ts
+    TS_FILES i18n/vela-lock_it.ts i18n/vela-lock_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-lock_lupdate
     LRELEASE_TARGET vela-lock_lrelease

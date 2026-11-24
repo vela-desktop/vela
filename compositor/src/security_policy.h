@@ -36,6 +36,23 @@ enum vela_sandbox {
 };
 enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid);
 
+// System credential prompts (KWallet and ksecretd, KDE's polkit agent,
+// pinentry, GNOME's keyring prompt) stay above full-screen windows and take
+// the keyboard back. A window gets that place only if both hold:
+//
+// - its name (Wayland app id or X11 class) is one of theirs, compared
+//   without case: what the window claims to be;
+bool vela_system_prompt_name(const char *app_id);
+// - its process runs one of those programs, installed under `trusted_dir`
+//   (/usr outside the tests): what it is. `exe` is the target of
+//   /proc/<pid>/exe, " (deleted)" included after a package upgrade.
+bool vela_system_prompt_program(const char *exe, const char *trusted_dir);
+
+// The executable of the process at the other end of a Unix socket, with the
+// peer's identity tied to the connection as in vela_peer_sandbox(). False
+// when it can't be established (no pidfd, gone, outside our namespace).
+bool vela_peer_program(int socket_fd, pid_t pid, char *exe, size_t size);
+
 // A shared-memory buffer: `stride` bytes per row, `bpp` bytes per pixel. The
 // rows must hold their pixels and the last byte read must be addressable.
 bool vela_shm_layout_valid(int width, int height, size_t stride, uint32_t bpp);

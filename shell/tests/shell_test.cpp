@@ -4,8 +4,9 @@
 // The shell's own QML pieces under Qt Quick Test (the tst_*.qml files next
 // to this one), as Vela.Controls' runner does, plus what the shell's
 // windows find in their context: a fake Vela.Bluetooth
-// (common/bluetooth/tests/FakeBluetooth.qml), `Shell` (FakeShell.qml) and
-// `BluetoothPrompts` (FakeBluetoothPrompts.qml). A private vela.conf sets
+// (common/bluetooth/tests/FakeBluetooth.qml), `Shell` (FakeShell.qml),
+// `BluetoothPrompts` (FakeBluetoothPrompts.qml) and `Sound`
+// (FakeSound.qml). A private vela.conf sets
 // the durations three times Vela's; with VELA_TEST_ANIMATION_EFFECTS=no it
 // turns animation effects off (two ctest entries).
 
@@ -39,7 +40,11 @@ public slots:
         // type (`import Vela.Shell.Test as ShellTest`, ShellTest.Styles).
         qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/../qml/Styles.qml")),
             "Vela.Shell.Test", 1, 0, "Styles");
-        for (const auto& [name, file] : { std::pair { "Shell", "FakeShell.qml" }, std::pair { "BluetoothPrompts", "FakeBluetoothPrompts.qml" } }) {
+        for (const auto& [name, file] : {
+                 std::pair { "Shell", "FakeShell.qml" },
+                 std::pair { "BluetoothPrompts", "FakeBluetoothPrompts.qml" },
+                 std::pair { "Sound", "FakeSound.qml" },
+             }) {
             QQmlComponent component(engine, QUrl::fromLocalFile(QStringLiteral(QUICK_TEST_SOURCE_DIR "/") + QLatin1String(file)));
             QObject* fake = component.create();
             if (!fake) {

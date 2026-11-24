@@ -3,6 +3,8 @@
 
 #include "config.h"
 
+#include "../../common/taskbarsettings.h"
+
 #include "batterysettings.h"
 #include "clockformat.h"
 #include "defaults.h"
@@ -82,6 +84,30 @@ void Config::watchPicture()
     }
 }
 
+bool Config::setTaskbarTrayShown(const QStringList& keys)
+{
+    QStringList cleaned = keys;
+    for (QString& key : cleaned) {
+        key = key.trimmed();
+    }
+    cleaned.removeAll(QString());
+    cleaned.removeDuplicates();
+    if (cleaned == m_taskbarTrayShown) {
+        return true;
+    }
+    QSettings settings;
+    settings.setValue(QStringLiteral("taskbar/trayShown"), cleaned);
+    settings.sync();
+    if (settings.status() != QSettings::NoError) {
+        return false;
+    }
+    // At once, not after the file watcher's debounce: a dragged icon lands
+    // where it was dropped.
+    m_taskbarTrayShown = cleaned;
+    emit taskbarChanged();
+    return true;
+}
+
 void Config::reload()
 {
     QSettings settings;
@@ -103,17 +129,52 @@ void Config::reload()
     const QString alignment = settings.value(QStringLiteral("taskbar/alignment")).toString() == QLatin1String("left")
         ? QStringLiteral("left")
         : QStringLiteral("center");
+    const QString position = vela::taskbar::position(settings);
     const bool endTask = settings.value(QStringLiteral("taskbar/endTask"), true).toBool();
     const bool taskView = settings.value(QStringLiteral("taskbar/taskView"), true).toBool();
     const bool allScreens = settings.value(QStringLiteral("taskbar/allScreens"), true).toBool();
     const bool showDesktopCorner = settings.value(QStringLiteral("taskbar/showDesktopCorner"), true).toBool();
-    if (alignment != m_taskbarAlignment || endTask != m_endTask || taskView != m_taskView
-        || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner) {
+    const QString taskbarWindowsFrom =
+        settings.value(QStringLiteral("taskbar/windowsFrom")).toString() == QLatin1String("all")
+        ? QStringLiteral("all")
+        : QStringLiteral("desktop");
+    const QString taskbarAppsOn = settings.value(QStringLiteral("taskbar/appsOn")).toString() == QLatin1String("window")
+        ? QStringLiteral("window")
+        : QStringLiteral("all");
+    const QString taskbarClickActive =
+        settings.value(QStringLiteral("taskbar/clickActive")).toString() == QLatin1String("next")
+        ? QStringLiteral("next")
+        : QStringLiteral("previews");
+    QStringList taskbarTrayShown = settings.value(QStringLiteral("taskbar/trayShown")).toStringList();
+    for (QString& key : taskbarTrayShown) {
+        key = key.trimmed();
+    }
+    taskbarTrayShown.removeAll(QString());
+    taskbarTrayShown.removeDuplicates();
+    const bool taskbarAttention = vela::taskbar::enabled(settings, QStringLiteral("taskbar/attention"));
+    const bool taskbarBadges = vela::taskbar::enabled(settings, QStringLiteral("taskbar/badges"));
+    const bool taskbarProgress = vela::taskbar::enabled(settings, QStringLiteral("taskbar/progress"));
+    const bool taskbarNumberHints = vela::taskbar::enabled(settings, QStringLiteral("taskbar/numberHints"));
+    if (alignment != m_taskbarAlignment || position != m_taskbarPosition || endTask != m_endTask
+        || taskView != m_taskView || allScreens != m_taskbarAllScreens || showDesktopCorner != m_showDesktopCorner
+        || taskbarWindowsFrom != m_taskbarWindowsFrom || taskbarAppsOn != m_taskbarAppsOn
+        || taskbarClickActive != m_taskbarClickActive || taskbarTrayShown != m_taskbarTrayShown
+        || taskbarAttention != m_taskbarAttention || taskbarBadges != m_taskbarBadges
+        || taskbarProgress != m_taskbarProgress || taskbarNumberHints != m_taskbarNumberHints) {
         m_taskbarAlignment = alignment;
+        m_taskbarPosition = position;
         m_endTask = endTask;
         m_taskView = taskView;
         m_taskbarAllScreens = allScreens;
         m_showDesktopCorner = showDesktopCorner;
+        m_taskbarWindowsFrom = taskbarWindowsFrom;
+        m_taskbarAppsOn = taskbarAppsOn;
+        m_taskbarClickActive = taskbarClickActive;
+        m_taskbarTrayShown = taskbarTrayShown;
+        m_taskbarAttention = taskbarAttention;
+        m_taskbarBadges = taskbarBadges;
+        m_taskbarProgress = taskbarProgress;
+        m_taskbarNumberHints = taskbarNumberHints;
         emit taskbarChanged();
     }
 

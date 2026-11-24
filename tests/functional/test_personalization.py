@@ -175,8 +175,10 @@ class Personalization(ShellChoices):
     def test_start_icon(self):
         # Vela's sail, then a picture (red), the distribution's logo (green,
         # os-release's LOGO= found as a loose file), and the sail again.
-        red = lambda r, g, b: r > 200 and g < 40 and b < 40
-        green = lambda r, g, b: g > 200 and r < 40 and b < 40
+        def red(r, g, b):
+            return r > 200 and g < 40 and b < 40
+        def green(r, g, b):
+            return g > 200 and r < 40 and b < 40
         picture = os.path.join(self.vela.directory, "Pictures", "start.svg")
         with open(picture, "w") as file:
             file.write(square("#ff0000"))
@@ -203,8 +205,10 @@ class Personalization(ShellChoices):
     def test_start_picture_follows_its_file(self):
         # The picture chosen is edited or deleted, Settings writes nothing:
         # the button shows the new image, then the sail.
-        red = lambda r, g, b: r > 200 and g < 40 and b < 40
-        blue = lambda r, g, b: b > 200 and r < 40 and g < 40
+        def red(r, g, b):
+            return r > 200 and g < 40 and b < 40
+        def blue(r, g, b):
+            return b > 200 and r < 40 and g < 40
         picture = os.path.join(self.vela.directory, "Pictures", "start.svg")
         with open(picture, "w") as file:
             file.write(square("#ff0000"))
@@ -265,12 +269,20 @@ class Personalization(ShellChoices):
         # Between the search box (its caret blinks) and the footer.
         box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
         shown = self.settled_region(box)
+
+        # Edge pixels can round differently when Qt redraws the same layout.
+        def matches_pinned(rows):
+            for actual, reference in zip(rows, shown, strict=True):
+                if actual != reference and any(abs(a - b) > 2 for a, b in zip(actual, reference, strict=True)):
+                    return False
+            return True
+
         self.write_shell_conf("[start]\nshowPinned=false\n")
-        self.wait_region(box, lambda r: r != shown, "Start without its pinned apps")
+        self.wait_region(box, lambda r: not matches_pinned(r), "Start without its pinned apps")
         hidden = self.settled_region(box)
-        self.assertNotEqual(shown, hidden, "Start looks the same with its pinned apps hidden")
+        self.assertFalse(matches_pinned(hidden), "Start looks the same with its pinned apps hidden")
         self.write_shell_conf("[start]\nshowPinned=true\n")
-        self.wait_region(box, lambda r: r == shown, "the pinned apps back in Start")
+        self.wait_region(box, matches_pinned, "the pinned apps back in Start")
         self.close_start()
         self.check_desktop()
 

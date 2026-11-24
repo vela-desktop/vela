@@ -6,8 +6,9 @@ that says who is capturing what, and notifications held back meanwhile. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** design proposed; S1 to S4 done (§10); S5 (a real session
-> by hand) remains.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** a test by hand in a real session (S5 in §10).
 
 ## 1. Goals
 
@@ -286,4 +287,4 @@ and window), OBS through the portal, wf-recorder, a Spectacle screenshot.
 | S2 | Shell: `ScreenSharing`, the icon, its tooltip and menu; `test-shell`; unit and functional tests | done |
 | S3 | PipeWire: `screenConsumers`, `Audio::screenUsers`, portal entries named; audio tests | done |
 | S4 | Notifications: the automatic rule, its switch in Settings, the center's header, the bell, the menu's part; tests | done |
-| S5 | `docs/configuration.md`, translations, a real-session test by hand | to do |
+| S5 | `docs/configuration.md`, translations, a real-session test by hand | docs and translations done; the test by hand to do |

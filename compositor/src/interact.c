@@ -229,6 +229,7 @@ void vela_interact_motion(struct vela_server *server, uint32_t time_msec)
         // A focused window crossing onto a fullscreen output must stay visible
         // without forcing the game out of its protocol fullscreen state.
         vela_fullscreen_restack(server);
+        vela_view_update_taskbar_output(grabbed);
         vela_snap_update_zone(server);
         return;
     }
@@ -429,6 +430,7 @@ void vela_interact_button(struct vela_server *server, struct wlr_pointer_button_
     struct vela_input *input = server->input;
     bool pressed = event->state == WL_POINTER_BUTTON_STATE_PRESSED;
     input->super_tap = false;
+    vela_input_hide_super_hints(input);
     vela_lock_note_activity(server->lock);
     // Locked: the click gives the keyboard to the lock screen under the mouse
     // (with several outputs) and reaches only it.
@@ -725,6 +727,7 @@ static void finish_keyboard(struct vela_server *server, bool confirm)
         }
     }
     vela_snap_end_zone(server, false);
+    vela_view_update_taskbar_output(view);
     memset(&interaction->keyboard, 0, sizeof(interaction->keyboard));
     server->cursor_mode = VELA_CURSOR_PASSTHROUGH;
     server->grabbed = NULL;

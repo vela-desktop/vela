@@ -13,9 +13,13 @@
 #include <QDBusArgument>
 #include <QDBusReply>
 #include <QDBusVariant>
+#include <QScopeGuard>
+#include <QStandardPaths>
 
 #include <csignal>
 #include <sys/stat.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 // Counts the signals it is connected to.
 class SignalCounter : public QObject {
@@ -293,12 +297,14 @@ private Q_SLOTS:
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
     }
 
-    // None in PATH, or one that can't be run.
+    // None in PATH nor in desktop files, or one that can't be run.
     void withoutTerminal()
     {
         QDir().mkpath(fake(QStringLiteral("empty")));
         QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), QString() },
-            { QStringLiteral("PATH"), fake(QStringLiteral("empty")) }, { QStringLiteral("VELA_TERMINAL"), QString() } }));
+            { QStringLiteral("PATH"), fake(QStringLiteral("empty")) }, { QStringLiteral("VELA_TERMINAL"), QString() },
+            { QStringLiteral("XDG_DATA_HOME"), fake(QStringLiteral("empty")) },
+            { QStringLiteral("XDG_DATA_DIRS"), fake(QStringLiteral("empty")) } }));
         QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).errorName(),
             QStringLiteral("org.vela.Updates.Error.NoTerminal"));
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
@@ -307,6 +313,23 @@ private Q_SLOTS:
         QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).errorName(),
             QStringLiteral("org.vela.Updates.Error.NoTerminal"));
         QCOMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+    }
+
+    // Win+Enter and the updater both delegate terminal-specific arguments to XDG.
+    void installFindsTheTerminalOfWinEnter()
+    {
+        QDir().mkpath(fake(QStringLiteral("tools")));
+        QVERIFY(QFile::link(QStandardPaths::findExecutable(QStringLiteral("mv")), fake(QStringLiteral("tools/mv"))));
+        QVERIFY(QFile::link(fake(QStringLiteral("terminal-program")), fake(QStringLiteral("tools/xdg-terminal-exec"))));
+        QVERIFY(startDaemon({ { QStringLiteral("VELA_UPDATE_TERMINAL"), QString() },
+            { QStringLiteral("PATH"), fake(QStringLiteral("tools")) },
+            { QStringLiteral("VELA_TERMINAL"), QString() } }));
+        QCOMPARE(call(QStringLiteral("Install"), { QVariantMap {} }).type(), QDBusMessage::ReplyMessage);
+        QTRY_VERIFY(QFile::exists(fake(QStringLiteral("terminal"))));
+        const QStringList terminal =
+            QString::fromUtf8(read(fake(QStringLiteral("terminal")))).split(u'\n', Qt::SkipEmptyParts);
+        QCOMPARE(terminal.mid(0, 2), (QStringList { QStringLiteral("sh"), QStringLiteral("-c") }));
+        QCOMPARE(terminal.value(4), fake(QStringLiteral("vela-update")));
     }
 
     void installRunsInTheTerminal()
@@ -475,6 +498,53 @@ private Q_SLOTS:
         ::kill(pid_t(byHand.processId()), SIGKILL);
         byHand.waitForFinished();
         QVERIFY(QFile::exists(state(QStringLiteral("run.json"))));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
+        QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("cancelled"));
+    }
+
+    void runExitedBeforeReaping_data()
+    {
+        QTest::addColumn<bool>("failPidfdWatch");
+        QTest::newRow("pidfd") << false;
+#ifdef VELA_SD_EVENT_FAIL_PRELOAD
+        QTest::newRow("retry") << true;
+#endif
+    }
+
+    void runExitedBeforeReaping()
+    {
+        QFETCH(bool, failPidfdWatch);
+        QMap<QString, QString> environment;
+#ifdef VELA_SD_EVENT_FAIL_PRELOAD
+        if (failPidfdWatch) {
+            environment.insert(QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD));
+            environment.insert(QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), QStringLiteral("pidfd_io"));
+        }
+#else
+        Q_UNUSED(failPidfdWatch);
+#endif
+        QVERIFY(startDaemon(environment));
+        const pid_t child = fork();
+        if (child == 0) {
+            for (;;) {
+                pause();
+            }
+        }
+        QVERIFY(child > 0);
+        const auto reap = qScopeGuard([child] {
+            kill(child, SIGKILL);
+            waitpid(child, nullptr, 0);
+        });
+
+        const QJsonObject run { { "schema_version", 2 }, { "action", "install" }, { "channel", "experimental" },
+            { "pid", child }, { "started_at", QDateTime::currentSecsSinceEpoch() } };
+        QVERIFY(write(state(QStringLiteral("run.json")), QJsonDocument(run).toJson()));
+        QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("installing"));
+
+        QCOMPARE(kill(child, SIGKILL), 0);
+        siginfo_t status {};
+        // Keep the exited child in /proc until after the daemon reports cancellation.
+        QCOMPARE(waitid(P_PID, id_t(child), &status, WEXITED | WNOWAIT), 0);
         QTRY_COMPARE(property(QStringLiteral("Activity")).toString(), QStringLiteral("idle"));
         QCOMPARE(property(QStringLiteral("InstallResult")).toString(), QStringLiteral("cancelled"));
     }

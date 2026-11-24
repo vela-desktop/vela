@@ -38,11 +38,13 @@
 #include "notifications.h"
 #include "servicemenus.h"
 #include "shellcontroller.h"
+#include "shortcutrunner.h"
 #include "snip.h"
 #include "soundkeys.h"
 #include "systemactions.h"
 #include "systemstatus.h"
 #include "taskbarmodel.h"
+#include "launcherentry.h"
 #include "transfermonitor.h"
 #include "tray.h"
 #include "wallpaperprovider.h"
@@ -63,15 +65,18 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QPointer>
 #include <QScreen>
 #include <QStyleHints>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
 
 #include <cstdio>
 #include <memory>
+#include <mutex>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
@@ -111,7 +116,7 @@ private:
 
 void releaseHiddenPanel(QQuickWindow* window)
 {
-    // Qt can retain the wl_surface and its EGL buffers after hide(). A new
+    // Qt can retain the wl_surface and its buffers after hide(). A new
     // layer role then shares that native surface with the previous rendering
     // cycle. Use a fresh surface on reopen, including its configure handshake.
     // Keep the QML window, models and LayerShellQt settings intact.
@@ -126,20 +131,67 @@ void releaseHiddenPanel(QQuickWindow* window)
     });
 }
 
-void setupTaskbar(QQuickWindow* window, QScreen* screen)
+bool vertical(const QString& position)
+{
+    return position == QLatin1String("left") || position == QLatin1String("right");
+}
+
+// The taskbar's edge (taskbar/position, docs/taskbar.md §11).
+LayerWindow::Anchors barEdge(const QString& position)
+{
+    return position == QLatin1String("top")  ? LayerWindow::AnchorTop
+        : position == QLatin1String("left")  ? LayerWindow::AnchorLeft
+        : position == QLatin1String("right") ? LayerWindow::AnchorRight
+                                             : LayerWindow::AnchorBottom;
+}
+
+// The corner of the clock, where the tray's panels open: the notifications
+// too (Styles.taskbar.trayCorner).
+LayerWindow::Anchors trayCorner(const QString& position)
+{
+    const LayerWindow::Anchors side =
+        position == QLatin1String("top") ? LayerWindow::AnchorTop : LayerWindow::AnchorBottom;
+    return side | (position == QLatin1String("left") ? LayerWindow::AnchorLeft : LayerWindow::AnchorRight);
+}
+
+void setupTaskbar(QQuickWindow* window, QScreen* screen, const Config* config)
 {
     LayerWindow* layer = LayerWindow::get(window);
     layer->setScreen(screen); // one per output (ScreenWindows)
     layer->setScope(QStringLiteral("vela-taskbar"));
     layer->setLayer(LayerWindow::LayerTop);
-    layer->setAnchors(LayerWindow::Anchors(LayerWindow::AnchorBottom) | LayerWindow::AnchorLeft
-        | LayerWindow::AnchorRight);
-    layer->setExclusiveZone(window->height()); // maximized windows don't cover it
     layer->setKeyboardInteractivity(LayerWindow::KeyboardInteractivityNone);
-    // A taskbar style's height (taskbar-height): the reserved space follows.
-    QObject::connect(window, &QWindow::heightChanged, window, [window, layer] {
-        layer->setExclusiveZone(window->height());
-    });
+    // Along its edge, the whole side; it reserves its thickness, so maximized
+    // windows don't cover it. A taskbar style's height (taskbar-height): the
+    // reserved space follows.
+    const auto place = [window, layer, config] {
+        const QString position = config->taskbarPosition();
+        const LayerWindow::Anchors along = vertical(position)
+            ? LayerWindow::Anchors(LayerWindow::AnchorTop) | LayerWindow::AnchorBottom
+            : LayerWindow::Anchors(LayerWindow::AnchorLeft) | LayerWindow::AnchorRight;
+        const LayerWindow::Anchors anchors = barEdge(position) | along;
+        if (layer->anchors() != anchors) {
+            layer->setAnchors(anchors);
+        }
+        const int thickness = vertical(position) ? window->width() : window->height();
+        if (layer->exclusionZone() != thickness) {
+            layer->setExclusiveZone(thickness);
+        }
+    };
+    place();
+    QObject::connect(window, &QWindow::heightChanged, window, place);
+    QObject::connect(window, &QWindow::widthChanged, window, place);
+    QObject::connect(config, &Config::taskbarChanged, window, place);
+    QObject::connect(
+        window, &QQuickWindow::sceneGraphInitialized, window,
+        [window] {
+            if (window->rendererInterface()->graphicsApi() != QSGRendererInterface::Vulkan) {
+                qFatal("vela-shell requires the Vulkan scene graph");
+            }
+            static std::once_flag logged;
+            std::call_once(logged, [] { qInfo("vela-shell: Qt Quick renders with Vulkan"); });
+        },
+        Qt::DirectConnection);
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -197,9 +249,6 @@ const Panel panels[] = {
     // Right-click menus: the whole output, transparent, above everything; a
     // click outside closes them. Arrows, Enter and Esc.
     { "ContextMenu", "vela-context-menu", layerOverlay, fill, -1, keysOnDemand },
-    // "Run", at the bottom left above the taskbar, like in Windows; the
-    // window touches both, the dialog rests 12 units from them.
-    { "RunDialog", "vela-run", layerTop, bottomLeft, 0, keysOnDemand },
     // Questions such as "Empty Recycle Bin", and what to share on screen.
     { "ConfirmDialog", "vela-confirm", layerOverlay, centered, 0, keysOnDemand },
     { "SourceChooser", "vela-share", layerOverlay, centered, 0, keysOnDemand },
@@ -217,6 +266,8 @@ const Panel panels[] = {
     // mouse (drag, mute, wheel). The window touches the taskbar, the pill
     // rests 12 units above it.
     { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone },
+    // Caps Lock on or off, where the volume appears; the mouse goes through.
+    { "CapsLockOsd", "vela-caps-lock-osd", layerOverlay, bottom, 0, keysNone, {}, true },
     // The whole output, transparent: a click outside the panel closes it.
     // The keyboard for Win+Z.
     { "SnapLayouts", "vela-snap-layouts", layerOverlay, fill, -1, keysOnDemand },
@@ -224,6 +275,7 @@ const Panel panels[] = {
     { "SnapAssist", "vela-snap-assist", layerTop, fill, 0, keysExclusive },
     // The distance from the left edge is decided by the button
     // (ShellController::placeAtLeft).
+    { "TrayOverflow", "vela-tray-overflow", layerTop, bottomLeft, 0, keysOnDemand },
     { "TaskbarPreview", "vela-taskbar-preview", layerTop, bottomLeft, 0, keysNone },
     // Above the taskbar too, placed the same way; the mouse goes through.
     { "TaskbarTooltip", "vela-taskbar-tooltip", layerTop, bottomLeft, 0, keysNone, {}, true },
@@ -266,12 +318,32 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
 // fitted pill places the apps itself: centered, or at the left with
 // taskbar-edge=2 (Left pill). themefile.h's taskbarLayout() is the rule,
 // the one Styles.qml and Taskbar.qml draw with.
-void placeStartMenu(QQuickWindow* window, const QString& alignment, const QVariantMap& theme, bool light)
+// On a top bar the same, below it; on a vertical bar Start opens beside it,
+// at the top (docs/taskbar.md §11.3), where its button is.
+void placeStartMenu(
+    QQuickWindow* window, const QString& alignment, const QString& position, const QVariantMap& theme, bool light)
 {
     LayerWindow* layer = LayerWindow::get(window);
-    const bool left = vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
-    layer->setAnchors(left ? bottomLeft : bottom);
+    const bool side = vertical(position);
+    const bool left = !side && vela::themes::taskbarLayout(theme, light).appsAtLeft(alignment);
+    const LayerWindow::Anchors anchors = side
+        ? barEdge(position) | LayerWindow::AnchorTop
+        : barEdge(position) | (left ? LayerWindow::AnchorLeft : LayerWindow::Anchors());
+    layer->setAnchors(anchors);
     window->setProperty("atLeft", left);
+}
+
+// The panels whose corner follows the bar's edge and stays there: the
+// notifications in the clock's corner, the volume indicator and the Caps Lock
+// display against the bar (or at the bottom, beside a vertical one).
+void placeForPosition(QQuickWindow* window, const char* qml, const QString& position)
+{
+    LayerWindow* layer = LayerWindow::get(window);
+    if (qstrcmp(qml, "NotificationPopups") == 0 || qstrcmp(qml, "ClipboardPanel") == 0) {
+        layer->setAnchors(trayCorner(position));
+    } else if (qstrcmp(qml, "VolumeOsd") == 0 || qstrcmp(qml, "CapsLockOsd") == 0) {
+        layer->setAnchors(position == QLatin1String("top") ? LayerWindow::AnchorTop : LayerWindow::AnchorBottom);
+    }
 }
 
 } // namespace
@@ -294,6 +366,15 @@ int main(int argc, char* argv[])
 
     vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
+    // Select the shell renderer locally so launched applications keep their own Qt settings.
+    QQuickWindow::setSceneGraphBackend(QStringLiteral("rhi"));
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+    // A covered layer surface can stop receiving Wayland frame callbacks.
+    // Prefer mailbox so a FIFO present on that surface cannot stall the other
+    // windows during Qt Quick's GUI/render thread synchronization.
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setSwapInterval(0);
+    QSurfaceFormat::setDefaultFormat(format);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
@@ -395,6 +476,7 @@ int main(int argc, char* argv[])
 
     ForeignToplevelManager windows;
     TaskbarModel tasks(&apps, &windows);
+    LauncherEntry launcherEntry;
     WindowCapture capture;
     NotificationServer notifications;
     notifications.registerService();
@@ -422,10 +504,7 @@ int main(int argc, char* argv[])
     TrayModel tray;
     tray.start();
     SystemActions system;
-    system.setAppModel(&apps);
     // Use the QML caller's output; keyboard focus can change when a menu closes.
-    QObject::connect(&system, &SystemActions::chooseAppRequested, &shell, &ShellController::openWithRequested);
-    QObject::connect(&system, &SystemActions::chooseAppOnScreenRequested, &shell, &ShellController::openWithOnScreenRequested);
     QObject::connect(&shell, &ShellController::settingsRequested, &system, [&system] { system.trigger(QStringLiteral("settings")); });
     QObject::connect(&shell, &ShellController::filesRequested, &system, [&system] { system.trigger(QStringLiteral("files")); });
     JumpLists jumps(&apps);
@@ -499,6 +578,9 @@ int main(int argc, char* argv[])
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
+    // The user's custom shortcuts, matched by the compositor.
+    ShortcutRunner shortcuts(&apps);
+    QObject::connect(&shell, &ShellController::shortcutRequested, &shortcuts, &ShortcutRunner::run);
     QObject::connect(&shell, &ShellController::volumeKeyPressed, &sound, &SoundKeys::press);
     MediaKeys media;
     QObject::connect(&shell, &ShellController::mediaKeyPressed, &media, &MediaKeys::press);
@@ -626,22 +708,30 @@ int main(int argc, char* argv[])
             qCritical("vela-shell: can't load the QML interface (%s)", panel.qml);
             return 1;
         }
+        placeForPosition(window, panel.qml, config.taskbarPosition());
+        QObject::connect(&config, &Config::taskbarChanged, window,
+            [window, qml = panel.qml, &config] { placeForPosition(window, qml, config.taskbarPosition()); });
         if (qstrcmp(panel.qml, "StartMenu") == 0) {
             startMenu = window;
         } else if (qstrcmp(panel.qml, "NotificationPopups") == 0) {
             notificationPopups = window;
         }
     }
-    placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
+    placeStartMenu(startMenu, config.taskbarAlignment(), config.taskbarPosition(), style->theme(), style->light());
     const auto replaceStartMenu = [&config, startMenu, style] {
-        placeStartMenu(startMenu, config.taskbarAlignment(), style->theme(), style->light());
+        placeStartMenu(startMenu, config.taskbarAlignment(), config.taskbarPosition(), style->theme(), style->light());
     };
     QObject::connect(&config, &Config::taskbarChanged, startMenu, replaceStartMenu);
     QObject::connect(style, &Appearance::changed, startMenu, replaceStartMenu);
     // Wallpapers on every output; the taskbar too, like in Windows (or only on
     // the main one, if the user wants that).
     ScreenWindows wallpapers(&engine, "Wallpaper", setupWallpaper);
-    ScreenWindows taskbars(&engine, "Taskbar", setupTaskbar);
+    ScreenWindows taskbars(&engine, "Taskbar", [&](QQuickWindow* window, QScreen* screen) {
+        setupTaskbar(window, screen, &config);
+        window->setProperty("taskModel",
+            QVariant::fromValue(static_cast<QObject*>(
+                new TaskbarModel(&tasks, &config, &workspaces, &launcherEntry, screen->name(), window))));
+    });
     wallpapers.setPreferredPrimary(config.primaryOutput());
     taskbars.setPreferredPrimary(config.primaryOutput());
     QObject::connect(&config, &Config::primaryOutputChanged, &wallpapers,

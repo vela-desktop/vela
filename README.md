@@ -152,7 +152,8 @@ Matrix homeserver works; no `velade.org` account is required.
   [performance methodology](docs/performance.md) · [CI and quality](docs/ci-quality.md) ·
   [contributors](CONTRIBUTORS.md)
 
-All documents live in [`docs/`](docs).
+The [documentation index](docs/README.md) lists every document, design
+documents and change notes included.
 
 ## AI disclosure
 

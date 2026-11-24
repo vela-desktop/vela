@@ -1257,7 +1257,8 @@ ctest --test-dir build -R '^functional-benchmark-probe$' --output-on-failure
 ctest --test-dir build -R '^benchmark-plasma-integration$' --output-on-failure
 ```
 
-The CTest core entry is registered on Python 3.11+. The native CLI suite needs
+The CTest core entry is registered when building with `VELA_BUILD_TOOLS=ON`,
+which requires Python 3.13+. The native CLI suite needs
 the compiled helper but no GPU; it includes a connected, silent socket to
 test startup deadlines without a desktop. The functional suite starts an
 isolated headless Vela with a real Vulkan GPU and checks feedback identity,
