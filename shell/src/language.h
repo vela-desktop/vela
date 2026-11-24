@@ -52,9 +52,8 @@ inline QString configured()
             value = line.mid(7).trimmed();
         }
     }
-    return value == QLatin1String("it") || value == QLatin1String("en") || value == QLatin1String("pt")
-        ? value
-        : QString();
+    return value == QLatin1String("it") || value == QLatin1String("en") || value == QLatin1String("pt") ? value
+                                                                                                        : QString();
 }
 
 // The language to use: "it", "pt" or "en".
