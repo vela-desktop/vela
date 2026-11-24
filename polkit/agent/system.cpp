@@ -186,7 +186,7 @@ std::string configuredLanguage()
             }
         }
     }
-    return value == "it" || value == "en" ? value : std::string();
+    return value == "it" || value == "en" || value == "pt" ? value : std::string();
 }
 
 } // namespace vela::polkit

@@ -52,17 +52,25 @@ inline QString configured()
             value = line.mid(7).trimmed();
         }
     }
-    return value == QLatin1String("it") || value == QLatin1String("en") ? value : QString();
+    return value == QLatin1String("it") || value == QLatin1String("en") || value == QLatin1String("pt") ? value
+                                                                                                        : QString();
 }
 
-// The language to use: "it" or "en".
+// The language to use: "it", "pt" or "en".
 inline QString effective()
 {
     const QString chosen = configured();
     if (!chosen.isEmpty()) {
         return chosen;
     }
-    return QLocale::system().language() == QLocale::Italian ? QStringLiteral("it") : QStringLiteral("en");
+    const QLocale sys = QLocale::system();
+    if (sys.language() == QLocale::Italian) {
+        return QStringLiteral("it");
+    }
+    if (sys.language() == QLocale::Portuguese && sys.territory() == QLocale::Brazil) {
+        return QStringLiteral("pt");
+    }
+    return QStringLiteral("en");
 }
 
 // Loads translation `name` (the :/i18n/<name>_it.qm resource) and keeps it in
@@ -89,10 +97,13 @@ inline void install(const QString& name, std::function<void()> changed = {})
             state->translator = nullptr;
         }
         const QLocale::Territory territory = QLocale::system().territory();
-        QLocale::setDefault(QLocale(lang == QLatin1String("en") ? QLocale::English : QLocale::Italian, territory));
-        if (lang == QLatin1String("it")) {
+        const QLocale defaultLocale = lang == QLatin1String("en") ? QLocale(QLocale::English, territory)
+            : lang == QLatin1String("pt")                         ? QLocale(QLocale::Portuguese, QLocale::Brazil)
+                                                                  : QLocale(QLocale::Italian, territory);
+        QLocale::setDefault(defaultLocale);
+        if (lang != QLatin1String("en")) {
             state->translator = new QTranslator(QCoreApplication::instance());
-            if (state->translator->load(QStringLiteral(":/i18n/%1_it.qm").arg(state->name))) {
+            if (state->translator->load(QStringLiteral(":/i18n/%1_%2.qm").arg(state->name, lang))) {
                 QCoreApplication::installTranslator(state->translator);
             }
         }
