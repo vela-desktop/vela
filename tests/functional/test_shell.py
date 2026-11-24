@@ -1908,6 +1908,90 @@ class QtShell(RealShell):
         self.assertEqual(self.panel_top(image, x, layer["y"] + 1, layer["y"] + layer["h"]), main_top)
 
 
+def resident_gpu_kib(pid):
+    """VRAM and GTT the process's DRM clients hold (/proc fdinfo), or None
+    where the driver doesn't report VRAM (amdgpu does)."""
+    clients, total = set(), None
+    for fd in os.scandir(f"/proc/{pid}/fdinfo"):
+        try:
+            with open(fd.path) as file:
+                info = file.read()
+        except FileNotFoundError:
+            continue
+        client = re.search(r"^drm-client-id:\s+(\d+)", info, re.M)
+        regions = dict(re.findall(r"^drm-resident-(vram|gtt):\s+(\d+) KiB", info, re.M))
+        if client and "vram" in regions and client[1] not in clients:
+            clients.add(client[1])
+            total = (total or 0) + sum(map(int, regions.values()))
+    return total
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class PanelGraphics(RealShell):
+    """A hidden panel keeps its QRhi for 10 s, then gives it back
+    (docs/shell-graphics-memory.md)."""
+
+    shell_env = {"QT_LOGGING_RULES": "vela.shell.panels.debug=true"}
+    KEPT = 10 # panelGraphicsKept in shell/src/main.cpp
+    NC = "vela-notification-center"
+
+    def released(self, offset):
+        return self.vela.log_text()[offset:].count(f"{self.NC} released its graphics")
+
+    def toggle(self, opening):
+        self.shell_command("notification-center")
+        self.vela.wait_for(lambda s: self.mapped(s, self.NC) == opening,
+                           what="Notification Center " + ("open" if opening else "closed"))
+
+    def capture(self):
+        """The open panel once its animation is over, in its window's pixels."""
+        time.sleep(1.5)
+        layer = self.layer(self.vela.state(), self.NC)
+        path = os.path.join(self.vela.directory, "panel.png")
+        self.vela.screenshot(path, region=(layer["x"], layer["y"], layer["w"], layer["h"]))
+        return Image.read(path)
+
+    def test_a_hidden_panel_releases_its_graphics_after_a_while(self):
+        time.sleep(2)
+        idle = resident_gpu_kib(self.shell.pid)
+        offset = len(self.vela.log_text())
+        self.toggle(True)
+        warm = self.capture()
+        self.toggle(False)
+        # Reopened before the delay is over, it keeps them while open, longer
+        # than the delay, and the delay starts again on closing.
+        time.sleep(self.KEPT * 0.6)
+        self.toggle(True)
+        time.sleep(self.KEPT * 0.6)
+        held = resident_gpu_kib(self.shell.pid)
+        self.toggle(False)
+        closed = time.monotonic()
+        time.sleep(self.KEPT * 0.6)
+        self.assertEqual(self.released(offset), 0, "released within 10 s of its last closing")
+        self.vela.wait_for(lambda _: self.released(offset) == 1, timeout=self.KEPT, read_state=False,
+                           what="Notification Center released its graphics")
+        self.assertGreaterEqual(time.monotonic() - closed, self.KEPT - 0.5)
+        if idle is not None:
+            # On RADV each window's allocator holds tens of MiB.
+            self.assertGreater(held - idle, 32 * 1024, "an open panel's graphics weren't measured")
+            time.sleep(0.5)
+            self.assertLess(resident_gpu_kib(self.shell.pid) - idle, 8 * 1024,
+                            "the shell kept the hidden panel's VRAM and GTT")
+        # Back with a new QRhi, the same pixels; closed again, released again.
+        self.toggle(True)
+        cold = self.capture()
+        # A new glyph cache, filled in another order: text antialiasing can
+        # differ by a level or two.
+        difference = max(abs(a - b) for new, old in zip(cold.rows, warm.rows) for a, b in zip(new, old))
+        self.assertLessEqual(difference, 3, "reopened after the release, it looks different")
+        self.toggle(False)
+        closed = time.monotonic()
+        self.vela.wait_for(lambda _: self.released(offset) == 2, timeout=self.KEPT * 1.5, read_state=False,
+                           what="released again")
+        self.assertGreaterEqual(time.monotonic() - closed, self.KEPT - 0.5, "released again at once")
+        self.check_desktop()
+
+
 # Black and white stripes 4 pixels wide: blurred they become one gray, seen
 # through a translucent panel or a shadow they stay stripes.
 STRIPES = ('<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">'

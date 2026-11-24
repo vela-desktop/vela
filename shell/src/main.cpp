@@ -60,6 +60,7 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QLocale>
+#include <QLoggingCategory>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
@@ -74,6 +75,7 @@
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
 
+#include <chrono>
 #include <cstdio>
 #include <memory>
 #include <mutex>
@@ -84,6 +86,8 @@ Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
 namespace {
 
 using LayerWindow = LayerShellQt::Window;
+
+Q_STATIC_LOGGING_CATEGORY(lcPanels, "vela.shell.panels", QtInfoMsg)
 
 // Opt-in diagnostics for the real functional test: observe the event *before*
 // Qt Quick maps it into MouseArea coordinates. Never adjust or consume input.
@@ -114,21 +118,55 @@ private:
     QQuickWindow* m_window;
 };
 
+// How long a hidden panel keeps its graphics (docs/shell-graphics-memory.md).
+// Each window renders with its own QRhi, whose allocator holds about 80 MiB of
+// VRAM and 32 MiB of GTT on RADV, mostly empty blocks. Reopened sooner, a
+// panel opens as fast as ever; later, its first frame comes about 4 ms later,
+// as on its first opening.
+constexpr std::chrono::seconds panelGraphicsKept { 10 };
+
 void releaseHiddenPanel(QQuickWindow* window)
 {
-    // Qt can retain the wl_surface and its buffers after hide(). A new
-    // layer role then shares that native surface with the previous rendering
-    // cycle. Use a fresh surface on reopen, including its configure handshake.
-    // Keep the QML window, models and LayerShellQt settings intact.
-    QObject::connect(window, &QWindow::visibleChanged, window, [window](bool visible) {
-        if (!visible) {
-            QTimer::singleShot(0, window, [window] {
-                if (!window->isVisible()) {
-                    window->destroy();
-                }
-            });
+    // Hidden for panelGraphicsKept, the window gives its QRhi back.
+    auto* release = new QTimer(window);
+    release->setSingleShot(true);
+    release->setInterval(panelGraphicsKept);
+    QObject::connect(release, &QTimer::timeout, window, [window] {
+        if (window->isVisible()) {
+            return;
         }
+        window->setPersistentGraphics(false);
+        window->setPersistentSceneGraph(false);
+        window->releaseResources();
     });
+    QObject::connect(window, &QWindow::visibleChanged, window, [window, release](bool visible) {
+        if (visible) {
+            // Kept from the next hide on: destroy() below would otherwise
+            // release them at once.
+            release->stop();
+            window->setPersistentGraphics(true);
+            window->setPersistentSceneGraph(true);
+            return;
+        }
+        release->start();
+        // Qt can retain the wl_surface and its buffers after hide(). A new
+        // layer role then shares that native surface with the previous
+        // rendering cycle. Use a fresh surface on reopen, including its
+        // configure handshake. Keep the QML window, models and LayerShellQt
+        // settings intact.
+        QTimer::singleShot(0, window, [window] {
+            if (!window->isVisible()) {
+                window->destroy();
+            }
+        });
+    });
+    // On the render thread, once the QRhi is gone: what the tests wait for.
+    QObject::connect(
+        window, &QQuickWindow::sceneGraphInvalidated, window,
+        [scope = LayerWindow::get(window)->scope()] {
+            qCDebug(lcPanels, "%s released its graphics", qPrintable(scope));
+        },
+        Qt::DirectConnection);
 }
 
 bool vertical(const QString& position)
@@ -306,8 +344,9 @@ QQuickWindow* loadPanel(QQmlApplicationEngine& engine, const Panel& panel)
     if (panel.clickThrough) {
         window->setFlag(Qt::WindowTransparentForInput);
     }
-    // Panels come and go: a hidden one gives its surface back. The taskbar
-    // and the wallpapers (ScreenWindows) stay mapped all session.
+    // Panels come and go: a hidden one gives its surface back, and later its
+    // graphics. The taskbar and the wallpapers (ScreenWindows) stay mapped
+    // all session.
     releaseHiddenPanel(window);
     return window;
 }
