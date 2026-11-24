@@ -1,38 +1,44 @@
 # Shell memory use
 
 On the test desktop with 24 files and the Recycle Bin, idle shell PSS fell by
-6.0 MiB. With 25 pinned screenshots, opening clipboard history used 137 MiB
-less PSS in a separate run. Image content, output scale, driver and allocator
-all affect these figures. The older 143 MiB idle observation is described in
+4.7 MiB. With 25 pinned screenshots, opening clipboard history used 132 MiB
+less PSS. Image content, output scale, driver and allocator all affect these
+figures. The older 143 MiB idle observation is described in
 the [performance notes](performance.md).
 
 ## Measured session
 
-Medians of three independent starts per build on 23 November 2026.
-The baseline was `bcc72452`, the implementation `d9e3782a`.
+Medians of 13 independent starts per build on 24 November 2026, with Qt Quick
+rendering through Vulkan. The baseline was `66bdff57` (main), the
+implementation `f40c0cb5`.
 
 | Metric | Baseline | Implementation |
 |---|---:|---:|
-| Idle PSS | 117.32 MiB | 111.30 MiB |
-| Idle private dirty memory | 99.08 MiB | 93.03 MiB |
-| PSS after five opens and closes of Notification Center | 129.85 MiB | 121.82 MiB |
-| Idle shell DRM resident VRAM | 102.28 MiB | 100.29 MiB |
-| First notification-center map | 12.58 ms | 12.68 ms |
-| Subsequent maps | 2.12 ms | 2.14 ms |
-| Qt render-loop frame time, p95 / p99 | 9 / 10 ms | 9 / 10 ms |
+| Idle PSS | 101.94 MiB | 97.26 MiB |
+| Idle private dirty memory | 74.86 MiB | 69.95 MiB |
+| PSS after five opens and closes of Notification Center | 104.80 MiB | 99.79 MiB |
+| Idle shell DRM resident VRAM | 215.21 MiB | 212.61 MiB |
+| First notification-center map | 16.69 ms | 16.70 ms |
+| Subsequent maps | 4.18 ms | 4.19 ms |
+| Qt render-loop frame time, p95 / p99 | 0 / 1 ms | 0 / 1 ms |
 
 The session used a Ryzen 9 9950X, amdgpu (PCI 1002:7550), CachyOS kernel
-7.3.5-2-cachyos, Mesa 26.3.1, Qt 6.12.0 and glibc 2.44. Both builds used GCC
-16.2.1, CMake Release and x86-64-v3. The compositor used its headless backend
-with a 1920×1080 primary output at 100 Hz and scale 1. The shell used the
-threaded Qt Quick OpenGL backend. Each run used a private bus and a fresh
-profile. The timings measure when the layer maps, with 2 ms polling. The Qt
-render-loop timings have millisecond resolution and include all shell windows.
-The VRAM figures cover the whole shell. [Individual samples](benchmarks/shell-memory-2026-11-23.csv)
+7.3.6-1-cachyos, Mesa 26.3.1 (RADV), Qt 6.12.0 and glibc 2.44. All builds used
+GCC 16.2.1, CMake Release and x86-64-v3. The compositor used its headless
+backend with a 1920×1080 primary output at 100 Hz and scale 1. The shell used
+Qt Quick's Vulkan backend with the threaded render loop. Each run used a
+private bus and a fresh profile, and the runs alternated between builds. The
+timings measure when the layer maps, with 2 ms polling. The Qt render-loop
+timings have millisecond resolution and include all shell windows. The VRAM
+figures cover the whole shell. Individual samples:
+[desktop](benchmarks/shell-memory-2026-11-24.csv),
+[clipboard and notification workloads](benchmarks/shell-memory-workloads-2026-11-24.csv).
 
 To reproduce, build `vela-shell` for each revision. Build `vela-compositor`
 and `vela-screen-dump` once and use the same tools for all runs. Run from a
-GPU-capable session, alternating the two shell executables.
+GPU-capable session, alternating the shell executables. The script checks
+that the shell reported the Vulkan scene graph. `--workload clipboard` and
+`--workload notification` run the workloads in sections 8 and 2.
 
 ```sh
 VELA_BUILD=/absolute/path/to/tools-build python3 docs/benchmarks/shell-memory.py /absolute/path/to/build/shell/vela-shell
@@ -62,10 +68,10 @@ preserving aspect ratio. The center draws 28 logical pixels, so the same image
 can serve a later output at up to 16× scale. Smaller images keep their native
 size.
 
-In separate baseline and candidate sessions, a single valid 4096×4096 RGB
+In three baseline and three candidate sessions, a single valid 4096×4096 RGB
 notification was sent on a private bus sized for the 48 MiB message. From idle
-to the center showing its history, private dirty memory rose by 70.9 MiB on
-the baseline and 17.9 MiB on the candidate. This comparison includes opening
+to the center showing its history, median private dirty memory rose by
+54.8 MiB on the baseline and 6.5 MiB on the candidate. This comparison includes opening
 the center. The full input and decode buffer still exist during delivery.
 [Image decoding and replacement tests](../shell/tests/notification_image.cpp)
 
@@ -85,9 +91,9 @@ Qt starts, respecting an explicit arena limit in the environment. This setting
 is local to the shell process. Once the initially visible Qt Quick windows
 have submitted their first frames, the GUI thread calls `malloc_trim(0)` once.
 
-Separate three-run trials on the baseline measured median idle private dirty
-memory of 99.1 MiB with allocator defaults, 95.6 MiB with
-`MALLOC_ARENA_MAX=2` alone and 96.5 MiB with a one-time experimental trim
+Interleaved five-run trials on the baseline measured median idle private dirty
+memory of 74.9 MiB with allocator defaults, 73.4 MiB with
+`MALLOC_ARENA_MAX=2` alone and 74.0 MiB with a one-time experimental trim
 1.2 seconds after startup. The table above measures the shipped combination
 and all other shell changes together.
 
@@ -99,10 +105,15 @@ preserves the original sampling positions. Hiding a label during rename also
 disables its layer. A native raised-text shadow and a cached composite both
 changed the output pixels more, especially after a scale change.
 
-Across 28 label crops on light and dark wallpapers, with wrapped labels
-selected and unselected, 26 matched exactly. The other two differed by at
-most one level in an 8-bit channel. The tested scales were 100%, 125%, 150%,
-175%, 200%, 250% and 300%. Each visible label still has a source layer.
+Label crops were compared on light and dark wallpapers, with wrapped labels
+selected and unselected, at 100%, 125%, 150%, 175%, 200%, 250% and 300%. Under
+Vulkan, the captures vary between starts of the same build: two baseline
+starts matched in 9 of the 28 crops and differed by up to two levels in an
+8-bit channel. The baseline and the candidate matched in 7 crops. The other
+crops differed by at most one level, or by two where baseline starts also
+differed by two. At 300%, four starts of each build showed the same range of
+differing pixels between builds as within each build. Each visible label
+still has a source layer.
 
 ## 6. Tray pixmaps
 
@@ -130,7 +141,7 @@ keeps the scroll position and keeps the selection on the same entry. If the
 selected entry was deleted, the selection moves to the entry that takes its
 place. A selection that was visible stays visible.
 
-With 25 low-compression-cost 1600×900 RGB screenshots saved as pins, one run
-per build measured idle PSS of 241.7 MiB before and 111.9 MiB after. With the
-panel open the readings were 257.7 MiB and 120.6 MiB. This workload measures
+With 25 low-compression-cost 1600×900 RGB screenshots saved as pins, three
+runs per build measured median idle PSS of 243.1 MiB before and 114.3 MiB
+after. With the panel open the readings were 248.7 MiB and 116.7 MiB. This workload measures
 the combined effect of image storage, the viewport and allocator changes.
