@@ -25,6 +25,30 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
     return true;
 }
 
+static void unavailable_bus(struct vela_server *server)
+{
+    // An unsupported transport fails locally, regardless of the host bus.
+    assert(setenv("DBUS_SYSTEM_BUS_ADDRESS", "invalid:address=unused", 1) == 0);
+    server->locked = true;
+    int before = starts;
+    vela_bluetooth_start(server);
+    assert(starts == before);
+    server->locked = false;
+    vela_bluetooth_report_lock(server, false);
+    assert(starts == before + 1);
+    vela_bluetooth_report_lock(server, false);
+    assert(starts == before + 1);
+    vela_bluetooth_finish();
+
+    server->session = NULL;
+    assert(unsetenv("VELA_BLUETOOTH") == 0);
+    vela_bluetooth_start(server);
+    assert(starts == before + 1);
+    assert(setenv("VELA_BLUETOOTH", "0", 1) == 0);
+    vela_bluetooth_start(server);
+    assert(starts == before + 1);
+}
+
 int main(int argc, char **argv)
 {
     assert(argc == 2 && *argv[1]);
@@ -67,6 +91,7 @@ int main(int argc, char **argv)
     }
     assert(starts == 1);
     vela_bluetooth_finish();
+    unavailable_bus(&server);
     wl_event_loop_destroy(server.loop);
     sd_bus_close_unref(logind);
     free(path);

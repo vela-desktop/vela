@@ -76,6 +76,24 @@ static void an_unwatched_child_is_reaped(struct wl_event_loop *loop, int free_fd
     vela_child_stop(&child);
 }
 
+static void restart_policy(struct wl_event_loop *loop, const char *command, int expected_starts)
+{
+    struct vela_child child;
+    vela_child_init(&child, "restart-policy", SIGTERM, 42);
+    assert(vela_child_start(&child, loop, command));
+    int starts = 0;
+    while (child.source) {
+        pid_t pid = child.pid;
+        do {
+            assert(wl_event_loop_dispatch(loop, 100) == 0);
+        } while (child.pid == pid);
+        ++starts;
+        assert(starts <= expected_starts);
+    }
+    assert(starts == expected_starts && child.pidfd == -1 && !child.command);
+    vela_child_stop(&child);
+}
+
 int main(void)
 {
     struct wl_event_loop *loop = wl_event_loop_create();
@@ -83,6 +101,10 @@ int main(void)
     exit_reaches_the_callback(loop);
     an_unwatched_child_is_reaped(loop, 0);
     an_unwatched_child_is_reaped(loop, 1);
+    restart_policy(loop, "exit 0", 1);
+    restart_policy(loop, "exit 42", 1);
+    restart_policy(loop, "exit 1", 3);
+    restart_policy(loop, "kill -TERM $$", 3);
     wl_event_loop_destroy(loop);
     puts("process: ok");
     return 0;

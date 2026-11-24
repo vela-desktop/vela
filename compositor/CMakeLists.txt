@@ -639,6 +639,28 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-capture-watch-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.capture-watch COMMAND vela-capture-watch-test)
 
+    # Pull the production objects used by this fixture, leaving the compositor's
+    # main entry point in the archive. No graphics device is initialized.
+    add_library(vela-compositor-test-core STATIC)
+    target_link_libraries(vela-compositor-test-core PRIVATE vela-compositor-objects)
+    add_executable(vela-command-socket-test tests/command_socket_test.c)
+    target_include_directories(vela-command-socket-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-command-socket-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-command-socket-test PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(vela-command-socket-test PRIVATE vela-compositor-test-core vela-pure
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    target_link_options(vela-command-socket-test PRIVATE -Wl,--wrap=fopen -Wl,--wrap=accept4)
+    add_test(NAME compositor.command-socket COMMAND vela-command-socket-test)
+    set_tests_properties(compositor.command-socket PROPERTIES TIMEOUT 30)
+
+    add_executable(vela-lock-launcher-test tests/lock_launcher_test.c)
+    target_include_directories(vela-lock-launcher-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-lock-launcher-test PRIVATE WLR_USE_UNSTABLE)
+    target_link_libraries(vela-lock-launcher-test PRIVATE vela-compositor-test-core vela-pure
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    add_test(NAME compositor.lock-launcher COMMAND vela-lock-launcher-test)
+    set_tests_properties(compositor.lock-launcher PROPERTIES TIMEOUT 15)
+
     # The compositor's children on a real event loop, no GPU: an exit reaches
     # its callback, and a child that can't be watched is reaped.
     add_executable(vela-process-test tests/process_test.c src/process.c)
