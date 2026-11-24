@@ -1,29 +1,29 @@
 {
-  "generated_at": "2026-11-23T12:36:37+00:00",
+  "generated_at": "2026-11-24T13:41:25+00:00",
   "popular_paths": [
     {
-      "count": 488,
+      "count": 494,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 199
+      "uniques": 189
     },
     {
-      "count": 114,
+      "count": 110,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 22
+      "uniques": 20
     },
     {
-      "count": 55,
+      "count": 54,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 6
+      "uniques": 5
     },
     {
-      "count": 35,
+      "count": 33,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 9
+      "uniques": 8
     },
     {
       "count": 21,
@@ -32,16 +32,16 @@
       "uniques": 1
     },
     {
-      "count": 16,
+      "count": 18,
       "path": "/vela-desktop/vela/releases",
       "title": "/releases",
-      "uniques": 13
+      "uniques": 15
     },
     {
-      "count": 14,
+      "count": 13,
       "path": "/vela-desktop/vela/issues/214",
       "title": "/issues/214",
-      "uniques": 3
+      "uniques": 2
     },
     {
       "count": 11,
@@ -57,9 +57,9 @@
     },
     {
       "count": 10,
-      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
-      "title": "/releases/tag/v0.1.2",
-      "uniques": 9
+      "path": "/vela-desktop/vela/blob/main/docs/screenshots/files.webp",
+      "title": "/blob/main/docs/screenshots/files.webp",
+      "uniques": 10
     }
   ],
   "releases": {
@@ -140,7 +140,7 @@
       {
         "assets": [
           {
-            "downloads": 17,
+            "downloads": 19,
             "id": "756575991",
             "name": "SHA256SUMS"
           },
@@ -160,7 +160,7 @@
             "name": "SHA256SUMS-ubuntu"
           },
           {
-            "downloads": 22,
+            "downloads": 26,
             "id": "756575985",
             "name": "vela-0.1.2-1-x86_64.pkg.tar.zst"
           },
@@ -180,43 +180,43 @@
             "name": "vela_0.1.2_amd64.deb"
           }
         ],
-        "downloads_current_assets": 68,
+        "downloads_current_assets": 74,
         "tag": "v0.1.2"
       }
     ],
-    "downloads_current_assets": 259,
-    "downloads_observed_maxima": 438,
-    "downloads_since_previous_daily_snapshot": 0,
-    "previous_snapshot_date": "2026-11-22",
+    "downloads_current_assets": 265,
+    "downloads_observed_maxima": 444,
+    "downloads_since_previous_daily_snapshot": 6,
+    "previous_snapshot_date": "2026-11-23",
     "release_count": 3
   },
   "repository": "vela-desktop/vela",
   "schema_version": 1,
   "sources": {
     "releases": {
-      "last_collected_at": "2026-11-23T12:36:37+00:00",
+      "last_collected_at": "2026-11-24T13:41:25+00:00",
       "status": "ok"
     },
     "traffic": {
-      "last_collected_at": "2026-11-23T12:36:37+00:00",
+      "last_collected_at": "2026-11-24T13:41:25+00:00",
       "status": "ok"
     }
   },
   "top_referrers": [
     {
-      "count": 59,
+      "count": 55,
       "referrer": "velade.org",
-      "uniques": 43
+      "uniques": 40
     },
     {
-      "count": 27,
+      "count": 28,
       "referrer": "reddit.com",
-      "uniques": 23
+      "uniques": 24
     },
     {
-      "count": 24,
+      "count": 25,
       "referrer": "github.com",
-      "uniques": 17
+      "uniques": 18
     },
     {
       "count": 21,
@@ -224,19 +224,19 @@
       "uniques": 16
     },
     {
-      "count": 20,
-      "referrer": "news.ycombinator.com",
-      "uniques": 20
-    },
-    {
       "count": 17,
       "referrer": "youtube.com",
       "uniques": 15
     },
     {
-      "count": 7,
+      "count": 11,
+      "referrer": "news.ycombinator.com",
+      "uniques": 11
+    },
+    {
+      "count": 9,
       "referrer": "Google",
-      "uniques": 6
+      "uniques": 8
     },
     {
       "count": 4,
@@ -256,51 +256,51 @@
   ],
   "traffic": {
     "clones": {
-      "growth_vs_previous_7_days_percent": 20.95,
+      "growth_vs_previous_7_days_percent": -2.97,
       "last_30_complete_days": {
         "complete": true,
-        "count": 39287,
-        "end_date": "2026-11-22",
+        "count": 38886,
+        "end_date": "2026-11-23",
         "observed_days": 30,
-        "start_date": "2026-10-24"
+        "start_date": "2026-10-25"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 9051,
-        "end_date": "2026-11-22",
+        "count": 7966,
+        "end_date": "2026-11-23",
         "observed_days": 7,
-        "start_date": "2026-11-16"
+        "start_date": "2026-11-17"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 7483,
-        "end_date": "2026-11-15",
+        "count": 8210,
+        "end_date": "2026-11-16",
         "observed_days": 7,
-        "start_date": "2026-11-09"
+        "start_date": "2026-11-10"
       }
     },
     "views": {
-      "growth_vs_previous_7_days_percent": -11.09,
+      "growth_vs_previous_7_days_percent": -6.4,
       "last_30_complete_days": {
         "complete": true,
-        "count": 3069,
-        "end_date": "2026-11-22",
+        "count": 2843,
+        "end_date": "2026-11-23",
         "observed_days": 30,
-        "start_date": "2026-10-24"
+        "start_date": "2026-10-25"
       },
       "last_7_complete_days": {
         "complete": true,
-        "count": 473,
-        "end_date": "2026-11-22",
+        "count": 483,
+        "end_date": "2026-11-23",
         "observed_days": 7,
-        "start_date": "2026-11-16"
+        "start_date": "2026-11-17"
       },
       "previous_7_complete_days": {
         "complete": true,
-        "count": 532,
-        "end_date": "2026-11-15",
+        "count": 516,
+        "end_date": "2026-11-16",
         "observed_days": 7,
-        "start_date": "2026-11-09"
+        "start_date": "2026-11-10"
       }
     }
   }
