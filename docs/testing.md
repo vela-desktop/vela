@@ -564,10 +564,11 @@ compositor synchronization and a 100 Hz output. The custom shortcut test checks
 that the shell renders with Vulkan while the launched process inherits the original
 Qt backend settings. The suite checks repeated Super
 toggles, reopening during the close animation, and the Wayland trace of each
-native surface lifetime: configure and ACK precede the first buffer, the hidden
-menu releases its native surface, and blur binds to the new surface on reopen.
-Run, Quick Settings, Notification Center and clipboard also reopen after
-native surface destruction. Quick Settings, Notification Center and clipboard
+reopening: within 10 s Start gets a new layer role on its kept surface,
+configured and ACKed before the first buffer, with its blur region sent again;
+Quick Settings, Notification Center and clipboard reopen the same way. After
+10 s hidden, a panel destroys its surface and releases its graphics
+([shell graphics memory](shell-graphics-memory.md)). Quick Settings, Notification Center and clipboard
 repeat Start's toggles; all four turn back when reopened during their exit,
 with the window never unmapped, and close on a click in their shadow's room
 but not on their own background. Between pages Quick Settings resizes its
