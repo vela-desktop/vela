@@ -94,7 +94,7 @@ static void refresh_coordinates(struct vela_a11y *a11y, bool reload)
         a11y->zone[0] = '\0';
         a11y->has_coordinates = false;
     } else if (reload || strcmp(zone, a11y->zone) != 0) {
-        strcpy(a11y->zone, zone);
+        snprintf(a11y->zone, sizeof(a11y->zone), "%s", zone);
         a11y->has_coordinates = timezone_coordinates(zone, &a11y->latitude, &a11y->longitude);
     }
 }
