@@ -2,7 +2,7 @@
 
 > **Status:** Accepted. **Checked:** 24 November 2026, `66bdff57` and this change.
 >
-> **Remaining:** two changes in Qt (§6): VMA's block size, which would take the shell from 212.6 to about 102 MiB of VRAM at idle, and remembering a per-font check that slows a panel's first frame.
+> **Remaining:** three changes in Qt (§6): a command buffer leak on every destroyed swapchain, VMA's block size, which would take the shell from 212.6 to about 102 MiB of VRAM at idle, and remembering a per-font check that slows a panel's first frame.
 
 Since #286 the shell renders Qt Quick with Vulkan. On one 1920×1080 output
 it held about 200 MiB of VRAM at idle. **Every panel opened once held about
@@ -167,8 +167,23 @@ and not stopping the timer.
 
 ## 6. Changes in Qt
 
-Both were measured with Qt 6.12.0's QtGui rebuilt with the change, loaded
-by the shell through `LD_LIBRARY_PATH`.
+All three were measured with Qt 6.12.0's QtGui rebuilt with the change,
+loaded by the shell through `LD_LIBRARY_PATH`.
+
+- **A leak on every destroyed swapchain.** `QVkSwapChain::destroy()` forgets
+  its two primary command buffers (`frame.cmdBuf = VK_NULL_HANDLE`) without
+  `vkFreeCommandBuffers`. They stay in the `QRhi`'s command pools with the
+  memory RADV gave them, about 190 KiB of VRAM per swapchain. On `main`, which
+  destroyed a panel's surface on every hide, each opening of any panel added
+  that much: 60 openings of Start took the shell from 289.9 to 301.2 MiB.
+  Freeing them from `cmdPool[i]` kept it at 290.0 MiB. A Vulkan program
+  without Qt that creates and destroys 100 Wayland swapchains on the same
+  device doesn't grow, so Mesa and RADV are not involved.
+
+  With this change, a panel destroys its swapchain only together with its
+  `QRhi`, whose pools go too: 60 quick openings of each panel kept the shell
+  flat. The leak remains for a window whose surface is destroyed while its
+  `QRhi` lives; the shell has none left.
 
 - **VMA's block size.** `QRhiVulkan` creates its allocator without
   `preferredLargeHeapBlockSize`, so VMA uses its own default of 256 MiB, whose
