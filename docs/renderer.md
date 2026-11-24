@@ -796,7 +796,8 @@ corners): it costs a frame, not the whole area.
   decorations. Not "everything transparent": apps' shadow margins are
   transparent and must not be blurred.
 - **Algorithm**: dual Kawase (a chain of downsamples and upsamples at half
-  resolution) and a veil of noise to avoid banding. The radius is in logical
+  resolution) and a veil of noise to avoid banding. Its amplitude tracks one
+  encoded sRGB step per channel on the 8-bit output. The radius is in logical
   units, so it is identical at every scale; above 240% it stops growing
   (`blur_strength()` clamps at 3: four Kawase levels show artifacts beyond),
   and the blur weakens a little.
