@@ -4,8 +4,7 @@
 find_package(PkgConfig REQUIRED)
 
 # wlroots changes API at every minor version and installs a pkg-config file
-# with the version in its name. Vela is written for 0.20 (sway 1.12's); with
-# -DVELA_WLROOTS=wlroots-0.19 it should also build against 0.19.
+# with the version in its name. Vela supports the 0.20 API.
 set(VELA_WLROOTS "wlroots-0.20" CACHE STRING "pkg-config name of wlroots")
 
 pkg_check_modules(WLROOTS REQUIRED IMPORTED_TARGET ${VELA_WLROOTS})
@@ -29,8 +28,7 @@ pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 
 # Some wlroots headers include the protocols' "server" headers. With wlroots
-# 0.19 every compositor must generate them itself; 0.20 installs some, but
-# generating them here (as sway does) works with both.
+# 0.20 only some are installed, so generate the headers we use.
 set(VELA_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${VELA_GENERATED_DIR})
 set(VELA_PROTOCOL_HEADERS)
@@ -114,7 +112,7 @@ foreach(shader quad.vert texture.frag rect.frag shadow.frag blur_down.frag blur_
         COMMAND ${GLSLC} --target-env=vulkan1.4 -O -mfmt=num -o ${output} ${source}
         DEPENDS ${source} ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/push.glsl
             ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/shape.glsl
-        COMMENT "Compilo lo shader ${shader}")
+        COMMENT "Compiling shader ${shader}")
     list(APPEND VELA_SHADERS ${output})
 endforeach()
 
@@ -651,6 +649,22 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-process-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.process COMMAND vela-process-test)
     set_tests_properties(compositor.process PROPERTIES TIMEOUT 30)
+
+    if(VELA_COMPOSITOR_SYSTEMD_FOUND)
+        add_executable(vela-bluetooth-hint-test tests/bluetooth_hint_test.c src/bluetooth.c)
+        target_include_directories(vela-bluetooth-hint-test PRIVATE src ${VELA_GENERATED_DIR})
+        target_compile_definitions(vela-bluetooth-hint-test PRIVATE WLR_USE_UNSTABLE VELA_HAVE_LOGIND=1)
+        target_link_libraries(vela-bluetooth-hint-test PRIVATE vela-pure PkgConfig::WLROOTS
+            PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN PkgConfig::VELA_COMPOSITOR_SYSTEMD)
+        add_test(NAME compositor.bluetooth-hint
+            COMMAND ${Python3_EXECUTABLE} -c
+                "import subprocess, sys
+from harness import PrivateBus
+with PrivateBus() as bus: subprocess.run([sys.argv[1], bus.address], check=True, timeout=10)"
+                $<TARGET_FILE:vela-bluetooth-hint-test>
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tests/functional)
+        set_tests_properties(compositor.bluetooth-hint PROPERTIES TIMEOUT 20)
+    endif()
 
     # Which vela-update-daemon the compositor starts, if any.
     add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)

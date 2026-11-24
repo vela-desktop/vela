@@ -185,18 +185,8 @@ static void handle_locker_client_destroy(struct wl_listener *listener, void *dat
     lock_forget_locker_client(lock);
 }
 
-// Own a pending locker launcher so a non-registering process cannot survive
-// into the next attempt. The shell is launched in its own session.
-static void lock_stop_launcher(struct vela_lock *lock)
+static void signal_launcher(pid_t pid)
 {
-    if (lock) {
-        lock_forget_locker_client(lock);
-    }
-    if (!lock || lock->launcher_pid <= 0) {
-        return;
-    }
-    pid_t pid = lock->launcher_pid;
-    lock->launcher_pid = 0;
     // Signal before reaping to prevent PID reuse across retries.
     if (kill(-pid, SIGKILL) < 0 && errno != ESRCH) {
         wlr_log_errno(WLR_ERROR, "Lock: failed to stop launcher process group");
@@ -204,7 +194,78 @@ static void lock_stop_launcher(struct vela_lock *lock)
     if (kill(pid, SIGKILL) < 0 && errno != ESRCH) {
         wlr_log_errno(WLR_ERROR, "Lock: failed to stop launcher");
     }
+}
+
+static void stop_launcher(pid_t pid)
+{
+    signal_launcher(pid);
     while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+}
+
+static void lock_stop_launcher(struct vela_lock *lock)
+{
+    if (lock) {
+        lock_forget_locker_client(lock);
+        if (lock->launcher_pid > 0) {
+            stop_launcher(lock->launcher_pid);
+            lock->launcher_pid = 0;
+        }
+    }
+}
+
+// The client must receive the roundtrip after unlock_and_destroy before it
+// can finish. Keep its PID unreaped until the grace period ends, so cleanup
+// also covers surviving members of the original launcher's process group.
+struct exiting_launcher {
+    struct wl_list link;
+    struct wl_event_source *timer;
+    pid_t pid;
+};
+
+static void forget_exiting_launcher(struct exiting_launcher *launcher)
+{
+    wl_event_source_remove(launcher->timer);
+    wl_list_remove(&launcher->link);
+    free(launcher);
+}
+
+static int finish_launcher(void *data)
+{
+    struct exiting_launcher *launcher = data;
+    signal_launcher(launcher->pid);
+    pid_t done;
+    do {
+        done = waitpid(launcher->pid, NULL, WNOHANG);
+    } while (done < 0 && errno == EINTR);
+    if (done == 0 && wl_event_source_timer_update(launcher->timer, 50) == 0) {
+        return 0;
+    }
+    if (done == 0) {
+        stop_launcher(launcher->pid);
+    }
+    forget_exiting_launcher(launcher);
+    return 0;
+}
+
+static void allow_launcher_exit(struct vela_lock *lock)
+{
+    lock_forget_locker_client(lock);
+    if (!lock->launcher_pid) {
+        return;
+    }
+    struct exiting_launcher *launcher = VELA_NEW(struct exiting_launcher);
+    launcher->pid = lock->launcher_pid;
+    launcher->timer = wl_event_loop_add_timer(lock->server->loop, finish_launcher, launcher);
+    if (!launcher->timer || wl_event_source_timer_update(launcher->timer, 1000) < 0) {
+        if (launcher->timer) {
+            wl_event_source_remove(launcher->timer);
+        }
+        free(launcher);
+        lock_stop_launcher(lock);
+        return;
+    }
+    wl_list_insert(&lock->exiting_launchers, &launcher->link);
+    lock->launcher_pid = 0;
 }
 
 // The locker gets a connection of its own, already open (WAYLAND_SOCKET):
@@ -384,7 +445,11 @@ static void handle_unlock(struct wl_listener *listener, void *data)
 static void handle_lock_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, destroy);
-    lock_stop_launcher(lock);
+    if (lock->server->locked) {
+        lock_stop_launcher(lock);
+    } else {
+        allow_launcher_exit(lock);
+    }
     // This wlroots lock is being torn down. A timer-arm failure may initiate
     // terminal blackout, which must never walk surfaces on the dying object.
     lock->lock = NULL;
@@ -717,6 +782,7 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     lock->lock_on_idle = true;
     vela_node_set_enabled(&server->layers.lock->node, false);
     // First the backdrop, then (above) the lock program's surfaces.
+    wl_list_init(&lock->exiting_launchers);
     lock->backdrop_tree = vela_tree_create(server->layers.lock);
     lock->respawn = wl_event_loop_add_timer(server->loop, handle_respawn, lock);
     if (!lock->respawn) {
@@ -766,6 +832,12 @@ void vela_lock_destroy(struct vela_lock *lock)
     lock_stop_launcher(lock);
     if (!lock) {
         return;
+    }
+    struct exiting_launcher *launcher, *next;
+    wl_list_for_each_safe(launcher, next, &lock->exiting_launchers, link)
+    {
+        stop_launcher(launcher->pid);
+        forget_exiting_launcher(launcher);
     }
     if (lock->caffeine_timer) {
         wl_event_source_remove(lock->caffeine_timer);
@@ -882,23 +954,8 @@ void vela_lock_screen(struct vela_lock *lock)
     const char *custom = getenv("VELA_LOCK");
     if (custom && *custom) {
         snprintf(command, sizeof(command), "%s", custom);
-    } else {
-        char self[PATH_MAX];
-        ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-        if (n > 0) {
-            self[n] = '\0';
-            char *slash = strrchr(self, '/');
-            if (slash) {
-                *slash = '\0';
-            }
-            const char *candidates[] = { "%s/vela-lock", "%s/../lock/vela-lock" };
-            for (size_t i = 0; i < 2 && !command[0]; ++i) {
-                char path[PATH_MAX];
-                if (vela_format(path, sizeof(path), candidates[i], self) && access(path, X_OK) == 0) {
-                    snprintf(command, sizeof(command), "'%s'", path);
-                }
-            }
-        }
+    } else if (!vela_find_program("vela-lock", "lock", command, sizeof(command))) {
+        command[0] = '\0';
     }
     if (!command[0]) {
         wlr_log(WLR_ERROR, "Lock: vela-lock not found; keeping desktop hidden and retrying");

@@ -55,12 +55,12 @@ static void exit_reaches_the_callback(struct wl_event_loop *loop)
     vela_child_stop(&child);
 }
 
-static void an_unwatched_child_is_reaped(struct wl_event_loop *loop)
+static void an_unwatched_child_is_reaped(struct wl_event_loop *loop, int free_fds)
 {
     struct rlimit saved;
     assert(getrlimit(RLIMIT_NOFILE, &saved) == 0);
-    // Room for the pidfd alone: its watch needs a duplicate, which fails.
-    struct rlimit low = { (rlim_t)lowest_free_descriptor() + 1, saved.rlim_max };
+    // Zero descriptors fails pidfd_open; one fails the watch's duplicate.
+    struct rlimit low = { (rlim_t)lowest_free_descriptor() + free_fds, saved.rlim_max };
     assert(setrlimit(RLIMIT_NOFILE, &low) == 0);
     struct vela_child child;
     vela_child_init(&child, "test", SIGTERM, -1);
@@ -81,7 +81,8 @@ int main(void)
     struct wl_event_loop *loop = wl_event_loop_create();
     assert(loop);
     exit_reaches_the_callback(loop);
-    an_unwatched_child_is_reaped(loop);
+    an_unwatched_child_is_reaped(loop, 0);
+    an_unwatched_child_is_reaped(loop, 1);
     wl_event_loop_destroy(loop);
     puts("process: ok");
     return 0;

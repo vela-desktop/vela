@@ -133,7 +133,7 @@ static void request_initial_state(struct vela_view *view)
     view->x11_start_fullscreen = false;
     view->x11_start_maximized = false;
     xcb_flush(connection);
-    wl_event_source_timer_update(server->xwayland_property_timer, 1);
+    // handle_map polls the reply and arms the timer once this view is in the list.
 }
 
 static void cancel_initial_state(struct vela_view *view)
