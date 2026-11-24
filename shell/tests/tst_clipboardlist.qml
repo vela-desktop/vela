@@ -20,6 +20,13 @@ Item {
     function range(n) {
         return Array.from({ length: n }, (_, i) => i + 1)
     }
+    // Short texts first, then images: an image's card is more than twice
+    // the height of a one-line text's.
+    function mixed(ids) {
+        return ids.map(id => id <= 6
+            ? { id: id, kind: "text", text: "Entry " + id, pinned: false }
+            : { id: id, kind: "image", text: "", pinned: false })
+    }
 
     ClipboardList {
         id: list
@@ -75,16 +82,18 @@ Item {
             verify(list.contentY <= list.originY + list.contentHeight - list.height + 0.5)
         }
 
-        // With the mouse, far from the selection (the first entry): "…" and
-        // Delete, or Pin, leave the view where it was.
+        // With the mouse, far from the selection (the first entry): Pin on
+        // the last entry in sight takes it to the top, and the others stay
+        // where they were in the view.
         function test_a_change_out_of_sight_of_the_selection_keeps_the_view() {
             list.positionViewAtIndex(15, ListView.Contain)
-            const y = list.contentY
             verify(!inSight(0))
+            const first = firstInSight()
+            const before = offsetOf(first)
             const pinned = root.entries([16]).map(e => Object.assign(e, { pinned: true }))
             list.entries = pinned.concat(root.entries(root.range(20).filter(id => id !== 16)))
             compare(list.current, 1)
-            compare(list.contentY, y)
+            compare(offsetOf(first), before)
         }
 
         // Something copied while the panel is open comes first: the
@@ -108,6 +117,76 @@ Item {
             compare(list.current, 0)
             verify(inSight(18))
             compare(list.contentY, list.originY + list.contentHeight - list.height)
+        }
+
+        // The first entry in sight, at the top of the view or below it.
+        function firstInSight() {
+            for (let i = 0; i < list.count; ++i) {
+                const item = list.itemAtIndex(i)
+                if (item !== null && item.y + item.height > list.contentY) return list.shown[i].id
+            }
+            return -1
+        }
+
+        // Where an entry is in the view: its distance from the view's top.
+        function offsetOf(id) {
+            const index = list.shown.findIndex(e => e.id === id)
+            const item = list.itemAtIndex(index)
+            verify(item !== null, "entry " + id + " is laid out")
+            return item.y - list.contentY
+        }
+
+        // Among the images, far from the selection (the first entry), with
+        // texts at the top: something new is copied, out of sight. The
+        // entries in sight stay where they were in the view.
+        function test_a_new_copy_keeps_the_images_in_sight() {
+            list.entries = root.mixed(root.range(30))
+            list.current = 0
+            list.positionViewAtIndex(26, ListView.Contain)
+            verify(!inSight(0))
+            const before = offsetOf(26)
+            list.entries = root.mixed([31].concat(root.range(30)))
+            compare(list.current, 1)
+            compare(offsetOf(26), before)
+        }
+
+        // The same with "…" and Delete on an entry out of sight above.
+        function test_deleting_above_keeps_the_images_in_sight() {
+            list.entries = root.mixed(root.range(30))
+            list.current = 0
+            list.positionViewAtIndex(26, ListView.Contain)
+            const before = offsetOf(26)
+            list.entries = root.mixed(root.range(30).filter(id => id !== 3))
+            compare(offsetOf(26), before)
+        }
+
+        // Pin on the first entry in sight: it goes to the top of the list,
+        // and the entries after it stay where they were.
+        function test_pinning_the_first_entry_in_sight_keeps_the_others() {
+            list.entries = root.mixed(root.range(30))
+            list.current = 0
+            list.positionViewAtIndex(26, ListView.Contain)
+            const first = firstInSight()
+            const next = first + 1
+            const before = offsetOf(next)
+            const entries = root.mixed(root.range(30))
+            const pinned = entries.splice(first - 1, 1).map(e => Object.assign(e, { pinned: true }))
+            list.entries = pinned.concat(entries)
+            compare(offsetOf(next), before)
+        }
+
+        // "…" and Pin on the selection, in sight among the images: it goes to
+        // the top of the list, and the view follows it there.
+        function test_pinning_the_selection_keeps_it_in_sight() {
+            list.entries = root.mixed(root.range(30))
+            list.current = 25
+            list.positionViewAtIndex(26, ListView.Contain)
+            verify(inSight(25))
+            const entries = root.mixed(root.range(30))
+            const pinned = entries.splice(25, 1).map(e => Object.assign(e, { pinned: true }))
+            list.entries = pinned.concat(entries)
+            compare(list.current, 0)
+            verify(inSight(0))
         }
 
         function test_an_empty_history() {

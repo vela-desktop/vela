@@ -22,22 +22,53 @@ ListView {
     currentIndex: -1
 
     // Each change to the history is a new list, and a new model takes the
-    // view back to the top. Instead, the view stays where it was, and the
+    // view back to the top. Instead, the entries in sight stay where they
+    // were in the view: the first one in sight that is still there keeps
+    // its place, unless it was pinned or unpinned and so moved away. The
     // selection stays on its entry, or on the one now in its place if it
     // was deleted. A selection that was in sight stays in sight.
+    // The view keeps an entry, not a position: until the view lays the new
+    // entries out, it only estimates their heights (an image's card is
+    // taller than a short text's), so a saved position may no longer show
+    // the same entries.
     // `shown` is what the view shows: the entries as they were last.
     property var shown: []
+    function inSight(item) {
+        return item !== null && item.y + item.height > contentY && item.y < contentY + height
+    }
     onEntriesChanged: {
         const kept = shown[current]
-        const item = itemAtIndex(current)
-        const seen = item !== null && item.y + item.height > contentY && item.y < contentY + height
-        const y = contentY
+        const seen = inSight(itemAtIndex(current))
+        // The entries in sight, top to bottom, each with how far above the
+        // view's top it starts.
+        const anchors = []
+        for (let i = 0; i < shown.length; ++i) {
+            const item = itemAtIndex(i)
+            if (inSight(item)) anchors.push({ entry: shown[i], offset: contentY - item.y })
+        }
         shown = entries
         model = entries
         const index = kept ? entries.findIndex(e => e.id === kept.id) : -1
         current = index >= 0 ? index : Math.max(0, Math.min(current, entries.length - 1))
-        contentY = Math.max(originY, Math.min(y, originY + contentHeight - height))
-        if (seen && entries.length > 0) positionViewAtIndex(current, ListView.Contain)
+        if (entries.length === 0) return
+        let at = -1
+        let offset = 0
+        for (const anchor of anchors) {
+            const i = entries.findIndex(e => e.id === anchor.entry.id)
+            if (i >= 0 && entries[i].pinned === anchor.entry.pinned) {
+                at = i
+                offset = anchor.offset
+                break
+            }
+        }
+        if (at >= 0) {
+            // Laid out from the anchor down, the entries in sight have their
+            // real heights, and so has the end of the list if it is in sight.
+            positionViewAtIndex(at, ListView.Beginning)
+            contentY = itemAtIndex(at).y + offset
+            contentY = Math.max(originY, Math.min(contentY, originY + contentHeight - height))
+        }
+        if (seen) positionViewAtIndex(current, ListView.Contain)
     }
 
     delegate: Fill {
