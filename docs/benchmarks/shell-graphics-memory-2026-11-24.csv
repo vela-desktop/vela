@@ -1,0 +1,7 @@
+build,sample,idle_vram_mib,idle_gtt_mib,closed_1s_vram_mib,closed_1s_gtt_mib,closed_11s_vram_mib,closed_11s_gtt_mib,first_open_ms,reopen_within_10s_ms,reopen_after_10s_ms,start_frame_gap_median_ms,start_frame_gap_max_ms
+main 66bdff57,1,202.7,66.0,597.8,226.1,598.8,226.1,10.4,4.4,4.4,10.0,10.3
+release after 10 s,1,202.7,66.0,597.8,226.1,202.8,66.0,10.4,4.4,10.5,10.0,10.2
+main 66bdff57,2,202.7,66.0,597.8,226.1,598.8,226.1,10.6,4.3,4.4,10.0,10.5
+release after 10 s,2,202.7,66.0,597.8,226.1,202.8,66.0,10.6,4.4,8.6,10.0,11.4
+main 66bdff57,3,202.7,66.0,597.8,226.1,598.8,226.1,10.5,4.4,4.4,10.0,10.3
+release after 10 s,3,202.7,66.0,597.8,226.1,202.8,66.0,10.5,4.4,8.5,10.0,10.2
