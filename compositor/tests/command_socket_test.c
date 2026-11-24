@@ -192,7 +192,8 @@ static void timezone_changes(struct vela_server *server)
 
 int main(void)
 {
-    char directory[] = "/tmp/vela-command-test-XXXXXX";
+    // Keep the socket path short even when CTest runs in a deeply nested build directory.
+    char directory[] = "/proc/self/cwd/vela-command-test-XXXXXX";
     assert(mkdtemp(directory));
     assert(setenv("XDG_RUNTIME_DIR", directory, 1) == 0);
     assert(setenv("XDG_CONFIG_HOME", directory, 1) == 0);
