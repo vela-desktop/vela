@@ -17,7 +17,15 @@
 #include <unistd.h>
 #include <wlr/types/wlr_output.h>
 
-#define CHECK(expr) do { if (!(expr)) { fprintf(stderr, "%s:%d: %s\n", __FILE__, __LINE__, #expr); exit(1); } } while (0)
+static void check(bool ok, const char *expr, int line)
+{
+    if (!ok) {
+        fprintf(stderr, "%s:%d: %s\n", __FILE__, line, expr);
+        exit(1);
+    }
+}
+
+#define CHECK(expr) check((expr), #expr, __LINE__)
 
 static struct vela_view view;
 static struct vela_layer_surface layer;
@@ -103,8 +111,12 @@ int main(void)
     fd = listener(&addr);
     expect_command(server, fd, "active-output DP-2\tvolume up\n");
 
-    focused = NULL;
+    // A focused view without an assigned output falls back to the layer.
+    window_output = NULL;
     server->focused_layer = &layer;
+    layer_output = &first;
+    expect_command(server, fd, "active-output DP-1\tvolume up\n");
+    focused = NULL;
     layer_output = &second;
     expect_command(server, fd, "active-output DP-2\tvolume up\n");
     layer_output = NULL;
@@ -115,6 +127,11 @@ int main(void)
 
     close(fd);
     CHECK(unlink(addr.sun_path) == 0);
+    CHECK(unsetenv("XDG_RUNTIME_DIR") == 0);
+    CHECK(!vela_shell_send(server, "volume up"));
+    CHECK(setenv("XDG_RUNTIME_DIR", directory, 1) == 0);
+    server->socket_name[0] = '\0';
+    CHECK(!vela_shell_send(server, "volume up"));
     CHECK(rmdir(directory) == 0);
     free(server);
     return 0;

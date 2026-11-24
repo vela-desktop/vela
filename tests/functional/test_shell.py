@@ -1938,7 +1938,10 @@ class QtShell(RealShell):
         self.shell.wait(timeout=5 * TIME_SCALE)
         self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar"), what="old shell gone")
         self.start_shell()
-        self.vela.wait_for(lambda s: s["focused"] == window, what="fullscreen still focused")
+        self.vela.wait_for(
+            lambda s: s["focused"] == window and any(layer["namespace"] == "vela-wallpaper"
+                and layer["mapped"] and layer["output"] == "HEADLESS-2" for layer in s["layers"]),
+            what="fullscreen still focused and replacement shell mapped on secondary output")
         self.vela.input("key", "super")
         state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start after shell restart")
         self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
@@ -1977,6 +1980,10 @@ class VolumeDisplay(RealShell):
         state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
         main, second = (next(o for o in state["outputs"] if o["name"] == name)
                         for name in ("HEADLESS-1", "HEADLESS-2"))
+        self.vela.wait_for(
+            lambda s: any(layer["namespace"] == "vela-taskbar" and layer["mapped"]
+                          and layer["output"] == "HEADLESS-2" for layer in s["layers"]),
+            what="secondary Qt taskbar mapped")
         self.vela.input("move", main["x"] + 200, main["y"] + 200)
         first = self.vela.open_window(300, 200)
         self.vela.wait_for(lambda s: s["focused"] == first and s.window(first)["output"] == "HEADLESS-1")

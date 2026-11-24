@@ -46,10 +46,15 @@ bool vela_shell_send(struct vela_server *server, const char *line)
         struct vela_output *output = vela_active_output(server);
         const char *name = output ? output->wlr->name : "";
         const char prefix[] = "active-output ";
-        size_t length = vela_size_add(sizeof(prefix), strlen(name));
-        length = vela_size_add(length, vela_size_add(strlen(line), 1));
+        size_t name_length = strlen(name);
+        size_t line_length = strlen(line);
+        size_t offset = vela_size_add(sizeof(prefix), name_length);
+        size_t length = vela_size_add(offset, vela_size_add(line_length, 1));
         char *message = VELA_NEW_N(char, length);
-        snprintf(message, length, "%s%s\t%s", prefix, name, line);
+        memcpy(message, prefix, sizeof(prefix) - 1);
+        memcpy(message + sizeof(prefix) - 1, name, name_length);
+        message[offset - 1] = '\t';
+        memcpy(message + offset, line, line_length);
         message[length - 1] = '\n';
         sent = send(fd, message, length, MSG_NOSIGNAL) == (ssize_t)length;
         free(message);

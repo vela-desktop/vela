@@ -23,15 +23,16 @@ private slots:
         QVERIFY(shell.listen());
         QSignalSpy changes(&shell, &ShellController::activeScreenChanged);
         QStringList seen;
-        connect(&shell, &ShellController::volumeKeyPressed, this, [&](const QString&) {
-            seen.append(shell.activeScreen());
-        });
+        connect(&shell, &ShellController::volumeKeyPressed, this,
+            [&](const QString&) { seen.append(shell.activeScreen()); });
         const auto send = [&](const QByteArray& message) {
             QLocalSocket socket;
             socket.connectToServer(ShellController::socketPath());
             QVERIFY(socket.waitForConnected(1000));
             QCOMPARE(socket.write(message), message.size());
-            QVERIFY(socket.waitForBytesWritten(1000));
+            if (socket.bytesToWrite() > 0) {
+                QVERIFY(socket.waitForBytesWritten(1000));
+            }
             socket.disconnectFromServer();
         };
 
@@ -61,17 +62,22 @@ private slots:
         QVERIFY(partial.waitForConnected(1000));
         const QByteArray firstHalf("active-output DP-2");
         QCOMPARE(partial.write(firstHalf), firstHalf.size());
-        QVERIFY(partial.waitForBytesWritten(1000));
+        if (partial.bytesToWrite() > 0) {
+            QVERIFY(partial.waitForBytesWritten(1000));
+        }
         send("active-output DP-1\tvolume up\n");
         QTRY_COMPARE(seen.size(), 5);
         QCOMPARE(seen.last(), QStringLiteral("DP-1"));
         const QByteArray secondHalf("\tvolume down\n");
         QCOMPARE(partial.write(secondHalf), secondHalf.size());
-        QVERIFY(partial.waitForBytesWritten(1000));
+        if (partial.bytesToWrite() > 0) {
+            QVERIFY(partial.waitForBytesWritten(1000));
+        }
         QTRY_COMPARE(seen.size(), 6);
         QCOMPARE(seen.last(), QStringLiteral("DP-2"));
         partial.disconnectFromServer();
         send("active-output DP-1\tvolume up"); // no newline: discard
+        send("active-output DP-1\n"); // no command: discard
         send("active-output \tvolume up\n");
         QTRY_COMPARE(seen.size(), 7);
         QVERIFY(seen.last().isEmpty());
