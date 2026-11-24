@@ -64,11 +64,11 @@ inline QString effective()
     if (!chosen.isEmpty()) {
         return chosen;
     }
-    const auto sysLang = QLocale::system().language();
-    if (sysLang == QLocale::Italian) {
+    const QLocale sys = QLocale::system();
+    if (sys.language() == QLocale::Italian) {
         return QStringLiteral("it");
     }
-    if (sysLang == QLocale::Portuguese) {
+    if (sys.language() == QLocale::Portuguese && sys.territory() == QLocale::Brazil) {
         return QStringLiteral("pt");
     }
     return QStringLiteral("en");
@@ -98,10 +98,10 @@ inline void install(const QString& name, std::function<void()> changed = {})
             state->translator = nullptr;
         }
         const QLocale::Territory territory = QLocale::system().territory();
-        const QLocale::Language qtLang = lang == QLatin1String("en") ? QLocale::English
-            : lang == QLatin1String("pt")                            ? QLocale::Portuguese
-                                                                     : QLocale::Italian;
-        QLocale::setDefault(QLocale(qtLang, territory));
+        const QLocale defaultLocale = lang == QLatin1String("en") ? QLocale(QLocale::English, territory)
+            : lang == QLatin1String("pt")                         ? QLocale(QLocale::Portuguese, QLocale::Brazil)
+                                                                  : QLocale(QLocale::Italian, territory);
+        QLocale::setDefault(defaultLocale);
         if (lang != QLatin1String("en")) {
             state->translator = new QTranslator(QCoreApplication::instance());
             if (state->translator->load(QStringLiteral(":/i18n/%1_%2.qm").arg(state->name, lang))) {

@@ -166,10 +166,13 @@ void KeyboardLayouts::translate()
 {
     QHash<QString, QString> catalog;
     if (m_language != QLatin1String("en")) {
+        // Map Vela's "pt" explicitly to pt_BR so European Portuguese ("pt") is
+        // never loaded; if pt_BR is unavailable, fall back to English names.
+        const QString catalogLocale = m_language == QLatin1String("pt") ? QStringLiteral("pt_BR") : m_language;
         // xkeyboard-config 2.45 renamed its domain; the old name stays as a
         // link on some systems, and is all there is on older ones.
         for (const char* domain : { "xkeyboard-config-2", "xkeyboard-config" }) {
-            QFile file(m_localeDir + u'/' + m_language + QStringLiteral("/LC_MESSAGES/") + QLatin1String(domain)
+            QFile file(m_localeDir + u'/' + catalogLocale + QStringLiteral("/LC_MESSAGES/") + QLatin1String(domain)
                 + QStringLiteral(".mo"));
             if (file.open(QIODevice::ReadOnly)) {
                 catalog = readCatalog(file.read(4 * 1024 * 1024));
@@ -222,7 +225,10 @@ void KeyboardLayouts::translate()
         }
         entry.search = fold(parts.join(u' '));
     }
-    QCollator collator(QLocale(m_language == QLatin1String("it") ? QLocale::Italian : QLocale::English));
+    const QLocale collatorLocale = m_language == QLatin1String("it") ? QLocale(QLocale::Italian)
+        : m_language == QLatin1String("pt")                          ? QLocale(QLocale::Portuguese, QLocale::Brazil)
+                                                                     : QLocale(QLocale::English);
+    QCollator collator(collatorLocale);
     collator.setCaseSensitivity(Qt::CaseInsensitive);
     std::sort(m_groups.begin(), m_groups.end(), [&](const Group& a, const Group& b) {
         return collator.compare(m_entries.at(a.layout).name, m_entries.at(b.layout).name) < 0;

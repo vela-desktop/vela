@@ -1097,11 +1097,11 @@
         </message>
         <message>
             <source>Saved to Pictures &gt; Screenshot. Click to open it.</source>
-            <translation>Salva em Imagens &gt; Captura de tela. Clique para abrir.</translation>
+            <translation>Salva em Imagens &gt; Screenshot. Clique para abrir.</translation>
         </message>
         <message>
             <source>Couldn't save it to Pictures &gt; Screenshot.</source>
-            <translation>Não foi possível salvar em Imagens &gt; Captura de tela.</translation>
+            <translation>Não foi possível salvar em Imagens &gt; Screenshot.</translation>
         </message>
         <message>
             <source>Open</source>

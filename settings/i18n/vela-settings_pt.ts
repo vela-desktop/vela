@@ -803,7 +803,7 @@ Especificações do sistema
         </message>
         <message>
             <source>Win+Shift+S or Print Screen: a rectangle, a window or the full screen, copied to the clipboard and saved in Pictures &gt; Screenshot</source>
-            <translation>Win+Shift+S ou Print Screen: um retângulo, uma janela ou a tela inteira, copiados para a área de transferência e salvos em Imagens &gt; Capturas de tela</translation>
+            <translation>Win+Shift+S ou Print Screen: um retângulo, uma janela ou a tela inteira, copiados para a área de transferência e salvos em Imagens &gt; Screenshot</translation>
         </message>
     </context>
     <context>
