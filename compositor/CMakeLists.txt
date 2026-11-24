@@ -678,6 +678,7 @@ if(VELA_BUILD_TOOLS)
         target_compile_definitions(vela-bluetooth-hint-test PRIVATE WLR_USE_UNSTABLE VELA_HAVE_LOGIND=1)
         target_link_libraries(vela-bluetooth-hint-test PRIVATE vela-pure PkgConfig::WLROOTS
             PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN PkgConfig::VELA_COMPOSITOR_SYSTEMD)
+        target_link_options(vela-bluetooth-hint-test PRIVATE -Wl,--wrap=sd_bus_process)
         add_test(NAME compositor.bluetooth-hint
             COMMAND ${Python3_EXECUTABLE} -c
                 "import subprocess, sys

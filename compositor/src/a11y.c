@@ -16,6 +16,7 @@
 #include "sun.h"
 #include "util.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -63,12 +64,17 @@ static bool timezone_name(char *zone, size_t size)
     return vela_format(zone, size, "%s", at + 9);
 }
 
-static bool timezone_coordinates(const char *zone, double *latitude, double *longitude)
+enum timezone_lookup { TIMEZONE_RETRY, TIMEZONE_MISSING, TIMEZONE_FOUND };
+
+static enum timezone_lookup timezone_coordinates(const char *zone, double *latitude, double *longitude)
 {
     const char *tables[] = { "/usr/share/zoneinfo/zone1970.tab", "/usr/share/zoneinfo/zone.tab" };
+    bool searched = false;
+    bool failed = false;
     for (size_t t = 0; t < sizeof(tables) / sizeof(tables[0]); ++t) {
         FILE *in = fopen(tables[t], "re");
         if (!in) {
+            failed |= errno != ENOENT && errno != ENOTDIR;
             continue;
         }
         char line[512];
@@ -79,14 +85,19 @@ static bool timezone_coordinates(const char *zone, double *latitude, double *lon
                 continue;
             }
             fclose(in);
-            return vela_sun_parse_coordinates(coordinates, latitude, longitude);
+            return vela_sun_parse_coordinates(coordinates, latitude, longitude) ? TIMEZONE_FOUND : TIMEZONE_MISSING;
+        }
+        if (ferror(in)) {
+            failed = true;
+        } else {
+            searched = true;
         }
         fclose(in);
     }
-    return false;
+    return searched && !failed ? TIMEZONE_MISSING : TIMEZONE_RETRY;
 }
 
-// Read the table once per zone, including zones with no listed coordinates.
+// Cache completed lookups, including zones with no listed coordinates.
 static void refresh_coordinates(struct vela_a11y *a11y, bool reload)
 {
     char zone[sizeof(a11y->zone)];
@@ -94,8 +105,9 @@ static void refresh_coordinates(struct vela_a11y *a11y, bool reload)
         a11y->zone[0] = '\0';
         a11y->has_coordinates = false;
     } else if (reload || strcmp(zone, a11y->zone) != 0) {
-        snprintf(a11y->zone, sizeof(a11y->zone), "%s", zone);
-        a11y->has_coordinates = timezone_coordinates(zone, &a11y->latitude, &a11y->longitude);
+        enum timezone_lookup result = timezone_coordinates(zone, &a11y->latitude, &a11y->longitude);
+        a11y->has_coordinates = result == TIMEZONE_FOUND;
+        snprintf(a11y->zone, sizeof(a11y->zone), "%s", result == TIMEZONE_RETRY ? "" : zone);
     }
 }
 

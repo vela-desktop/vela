@@ -22,6 +22,7 @@
 #include <wlr/types/wlr_seat.h>
 
 static unsigned table_reads;
+static bool fail_table_open;
 static struct sockaddr_un address = { .sun_family = AF_UNIX };
 
 FILE *__real_fopen(const char *path, const char *mode);
@@ -29,15 +30,20 @@ FILE *__wrap_fopen(const char *path, const char *mode)
 {
     static char primary[] = "# zone fixture\nIT +4154+01229 Europe/Rome\n";
     static char fallback[] = "AU -3352+15113 Australia/Sydney\n";
+    char *table;
     if (strcmp(path, "/usr/share/zoneinfo/zone1970.tab") == 0) {
-        ++table_reads;
-        return fmemopen(primary, sizeof(primary) - 1, "r");
+        table = primary;
+    } else if (strcmp(path, "/usr/share/zoneinfo/zone.tab") == 0) {
+        table = fallback;
+    } else {
+        return __real_fopen(path, mode);
     }
-    if (strcmp(path, "/usr/share/zoneinfo/zone.tab") == 0) {
-        ++table_reads;
-        return fmemopen(fallback, sizeof(fallback) - 1, "r");
+    ++table_reads;
+    if (fail_table_open) {
+        errno = EMFILE;
+        return NULL;
     }
-    return __real_fopen(path, mode);
+    return fmemopen(table, strlen(table), "r");
 }
 
 // Make a modest pipeline fill the real socket regardless of host defaults.
@@ -188,6 +194,14 @@ static void timezone_changes(struct vela_server *server)
     assert(table_reads == before + 4); // missing coordinates are cached too
     vela_a11y_load(a11y);
     assert(table_reads == before + 6); // config reload retries the tables
+
+    assert(setenv("TZ", "Europe/Rome", 1) == 0);
+    fail_table_open = true;
+    refresh_on_timer(server);
+    assert(!a11y->has_coordinates && table_reads == before + 8);
+    fail_table_open = false;
+    refresh_on_timer(server);
+    assert(a11y->has_coordinates && table_reads == before + 9);
 }
 
 int main(void)

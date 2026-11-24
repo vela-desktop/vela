@@ -7,6 +7,7 @@ supervisor restarting the compositor after a crash (locked too)."""
 import json
 import os
 import select
+import shlex
 import signal
 import socket
 import subprocess
@@ -39,7 +40,7 @@ class Lock(unittest.TestCase):
     def test_clean_unlock_allows_launcher_to_finish(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = os.path.join(directory, "finished")
-            launcher = f"'{tool('vela-testlock')}' 300 && echo done > '{marker}'"
+            launcher = f"{shlex.quote(tool('vela-testlock'))} 300 && echo done > {shlex.quote(marker)}"
             with Session(env={"VELA_LOCK": launcher}) as vela:
                 vela.command("lock")
                 vela.wait_for(lambda _: os.path.exists(marker), read_state=False,
@@ -49,7 +50,7 @@ class Lock(unittest.TestCase):
     def test_clean_unlock_reaps_a_launcher_that_lingers(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = os.path.join(directory, "pid")
-            launcher = f"'{tool('vela-testlock')}' 300 && echo $$ > '{marker}' && exec sleep 30"
+            launcher = f"{shlex.quote(tool('vela-testlock'))} 300 && echo $$ > {shlex.quote(marker)} && exec sleep 30"
             with Session(env={"VELA_LOCK": launcher}) as vela:
                 vela.command("lock")
                 vela.wait_for(lambda _: os.path.exists(marker) and os.path.getsize(marker) > 0,

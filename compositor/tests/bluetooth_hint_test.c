@@ -12,6 +12,13 @@
 #include <systemd/sd-login.h>
 
 static int starts;
+static bool pause_bus;
+
+int __real_sd_bus_process(sd_bus *bus, sd_bus_message **message);
+int __wrap_sd_bus_process(sd_bus *bus, sd_bus_message **message)
+{
+    return pause_bus ? 0 : __real_sd_bus_process(bus, message);
+}
 
 bool vela_find_program(const char *name, const char *dir, char *command, size_t size)
 {
@@ -68,7 +75,10 @@ int main(int argc, char **argv)
     assert(server.loop);
     vela_bluetooth_report_lock(&server, false); // nested: sends nothing
     server.session = (struct wlr_session *)&server;
+    pause_bus = true; // keep the initial hint queued until the assertion
     vela_bluetooth_start(&server);
+    assert(starts == 0);
+    pause_bus = false;
     server.locked = false;
     vela_bluetooth_report_lock(&server, false);
 
