@@ -23,8 +23,10 @@ RUN pacman -Syu --noconfirm --needed \
         pam polkit librsvg zlib gtest python python-numpy python-pillow hicolor-icon-theme shared-mime-info xorg-xwayland \
     # pipewire-audio (not pipewire) supplies pw-cat/pw-record on Arch.
         pipewire pipewire-audio wireplumber systemd-libs \
-    # What the GPU suites run against (docs/ci-quality.md).
-        breeze-icons noto-fonts python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop \
+    # What the GPU suites run against (docs/ci-quality.md); xdg-terminal-exec
+    # for test_accessibility's real Win+Enter launcher, as Vela's packages
+    # depend on it.
+        breeze-icons noto-fonts python-dbus python-gobject dbus glib2 xorg-xrandr xorg-xrdb xorg-xprop xdg-terminal-exec \
     # NVIDIA's Vulkan ICD needs libXext and libglvnd, and its EGL the external
     # platforms nvidia-utils depends on (Qt's Wayland windows need egl-wayland2
     # on recent drivers); the driver itself comes from the host.
