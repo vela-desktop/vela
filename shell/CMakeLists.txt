@@ -169,6 +169,7 @@ set(VELA_QML_FILES
     qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
+    qml/ClipboardList.qml
     qml/SnipOverlay.qml
     qml/ShadowRoom.qml)
 

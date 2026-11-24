@@ -122,8 +122,13 @@ both in the popup and in history. The image test checks both lifetimes.
 ## 8. Clipboard viewport
 
 The [clipboard panel](../shell/qml/ClipboardPanel.qml) uses a variable-height
-`ListView` for visible and nearby cards. Pin ordering and keyboard selection
-use the complete history, including rows whose delegates have not been created.
+`ListView` ([ClipboardList](../shell/qml/ClipboardList.qml)) for visible and
+nearby cards. Pin ordering and keyboard selection use the complete history,
+including rows whose delegates have not been created. Each history change
+replaces the model, which would scroll the view back to the top. The list
+keeps the scroll position and keeps the selection on the same entry. If the
+selected entry was deleted, the selection moves to the entry that takes its
+place. A selection that was visible stays visible.
 
 With 25 low-compression-cost 1600×900 RGB screenshots saved as pins, one run
 per build measured idle PSS of 241.7 MiB before and 111.9 MiB after. With the

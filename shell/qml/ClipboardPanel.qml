@@ -24,8 +24,9 @@ Window {
     color: "transparent"
 
     readonly property var history: Clip.items
-    property int current: 0
-    onHistoryChanged: current = Math.max(0, Math.min(current, history.length - 1))
+    // The entry the keyboard is on (ClipboardList.qml keeps it on its entry
+    // when the history changes).
+    property alias current: list.current
 
     function open() {
         // Reopened while leaving: it turns back from where it is, as it was.
@@ -183,87 +184,20 @@ Window {
                     wrapMode: Text.WordWrap
                 }
 
-                ListView {
+                ClipboardList {
                     id: list
                     visible: Clip.enabled && root.history.length > 0
                     width: parent.width
                     height: Math.min(contentHeight, 420)
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    spacing: 8
-                    model: root.history
-                    currentIndex: -1
-                    delegate: Fill {
-                        id: card
-                        required property var modelData
-                        required property int index
-                        readonly property bool selected: index === root.current
-                        width: list.width
-                        height: Math.max(56, (modelData.kind === "image" ? thumb.height : body.height) + 24)
-                        radius: Theme.nested(Theme.radiusOverlay, 16, Theme.radius) // 16 inside the panel
-                        color: cardMouse.containsMouse ? Theme.subtleHover : Theme.control
-                        border.width: selected ? 2 : 1
-                        border.color: selected ? Theme.accent : Theme.stroke
-
-                        Text {
-                            id: body
-                            visible: card.modelData.kind === "text"
-                            x: 12
-                            y: 12
-                            width: parent.width - 56
-                            text: card.modelData.text
-                            textFormat: Text.PlainText
-                            color: Theme.text
-                            font.pixelSize: Theme.fontBody
-                            wrapMode: Text.WrapAnywhere
-                            maximumLineCount: 4
-                            elide: Text.ElideRight
-                        }
-                        Image {
-                            id: thumb
-                            visible: card.modelData.kind === "image"
-                            x: 12
-                            y: 12
-                            width: parent.width - 56
-                            height: 96
-                            fillMode: Image.PreserveAspectFit
-                            horizontalAlignment: Image.AlignLeft
-                            source: visible ? "image://clipboard/" + card.modelData.id : ""
-                            sourceSize: Qt.size(width, height) // logical: Qt turns it into pixels
-                            asynchronous: true
-                        }
-                        MouseArea {
-                            id: cardMouse
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onClicked: root.pasteAt(card.index)
-                        }
-                        // Pinned: the pin; "…" to pin or delete.
-                        Text {
-                            visible: card.modelData.pinned
-                            anchors { right: more.left; rightMargin: 2; verticalCenter: more.verticalCenter }
-                            text: "\u{1F4CC}"
-                            font.pixelSize: 11
-                            opacity: 0.7
-                        }
-                        Button {
-                            id: more
-                            anchors { right: parent.right; top: parent.top; margins: 8 }
-                            width: 28
-                            height: 28
-                            padding: 0
-                            subtle: true
-                            text: "…"
-                            Accessible.name: qsTr("See more")
-                            onClicked: {
-                                const id = card.modelData.id
-                                const p = root.screenPoint(more, 0, more.height)
-                                Menus.open([
-                                    { text: card.modelData.pinned ? qsTr("&Unpin") : qsTr("&Pin"), icon: card.modelData.pinned ? "window-unpin" : "window-pin", action: () => Clip.togglePin(id) },
-                                    { text: qsTr("&Delete"), icon: "edit-delete", shortcut: qsTr("Del"), action: () => Clip.remove(id) }
-                                ], p.x, p.y, { screen: root.screen ? root.screen.name : "" })
-                            }
-                        }
+                    entries: root.history
+                    onPasteRequested: index => root.pasteAt(index)
+                    onMoreRequested: (entry, button) => {
+                        const id = entry.id
+                        const p = root.screenPoint(button, 0, button.height)
+                        Menus.open([
+                            { text: entry.pinned ? qsTr("&Unpin") : qsTr("&Pin"), icon: entry.pinned ? "window-unpin" : "window-pin", action: () => Clip.togglePin(id) },
+                            { text: qsTr("&Delete"), icon: "edit-delete", shortcut: qsTr("Del"), action: () => Clip.remove(id) }
+                        ], p.x, p.y, { screen: root.screen ? root.screen.name : "" })
                     }
                 }
             }

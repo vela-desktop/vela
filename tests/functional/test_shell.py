@@ -174,6 +174,23 @@ class ClipboardHistory(RealShell):
                                capture_output=True, check=True, timeout=5 * TIME_SCALE)
         self.assertEqual(paste.stdout, self.png)
 
+    def test_delete_selects_the_next_pin(self):
+        # Del on "Pin 15", at the bottom of the view: the selection moves to
+        # the image after it, which Enter then pastes.
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 15 + ["key", "Delete", "key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+        with open(os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard", "pinned.json")) as manifest:
+            texts = [entry.get("text") for entry in json.load(manifest)]
+        self.assertNotIn("Pin 15", texts)
+        self.assertIn("Pin 14", texts)
+
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
 class TaskbarShortcuts(RealShell):
