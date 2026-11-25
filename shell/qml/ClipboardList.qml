@@ -20,13 +20,17 @@ ListView {
     boundsBehavior: Flickable.StopAtBounds
     spacing: 8
     currentIndex: -1
+    // Up and Down belong to the panel, which moves `current`: from a card's
+    // "…" they would otherwise move the view's own currentIndex.
+    keyNavigationEnabled: false
 
     // Each change to the history is a new list, and a new model takes the
     // view back to the top. Instead, the entries in sight stay where they
     // were in the view: the first one in sight that is still there keeps
     // its place, unless it was pinned or unpinned and so moved away. The
     // selection stays on its entry, or on the one now in its place if it
-    // was deleted. A selection that was in sight stays in sight.
+    // was deleted. A selection that was in sight stays in sight, where it
+    // was, even if cut off by an edge.
     // The view keeps an entry, not a position: until the view lays the new
     // entries out, it only estimates their heights (an image's card is
     // taller than a short text's), so a saved position may no longer show
@@ -68,7 +72,7 @@ ListView {
             contentY = itemAtIndex(at).y + offset
             contentY = Math.max(originY, Math.min(contentY, originY + contentHeight - height))
         }
-        if (seen) positionViewAtIndex(current, ListView.Contain)
+        if (seen) positionViewAtIndex(current, ListView.Visible)
     }
 
     delegate: Fill {

@@ -34,6 +34,10 @@ Item {
         height: 420
         entries: root.entries(root.range(20))
     }
+    // The panel's own Up and Down (ClipboardPanel.qml): the keys the list
+    // lets through.
+    property var keysReached: []
+    Keys.onPressed: event => root.keysReached.push(event.key)
     SignalSpy { id: pasted; target: list; signalName: "pasteRequested" }
     SignalSpy { id: more; target: list; signalName: "moreRequested" }
 
@@ -47,6 +51,7 @@ Item {
             list.positionViewAtBeginning()
             pasted.clear()
             more.clear()
+            root.keysReached = []
         }
 
         function inSight(index) {
@@ -187,6 +192,49 @@ Item {
             list.entries = pinned.concat(entries)
             compare(list.current, 0)
             verify(inSight(0))
+        }
+
+        // A new copy while the selection is the top card, cut off by the
+        // view's top: it stays as it was, the view doesn't move to show it
+        // whole.
+        function test_a_selection_cut_off_at_the_top_stays_put() {
+            list.current = 5
+            list.positionViewAtIndex(5, ListView.Beginning)
+            list.contentY += 20
+            const before = offsetOf(6)
+            compare(before, -20)
+            list.entries = root.entries([21].concat(root.range(20)))
+            compare(list.current, 6)
+            compare(offsetOf(6), before)
+        }
+
+        // The same at the bottom of the view.
+        function test_a_selection_cut_off_at_the_bottom_stays_put() {
+            list.current = 10
+            list.positionViewAtIndex(10, ListView.End)
+            list.contentY -= 20
+            const before = offsetOf(11)
+            list.entries = root.entries([21].concat(root.range(20)))
+            compare(list.current, 11)
+            compare(offsetOf(11), before)
+        }
+
+        // Tab to a card's "…", then Down: the panel moves the selection, not
+        // the list on its own.
+        function test_arrows_on_a_card_button_reach_the_panel() {
+            const button = moreButton(list.itemAtIndex(0))
+            button.forceActiveFocus(Qt.TabFocusReason)
+            verify(button.activeFocus)
+            keyClick(Qt.Key_Down)
+            keyClick(Qt.Key_Up)
+            compare(root.keysReached, [Qt.Key_Down, Qt.Key_Up])
+        }
+
+        function moreButton(card) {
+            for (const child of card.children) {
+                if (child.text === "…") return child
+            }
+            return null
         }
 
         function test_an_empty_history() {
