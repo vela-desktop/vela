@@ -20,7 +20,8 @@ import Vela.Controls
 // "&" marks the keyboard letter (underlined when opened from the keyboard).
 //
 // Options: screen (output name), above (the menu rises from y), centered
-// (x is the center), keyboard (opened from the keyboard), minWidth, rebuild
+// (x is the center), before (the menu ends at x: beside a taskbar on the
+// right), keyboard (opened from the keyboard), minWidth, rebuild
 // (a function rebuilding the entries, such as after pinning a file), onClosed.
 QtObject {
     id: menus
@@ -36,10 +37,10 @@ QtObject {
     // The snap layout just chosen ({window, zones: [[x0,y0,x1,y1]...]}): Snap
     // Assist offers the windows for its other zones.
     property var snapLayout: null
-    // The window previews of a taskbar button (TaskbarPreview.qml): {key,
-    // appIds, center (x on the output)}, or null. They stay while the mouse is
-    // on the button or the previews.
+    // TaskbarPreview.qml uses the button, its center, and the opening mode.
     property var preview: null
+    property var trayOverflow: null
+    signal advancePreview()
     // A tooltip above the taskbar (TaskbarTooltip.qml): {text, center (x on
     // the output), screen}, or null.
     property var tooltip: null
@@ -76,19 +77,41 @@ QtObject {
         trayAnchors = all
     }
     // Puts a tray panel (its panel `width` wide at `x` in its window) on the
-    // panel's output, above `button` ("clock", "icons") of a centered pill
-    // there, else at the bottom right. Returns the window's left edge on the
-    // output, or -1 at the right edge (for the panel's screenPoint()).
+    // panel's output, above (or below) `button` ("clock", "icons") of a
+    // centered pill there, else in the clock's corner (Styles.taskbar's
+    // trayCorner). Returns the window's left edge on the output, or -1 in the
+    // corner (for the panel's screenPoint()).
     function placeTrayPanel(window, button, x, width) {
         const screen = placeOnTargetScreen(window)
         const anchors = screen ? trayAnchors[screen.name] : undefined
-        if (!anchors || anchors[button] === undefined) {
-            Shell.placeAbove(window, -1)
+        if (!anchors || anchors[button] === undefined || Styles.taskbar.vertical) {
+            Shell.placeAnchored(window, Styles.taskbar.trayCorner, 0, 0)
             return -1
         }
         const left = Math.round(Math.max(0, Math.min(screen.width - window.width, anchors[button] - x - width / 2)))
-        Shell.placeAbove(window, left)
+        Shell.placeAnchored(window, Styles.taskbar.edgeAnchor | 4, left, 0)
         return left
+    }
+    // A tray panel's top-left on the output: in its corner, or `left` along
+    // a centered pill (placeTrayPanel's answer).
+    function trayPanelOrigin(window, left) {
+        const bar = Styles.taskbar
+        const edges = left >= 0 ? bar.edgeAnchor | 4 : bar.trayCorner
+        return bar.origin(edges, window.width, window.height, window.screen.width, window.screen.height, Math.max(0, left), 0)
+    }
+    // A window opening from a taskbar button (its previews, tooltip, the
+    // tray's drawer): against the bar on `screen`, centered on `center` (along
+    // the bar, on the output), `length` long along it (its size by
+    // default). Returns its start along the bar.
+    function placeBesideBar(window, center, screen, size) {
+        const bar = Styles.taskbar
+        const length = size !== undefined ? size : bar.vertical ? window.height : window.width
+        const total = bar.vertical ? (screen ? screen.height : window.screen.height) : (screen ? screen.width : window.screen.width)
+        const start = Math.round(Math.max(0, Math.min(total - length, center - length / 2)))
+        // Against the bar's edge; along it from the left of a row, the top
+        // of a column.
+        Shell.placeAnchored(window, bar.edgeAnchor | (bar.vertical ? 1 : 4), bar.vertical ? 0 : start, bar.vertical ? start : 0)
+        return start
     }
     property bool previewHovered: false
     property bool previewButtonHovered: false
@@ -143,16 +166,37 @@ QtObject {
     }
 
     // The window menu (title bar, Alt+Space, Shift+right click on the taskbar
-    // button). act(action) runs it.
-    function windowEntries(maximized, minimized, resizable, act) {
-        return [
+    // button). act(action) runs it. With the window's id, also the virtual
+    // desktops: where to move it, and whether it shows on all of them.
+    function windowEntries(maximized, minimized, resizable, act, window) {
+        const entries = [
             { text: qsTr("&Restore"), icon: "window-restore", enabled: maximized || minimized, action: () => act("restore") },
-            { text: qsTr("&Move"), enabled: !maximized && !minimized, action: () => act("move") },
-            { text: qsTr("&Size"), enabled: !maximized && !minimized && resizable, action: () => act("resize") },
+            { text: qsTr("&Move"), icon: "transform-move", enabled: !maximized && !minimized, action: () => act("move") },
+            { text: qsTr("&Size"), icon: "transform-scale", enabled: !maximized && !minimized && resizable, action: () => act("resize") },
             { text: qsTr("Mi&nimize"), icon: "window-minimize", enabled: !minimized, action: () => act("minimize") },
-            { text: qsTr("Ma&ximize"), icon: "window-maximize", enabled: !maximized && resizable, action: () => act("maximize") },
-            { separator: true },
-            { text: qsTr("&Close"), icon: "window-close", shortcut: "Alt+F4", action: () => act("close") }
+            { text: qsTr("Ma&ximize"), icon: "window-maximize", enabled: !maximized && resizable, action: () => act("maximize") }
         ]
+        const desktop = window ? Desktops.workspaceOf(window) : -2 // -1: on all of them; -2: unknown
+        if (desktop !== -2) {
+            const moveTo = []
+            for (let i = 0; i < Desktops.count; ++i) {
+                if (i !== desktop) {
+                    const index = i
+                    moveTo.push({ text: Desktops.names[i].replace(/&/g, "&&"), action: () => Desktops.moveWindow(window, index) })
+                }
+            }
+            if (moveTo.length > 0) {
+                moveTo.push({ separator: true })
+            }
+            moveTo.push({ text: qsTr("&New desktop"), icon: "list-add", action: () => Desktops.moveWindowToNew(window) })
+            entries.push(
+                { separator: true },
+                { text: qsTr("Move to &desktop"), icon: "virtual-desktops", enabled: desktop !== -1, children: moveTo },
+                { text: qsTr("Show on &all desktops"), checked: desktop === -1, action: () => Desktops.setWindowSticky(window, desktop !== -1) })
+        }
+        entries.push(
+            { separator: true },
+            { text: qsTr("&Close"), icon: "window-close", shortcut: "Alt+F4", action: () => act("close") })
+        return entries
     }
 }

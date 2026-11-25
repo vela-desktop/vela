@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "render/pixel_buffer.h"
+#include "alloc/alloc.h"
 
 #include <drm_fourcc.h>
 #include <wlr/interfaces/wlr_buffer.h>
@@ -42,10 +43,10 @@ static const struct wlr_buffer_impl pixel_buffer_impl = {
 
 struct wlr_buffer *vela_pixel_buffer_create(struct vela_image *image)
 {
-    struct pixel_buffer *buffer = calloc(1, sizeof(*buffer));
+    struct pixel_buffer *buffer = VELA_NEW(struct pixel_buffer);
     buffer->pixels = image->pixels;
     if (!buffer->pixels) {
-        buffer->pixels = calloc((size_t)image->width * (size_t)image->height, sizeof(uint32_t));
+        buffer->pixels = VELA_NEW_N(uint32_t, vela_size_mul((size_t)image->width, (size_t)image->height));
     }
     wlr_buffer_init(&buffer->base, &pixel_buffer_impl, image->width, image->height);
     image->pixels = NULL;

@@ -6,9 +6,7 @@
 import contextlib
 import copy
 import io
-import json
 from pathlib import Path
-import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -64,7 +62,8 @@ class Execution(unittest.TestCase):
         if options.get('campaign_block_id') != 'motion-vela-r1':
             return self.fake_begin(host, targets, **options)
         from vela_bench.campaign import freeze_conditions
-        self.calls.append(targets[0]); self.options.append(copy.deepcopy(options))
+        self.calls.append(targets[0])
+        self.options.append(copy.deepcopy(options))
         source = self.layout.base / 'pilots' / options['run_id']
         source.mkdir()
         freeze_conditions(self.layout, options['campaign_run_id'], self.snapshot)
@@ -106,7 +105,8 @@ class Execution(unittest.TestCase):
         self.assertEqual((output / 'motion-vela-r1/failed-capture.png').read_bytes(), b'original diagnostic fixture')
         self.assertIn('synthetic covered corpus marker', (output / 'report.html').read_text())
         from vela_bench.discovery import file_hash
-        changed = copy.deepcopy(data); changed['failed_blocks'] = 0
+        changed = copy.deepcopy(data)
+        changed['failed_blocks'] = 0
         atomic_json(output / 'summary.json', changed)
         manifest = read_json(output / 'manifest.json')
         manifest['files']['summary.json'] = file_hash(output / 'summary.json')
@@ -129,16 +129,57 @@ class Execution(unittest.TestCase):
         self.assertTrue(latest(self.layout)['selection_complete'])
         self.assertEqual(latest(self.layout)['failed_blocks'], 0)
 
+    def test_failure_before_input_acquisition_keeps_the_rest_of_the_schedule_running(self):
+        from vela_bench.input_isolation import POLICY
+        from vela_bench.pilot import preserve_input_release
+        self.use_recovered_failure()
+        def early_failure(state, source):
+            state.update(input_isolation_acquisition='not-started',plan={'input_policy':POLICY})
+            self.assertFalse((source/'input-isolation.json').exists())
+            preserve_input_release(source,state)
+        self.alter_failed_state=early_failure
+        self.assertEqual(self.campaign(phases=['motion','overhead'],fast=True),1)
+        data=latest(self.layout)
+        self.assertEqual(self.calls,['vela','plasma','vela','plasma'])
+        self.assertEqual(data['stage'],'completed-with-failures')
+        source=self.layout.base/'pilots'/data['blocks'][0]['pilot_run_id']
+        receipt=read_json(source/'input-isolation.json')
+        self.assertFalse(receipt['acquisition_attempted'])
+        self.assertTrue(receipt['release_verified_after_worker_exit'])
+        self.assertEqual(receipt['devices'],{})
+
+    def test_missing_release_after_possible_acquisition_is_not_treated_as_never_started(self):
+        from vela_bench.input_isolation import POLICY
+        from vela_bench.pilot import preserve_input_release
+        self.use_recovered_failure()
+        for acquisition in ('acquiring','active',None):
+            self.calls.clear()
+            def unknown_release(state,source):
+                state.update(input_isolation_acquisition=acquisition,plan={'input_policy':POLICY})
+                preserve_input_release(source,state)
+                self.assertFalse((source/'input-isolation.json').exists())
+            self.alter_failed_state=unknown_release
+            with self.subTest(acquisition=acquisition):
+                self.assertEqual(self.campaign(phases=['motion','overhead'],fast=True),1)
+                self.assertEqual(self.calls,['vela'])
+                self.assertEqual(latest(self.layout)['stage'],'interrupted')
+
     def test_unverified_restoration_or_live_account_stops_before_another_block(self):
         self.use_recovered_failure()
         for case in ('cleanup-error', 'hardware-restore', 'changed-hardware', 'reboot', 'live-pid', 'input-release'):
-            self.calls.clear(); self.live_pids = []
+            self.calls.clear()
+            self.live_pids = []
             def alter(state, source):
-                if case == 'cleanup-error': state['cleanup_errors'] = ['restore failed']
-                elif case == 'hardware-restore': state['conditions_restore']['status'] = 'failed'
-                elif case == 'changed-hardware': state['conditions_snapshot']['profile']['mode']['refresh_mhz'] = 144000
-                elif case == 'reboot': state['boot_id'] = 'previous boot'
-                elif case == 'live-pid': self.live_pids = [42]
+                if case == 'cleanup-error':
+                    state['cleanup_errors'] = ['restore failed']
+                elif case == 'hardware-restore':
+                    state['conditions_restore']['status'] = 'failed'
+                elif case == 'changed-hardware':
+                    state['conditions_snapshot']['profile']['mode']['refresh_mhz'] = 144000
+                elif case == 'reboot':
+                    state['boot_id'] = 'previous boot'
+                elif case == 'live-pid':
+                    self.live_pids = [42]
                 elif case == 'input-release':
                     state['plan'] = {'input_policy': {'version': 'fixture'}}
                     atomic_json(source / 'input-isolation.json', {'release_verified_after_worker_exit': False})

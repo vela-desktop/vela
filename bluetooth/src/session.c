@@ -13,6 +13,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 
 #include <errno.h>
@@ -200,7 +201,7 @@ static int on_session(sd_bus_message *reply, void *data, sd_bus_error *error)
     d->session_call = sd_bus_slot_unref(d->session_call);
     const char *path = NULL;
     if (!sd_bus_message_is_method_error(reply, NULL) && sd_bus_message_read(reply, "o", &path) > 0) {
-        d->login_session = strdup(path);
+        d->login_session = vela_strdup(path);
     }
     if (!d->login_session) {
         vela_bt_log("no identified logind session: acting as if it's in front");

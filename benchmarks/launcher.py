@@ -48,6 +48,7 @@ class InstalledModules(importlib.abc.MetaPathFinder):
 
 
 sys.meta_path.insert(0, InstalledModules())
-from vela_bench.pilot import launcher_main
+# Load the implementation only after installing the verified-source finder.
+from vela_bench.pilot import launcher_main  # noqa: E402
 
 raise SystemExit(launcher_main())

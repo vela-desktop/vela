@@ -6,11 +6,16 @@ For renderer design and frame scheduling, see [renderer.md](renderer.md). For th
 
 ## Build
 
-Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
+Vela requires CMake 3.22 or newer, Ninja, a C17 and C++20 compiler, wlroots 0.20, Qt 6.7 or newer with its Linguist tools, LayerShellQt, Vulkan headers and loader, `glslc`, GBM, libdrm, FreeType, HarfBuzz, Fontconfig and PAM. librsvg is optional (app icons in the title bar). The development tools and tests also need zlib, GoogleTest and Python 3.13 or newer. Distribution package lists are below in [distribution dependencies](#distribution-dependencies).
 
 ## Distribution dependencies
 
 These packages are for **building Vela from source**, not the runtime requirements of the [user installer](installation.md). Arch `vela-git` deliberately installs Core and Desktop together: Konsole, Breeze icons, `xdg-desktop-portal` and the wlr screen-capture backend are default dependencies. `xdg-desktop-portal-gtk` is installed for generic application portals, while `xdg-desktop-portal-kde` and Plasma Workspace are not required; an already installed KDE portal remains an optional fallback if GTK is missing. Optional extras include KDE Connect, BlueZ for native Bluetooth management, and Bluedevil plus BlueZ OBEX for file sending from Files. `vela-update --build` installs `base-devel` through pacman only when a local build is required; makepkg installs the selected PKGBUILD's other build dependencies. `git`, `curl`, `sudo` and `util-linux` are runtime dependencies of the updater. On unattended local builds pacman and makepkg use `--noconfirm` (sudo must already allow authentication without interaction); an installed pacman hook warns after `qt6-base` upgrades because `vela-shell` links `Qt6::GuiPrivate`, and `vela-update --force --build` rebuilds the current revision when Qt's private ABI changes. Keep them synchronized with the CI's build dependencies.
+
+For manual source installations, build dependencies alone are insufficient:
+install the runtime portal backends separately, especially
+`xdg-desktop-portal-wlr` for screen sharing and screenshots. See the
+[manual installation notes](installation.md#other-distributions).
 
 <details>
 <summary><b>Arch / CachyOS / EndeavourOS</b></summary>
@@ -54,7 +59,7 @@ GPU/DRM functionality.
 sudo apt update
 sudo apt install --no-install-recommends \
     ca-certificates git build-essential cmake ninja-build pkgconf xdg-utils \
-    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev \
+    libwlroots-0.20-dev libwayland-dev wayland-protocols libxkbcommon-dev libxkbregistry-dev \
     libpixman-1-dev libinput-dev libgbm-dev libdrm-dev \
     libvulkan-dev glslc libfreetype-dev libharfbuzz-dev libfontconfig-dev \
     libcairo2-dev librsvg2-dev libpam0g-dev libpolkit-agent-1-dev \
@@ -84,7 +89,7 @@ validate Wayland, portals, audio, polkit and GPU-specific behavior on real hardw
 
 ```sh
 sudo zypper install cmake ninja gcc-c++ wlroots-devel wayland-protocols-devel \
-    libxkbcommon-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
+    libxkbcommon-devel libxkbregistry-devel pixman-devel libinput-devel qt6-declarative-devel qt6-linguist-devel \
     qt6-svg-devel qt6-waylandclient-devel layer-shell-qt6-devel \
     vulkan-headers vulkan-devel shaderc libgbm-devel libdrm-devel \
     freetype2-devel harfbuzz-devel fontconfig-devel pam-devel librsvg-devel \
@@ -107,14 +112,19 @@ Without an explicit build type, Vela defaults to `RelWithDebInfo`.
 
 Useful CMake options:
 
+The table lists CMake variable names, without the command-line `-D` prefix.
+To set an option when configuring a build, use `-DNAME=VALUE` (for example,
+`-DVELA_BUILD_SHELL=OFF`). Boolean options accept `ON` or `OFF`.
+
 | Option | Default | Purpose |
 |---|---:|---|
 | `VELA_BUILD_COMPOSITOR` | `ON` | Build the Wayland compositor and session integration. |
 | `VELA_BUILD_SHELL` | `ON` | Build the Qt Quick shell, Settings, Files and lock screen. |
 | `VELA_BUILD_TOOLS` | `ON` | Build development tools and enable the CTest suites. |
-| `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.10 or newer. |
+| `VELA_BUILD_REPORT` | `ON` | Install the standalone diagnostic reporter; requires Python 3.13 or newer. |
 | `VELA_REPORT_GUI` | Same as `VELA_BUILD_SHELL` | Build the ordinary Qt Widgets reporting window, also usable in other desktops. |
 | `VELA_WLROOTS` | `wlroots-0.20` | pkg-config name used for wlroots. Only wlroots 0.20 is supported. |
+| `VELA_CPU_TARGET` | `x86-64-v3` | x86-64 ISA/codegen baseline; optional local override such as `native` or `znver5` for single-machine builds. The installed `vela-session` performs a v3 CPU preflight before launching the compositor. |
 
 For example:
 
@@ -138,7 +148,7 @@ Both manual launchers (`run-nested.sh` and `run-headless.sh`) use a fresh tempor
 `XDG_STATE_HOME`. These are deleted after the compositor and its detached child processes exit,
 including on SIGTERM. A Linux subreaper supervises all session descendants;
 unresponsive processes are SIGKILLed after a bounded grace period. The manual
-launchers require Python 3.9+ and Linux kernel 5.3+ with procfs and pidfd
+launchers require Python 3.13+ and Linux kernel 5.3+ with procfs and pidfd
 support for identity-safe descendant signalling. This keeps test wallpaper/cache writes away from
 your real Vela state.
 The test starts with default settings. To **copy** your existing Vela configuration
@@ -278,6 +288,8 @@ caffeine status
 ```
 
 `state` returns the compositor's visible state as JSON and is the primary assertion surface used by the functional test harness. `watch capture` keeps the connection open and sends who captures the screen after every change, and `test-shell <pid>` names the real shell a test started itself (headless only); see [screen sharing](screen-sharing.md) §4.
+
+The socket accepts only processes of the same user outside a sandbox. `test-output`, `test-power` and `test-shell` are refused unless the compositor runs headless with `VELA_TEST_COMMANDS=1`, which the functional harness sets; see the [security model](security-model.md#command-socket).
 
 ### Release promo recordings
 
@@ -496,6 +508,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   decoration.c      Vela's title bar
   snapshot.c        frozen window images for close/minimize/maximize animations
   focus.c           keyboard focus between windows and shell pieces
+  activation.c      app activation tokens and background focus prevention
   interact.c        pointer on windows: move, resize, title bar, keyboard move
   bindings.c        shortcuts, window menu and window actions
   switcher.c        Alt+Tab
@@ -504,6 +517,7 @@ compositor/src/     compositor core, in C (see c-core.md)
   a11y.c            night light, color filters, magnifier and sticky keys
   input.c           seat, pointer, touchpad, gestures, pointer constraints
   keyboard.c        keyboards, layouts and key handling
+  super_numbers.c   Super+number: which taskbar app or desktop, kept keys
   shell.c           the supervised Qt shell and messages to it
   lock.c            session lock and idle handling
 
@@ -569,6 +583,8 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 |---|---|
 | `Fill` | A background whose color, chosen by the control from its state, fades in `Theme.fast` |
 | `Icon`, `Chevron`, `FocusRing`, `Eased`, `ColorFade` | What controls are made of: a theme icon at its size, the ">" and "v" arrows, the keyboard focus ring, a number and a color animated on Vela's curve |
+| `Spatial` | A position, a size or a corner animated on Material's spatial curve of a `speed` (`fast`, `default`) under `motion-variant=expressive`, and like `Eased` in `rest` otherwise ([§6.4](visual-coherence.md#64-one-duration-scale-written-twice-and-checked-d10)); never for colors, opacity or exits |
+| `TonalSurface` | A container on Material's surface roles: `level` from `lowest` to `highest`, `highEmphasis`, an optional outline |
 | `Button`, `Switch`, `Slider` | Templates' controls on `Fill`; `usable` is an alias of `enabled`; a subtle `Button` that is `checked` (what it opens is open) rests on the hover color |
 | `ListItem` | A row of a list on `Fill`: subtle (resting on the hover color when `checked`, the current one), or the control's colors when `highlighted` |
 | `TextBox` | A restyled Basic `TextField` |
@@ -577,7 +593,9 @@ Vela's Qt Quick interfaces share one module, `Vela.Controls` (`common/controls`)
 | `Dialog` | A window's dialog: title, text, content, `buttons` and `chosen(value)` |
 | `StartIcon` | The Start button's icon: Vela's sail in the accent's colors, or the distribution's logo or a picture (`source`, as `shell/src/starticon.h` resolves Settings → Start's choice) |
 
-A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`).
+Every control and piece takes the theme's `controls-variant`: under `expressive` it draws Material 3 Expressive's shapes, sizes and state layers on `Theme`'s tonal roles (`Theme.primary`, `Theme.surfaceContainerLow` and the others, `Theme.expressive`), and a control's `styleVariant` overrides it for a preview ([configuration](configuration.md#expressive-look)). The roles come from `Style.tonal`, which `Appearance` (`shell/src/appearance.cpp`) computes with `vela-color` (`common/color/`): a static C++20 library without Qt, a port of Material Color Utilities (Apache-2.0, [common/color/LICENSE](../common/color/LICENSE)) with the HCT color space, tonal palettes, the Tonal Spot scheme and the quantizer and score that find a wallpaper's color. `shell/src/accentsource.h` holds the accent's one rule (the theme's, the wallpaper's, the chosen one), shared by `Appearance` and the lock screen.
+
+A control goes into `Vela.Controls` only when two programs use it; otherwise it stays with its program, built on Templates and `Fill`: Files' `ToolButton`, the shell's `CheckBox` and `MenuTextBox` (a `TextBox` with the right-click menu of `TextMenu`), Settings' `RadioButton`. Every shell panel is a `PanelMotion` holding its `Shadow` and its panel, in a window that leaves the shadow's `reach` around it; the shell's `ShadowRoom` makes a press in that room a press outside. A state color (hover, press, checked, selected) belongs to a `Fill`, and every duration is a `Theme` token: `scripts/check-qml-motion.py` (ctest `qml-motion`) fails on what doesn't, and a line that differs on purpose says why with a `// motion:` comment. A recycled delegate (`reuseItems`) sets its `Fill`'s `animated` to false when pooled and back to true when reused. The pieces are tested with Qt Quick Test (`common/tests`, ctest `controls` and `controls-no-effects`); the programs' own controls with the same runner (`shell/tests`, `settings/tests`) and Files' views with their own (`explorer/tests`, ctest `files-views`). Each suite's `tests/expressive/` folder holds the expressive look's tests, run under an expressive test theme by the `*-expressive` entries ([testing](testing.md)).
 
 ## Debugging rendering
 

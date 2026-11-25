@@ -18,10 +18,8 @@ import subprocess
 
 
 def digest(path):
-    sha = hashlib.sha256()
     with path.open("rb") as stream:
-        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-            sha.update(chunk)
+        sha = hashlib.file_digest(stream, "sha256")
     return {"sha256": sha.hexdigest(), "size": path.stat().st_size}
 
 

@@ -111,7 +111,8 @@ def parse_input(rows, injections, *, count=INPUTS, delay=0):
 def capture_worker(target, primary, layout, count=CAPTURES):
     """Called only in a reserved-UID user unit, never by a root workload."""
     primary = connector(primary)
-    if count not in (1, CAPTURES): raise BenchError('Unknown fixed capture sample count')
+    if count not in (1, CAPTURES):
+        raise BenchError('Unknown fixed capture sample count')
     helper = layout.helper.parent / "vela-bench-desktop"
     if target == "plasma":
         # Stream through the fixed native API, retaining its request/receipt

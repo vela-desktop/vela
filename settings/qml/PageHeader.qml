@@ -24,7 +24,8 @@ Row {
                 text: modelData.title
                 color: parent.current ? Theme.text : crumbMouse.containsMouse ? Theme.textSecondary : Theme.textTertiary
                 font.pixelSize: Theme.fontTitle
-                font.weight: Font.DemiBold
+                // Expressive: M3's emphasized headline (Bold).
+                font.weight: Theme.weightEmphasis
                 MouseArea {
                     id: crumbMouse
                     anchors.fill: parent

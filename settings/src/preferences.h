@@ -13,6 +13,10 @@
 #include <QStringList>
 #include <QVariantList>
 
+#include <functional>
+
+class QSettings;
+
 // The user's choices, in the two files holding them:
 // ~/.config/Vela/vela-shell.conf for the shell (wallpaper, accent, mode,
 // taskbar, notifications), which the shell rereads as soon as it changes;
@@ -30,14 +34,29 @@ class Preferences : public QObject {
     Q_PROPERTY(QStringList systemWallpapers READ systemWallpapers CONSTANT)
     Q_PROPERTY(QString defaultWallpaper READ defaultWallpaper CONSTANT) // Vela's
     Q_PROPERTY(QColor accent READ accent WRITE setAccent NOTIFY accentChanged)
+    // Where the accent comes from (appearance/accentSource, shell/src/accentsource.h):
+    // "theme" (the theme decides: its own accent, the wallpaper's color or
+    // the one chosen), "wallpaper" or "chosen".
+    Q_PROPERTY(QString accentSource READ accentSource WRITE setAccentSource NOTIFY accentChanged)
     Q_PROPERTY(QString appTheme READ appTheme WRITE setAppTheme NOTIFY appThemeChanged)
     // Vela's mode (taskbar, menus, panels): "dark" or "light".
     Q_PROPERTY(QString shellTheme READ shellTheme WRITE setShellTheme NOTIFY appThemeChanged)
     // Settings itself is light (it follows the apps' mode).
     Q_PROPERTY(bool light READ light NOTIFY appThemeChanged)
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarPosition READ taskbarPosition WRITE setTaskbarPosition NOTIFY taskbarChanged)
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskView READ taskView WRITE setTaskView NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarWindowsFrom READ taskbarWindowsFrom WRITE setTaskbarWindowsFrom NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarAppsOn READ taskbarAppsOn WRITE setTaskbarAppsOn NOTIFY taskbarChanged)
+    Q_PROPERTY(QString taskbarClickActive READ taskbarClickActive WRITE setTaskbarClickActive NOTIFY taskbarChanged)
+    // The notification area icons on the taskbar, by key (docs/taskbar.md §8).
+    Q_PROPERTY(QStringList taskbarTrayShown READ taskbarTrayShown NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarAttention READ taskbarAttention WRITE setTaskbarAttention NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarBadges READ taskbarBadges WRITE setTaskbarBadges NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarProgress READ taskbarProgress WRITE setTaskbarProgress NOTIFY taskbarChanged)
+    Q_PROPERTY(QString superNumberKeys READ superNumberKeys WRITE setSuperNumberKeys NOTIFY taskbarChanged)
+    Q_PROPERTY(bool taskbarNumberHints READ taskbarNumberHints WRITE setTaskbarNumberHints NOTIFY taskbarChanged)
     Q_PROPERTY(bool taskbarAllScreens READ taskbarAllScreens WRITE setTaskbarAllScreens NOTIFY taskbarChanged)
     Q_PROPERTY(bool showDesktopCorner READ showDesktopCorner WRITE setShowDesktopCorner NOTIFY taskbarChanged)
     // The taskbar clock: its date (taskbar/showDate).
@@ -64,6 +83,9 @@ class Preferences : public QObject {
     Q_PROPERTY(bool startPinned READ startPinned WRITE setStartPinned NOTIFY startChanged)
     // desktop/showIcons, which the desktop's own menu sets too.
     Q_PROPERTY(bool desktopIcons READ desktopIcons WRITE setDesktopIcons NOTIFY desktopChanged)
+    // menus/hidden: the keys of the context menu entries the user hid
+    // (Personalization > Context menu, docs/renderer.md §14.12).
+    Q_PROPERTY(QStringList hiddenMenuEntries READ hiddenMenuEntries NOTIFY menusChanged)
     // --- Notifications ---
     Q_PROPERTY(bool doNotDisturb READ doNotDisturb WRITE setDoNotDisturb NOTIFY doNotDisturbChanged)
     // notifications/silenceWhileSharing: Do not disturb by itself while the
@@ -85,6 +107,12 @@ class Preferences : public QObject {
     // Vela's language (language= in vela.conf): "", "it" or "en". Empty: like
     // the system. The apps apply it themselves (shell/src/language.h).
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY languageChanged)
+    // TEMPORARY until Vela Secrets: selected at the next graphical login.
+    Q_PROPERTY(QString secretBackend READ secretBackend WRITE setSecretBackend NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendConfigured READ secretBackendConfigured NOTIFY secretBackendChanged)
+    Q_PROPERTY(bool secretBackendInstalled READ secretBackendInstalled NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString credentialStatus READ credentialStatus NOTIFY secretBackendChanged)
+    Q_PROPERTY(QString activeSecretBackend READ activeSecretBackend CONSTANT)
     // theme= in vela.conf: a theme's file name without .conf (themes/,
     // shell/src/themefile.h); "vela", Vela Official, when it names none.
     Q_PROPERTY(QString visualTheme READ visualTheme WRITE setVisualTheme NOTIFY visualThemeChanged)
@@ -100,6 +128,21 @@ class Preferences : public QObject {
     Q_PROPERTY(QVariantList keyboardLayouts READ keyboardLayouts NOTIFY keyboardChanged)
     Q_PROPERTY(int repeatDelay READ repeatDelay WRITE setRepeatDelay NOTIFY keyboardChanged)
     Q_PROPERTY(int repeatRate READ repeatRate WRITE setRepeatRate NOTIFY keyboardChanged)
+    // Keyboard > Typing's keys (docs/keyboard.md §6): each a value of
+    // keyboardoptions.h's controls, or "custom" for an option of vela.conf
+    // they don't offer. keyboardOptions: all the XKB options, as the
+    // compositor gets them.
+    Q_PROPERTY(QString capsKey READ capsKey WRITE setCapsKey NOTIFY keyboardChanged)
+    Q_PROPERTY(QString composeKey READ composeKey WRITE setComposeKey NOTIFY keyboardChanged)
+    Q_PROPERTY(QString cornerKeys READ cornerKeys WRITE setCornerKeys NOTIFY keyboardChanged)
+    Q_PROPERTY(QString numpadKeys READ numpadKeys WRITE setNumpadKeys NOTIFY keyboardChanged)
+    Q_PROPERTY(QString keyboardOptions READ keyboardOptions NOTIFY keyboardChanged)
+    // Num Lock when Vela starts: "off", "on" or "last" (docs/keyboard.md §7).
+    Q_PROPERTY(QString numLock READ numLock WRITE setNumLock NOTIFY keyboardChanged)
+    // caps-lock-osd=: the Caps Lock display on every toggle (docs/keyboard.md §8.3).
+    Q_PROPERTY(bool capsLockOsd READ capsLockOsd WRITE setCapsLockOsd NOTIFY keyboardChanged)
+    // super-opens-start=: the Win key alone opens Start (docs/keyboard.md §10).
+    Q_PROPERTY(bool superOpensStart READ superOpensStart WRITE setSuperOpensStart NOTIFY keyboardChanged)
     // --- Display: night light and games ---
     Q_PROPERTY(bool nightLight READ nightLight WRITE setNightLight NOTIFY nightLightChanged)
     // Kelvin, 1700-6500 (night-light-temperature; the older strength without it).
@@ -156,6 +199,8 @@ public:
 
     QColor accent() const { return m_accent; }
     void setAccent(const QColor& color);
+    QString accentSource() const { return m_accentSource; }
+    void setAccentSource(const QString& source);
 
     QString appTheme() const { return m_appTheme; }
     void setAppTheme(const QString& theme);
@@ -165,10 +210,31 @@ public:
 
     QString taskbarAlignment() const { return m_taskbarAlignment; }
     void setTaskbarAlignment(const QString& alignment);
+    QString taskbarPosition() const { return m_taskbarPosition; }
+    void setTaskbarPosition(const QString& position);
     bool endTask() const { return m_endTask; }
     void setEndTask(bool on);
     bool taskView() const { return m_taskView; }
     void setTaskView(bool on);
+    QString taskbarWindowsFrom() const { return m_taskbarWindowsFrom; }
+    void setTaskbarWindowsFrom(const QString& value);
+    QString taskbarAppsOn() const { return m_taskbarAppsOn; }
+    void setTaskbarAppsOn(const QString& value);
+    QString taskbarClickActive() const { return m_taskbarClickActive; }
+    void setTaskbarClickActive(const QString& value);
+    QStringList taskbarTrayShown() const { return m_taskbarTrayShown; }
+    // On the taskbar (at its end) or in the drawer.
+    Q_INVOKABLE void setTrayIconShown(const QString& key, bool shown);
+    bool taskbarAttention() const { return m_taskbarAttention; }
+    void setTaskbarAttention(bool value);
+    bool taskbarBadges() const { return m_taskbarBadges; }
+    void setTaskbarBadges(bool value);
+    bool taskbarProgress() const { return m_taskbarProgress; }
+    void setTaskbarProgress(bool value);
+    QString superNumberKeys() const { return m_superNumberKeys; }
+    void setSuperNumberKeys(const QString& mode);
+    bool taskbarNumberHints() const { return m_taskbarNumberHints; }
+    void setTaskbarNumberHints(bool value);
     bool taskbarAllScreens() const { return m_taskbarAllScreens; }
     void setTaskbarAllScreens(bool on);
     bool showDesktopCorner() const { return m_showDesktopCorner; }
@@ -196,6 +262,11 @@ public:
     void setStartPinned(bool on);
     bool desktopIcons() const { return m_desktopIcons; }
     void setDesktopIcons(bool on);
+    QStringList hiddenMenuEntries() const { return m_hiddenMenuEntries; }
+    // Hides or shows again one entry, or several at once (a group's).
+    Q_INVOKABLE void setMenuEntriesHidden(const QStringList& keys, bool hidden);
+    // Every entry back.
+    Q_INVOKABLE void showAllMenuEntries();
 
     bool doNotDisturb() const { return m_doNotDisturb; }
     void setDoNotDisturb(bool on);
@@ -215,6 +286,14 @@ public:
     void setLockOnIdle(bool on);
     QString language() const { return m_language; }
     void setLanguage(const QString& language);
+    QString secretBackend() const { return m_secretBackend; }
+    bool secretBackendConfigured() const { return m_secretBackendConfigured; }
+    bool secretBackendInstalled() const;
+    // Check both choices separately before presenting first-login options.
+    Q_INVOKABLE bool isSecretBackendInstalled(const QString& backend) const;
+    QString credentialStatus() const;
+    QString activeSecretBackend() const;
+    void setSecretBackend(const QString& backend);
     QString visualTheme() const { return m_visualTheme; }
     int themesRevision() const { return m_themesRevision; }
     void setVisualTheme(const QString& theme);
@@ -249,6 +328,21 @@ public:
     Q_INVOKABLE void removeKeyboardLayout(int index);
     Q_INVOKABLE void moveKeyboardLayoutUp(int index);
     int repeatDelay() const { return m_repeatDelay; }
+    QString capsKey() const;
+    QString composeKey() const;
+    QString cornerKeys() const;
+    QString numpadKeys() const;
+    void setCapsKey(const QString& value);
+    void setComposeKey(const QString& value);
+    void setCornerKeys(const QString& value);
+    void setNumpadKeys(const QString& value);
+    QString keyboardOptions() const { return m_keyboardOptions.join(u','); }
+    QString numLock() const { return m_numLock; }
+    bool capsLockOsd() const { return m_capsLockOsd; }
+    void setCapsLockOsd(bool on);
+    bool superOpensStart() const { return m_superOpensStart; }
+    void setSuperOpensStart(bool on);
+    void setNumLock(const QString& mode);
     void setRepeatDelay(int ms);
     int repeatRate() const { return m_repeatRate; }
     void setRepeatRate(int perSecond);
@@ -322,6 +416,9 @@ public:
     // "Clear clipboard data": the history (except pinned items), in the shell.
     Q_INVOKABLE void clearClipboard();
 
+    // Set when a shell or compositor write fails. Shown values stay saved values.
+    Q_PROPERTY(QString saveError READ saveError NOTIFY saveErrorChanged)
+    QString saveError() const { return m_saveError; }
 
     // Rereads everything (the shell or another program may have changed
     // something).
@@ -333,12 +430,14 @@ signals:
     void appThemeChanged();
     void taskbarChanged();
     void desktopChanged();
+    void menusChanged();
     void startChanged();
     void clockChanged();
     void doNotDisturbChanged();
     void batteryChanged();
     void idleChanged();
     void languageChanged();
+    void secretBackendChanged();
     void visualThemeChanged();
     void themesChanged();
     void keyboardChanged();
@@ -346,30 +445,66 @@ signals:
     void inputChanged();
     void clipboardChanged();
     void accessibilityChanged();
+    void saveErrorChanged();
 
 private:
-    void setShell(const QString& key, const QVariant& value);
+    bool setShell(const QString& key, const QVariant& value);
+    bool saveShell(const QList<QPair<QString, QVariant>>& changes);
+    // The same write, the changes made by `edit` on the file as read under
+    // its lock (a list another writer may have changed meanwhile).
+    bool saveShell(const std::function<void(QSettings&)>& edit);
+    void loadShell(const QSettings& settings);
     // vela.conf: reread, only these keys changed, then "reload-config".
-    void saveCompositor(const QList<QPair<QString, QString>>& changes);
-    void saveCompositorKeys(const QStringList& keys); // the current values of these keys
+    // False when the file could not be opened, written or committed.
+    bool saveCompositor(const QList<QPair<QString, QString>>& changes);
+    bool saveCompositorKeys(const QStringList& keys); // the current values of these keys
+    void noteSaveFailure();
+    void publishSaveError();
+    void clearSaveError();
+    template<typename T>
+    void keepOrRestore(bool saved, T& slot, const T& previous)
+    {
+        if (!saved && !m_restoredFromFile) {
+            slot = previous;
+        }
+        m_restoredFromFile = false;
+    }
     QString compositorValue(const QString& key) const;
+    QStringList currentKeyboardOptions() const;
     void reloadCompositor(); // vela.conf and the compositor's state
     void queryCompositor(); // night light, magnifier...: the current state
     void watchConfig();
     void watchThemes();
-    void saveLayouts();
+    bool saveLayouts();
+    QString m_saveError;
+    bool m_shellSaveFailed = false;
+    bool m_compositorSaveFailed = false;
+    bool m_restoredFromFile = false;
+    bool m_reportingSaveFailure = false;
 
     QString m_wallpaper;
     QStringList m_recentWallpapers;
     QColor m_accent;
+    QString m_accentSource = QStringLiteral("theme");
     QString m_appTheme;
     QString m_shellTheme;
     QString m_taskbarAlignment;
+    QString m_taskbarPosition = QStringLiteral("bottom");
     bool m_endTask = true;
     bool m_taskView = true;
+    QString m_taskbarWindowsFrom = QStringLiteral("desktop");
+    QString m_taskbarAppsOn = QStringLiteral("all");
+    QString m_taskbarClickActive = QStringLiteral("previews");
+    QStringList m_taskbarTrayShown;
+    bool m_taskbarAttention = true;
+    bool m_taskbarBadges = true;
+    bool m_taskbarProgress = true;
+    QString m_superNumberKeys = QStringLiteral("apps");
+    bool m_taskbarNumberHints = true;
     bool m_taskbarAllScreens = true;
     bool m_showDesktopCorner = true;
     bool m_desktopIcons = true;
+    QStringList m_hiddenMenuEntries;
     bool m_startPinned = true;
     QString m_startIcon = QStringLiteral("vela");
     QString m_startIconSource;
@@ -386,10 +521,18 @@ private:
     int m_screenOffMinutes = 10;
     bool m_lockOnIdle = true;
     QString m_language;
+    QString m_secretBackend = QStringLiteral("kwallet");
+    bool m_secretBackendConfigured = false;
     QString m_visualTheme;
     QVariantMap m_surfaceStyles;
     QVariantList m_layouts;
     int m_repeatDelay = 400;
+    // vela.conf's keyboard-options, or the system's while it has none.
+    QStringList m_keyboardOptions;
+    QString m_numLock = QStringLiteral("off");
+    bool m_capsLockOsd = true;
+    bool m_superOpensStart = true;
+    void setKeyChoice(int control, const QString& value);
     int m_repeatRate = 30;
     bool m_nightLight = false;
     int m_nightTemperature = 4200;

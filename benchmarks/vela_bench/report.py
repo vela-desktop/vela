@@ -14,7 +14,10 @@ def render_report(directory):
     directory = Path(directory)
     manifest, plan, summary = inspect_archive(directory)
     atomic_json(directory / "summary.json", summary)
-    escaped = lambda value: html.escape(str(value), quote=True)
+
+    def escaped(value):
+        return html.escape(str(value), quote=True)
+
     document = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">
@@ -34,7 +37,7 @@ table{border-collapse:collapse;width:100%}td,th{padding:.5rem;text-align:left;bo
         document += f"<h2>{escaped(title)}</h2><pre>{escaped(json.dumps(value, indent=2, sort_keys=True))}</pre>"
     document += "</html>\n"
     # Reports are derived output; they never modify the canonical evidence.
-    (directory / "report.html").write_text(document, encoding="utf-8")
+    (directory / "report.html").write_text(document, encoding="utf-8")  # NOSONAR S8707: fixed derived filename in the operator-selected local archive, no agent/server.
     return summary
 
 

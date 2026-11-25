@@ -5,12 +5,9 @@ settings, and how Vela shares Bluetooth with other desktop sessions. This
 document comes before the code: decisions are made here, and the code
 follows them.
 
-> **Status:** done. B0–B3 (PR #146) are the daemon, the agent and the
-> Settings page on the shared client library; B4–B7 (PR #157) are the shell
-> (quick settings, the question dialog and notifications), `vela-audio`'s
-> batteries from the daemon, search leases and visibility, docs and
-> packaging, and tests on real devices ([hardware](hardware.md#bluetooth)).
-> See §12.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing. Stages B0–B7 (PR #146 and #157), including the tests on real devices, are in §12.
 
 ## 1. Why from scratch
 
@@ -406,7 +403,9 @@ properties. The session is found as in [polkit agent](polkit-agent.md)
   - `LockedHint` is set by the compositor through logind's
     `Session.SetLockedHint` while the lock screen is up, and with the
     current state when it starts (only in the real session: a nested Vela
-    never reports a lock to the host's session).
+    never reports a lock to the host's session). The compositor sends the
+    hint without waiting for logind on the rendering thread. At session
+    startup it drains the outgoing hint before launching the daemon.
 - While inactive, the daemon only keeps its model up to date. Reading
   BlueZ changes nothing for anyone. Methods that would change something
   return `org.vela.Bluetooth.Error.Inactive`; so they do while the screen

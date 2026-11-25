@@ -36,14 +36,17 @@ class BenchmarkPresentationProbe(unittest.TestCase):
             scene=subprocess.Popen([tool('vela-bench-scene'),'--observe'],env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
             self.addCleanup(stop_process,scene)
             lines=Lines(scene)
-            while lines.next(time.monotonic()+5).get('event')!='scene-state':pass
+            while lines.next(time.monotonic()+5).get('event')!='scene-state':
+                pass
             session.input('key','super+Left')
-            deadline=time.monotonic()+5;path=Path(temporary)/'snapped.png'
+            deadline=time.monotonic()+5
+            path=Path(temporary)/'snapped.png'
             while True:
                 session.screenshot(str(path))
                 native=subprocess.run([tool('vela-bench-desktop'),'--analyze',str(path)],env=env,capture_output=True,text=True,timeout=5,check=True)
                 detected=json.loads(native.stdout)
-                if detected['rectangles'].get(str(SCENE),[0,0,0])[2]==512:break
+                if detected['rectangles'].get(str(SCENE),[0,0,0])[2]==512:
+                    break
                 self.assertLess(time.monotonic(),deadline,'Snapped half-width scene did not render')
             decoded=evidence(path)
             self.assertEqual({key:detected[key] for key in decoded},decoded)
@@ -86,10 +89,12 @@ class BenchmarkPresentationProbe(unittest.TestCase):
                 deadline=time.monotonic()+5
                 while True:
                     _, visible=capture(f'held-{index}.png',cursor=True)
-                    if visible['x']>=origin['x']+index*80-5:break
+                    if visible['x']>=origin['x']+index*80-5:
+                        break
                     self.assertLess(time.monotonic(),deadline,'Held position did not render')
                 positions.append(visible['x'])
-                pointer.stdin.write(b'\n');pointer.stdin.flush()
+                pointer.stdin.write(b'\n')
+                pointer.stdin.flush()
             self.assertEqual(len(set(positions)),3)
             self.assertGreaterEqual(positions[-1]-positions[0],150)
             self.assertEqual(pointer.wait(timeout=3),0)
@@ -258,12 +263,14 @@ finally:
                 env=session.client_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
             self.addCleanup(self.stop, probe)
             lines=Lines(probe)
-            while lines.next(time.monotonic()+6).get('event')!='input-ready':pass
+            while lines.next(time.monotonic()+6).get('event')!='input-ready':
+                pass
             sender = subprocess.Popen([tool("vela-input"), "keycode", "194", "sleep", "150",
                 "keycode", "194", "sleep", "150", "keycode", "194", "sleep", "100"],
                 env=session.client_env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             self.addCleanup(self.stop, sender)
-            while lines.next(time.monotonic()+9).get('event')!='summary':pass
+            while lines.next(time.monotonic()+9).get('event')!='summary':
+                pass
             output, errors = probe.communicate(timeout=3)
             _, sender_errors = sender.communicate(timeout=3)
             self.assertEqual(sender.returncode, 0, sender_errors)

@@ -38,7 +38,7 @@ bool vela_window_capture_has_source(const struct vela_window_capture *capture,
 
 // Vela owns the output source so SHM completion can be deferred. Protocol
 // session/frame objects, DMA-BUF copies, and cursor metadata remain wlroots'.
-bool vela_output_capture_manager_create(struct vela_server *server);
+void vela_output_capture_manager_create(struct vela_server *server);
 // The output of one of those sources; NULL for any other source.
 struct wlr_output *vela_output_capture_source_output(struct wlr_ext_image_capture_source_v1 *source);
 void vela_capture_copy_frame(struct wlr_ext_image_capture_source_v1 *source,

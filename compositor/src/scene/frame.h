@@ -38,6 +38,7 @@ struct vela_element {
     const void *key; // who it is: the surface or our node
     struct wlr_surface *surface; // app surfaces, otherwise NULL
     struct wlr_texture *texture; // NULL: solid color
+    uint64_t content; // vela_texture_content: a new value is a new image of the texture
     struct wlr_render_color color;
     struct wlr_fbox src;
     enum wl_output_transform transform;
@@ -118,6 +119,11 @@ struct vela_output_frame {
     int width, height;
     float scale;
     enum wl_output_transform transform; // damage history is bound to this orientation
+    // A region operation failed (out of memory): the damage is unknown, and
+    // the next frame redraws whole buffers. Set after a frame whose drawing
+    // hit a failure, so that frame is not trusted (vela_output_frame_safe).
+    bool damage_unknown;
+    unsigned long region_failures_seen; // vela_region_failures after the last frame
 
     // The previous frame and the one being built (they swap): the damage comes
     // from them.
@@ -174,6 +180,11 @@ void vela_output_frame_destroy(struct vela_output_frame *frame);
 // in the same commit (new mode or scale): the frame is already drawn at the
 // new size, without the black buffer wlroots would otherwise put.
 bool vela_output_frame_render(struct vela_output_frame *frame, double lx, double ly, struct wlr_output_state *pending);
+
+// The last frame vela_output_frame_render() delivered shows exactly the
+// scene: no region operation failed while it was built and drawn. Only such
+// frames may tell the lock that an output shows black.
+bool vela_output_frame_safe(const struct vela_output_frame *frame);
 
 // Someone (wlroots) wrote into the output's buffers: none of them holds what
 // we think anymore.

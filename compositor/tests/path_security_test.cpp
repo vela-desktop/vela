@@ -7,12 +7,39 @@ extern "C" {
 }
 
 #include <gtest/gtest.h>
+#include "privatetemp.h"
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
+
+TEST(PrivateFixtures, UsesPrivateBuildDirectoriesAndRejectsUnsafeRoots)
+{
+    const std::string root = vela::test::privateTempDirectory("fixture-security");
+    const std::string first = vela::test::privateTempDirectory("child", root.c_str());
+    const std::string second = vela::test::privateTempDirectory("child", root.c_str());
+    EXPECT_NE(first, second);
+    struct stat info {};
+    ASSERT_EQ(lstat(first.c_str(), &info), 0);
+    EXPECT_EQ(info.st_mode & 0777, 0700);
+    EXPECT_EQ(info.st_uid, geteuid());
+    EXPECT_EQ(std::filesystem::path(root).parent_path(), VELA_TEST_PRIVATE_DIR);
+
+    const std::string publicDir = root + "/public";
+    ASSERT_EQ(mkdir(publicDir.c_str(), 0755), 0);
+    ASSERT_EQ(chmod(publicDir.c_str(), 0755), 0);
+    EXPECT_THROW(vela::test::privateTempDirectory("child", publicDir.c_str()), std::runtime_error);
+    const std::string alias = root + "/alias";
+    ASSERT_EQ(symlink(first.c_str(), alias.c_str()), 0);
+    EXPECT_THROW(vela::test::privateTempDirectory("child", alias.c_str()), std::runtime_error);
+    EXPECT_THROW(vela::test::privateTempDirectory("../escape", root.c_str()), std::invalid_argument);
+    EXPECT_THROW(vela::test::privateTempDirectory("child", (root + "/missing/base").c_str()),
+        std::system_error);
+    EXPECT_TRUE(std::filesystem::is_empty(first));
+    std::filesystem::remove_all(root);
+}
 
 TEST(PathSecurity, ValidatesOnePathComponent)
 {
@@ -55,8 +82,7 @@ TEST(PathSecurity, KeepsLockFlagsInsideRuntimeDirectory)
 
 TEST(PathSecurity, RequiresPrivateOwnedRuntimeDirectory)
 {
-    std::string pattern = (std::filesystem::temp_directory_path() / "vela-runtime-XXXXXX").string();
-    ASSERT_NE(mkdtemp(pattern.data()), nullptr);
+    std::string pattern = vela::test::privateTempDirectory("vela-runtime");
     EXPECT_TRUE(vela_runtime_dir_private(pattern.c_str()));
     EXPECT_TRUE(vela_runtime_dir_private((pattern + "/").c_str()));
     EXPECT_TRUE(vela_runtime_dir_private((pattern + "//").c_str()));
@@ -81,8 +107,7 @@ TEST(PathSecurity, RequiresPrivateOwnedRuntimeDirectory)
 
 TEST(PathSecurity, AllowsSymlinkInParentButNotRuntimeDirectory)
 {
-    std::string parent = (std::filesystem::temp_directory_path() / "vela-runtime-parent-XXXXXX").string();
-    ASSERT_NE(mkdtemp(parent.data()), nullptr);
+    std::string parent = vela::test::privateTempDirectory("vela-runtime-parent");
     const std::string runtime = parent + "/runtime";
     ASSERT_EQ(mkdir(runtime.c_str(), 0700), 0);
     const std::string link = parent + "-link";
@@ -108,8 +133,7 @@ TEST(PathSecurity, RejectsConfigFilenameTraversal)
 
 TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
 {
-    std::string pattern = (std::filesystem::temp_directory_path() / "vela-marker-XXXXXX").string();
-    ASSERT_NE(mkdtemp(pattern.data()), nullptr);
+    std::string pattern = vela::test::privateTempDirectory("vela-marker");
     int runtime_fd = vela_runtime_dir_open(pattern.c_str());
     ASSERT_GE(runtime_fd, 0);
 
@@ -147,8 +171,7 @@ TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
 
 TEST(PathSecurity, LockMarkerSurvivesRuntimeAliasRetarget)
 {
-    std::string root = (std::filesystem::temp_directory_path() / "vela-marker-alias-XXXXXX").string();
-    ASSERT_NE(mkdtemp(root.data()), nullptr);
+    std::string root = vela::test::privateTempDirectory("vela-marker-alias");
     const std::string first = root + "/first";
     const std::string second = root + "/second";
     const std::string first_runtime = first + "/runtime";

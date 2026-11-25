@@ -27,7 +27,7 @@ depends=(
     'wlroots0.20' 'wayland' 'libxkbcommon' 'pixman' 'libinput' 'libdrm' 'mesa' 'vulkan-icd-loader'
     'freetype2' 'harfbuzz' 'fontconfig' 'librsvg' 'cairo'
     'qt6-base' 'qt6-declarative' 'qt6-svg' 'qt6-wayland' 'layer-shell-qt'
-    'pam' 'polkit' 'hicolor-icon-theme' 'python' 'xorg-xwayland'
+    'pam' 'polkit' 'hicolor-icon-theme' 'python>=3.13' 'xorg-xwayland'
     # Desktop defaults: GTK for generic portals and wlr for screen capture.
     'konsole' 'breeze-icons' 'xdg-desktop-portal' 'xdg-desktop-portal-gtk' 'xdg-desktop-portal-wlr' 'xdg-utils'
     # Runtime requirements of vela-update; build toolchain is installed on demand.
@@ -78,6 +78,7 @@ build() {
     # makepkg.conf gives the build options (CMAKE_BUILD_TYPE=None).
     cmake -B build -S "$_name" \
         -DCMAKE_BUILD_TYPE=None \
+        -DVELA_CPU_TARGET="${VELA_CPU_TARGET:-x86-64-v3}" \
         -DCMAKE_INSTALL_PREFIX=/usr \
         -DCMAKE_INSTALL_LIBEXECDIR=lib/vela \
         -DVELA_BUILD_TOOLS=OFF \

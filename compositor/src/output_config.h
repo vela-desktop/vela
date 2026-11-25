@@ -35,8 +35,12 @@ struct vela_saved_output {
     int x, y;
 };
 
-// Monitor `key` as the user left it; false if it isn't in the file.
+// Monitor `key` as the user left it; false if it isn't in the file or the
+// file could not be read to the end.
 bool vela_output_config_load(const char *key, struct vela_saved_output *out);
+
+// Whether the saved layout includes an enabled output that is absent.
+bool vela_output_config_has_absent_output(bool (*present)(const char *key, void *data), void *data);
 
 // Writes the current configuration of these outputs, leaving the other
 // monitors' (unplugged now) as they were. For an output that is off only

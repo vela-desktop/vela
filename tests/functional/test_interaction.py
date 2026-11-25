@@ -8,6 +8,7 @@ Snap Assist, snap layouts (Win+Z) and snap groups. The shell is a FakeShell
 collecting the messages."""
 
 import os
+import signal
 import time
 import unittest
 
@@ -156,6 +157,21 @@ class Interaction(unittest.TestCase):
     # What is under a pointer at rest changes: the pointer follows, as if it
     # had moved. Before, it stayed with what was there until the next motion.
 
+    def test_the_first_press_of_the_first_device_reaches_the_app(self):
+        # The window opens before any input device exists. The seat has a
+        # pointer all the same, so the app's wl_pointer is ready before
+        # this vela-input's press. Before, the capability came with the
+        # device and the press right after it: an app busy in between (here
+        # stopped) bound wl_pointer too late and never saw the press.
+        window, log = self.pattern_clicks(300, 200)
+        client = self.vela.clients[-1]
+        client.send_signal(signal.SIGSTOP)
+        try:
+            self.vela.input("move", *self.center(window), "down", "sleep", "50", "up")
+        finally:
+            client.send_signal(signal.SIGCONT)
+        self.wait_click(log, self.pattern_click())
+
     def test_pointer_follows_a_window_opening_under_it(self):
         below = self.vela.open_window(500, 400)
         self.vela.input("move", *self.center(below))
@@ -223,7 +239,7 @@ class Interaction(unittest.TestCase):
         x, y, _, _ = self.frame(window)
         self.vela.command("window active move")
         self.vela.keys("Right", "Right", "Right", "Down", "Return")
-        state = self.vela.wait_for(lambda s: s.window(window)["x"] == x + 30, what="moved 30 to the right")
+        self.vela.wait_for(lambda s: s.window(window)["x"] == x + 30, what="moved 30 to the right")
         self.assertEqual(self.frame(window)[1], y + 10)
         # Esc: back to how it was.
         self.vela.command("window active move")

@@ -3,6 +3,7 @@
 
 #include "input.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "workspace.h"
 #include "view.h"
@@ -13,10 +14,13 @@
 #include "keyboard.h"
 #include "output.h"
 #include "nested.h"
+#include "output_manager.h"
 #include "scene/scene.h"
 #include "scene/surface.h"
 #include "server.h"
 #include "shell.h"
+#include "custom.h"
+#include "super_numbers.h"
 #include "util.h"
 
 #include <math.h>
@@ -46,6 +50,10 @@
 #if WLR_HAS_LIBINPUT_BACKEND
 #include <libinput.h>
 #include <wlr/backend/libinput.h>
+#include <wlr/types/wlr_switch.h>
+#ifdef VELA_HAVE_LOGIND
+#include <systemd/sd-bus.h>
+#endif
 #endif
 
 // How far to move (touchpad units) for a gesture to count.
@@ -181,6 +189,101 @@ static void load_pointer_settings(struct vela_input *input)
     vela_config_finish(&settings);
 }
 
+static void load_super_numbers(struct vela_input *input, const struct vela_config *settings)
+{
+    const char *mode = vela_config_get(settings, "super-number-keys", "apps");
+    input->super_numbers = vela_super_numbers_parse(mode);
+    vela_input_hide_super_hints(input);
+}
+
+// shortcuts.conf's combinations; a line that doesn't parse is skipped, with
+// a warning (docs/keyboard.md §9.4). Without the file, or one that can't be
+// opened (the shell couldn't read it either), there are none; a read that
+// fails halfway keeps the ones loaded before.
+static void load_custom_shortcuts(struct vela_input *input)
+{
+    char path[4096];
+    bool missing = !vela_custom_path(path, sizeof(path));
+    FILE *file = missing ? NULL : vela_config_open(path, &missing);
+    if (!file) {
+        if (!missing) {
+            wlr_log(WLR_ERROR, "Custom shortcuts: %s can't be read", path);
+        }
+        free(input->custom);
+        input->custom = NULL;
+        input->custom_count = 0;
+        input->custom_capacity = 0;
+        return;
+    }
+    struct vela_custom_shortcut *custom = NULL;
+    size_t count = 0;
+    size_t capacity_items = 0;
+    char *line = NULL;
+    size_t capacity = 0;
+    ssize_t length = 0;
+    int number = 0;
+    int read = 0;
+    while ((read = vela_read_line(file, &line, &capacity, &length)) > 0) {
+        ++number;
+        while (length > 0 && line[length - 1] == '\n') {
+            line[--length] = '\0';
+        }
+        if (length == 0 || line[0] == '#') {
+            continue;
+        }
+        struct vela_custom_line parsed;
+        struct vela_custom_shortcut shortcut;
+        if (!vela_custom_line_parse(line, (size_t)length, &parsed)
+            || !vela_combo_format(&parsed.combo, shortcut.text, sizeof(shortcut.text))) {
+            wlr_log(WLR_ERROR, "Custom shortcuts: line %d of %s skipped", number, path);
+            continue;
+        }
+        if (count >= VELA_CUSTOM_MAX) {
+            wlr_log(WLR_ERROR, "Custom shortcuts: more than %d, the others are ignored", VELA_CUSTOM_MAX);
+            break;
+        }
+        shortcut.combo = parsed.combo;
+        custom = vela_grow(custom, &capacity_items, count + 1, sizeof(*custom));
+        custom[count++] = shortcut;
+    }
+    free(line);
+    fclose(file);
+    if (read < 0) {
+        wlr_log(WLR_ERROR, "Custom shortcuts: reading %s failed, the previous ones stay", path);
+        free(custom);
+        return;
+    }
+    free(input->custom);
+    input->custom = custom;
+    input->custom_count = count;
+    input->custom_capacity = capacity_items;
+}
+
+// Num Lock at startup, the Caps Lock display and Win alone (docs/keyboard.md
+// §7, §8.3, §10).
+static void load_keyboard_choices(struct vela_input *input, const struct vela_config *settings)
+{
+    const enum vela_numlock mode = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
+    if (input->numlock != mode) {
+        input->numlock = mode;
+        input->numlock_unsaved = mode == VELA_NUMLOCK_LAST && input->locks_known;
+        vela_keyboard_save_numlock(input);
+    }
+    input->caps_lock_osd = vela_config_flag(settings, "caps-lock-osd", true);
+    input->super_opens_start = vela_config_flag(settings, "super-opens-start", true);
+}
+
+void vela_input_hide_super_hints(struct vela_input *input)
+{
+    if (input->super_timer) {
+        wl_event_source_timer_update(input->super_timer, 0);
+    }
+    if (input->super_hints_visible) {
+        vela_shell_send(input->server, "super-hints-hidden");
+        input->super_hints_visible = false;
+    }
+}
+
 void vela_input_reload(struct vela_input *input)
 {
     struct vela_config settings;
@@ -189,6 +292,9 @@ void vela_input_reload(struct vela_input *input)
     wl_list_for_each (keyboard, &input->keyboards, link) {
         vela_keyboard_apply_settings(keyboard, &settings);
     }
+    load_super_numbers(input, &settings);
+    load_keyboard_choices(input, &settings);
+    load_custom_shortcuts(input);
     vela_config_finish(&settings);
     struct wlr_seat *seat = input->server->seat;
     if (seat->keyboard_state.keyboard) {
@@ -227,7 +333,7 @@ static void handle_pointer_destroy(struct wl_listener *listener, void *data)
 
 static void add_pointer(struct vela_input *input, struct wlr_input_device *device)
 {
-    struct vela_pointer *pointer = calloc(1, sizeof(*pointer));
+    struct vela_pointer *pointer = VELA_NEW(struct vela_pointer);
     pointer->input = input;
     pointer->device = device;
 #if WLR_HAS_LIBINPUT_BACKEND
@@ -240,6 +346,78 @@ static void add_pointer(struct vela_input *input, struct wlr_input_device *devic
     load_pointer_settings(input);
 }
 
+#if WLR_HAS_LIBINPUT_BACKEND
+struct vela_lid_switch {
+    struct vela_server *server;
+    struct wl_list link;
+    struct wl_listener toggle, destroy;
+};
+
+static void lid_switch_destroy(struct vela_lid_switch *lid)
+{
+    wl_list_remove(&lid->toggle.link);
+    wl_list_remove(&lid->destroy.link);
+    wl_list_remove(&lid->link);
+    free(lid);
+}
+
+static void handle_lid_switch_destroy(struct wl_listener *listener, void *data)
+{
+    struct vela_lid_switch *lid = wl_container_of(listener, lid, destroy);
+    lid_switch_destroy(lid);
+}
+
+static void set_lid_closed(struct vela_server *server, bool closed)
+{
+    bool opened = server->lid_closed && !closed;
+    server->lid_closed = closed;
+    vela_output_manager_schedule_lid_update(server);
+    if (opened) {
+        vela_lock_note_activity(server->lock);
+    }
+}
+
+static void lid_switch_toggle(struct wl_listener *listener, void *data)
+{
+    struct vela_lid_switch *lid = wl_container_of(listener, lid, toggle);
+    const struct wlr_switch_toggle_event *event = data;
+    if (event->switch_type == WLR_SWITCH_TYPE_LID) {
+        // logind handles suspend and signals the shell to lock before sleeping.
+        set_lid_closed(lid->server, event->switch_state == WLR_SWITCH_STATE_ON);
+    }
+}
+
+static void add_lid_switch(struct vela_input *input, struct wlr_input_device *device)
+{
+    struct vela_server *server = input->server;
+    if (!server->session || !wlr_input_device_is_libinput(device)
+        || libinput_device_switch_has_switch(wlr_libinput_get_device_handle(device), LIBINPUT_SWITCH_LID) <= 0) {
+        return;
+    }
+    struct vela_lid_switch *lid = VELA_NEW(struct vela_lid_switch);
+    lid->server = server;
+    wl_list_insert(&input->lid_switches, &lid->link);
+    vela_listen(&wlr_switch_from_input_device(device)->events.toggle, &lid->toggle, lid_switch_toggle);
+    vela_listen(&device->events.destroy, &lid->destroy, handle_lid_switch_destroy);
+
+#ifdef VELA_HAVE_LOGIND
+    // Read the current level at startup and when libinput reopens the seat.
+    // Subsequent changes arrive as switch events, independently of logind.
+    sd_bus *bus = NULL;
+    if (sd_bus_open_system(&bus) >= 0) {
+        int closed = 0;
+        sd_bus_set_method_call_timeout(bus, 200000);
+        if (sd_bus_get_property_trivial(bus, "org.freedesktop.login1", "/org/freedesktop/login1",
+                "org.freedesktop.login1.Manager", "LidClosed", NULL, 'b', &closed)
+            >= 0) {
+            set_lid_closed(server, closed);
+        }
+        sd_bus_unref(bus);
+    }
+#endif
+}
+#endif
+
 static void add_device(struct vela_input *input, struct wlr_input_device *device)
 {
     struct vela_server *server = input->server;
@@ -251,6 +429,9 @@ static void add_device(struct vela_input *input, struct wlr_input_device *device
         add_pointer(input, device);
         wlr_cursor_attach_input_device(server->cursor, device);
         break;
+#if WLR_HAS_LIBINPUT_BACKEND
+    case WLR_INPUT_DEVICE_SWITCH: add_lid_switch(input, device); break;
+#endif
     default:
         break;
     }
@@ -300,7 +481,7 @@ static void handle_new_constraint(struct wl_listener *listener, void *data)
 {
     struct vela_input *input = wl_container_of(listener, input, new_constraint);
     struct wlr_pointer_constraint_v1 *wlr = data;
-    struct vela_constraint *constraint = calloc(1, sizeof(*constraint));
+    struct vela_constraint *constraint = VELA_NEW(struct vela_constraint);
     constraint->input = input;
     constraint->wlr = wlr;
     vela_listen(&wlr->events.destroy, &constraint->destroy, handle_constraint_destroy);
@@ -645,8 +826,19 @@ void vela_input_keyboard_enter(struct vela_input *input, struct wlr_surface *sur
     struct wlr_seat *seat = input->server->seat;
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
     if (keyboard) {
-        wlr_seat_keyboard_notify_enter(seat, surface, keyboard->keycodes, keyboard->num_keycodes,
-            &keyboard->modifiers);
+        // The number keys Super took (keyboard.c) stay out: their release is
+        // the compositor's too, the app would keep them pressed.
+        uint16_t handled = 0;
+        struct vela_keyboard *own;
+        wl_list_for_each(own, &input->keyboards, link)
+        {
+            if (own->wlr == keyboard) {
+                handled = own->handled_numbers;
+            }
+        }
+        uint32_t keycodes[WLR_KEYBOARD_KEYS_CAP];
+        const size_t count = vela_super_numbers_filter(keyboard->keycodes, keyboard->num_keycodes, handled, keycodes);
+        wlr_seat_keyboard_notify_enter(seat, surface, keycodes, count, &keyboard->modifiers);
     } else {
         wlr_seat_keyboard_notify_enter(seat, surface, NULL, 0, NULL);
     }
@@ -686,7 +878,7 @@ static void handle_start_drag(struct wl_listener *listener, void *data)
     }
     drag_icon_destroy(input->drag_icon); // one drag at a time
     struct wlr_surface *surface = drag->icon->surface;
-    struct vela_drag_icon *icon = calloc(1, sizeof(*icon));
+    struct vela_drag_icon *icon = VELA_NEW(struct vela_drag_icon);
     icon->input = input;
     icon->surface = surface;
     icon->tree = vela_tree_create(input->server->layers.drag);
@@ -768,6 +960,10 @@ void vela_input_paste(struct vela_input *input)
     // app, then Ctrl+V.
     if (!input->paste_timer) {
         input->paste_timer = wl_event_loop_add_timer(input->server->loop, handle_paste_timer, input);
+        if (!input->paste_timer) {
+            wlr_log_errno(WLR_ERROR, "Paste: no timer, the text stays on the clipboard");
+            return;
+        }
     }
     wl_event_source_timer_update(input->paste_timer, 120);
 }
@@ -776,25 +972,26 @@ void vela_input_paste(struct vela_input *input)
 
 struct vela_input *vela_input_create(struct vela_server *server)
 {
-    struct vela_input *input = calloc(1, sizeof(*input));
+    struct vela_input *input = VELA_NEW(struct vela_input);
     input->server = server;
     wl_list_init(&input->pointers);
+    wl_list_init(&input->lid_switches);
     wl_list_init(&input->keyboards);
     input->wheel_factor = 1.0;
     input->three_fingers = VELA_SWIPE_APP;
     input->four_fingers = VELA_SWIPE_DESKTOP;
     struct wl_display *display = server->display;
 
-    server->cursor = wlr_cursor_create();
+    server->cursor = VELA_MUST(wlr_cursor_create());
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
     server->cursor_manager
-        = wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24));
+        = VELA_MUST(wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24)));
 
     // Games and apps that want the mouse to themselves.
-    input->relative_pointers = wlr_relative_pointer_manager_v1_create(display);
-    input->pointer_constraints = wlr_pointer_constraints_v1_create(display);
+    input->relative_pointers = VELA_MUST(wlr_relative_pointer_manager_v1_create(display));
+    input->pointer_constraints = VELA_MUST(wlr_pointer_constraints_v1_create(display));
     vela_listen(&input->pointer_constraints->events.new_constraint, &input->new_constraint, handle_new_constraint);
-    input->shortcuts_inhibit = wlr_keyboard_shortcuts_inhibit_v1_create(display);
+    input->shortcuts_inhibit = VELA_MUST(wlr_keyboard_shortcuts_inhibit_v1_create(display));
     vela_listen(&input->shortcuts_inhibit->events.new_inhibitor, &input->new_inhibitor, handle_new_inhibitor);
 
     struct wlr_cursor *cursor = server->cursor;
@@ -802,7 +999,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
     vela_listen(&cursor->events.motion_absolute, &input->motion_absolute, handle_motion_absolute);
     vela_listen(&cursor->events.button, &input->button, handle_button);
     vela_listen(&cursor->events.axis, &input->axis, handle_axis);
-    input->gestures = wlr_pointer_gestures_v1_create(display);
+    input->gestures = VELA_MUST(wlr_pointer_gestures_v1_create(display));
     vela_listen(&cursor->events.swipe_begin, &input->swipe_begin, handle_swipe_begin);
     vela_listen(&cursor->events.swipe_update, &input->swipe_update, handle_swipe_update);
     vela_listen(&cursor->events.swipe_end, &input->swipe_end, handle_swipe_end);
@@ -814,26 +1011,36 @@ struct vela_input *vela_input_create(struct vela_server *server)
     vela_listen(&cursor->events.frame, &input->frame, handle_frame);
 
     vela_listen(&server->backend->events.new_input, &input->new_input, handle_new_input);
-    struct wlr_seat *seat = wlr_seat_create(display, "seat0");
+    struct wlr_seat *seat = VELA_MUST(wlr_seat_create(display, "seat0"));
     server->seat = seat;
+    // The cursor is always there, so the seat has a pointer from the start,
+    // as add_device keeps it: a client that binds wl_pointer only when the
+    // first device appears can miss that device's first button press.
+    wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_POINTER);
     vela_listen(&seat->events.request_set_cursor, &input->request_set_cursor, handle_request_set_cursor);
     vela_listen(&seat->events.request_set_selection, &input->request_set_selection, handle_request_set_selection);
     vela_listen(&seat->events.request_set_primary_selection, &input->request_set_primary_selection,
         handle_request_set_primary_selection);
     vela_listen(&seat->events.request_start_drag, &input->request_start_drag, handle_request_start_drag);
     vela_listen(&seat->events.start_drag, &input->start_drag, handle_start_drag);
-    struct wlr_cursor_shape_manager_v1 *shapes = wlr_cursor_shape_manager_v1_create(display, 1);
+    struct wlr_cursor_shape_manager_v1 *shapes = VELA_MUST(wlr_cursor_shape_manager_v1_create(display, 1));
     vela_listen(&shapes->events.request_set_shape, &input->request_set_shape, handle_request_set_shape);
 
     wl_list_init(&input->new_virtual_pointer.link);
     wl_list_init(&input->new_virtual_keyboard.link);
     if (vela_env_int("VELA_DEBUG_INPUT", 0) != 0) {
         wlr_log(WLR_INFO, "VELA_DEBUG_INPUT: virtual pointer and keyboard enabled");
-        struct wlr_virtual_pointer_manager_v1 *pointers = wlr_virtual_pointer_manager_v1_create(display);
+        struct wlr_virtual_pointer_manager_v1 *pointers = VELA_MUST(wlr_virtual_pointer_manager_v1_create(display));
         vela_listen(&pointers->events.new_virtual_pointer, &input->new_virtual_pointer, handle_new_virtual_pointer);
-        struct wlr_virtual_keyboard_manager_v1 *keyboards = wlr_virtual_keyboard_manager_v1_create(display);
+        struct wlr_virtual_keyboard_manager_v1 *keyboards = VELA_MUST(wlr_virtual_keyboard_manager_v1_create(display));
         vela_listen(&keyboards->events.new_virtual_keyboard, &input->new_virtual_keyboard, handle_new_virtual_keyboard);
     }
+    struct vela_config settings;
+    vela_config_read(&settings);
+    load_super_numbers(input, &settings);
+    load_keyboard_choices(input, &settings);
+    load_custom_shortcuts(input);
+    vela_config_finish(&settings);
     return input;
 }
 
@@ -842,6 +1049,9 @@ void vela_input_destroy(struct vela_input *input)
     if (!input) {
         return;
     }
+    free(input->custom);
+    input->custom = NULL;
+    input->custom_count = 0;
     // wlroots checks that no listener stays attached to the objects it
     // destroys: keyboards and mice are detached here, before the backend.
     struct vela_keyboard *keyboard, *next_keyboard;
@@ -852,9 +1062,27 @@ void vela_input_destroy(struct vela_input *input)
     wl_list_for_each_safe (pointer, next_pointer, &input->pointers, link) {
         pointer_destroy(pointer);
     }
+#if WLR_HAS_LIBINPUT_BACKEND
+    struct wl_list *switches = &input->lid_switches;
+    struct wl_list *next;
+    for (struct wl_list *link = switches->next; link != switches; link = next) {
+        next = link->next;
+        struct vela_lid_switch *lid = wl_container_of(link, lid, link);
+        lid_switch_destroy(lid);
+    }
+#endif
     drag_icon_destroy(input->drag_icon);
+    if (input->super_timer) {
+        wl_event_source_remove(input->super_timer);
+    }
     if (input->paste_timer) {
         wl_event_source_remove(input->paste_timer);
+    }
+    // A Num Lock change still waiting to be kept: kept now (logout,
+    // Alt+Shift+Esc, SIGTERM).
+    vela_keyboard_save_numlock(input);
+    if (input->numlock_timer) {
+        wl_event_source_remove(input->numlock_timer);
     }
     struct wl_listener *listeners[] = {
         &input->new_input,

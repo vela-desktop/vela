@@ -5,16 +5,136 @@
 
 import contextlib
 import io
+import json
 import os
+import shutil
+import socket
 import struct
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import zlib
 
-from harness import Image, Session, State
+from harness import Image, PrivateBus, Session, State, TimeoutError
+
+
+class PersistentInput(unittest.TestCase):
+    def run_input(self, reply):
+        directory = self.enterContext(tempfile.TemporaryDirectory())
+        program = os.path.join(directory, "input")
+        commands = os.path.join(directory, "commands")
+        with open(program, "w") as script:
+            script.write(f"#!{sys.executable}\nimport sys\n"
+                         "for number, line in enumerate(sys.stdin):\n"
+                         f"    with open({commands!r}, 'a') as log: log.write(line)\n"
+                         "    if number == 0: print('OK', flush=True)\n"
+                         f"    else: {reply}\n")
+        os.chmod(program, 0o700)
+        self.enterContext(patch("harness.tool", return_value=program))
+        session = Session()
+        session.client_env = dict(os.environ)
+        return session, commands
+
+    def test_one_keyboard_handles_multiple_actions_and_closes_after_a_failure(self):
+        session, commands = self.run_input("print('OK', flush=True)")
+        with self.assertRaisesRegex(RuntimeError, "test failure"):
+            with session.input_session() as send:
+                send("type", "first")
+                send("key", "Return")
+                raise RuntimeError("test failure")
+        # The initialization appears once, before any panel input, and
+        # cleanup closes stdin even when the caller raises inside the scene.
+        with open(commands) as log:
+            self.assertEqual(log.read(), "sleep\t0\ntype\tfirst\nkey\tReturn\n")
+
+    def test_partial_reply_times_out_and_cleans_up(self):
+        session, _ = self.run_input("sys.stdout.write('O'); sys.stdout.flush()")
+        with patch("harness.TIME_SCALE", 0.02):
+            with self.assertRaisesRegex(TimeoutError, "timed out replying"):
+                with session.input_session() as send:
+                    send("key", "Return")
+
+    def test_refused_actions_and_exited_devices_fail(self):
+        for reply, message in (("print('ERROR', flush=True)", "refused"),
+                               ("sys.exit(0)", "exited before replying")):
+            with self.subTest(reply=reply):
+                session, _ = self.run_input(reply)
+                with self.assertRaisesRegex(AssertionError, message):
+                    with session.input_session() as send:
+                        send("key", "Return")
+
+
+class SessionReconnect(unittest.TestCase):
+    def session(self):
+        session = Session()
+        session.process = Mock()
+        session.process.poll.return_value = None
+        session.log_text = lambda: "restart diagnostic"
+        return session
+
+    def test_restarted_process_can_exist_before_its_socket_listens(self):
+        session = self.session()
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as listener:
+            session.socket_path = os.path.join(directory, "command.sock")
+            listener.bind(session.socket_path)  # The old path can exist but refuse connections.
+            listener.settimeout(2)
+
+            def start_command_socket():
+                time.sleep(0.03)
+                listener.listen()
+                with listener.accept()[0] as connection:
+                    connection.recv(1024)
+                    connection.sendall(b'{"outputs":[{"name":"HEADLESS-1"}]}\n')
+
+            server = threading.Thread(target=start_command_socket)
+            server.start()
+            try:
+                state = session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=1, interval=0.005)
+                self.assertEqual(state["outputs"][0]["name"], "HEADLESS-1")
+            finally:
+                server.join(timeout=3)
+            self.assertFalse(server.is_alive())
+
+    def test_reconnection_errors_are_only_retried_when_requested(self):
+        for error in (FileNotFoundError(), ConnectionRefusedError(), ConnectionResetError(), BrokenPipeError()):
+            with self.subTest(error=type(error).__name__):
+                session = self.session()
+                session.state = Mock(side_effect=[error, State({"outputs": [1]})])
+                with self.assertRaises(type(error)):
+                    session.wait_for(lambda s: s["outputs"])
+                session.state = Mock(side_effect=[error, State({"outputs": [1]})])
+                self.assertTrue(session.wait_for(lambda s: s["outputs"], reconnect=True)["outputs"])
+
+    def test_reconnection_is_bounded_and_reports_the_last_error(self):
+        session = self.session()
+        session.state = Mock(side_effect=ConnectionRefusedError("not ready"))
+        with self.assertRaisesRegex(TimeoutError, "ConnectionRefusedError.*not ready"):
+            session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.01, interval=0.001)
+
+    def test_exited_supervisor_and_unrelated_errors_fail_immediately(self):
+        session = self.session()
+        session.process.poll.return_value = 7
+        session.process.returncode = 7
+        with self.assertRaisesRegex(AssertionError, "supervisor exited.*7"):
+            session.wait_for(lambda s: s["outputs"], reconnect=True)
+        session.process.poll.return_value = None
+        for error in (PermissionError("denied"), json.JSONDecodeError("invalid state", "", 0)):
+            session.state = Mock(side_effect=error)
+            with self.assertRaises(type(error)):
+                session.wait_for(lambda s: s["outputs"], reconnect=True)
+
+    def test_accepted_socket_without_a_reply_still_times_out(self):
+        session = self.session()
+        with tempfile.TemporaryDirectory() as directory, socket.socket(socket.AF_UNIX) as listener:
+            session.socket_path = os.path.join(directory, "command.sock")
+            listener.bind(session.socket_path)
+            listener.listen()
+            with self.assertRaisesRegex(TimeoutError, "last connection error:.*[Tt]imeout"):
+                session.wait_for(lambda s: s["outputs"], reconnect=True, timeout=0.02, interval=0.001)
 
 
 class SessionCleanup(unittest.TestCase):
@@ -136,6 +256,115 @@ class SessionCleanup(unittest.TestCase):
         self.assertTrue(session.log.closed)
 
 
+@unittest.skipUnless(shutil.which("dbus-daemon") and shutil.which("dbus-send"), "needs dbus-daemon and dbus-send")
+class PrivateBusCleanup(unittest.TestCase):
+    """What a private bus activates must neither reach the host session nor
+    outlive the bus (it once kept the desktop portal of every test run
+    connected to the developer's compositor)."""
+
+    HOST = {"WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0", "WAYLAND_SOCKET": "3",
+            "XDG_RUNTIME_DIR": "/run/user/1000"}
+
+    def activated_service(self, directory, ignore_term=False):
+        """A .service file whose program reports its pid and environment."""
+        report = os.path.join(directory, "report.json")
+        program = os.path.join(directory, "service.py")
+        with open(program, "w") as file:
+            file.write("import json, os, signal, sys, time\n"
+                       + ("signal.signal(signal.SIGTERM, signal.SIG_IGN)\n" if ignore_term else "")
+                       + "with open(sys.argv[1] + '.part', 'w') as f:\n"
+                       "    json.dump({'pid': os.getpid(), 'env': dict(os.environ)}, f)\n"
+                       "os.rename(sys.argv[1] + '.part', sys.argv[1])\n"
+                       "while True: time.sleep(1)\n")
+        services = os.path.join(directory, "services")
+        os.mkdir(services)
+        with open(os.path.join(services, "org.vela.TestService.service"), "w") as file:
+            file.write(f"[D-BUS Service]\nName=org.vela.TestService\nExec={sys.executable} {program} {report}\n")
+        return services, report
+
+    @staticmethod
+    def start_service(bus, name):
+        return subprocess.run(["dbus-send", f"--bus={bus.address}", "--print-reply", "--reply-timeout=500",
+                               "--dest=org.freedesktop.DBus", "/org/freedesktop/DBus",
+                               "org.freedesktop.DBus.StartServiceByName", f"string:{name}", "uint32:0"],
+                              capture_output=True, text=True, timeout=10)
+
+    @staticmethod
+    def identity(pid):
+        """Return a live process identity; a zombie has already released its fds."""
+        try:
+            with open(f"/proc/{pid}/stat") as stat:
+                fields = stat.read().rsplit(")", 1)[1].split()
+            if fields[0] in ("Z", "X", "x"):
+                return None
+            return pid, fields[19]  # starttime; distinguish a reused PID
+        except FileNotFoundError:
+            return None
+
+    def check_activated_child_is_stopped(self, ignore_term):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, self.HOST):
+            services, report = self.activated_service(directory, ignore_term)
+            bus = PrivateBus(services=services)
+            bus.start()
+            self.addCleanup(bus.stop)
+            self.assertEqual(os.getsid(bus.process.pid), bus.process.pid)
+            self.start_service(bus, "org.vela.TestService") # it never takes the name: a timeout
+            deadline = time.monotonic() + 10
+            while not os.path.exists(report) and time.monotonic() < deadline:
+                time.sleep(0.02)
+            with open(report) as file:
+                child = json.load(file)
+            identity = self.identity(child["pid"])
+            self.assertIsNotNone(identity)
+            for key in ("WAYLAND_DISPLAY", "DISPLAY", "WAYLAND_SOCKET"):
+                self.assertNotIn(key, child["env"])
+            runtime = child["env"]["XDG_RUNTIME_DIR"]
+            self.assertEqual(os.path.dirname(runtime), bus.directory)
+            private = bus.directory
+            bus.stop()
+            self.assertNotEqual(self.identity(child["pid"]), identity, "the activated service outlived its bus")
+            self.assertFalse(os.path.exists(private))
+
+    def test_activated_service_stops_with_the_bus(self):
+        self.check_activated_child_is_stopped(ignore_term=False)
+
+    def test_activated_service_ignoring_sigterm_is_killed(self):
+        self.check_activated_child_is_stopped(ignore_term=True)
+
+    def test_zombie_only_group_is_not_live(self):
+        # A child that exits but hasn't been waited for is a zombie on Linux.
+        # PID 1 can leave activated services in this state indefinitely in CI.
+        from harness import _group_has_live_members, stop_process_group
+
+        process = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+        self.addCleanup(process.wait)
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            with open(f"/proc/{process.pid}/stat") as stat:
+                state = stat.read().rsplit(")", 1)[1].split()[0]
+            if state == "Z":
+                break
+            time.sleep(0.02)
+        else:
+            self.fail("test child did not become a zombie")
+        self.assertIsNone(self.identity(process.pid))
+        self.assertFalse(_group_has_live_members(process.pid))
+        started = time.monotonic()
+        stop_process_group(process, timeout=0.25)
+        self.assertLess(time.monotonic() - started, 1.5)
+
+    def test_default_bus_activates_nothing(self):
+        with PrivateBus() as bus:
+            result = self.start_service(bus, "org.freedesktop.portal.Desktop")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("org.freedesktop.DBus.Error.ServiceUnknown", result.stderr)
+
+    def test_failed_start_leaves_no_directory(self):
+        bus = PrivateBus()
+        with patch("harness.subprocess.Popen", side_effect=FileNotFoundError("dbus-daemon")), \
+                self.assertRaises(FileNotFoundError):
+            bus.start()
+        self.assertIsNone(bus.directory)
 
 
 class ClientStartupDiagnostics(unittest.TestCase):

@@ -10,6 +10,7 @@ extern "C" {
 }
 
 #include <gtest/gtest.h>
+#include "privatetemp.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -23,9 +24,7 @@ class OutputConfig : public ::testing::Test {
 protected:
     void SetUp() override
     {
-        std::string pattern = (std::filesystem::temp_directory_path() / "vela-outputs-test-XXXXXX").string();
-        ASSERT_NE(mkdtemp(pattern.data()), nullptr);
-        m_dir = pattern;
+        m_dir = vela::test::privateTempDirectory("vela-outputs-test");
         setenv("XDG_CONFIG_HOME", (m_dir + "/config").c_str(), 1);
     }
     void TearDown() override { std::filesystem::remove_all(m_dir); }
@@ -79,8 +78,7 @@ TEST_F(OutputConfig, SaveAndLoad)
     EXPECT_FLOAT_EQ(saved.scale, 1.25f);
     EXPECT_EQ(saved.transform, 1);
     EXPECT_TRUE(saved.has_position);
-    // Loading rebases a layout with one enabled output to the X11 root.
-    EXPECT_EQ(saved.x, 0);
+    EXPECT_EQ(saved.x, -2048);
     EXPECT_EQ(saved.y, 0);
     EXPECT_FALSE(std::filesystem::exists(path("outputs.conf.tmp")));
 }
@@ -133,9 +131,8 @@ TEST_F(OutputConfig, LegacyItalianFile)
     EXPECT_EQ(saved.width, 3840);
     EXPECT_FLOAT_EQ(saved.scale, 1.75f);
     EXPECT_EQ(saved.transform, 5); // flipped-90
-    // Legacy absolute positions are also normalized at load time.
-    EXPECT_EQ(saved.x, 0);
-    EXPECT_EQ(saved.y, 0);
+    EXPECT_EQ(saved.x, 100);
+    EXPECT_EQ(saved.y, 200);
 
     const vela_output_config_entry entries[] = { entry("Altro", true, 0, 0) };
     vela_output_config_save(entries, 1);
@@ -145,7 +142,7 @@ TEST_F(OutputConfig, LegacyItalianFile)
         std::string::npos);
 }
 
-TEST_F(OutputConfig, NegativeMonitorAbovePreservesRelativeArrangement)
+TEST_F(OutputConfig, LoadsEnabledAndDisabledPositionsWithoutRebasing)
 {
     write("outputs.conf",
         "[Primary]\nenabled=yes\nposition=0,0\n"
@@ -156,12 +153,30 @@ TEST_F(OutputConfig, NegativeMonitorAbovePreservesRelativeArrangement)
     ASSERT_TRUE(vela_output_config_load("Above", &above));
     ASSERT_TRUE(vela_output_config_load("Disabled", &disabled));
     EXPECT_EQ(primary.x, 0);
-    EXPECT_EQ(primary.y, 1080);
+    EXPECT_EQ(primary.y, 0);
     EXPECT_EQ(above.x, 0);
-    EXPECT_EQ(above.y, 0);
+    EXPECT_EQ(above.y, -1080);
     EXPECT_FALSE(disabled.enabled);
-    EXPECT_EQ(disabled.x, -2048); // Disabled outputs do not anchor the layout.
-    EXPECT_EQ(disabled.y, -968);
+    EXPECT_EQ(disabled.x, -2048);
+    EXPECT_EQ(disabled.y, -2048);
+}
+
+TEST_F(OutputConfig, PartialSaveKeepsTheUnpluggedMonitorsCoordinateSpace)
+{
+    write("outputs.conf",
+        "[Disabled]\nenabled=no\nposition=0,0\n"
+        "[Connected]\nenabled=yes\nposition=1920,0\n"
+        "[Unplugged]\nenabled=yes\nposition=1920,1080\n");
+    vela_saved_output connected {}, unplugged {};
+    ASSERT_TRUE(vela_output_config_load("Connected", &connected));
+    const auto updated = entry("Connected", true, connected.x, connected.y);
+    ASSERT_TRUE(vela_output_config_save(&updated, 1));
+    connected = {};
+    ASSERT_TRUE(vela_output_config_load("Connected", &connected));
+    ASSERT_TRUE(vela_output_config_load("Unplugged", &unplugged));
+    EXPECT_EQ(connected.x, 1920);
+    EXPECT_EQ(unplugged.x, connected.x);
+    EXPECT_EQ(unplugged.y - connected.y, 1080);
 }
 
 TEST_F(OutputConfig, WritesPrivateModeEvenWithPermissiveUmask)

@@ -17,8 +17,9 @@
 //   last, after the renderer;
 // - vela_renderer belongs to wlroots: born with vela_renderer_create, it
 //   dies with wlr_renderer_destroy(vela_renderer_wlr(r));
-// - a vela_pass lives from vela_renderer_begin_pass to vela_pass_submit,
-//   which consumes it;
+// - a vela_pass is open from vela_renderer_begin_pass to vela_pass_submit,
+//   which ends it: the caller must not use it again. The object itself
+//   belongs to the renderer, which keeps it for the next drawing;
 // - textures are created and destroyed by wlroots (wlr_texture_from_buffer,
 //   wlr_texture_destroy); their Vulkan resources go away when the GPU is
 //   done with them.
@@ -54,6 +55,14 @@ void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation);
 // The render node of the same GPU, opened by the device: the allocator and the
 // syncobj timelines need it.
 int vela_vulkan_render_fd(const struct vela_vulkan *vk);
+bool vela_vulkan_exports_buffers(const struct vela_vulkan *vk);
+// Venus clients must allocate on the Vulkan device too: OpenGL through Zink.
+// Configure the environment inherited by children, preserving user overrides.
+bool vela_vulkan_configure_clients(const struct vela_vulkan *vk);
+
+// Vulkan-owned DMA-BUFs avoid importing virgl GBM resources into Venus.
+// Destroy before the Vulkan device, with wlr_allocator_destroy().
+struct wlr_allocator *vela_vulkan_allocator_create(struct vela_vulkan *vk);
 
 // Allocator of output buffers (docs/renderer.md §7.2): GBM on the render node,
 // buffers exported as dmabufs with an explicit modifier, fit for both Vulkan
@@ -102,6 +111,41 @@ bool vela_renderer_read_timing(struct vela_renderer *renderer, int slot, uint64_
 
 // The texture is ours and its format has no alpha (an opaque buffer).
 bool vela_texture_is_opaque(struct wlr_texture *texture);
+// The texture has something to draw: false only for one of ours whose first
+// content is still being uploaded over several frames.
+bool vela_texture_shown(struct wlr_texture *texture);
+// Changes when a deferred upload switches the texture to its new image: the
+// texture's whole area must be drawn again then (0 for others).
+uint64_t vela_texture_content(struct wlr_texture *texture);
+
+// Shared-memory uploads (docs/memory-allocation-policy.md, point 6). An
+// upload that doesn't fit in the upload staging budget is copied over the
+// next frames: vela_renderer_continue_uploads, at the start of every output
+// frame, copies the next pieces, oldest upload first.
+struct vela_upload_progress {
+    int pending; // uploads still waiting for pieces
+    int completed; // uploads finished now: their textures show the new image
+};
+struct vela_upload_progress vela_renderer_continue_uploads(struct vela_renderer *renderer);
+struct vela_upload_stats {
+    int chunks, chunks_peak; // upload staging chunks allocated, now and at most
+    int chunks_max; // the budget, in chunks of the same size
+    uint64_t in_place, deferred, replaced, completed, abandoned, pieces;
+    uint64_t rejected; // client buffers refused for their size
+};
+struct vela_upload_stats vela_renderer_upload_stats(const struct vela_renderer *renderer);
+// A client buffer refused for its size (a shm buffer above the device's image
+// limit, a dmabuf above its format's), kept until the commit that brought it
+// asks: vela_renderer_take_extent_rejection says so once, and the caller
+// logs it once per client.
+struct vela_extent_rejection {
+    const struct wlr_buffer *buffer; // only compared, never used
+    int width, height;
+    uint32_t max_width, max_height;
+    bool dmabuf;
+};
+bool vela_renderer_take_extent_rejection(struct wlr_renderer *renderer, const struct wlr_buffer *buffer,
+    struct vela_extent_rejection *out);
 
 // Deferred SHM capture from buffers produced on this renderer's queue. Sources
 // must be compositor-owned render targets, never directly scanned-out clients.
@@ -187,10 +231,10 @@ void vela_pass_measure(struct vela_pass *pass);
 // capture with explicit sync).
 void vela_pass_signal_on_done(struct vela_pass *pass, struct wlr_drm_syncobj_timeline *timeline, uint64_t point);
 
-// Submits the drawing and frees the pass. In the result: the renderer timeline
-// point, the measurement slot (-1: not measured) and the syncobj timeline
-// point signaled at the end (0 if none): the release of the app buffers this
-// drawing read.
+// Submits the drawing and ends the pass, whose locks and references are
+// dropped even when it fails. In the result: the renderer timeline point, the
+// measurement slot (-1: not measured) and the syncobj timeline point signaled
+// at the end (0 if none): the release of the app buffers this drawing read.
 struct vela_pass_result {
     uint64_t point;
     int timing_slot;

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Brando Giuffrida
 // SPDX-License-Identifier: GPL-3.0-or-later
 // A normal desktop window: no dependency on Vela's compositor or layer-shell.
+#include "alloc/new_handler.h"
 #include <QApplication>
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -572,6 +573,7 @@ private:
 
 int main(int argc, char **argv)
 {
+    vela::install_new_handler("vela-report-gui");
     QApplication application(argc, argv);
     application.setApplicationName("Vela Report");
     application.setDesktopFileName("vela-report");

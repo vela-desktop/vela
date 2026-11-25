@@ -10,12 +10,14 @@ import Vela.Controls
 // and a check. A click, Space or Enter chooses it (the gallery applies it
 // at once).
 // The picture goes in `picture`, filling pictureHeight.
+// Expressive: an M3 card's medium corners; the colors are the remapped
+// card and accent tokens (primary for the one in use).
 T.AbstractButton {
     id: tile
     property bool selected: false
     property string subtitle
     property real pictureHeight: 120
-    default property alias picture: pictureBox.data
+    default property alias picture: pictureBox.content
     // In a gallery, Tab stops on the tile in use only (the gallery says
     // which), and on the one the arrows took the focus to while it has it;
     // the arrows ask the gallery to move the focus.
@@ -50,15 +52,20 @@ T.AbstractButton {
     Keys.onUpPressed: arrow(0, -1)
     Keys.onDownPressed: arrow(0, 1)
     hoverEnabled: true
+    // Qt's own check state is what a screen reader hears (Qt's button writes
+    // it over the attached Accessible one once accessibility is on): the
+    // tile is checked while selected and never toggles itself, the gallery
+    // chooses.
+    checkable: true
+    checked: selected
+    onToggled: checked = Qt.binding(() => tile.selected)
     Accessible.role: Accessible.RadioButton
-    Accessible.checkable: true
-    Accessible.checked: selected
     Accessible.description: subtitle
     Keys.onReturnPressed: clicked()
     Keys.onEnterPressed: clicked()
 
     background: Fill {
-        radius: Theme.radiusCard
+        radius: Theme.expressive ? Theme.shapeMedium : Theme.radiusCard
         color: tile.down ? Theme.cardPressed : tile.hovered ? Theme.cardHover : Theme.card
         border.width: tile.selected ? 2 : 1
         border.color: tile.selected ? Theme.accentFill : Theme.cardStroke
@@ -66,13 +73,15 @@ T.AbstractButton {
     }
 
     contentItem: Item {
-        Item {
+        // The picture, 6 inside the tile: its corners are the tile's less
+        // that (Theme.nested), square in a tile no rounder than 6.
+        RoundClip {
             id: pictureBox
             x: 6
             y: 6
             width: parent.width - 12
             height: tile.pictureHeight
-            clip: true
+            radius: Theme.nested(tile.background.radius, 6, 0)
         }
         Column {
             id: labels

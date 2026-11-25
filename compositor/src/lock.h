@@ -55,17 +55,28 @@ struct vela_lock {
     struct vela_output **waiting;
     int waiting_count;
     int waiting_capacity;
+    struct wl_list exiting_launchers; // clean unlocks waiting for their clients to finish
     pid_t launcher_pid; // child process group for a pending locker launch
+    // The Wayland connection handed to that launch (WAYLAND_SOCKET). While
+    // Vela holds the screen locked, only this client may take the lock: any
+    // other could register one and then unlock the desktop.
+    struct wl_client *locker_client;
+    struct wl_listener locker_client_destroy;
     struct wl_event_source *respawn; // relaunches vela-lock if it goes away
     int64_t respawns[VELA_LOCK_RESPAWNS]; // when (ms), so as not to insist forever
     int respawn_count;
     struct vela_lock_retry retry; // registration timeout and bounded retry/cooldown
     bool fatal_exit_pending; // cannot safely continue this session
+    // The fatal path allocates nothing of its own: its timer exists from the
+    // start, and fatal_waiting is reserved for every output while locked.
     struct wl_event_source *fatal_timer;
     struct wl_event_source *pointer_retarget_idle; // after output-layout cursor warps
     struct vela_output **fatal_waiting;
     int fatal_waiting_count;
     int fatal_waiting_capacity;
+    // An active output could not be tracked: wait for the full timeout
+    // instead of ending after the tracked outputs' black frames.
+    bool fatal_waiting_incomplete;
 
     struct wlr_idle_notifier_v1 *idle_notifier;
     struct wlr_idle_inhibit_manager_v1 *idle_inhibit;

@@ -7,45 +7,14 @@
 #include "iconprovider.h"
 #include "language.h"
 #include "mica.h"
+#include "scheme.h"
 #include "themefile.h"
+#include "velaconf.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
-
-namespace {
-
-// animation-effects and animation-duration in vela.conf (the compositor
-// reads them too): on, at Vela's durations, unless it says otherwise.
-struct Motion {
-    bool effects = true;
-    qreal duration = 1.0;
-};
-
-Motion configuredMotion()
-{
-    Motion motion;
-    QFile file(vela::language::configPath());
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return motion;
-    }
-    while (!file.atEnd()) {
-        const QString line = QString::fromUtf8(file.readLine()).trimmed();
-        if (line.startsWith(QLatin1String("animation-effects="))) {
-            const QString value = line.mid(18).trimmed();
-            motion.effects
-                = value != QLatin1String("no") && value != QLatin1String("0") && value != QLatin1String("false");
-        } else if (line.startsWith(QLatin1String("animation-duration="))) {
-            bool ok = false;
-            const int percent = line.mid(19).trimmed().toInt(&ok);
-            motion.duration = ok ? qBound(50, percent, 300) / 100.0 : 1.0;
-        }
-    }
-    return motion;
-}
-
-} // namespace
 
 Appearance::Appearance(QObject* parent, Mode mode)
     : QObject(parent)
@@ -66,7 +35,7 @@ void Appearance::watch()
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
     // The chosen theme and styles and what they inherit too: editing one shows
     // at once.
-    QStringList paths { shellConfig, wallpaperTintCachePath(), vela::language::configPath() };
+    QStringList paths { shellConfig, wallpaperTintCachePath(), wallpaperColorCachePath(), vela::language::configPath() };
     paths += m_loaded.files();
     for (const QString& path : std::as_const(paths)) {
         if (path.isEmpty()) {
@@ -121,20 +90,45 @@ QVariantMap Appearance::taskbarLayout(const QVariantMap& tokens, bool light, con
     };
 }
 
+QVariantMap Appearance::tonalOf(const QColor& source, bool light) const
+{
+    const vela::color::Roles roles = vela::color::tonalSpot(source.rgb(), !light);
+    QVariantMap tonal;
+    for (const vela::color::RoleName& role : vela::color::roleNames) {
+        tonal.insert(QLatin1String(role.name), QColor::fromRgb(roles.*role.member));
+    }
+    return tonal;
+}
+
+QColor Appearance::schemeSource(bool light) const
+{
+    return vela::accent::schemeSource(m_theme, light, m_accentSource, m_chosenAccent, m_wallpaperColor);
+}
+
 void Appearance::reload()
 {
     QSettings shell(QStringLiteral("Vela"), QStringLiteral("vela-shell"));
     shell.sync();
+    // Apart from the look: it changes nothing else.
+    QStringList hidden = shell.value(QStringLiteral("menus/hidden")).toStringList();
+    hidden.removeAll(QString());
+    if (hidden != m_hiddenMenuEntries) {
+        m_hiddenMenuEntries = hidden;
+        emit hiddenMenuEntriesChanged();
+    }
     const QString key = m_mode == Mode::Shell ? QStringLiteral("appearance/shellTheme") : QStringLiteral("appearance/appTheme");
     const bool light = shell.value(key).toString() == QLatin1String("light");
-    QColor accent(shell.value(QStringLiteral("appearance/accent")).toString());
-    if (!accent.isValid()) {
-        accent = vela::defaults::accent();
+    QColor chosen(shell.value(QStringLiteral("appearance/accent")).toString());
+    if (!chosen.isValid()) {
+        chosen = vela::defaults::accent();
     }
+    const vela::accent::Source source
+        = vela::accent::sourceFromString(shell.value(QStringLiteral("appearance/accentSource")).toString());
+    const QColor wallpaper = cachedWallpaperColor();
     const QColor tint = cachedWallpaperTint();
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
-    const Motion motion = configuredMotion();
+    const vela::conf::Motion motion = vela::conf::motion(vela::conf::read(vela::language::configPath()));
     vela::themes::Loaded loaded = vela::themes::loadConfigured(vela::language::configPath());
     const QStringList files = loaded.files();
     const bool filesChanged = files != m_loaded.files();
@@ -153,9 +147,31 @@ void Appearance::reload()
     if (filesChanged && m_watching) {
         watch();
     }
+    // The accent after the theme: it may ask for the wallpaper's.
+    m_accentSource = source;
+    m_chosenAccent = chosen;
+    const bool wallpaperChanged = wallpaper != m_wallpaperColor;
+    m_wallpaperColor = wallpaper;
+    const QColor accent = vela::accent::userAccent(theme, light, source, chosen, wallpaper).color;
+    // The palette only when its source or the mode changed: the quantized
+    // wallpaper is cached, but a scheme is still some HCT solving.
+    const QColor tonalSource = schemeSource(light);
+    const bool tonalChanged = m_tonal.isEmpty() || tonalSource != m_tonalSource || light != m_light;
+    if (tonalChanged) {
+        m_tonalSource = tonalSource;
+        m_tonal = tonalOf(tonalSource, light);
+    }
+    // The other mode's palette too: with the shell dark and the apps light,
+    // the title bars take the light palette's surface, whose source may
+    // change (the chosen accent) while this mode's stays (the wallpaper's).
+    const QColor otherSource = schemeSource(!light);
+    const bool otherChanged = otherSource != m_otherTonalSource;
+    m_otherTonalSource = otherSource;
     if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
-        // Only the theme or the motion: the icons stay as they are.
-        if (themeChanged || motion.effects != m_animationEffects || motion.duration != m_animationDuration) {
+        // Only the theme, the palette, the wallpaper's color (Settings shows
+        // it) or the motion: the icons stay as they are.
+        if (themeChanged || tonalChanged || otherChanged || wallpaperChanged || motion.effects != m_animationEffects
+            || motion.duration != m_animationDuration) {
             m_animationEffects = motion.effects;
             m_animationDuration = motion.duration;
             emit changed();

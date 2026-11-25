@@ -50,25 +50,29 @@ Window {
         "themes": { title: qsTr("Themes"), parent: "personalization", file: "ThemesPage.qml", icon: "preferences-desktop-theme" },
         "taskbar": { title: qsTr("Taskbar"), parent: "personalization", file: "TaskbarPage.qml", icon: "preferences-system-windows" },
         "start": { title: qsTr("Start"), parent: "personalization", file: "StartPage.qml", icon: "start-here" },
+        "context-menu": { title: qsTr("Context menu"), parent: "personalization", file: "ContextMenuPage.qml", icon: "application-menu" },
         "apps": { title: qsTr("Apps"), parent: "", file: "AppsPage.qml", icon: "preferences-desktop-default-applications" },
         "installed-apps": { title: qsTr("Installed apps"), parent: "apps", file: "InstalledAppsPage.qml", icon: "view-list-details" },
         "default-apps": { title: qsTr("Default apps"), parent: "apps", file: "DefaultAppsPage.qml", icon: "preferences-desktop-default-applications" },
         "default-app": { title: qsTr("Apps"), parent: "default-apps", file: "DefaultAppPage.qml", icon: "preferences-desktop-default-applications" },
         "time-language": { title: qsTr("Time & language"), parent: "", file: "TimeLanguagePage.qml", icon: "preferences-system-time" },
         "datetime": { title: qsTr("Date & time"), parent: "time-language", file: "DateTimePage.qml", icon: "preferences-system-time" },
-        "keyboard": { title: qsTr("Keyboard"), parent: "time-language", file: "KeyboardPage.qml", icon: "input-keyboard" },
+        "keyboard": { title: qsTr("Keyboard"), parent: "", file: "KeyboardPage.qml", icon: "input-keyboard" },
+        "keyboard-layouts": { title: qsTr("Layouts"), parent: "keyboard", file: "KeyboardLayoutsPage.qml", icon: "input-keyboard" },
+        "keyboard-typing": { title: qsTr("Typing"), parent: "keyboard", file: "KeyboardTypingPage.qml", icon: "edit-entry" },
+        "keyboard-shortcuts": { title: qsTr("Custom shortcuts"), parent: "keyboard", file: "KeyboardShortcutsPage.qml", icon: "preferences-desktop-keyboard-shortcuts" },
         "mouse": { title: qsTr("Mouse"), parent: "bluetooth", file: "MousePage.qml", icon: "input-mouse" },
         "touchpad": { title: qsTr("Touchpad"), parent: "bluetooth", file: "TouchpadPage.qml", icon: "input-touchpad" },
         "clipboard": { title: qsTr("Clipboard"), parent: "system", file: "ClipboardPage.qml", icon: "edit-paste" },
         "night-light": { title: qsTr("Night light"), parent: "display", file: "NightLightPage.qml", icon: "redshift-status-on" },
         "accessibility": { title: qsTr("Accessibility"), parent: "", file: "AccessibilityPage.qml", icon: "preferences-desktop-accessibility" }
     })
-    readonly property var sections: ["home", "system", "bluetooth", "network", "personalization", "apps", "time-language", "accessibility"]
+    readonly property var sections: ["home", "system", "bluetooth", "network", "personalization", "apps", "time-language", "keyboard", "accessibility"]
     // The names the shell uses (systemactions.cpp) for the menu entries.
     readonly property var aliases: ({
         "settings": "home", "personalize": "personalization", "taskbar-settings": "taskbar",
-        "notification-settings": "notifications", "sound-settings": "sound", "devices": "bluetooth",
-        "mobility": "power", "computer": "about", "installed-apps": "installed-apps",
+        "notification-settings": "notifications", "sound-settings": "sound",
+        "mobility": "power", "installed-apps": "installed-apps",
         "bluetooth-settings": "bluetooth", "night-light-settings": "night-light", "accessibility-settings": "accessibility",
         "colors-settings": "colors"
     })
@@ -161,17 +165,34 @@ Window {
     Shortcut { sequences: [StandardKey.Back]; onActivated: root.back() }
     Shortcut { sequences: [StandardKey.Forward]; onActivated: root.forward() }
 
+    // The login session requests this page until a valid preference is saved.
+    // Opening Settings later, or forwarding to an already-running instance,
+    // must obey the same rule; the implicit KWallet fallback is not consent.
+    function showCredentialSetup() {
+        Prefs.reload()
+        root.navigate("system")
+        if (!Prefs.secretBackendConfigured) {
+            credentialSetupDialog.open()
+        }
+    }
+
     Component.onCompleted: {
         if (glass.length) {
             Effects.setBlur(root, glass)
         }
-        navigate(Router.initialPage)
+        if (Router.initialPage === "credential-setup") {
+            showCredentialSetup()
+        } else {
+            navigate(Router.initialPage)
+        }
     }
 
     Connections {
         target: Router
         function onPageRequested(page) {
-            if (page !== "") {
+            if (page === "credential-setup") {
+                root.showCredentialSetup()
+            } else if (page !== "") {
                 root.navigate(page)
             }
             if (root.visibility === Window.Minimized) {
@@ -225,6 +246,7 @@ Window {
         { page: "start", text: qsTr("Start menu style"), keys: qsTr("start menu style look size corners") },
         { page: "start", text: qsTr("Start button icon"), keys: qsTr("start button icon logo distribution picture image sail") },
         { page: "start", text: qsTr("Show pinned apps"), keys: qsTr("start menu pinned apps pins show hide") },
+        { page: "context-menu", text: qsTr("Context menu"), keys: qsTr("right click right-click menu entries items hide show service menus") },
         { page: "apps", text: qsTr("Apps"), keys: qsTr("programs applications") },
         { page: "installed-apps", text: qsTr("Installed apps"), keys: qsTr("uninstall remove programs") },
         { page: "default-apps", text: qsTr("Default apps"), keys: qsTr("browser mail player open with default") },
@@ -233,7 +255,16 @@ Window {
         { page: "datetime", text: qsTr("Date & time"), keys: qsTr("clock time zone sync ntp") },
         { page: "datetime", text: qsTr("Time format"), keys: qsTr("clock 24-hour 12-hour am pm time format hours") },
         { page: "time-language", text: qsTr("Language"), keys: qsTr("language english italian italiano inglese translation") },
-            { page: "keyboard", text: qsTr("Keyboard"), keys: qsTr("layout language input typing key repeat") },
+        { page: "keyboard", text: qsTr("Keyboard"), keys: qsTr("keyboard keys typing") },
+        { page: "keyboard-layouts", text: qsTr("Keyboard layout"), keys: qsTr("layout language input keyboard add win+space switch") },
+        { page: "keyboard-typing", text: qsTr("Key repeat"), keys: qsTr("key repeat delay rate typing hold") },
+        { page: "keyboard-typing", text: qsTr("Caps Lock key"), keys: qsTr("caps lock ctrl escape esc backspace disable remap") },
+        { page: "keyboard-typing", text: qsTr("Compose key"), keys: qsTr("compose accents special characters right alt menu") },
+        { page: "keyboard-typing", text: qsTr("Swap Ctrl, Alt and Win"), keys: qsTr("swap ctrl alt win mac keyboard command option modifiers") },
+        { page: "keyboard-typing", text: qsTr("Numeric keypad"), keys: qsTr("numeric keypad numpad digits num lock") },
+        { page: "keyboard-typing", text: qsTr("Num Lock at startup"), keys: qsTr("num lock numlock numpad startup login on off") },
+        { page: "keyboard-typing", text: qsTr("Show Caps Lock on screen"), keys: qsTr("caps lock on screen display osd indicator notification") },
+        { page: "keyboard-shortcuts", text: qsTr("Custom shortcuts"), keys: qsTr("custom shortcuts keyboard combination hotkey launch app command link file") },
         { page: "mouse", text: qsTr("Mouse"), keys: qsTr("pointer speed primary button left-handed wheel scrolling lines acceleration precision") },
         { page: "touchpad", text: qsTr("Touchpad"), keys: qsTr("tap click gestures fingers scrolling laptop trackpad") },
         { page: "touchpad", text: qsTr("Touchpad gestures"), keys: qsTr("three fingers four fingers switch desktops apps") },
@@ -333,44 +364,14 @@ Window {
             boundsBehavior: Flickable.StopAtBounds
             model: root.sections
             spacing: 2
-            delegate: Fill {
-                id: entry
+            delegate: NavigationEntry {
                 required property string modelData
-                readonly property bool selected: root.section === modelData
+                objectName: "navigation:" + modelData
                 width: sectionList.width - 16
-                height: 36
-                radius: Theme.radius
-                color: entryMouse.pressed ? Theme.subtlePressed : selected || entryMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
-
-                Rectangle {
-                    visible: entry.selected
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 3
-                    height: entryMouse.pressed ? 10 : 16
-                    radius: 1.5
-                    color: Theme.accentFill
-                }
-                Image {
-                    x: 16
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 16
-                    height: 16
-                    source: "image://fileicon/" + encodeURIComponent(root.pages[entry.modelData].icon)
-                    sourceSize: Qt.size(width, height)
-                }
-                Text {
-                    x: 48
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: root.pages[entry.modelData].title
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                }
-                MouseArea {
-                    id: entryMouse
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    onClicked: root.navigate(entry.modelData)
-                }
+                title: root.pages[modelData].title
+                icon: root.pages[modelData].icon
+                selected: root.section === modelData
+                onActivated: root.navigate(modelData)
             }
         }
 
@@ -399,7 +400,7 @@ Window {
                         required property var modelData
                         width: results.width
                         height: 40
-                        radius: Theme.radius
+                        radius: Theme.nested(Theme.radiusOverlay, 4, Theme.radius) // 4 inside the list
                         color: resultMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
                         Image {
                             x: 10
@@ -442,9 +443,18 @@ Window {
             onNavigate: name => root.navigate(name)
         }
 
+        Card {
+            id: saveErrorCard
+            visible: Prefs.saveError !== ""
+            anchors { top: header.bottom; topMargin: 16; left: parent.left; right: parent.right; rightMargin: 24 }
+            icon: "dialog-warning"
+            title: qsTr("Could not save settings")
+            description: Prefs.saveError
+        }
+
         Loader {
             id: pageLoader
-            anchors { top: header.bottom; topMargin: 20; left: parent.left; right: parent.right; bottom: parent.bottom }
+            anchors { top: saveErrorCard.visible ? saveErrorCard.bottom : header.bottom; topMargin: 20; left: parent.left; right: parent.right; bottom: parent.bottom }
             source: Qt.resolvedUrl(root.pages[root.current].file)
             onLoaded: {
                 item.opacity = 0
@@ -465,6 +475,32 @@ Window {
             width: implicitWidth
             height: implicitHeight
             anchors { horizontalCenter: pageLoader.horizontalCenter; bottom: parent.bottom; bottomMargin: 24 }
+        }
+    }
+    // TEMPORARY until Vela Secrets: explicit provider selection on the first
+    // login and every subsequent login where secret-backend is still unset.
+    // Neither Enter nor dismissing this dialog silently chooses KWallet.
+    Dialog {
+        id: credentialSetupDialog
+        objectName: "credentialSetupDialog"
+        parent: root.contentItem
+        dialogWidth: 560
+        title: qsTr("Choose your password manager")
+        text: qsTr("Vela needs to know which existing password store your apps should use. KWallet is only a temporary fallback until you choose. No passwords will be transferred. Your choice will take effect after signing out and back in.")
+            + ((!Prefs.isSecretBackendInstalled("kwallet") || !Prefs.isSecretBackendInstalled("gnome"))
+                ? qsTr(" Unavailable providers are disabled; install the desired provider first.")
+                : "")
+        buttons: [
+            { text: qsTr("KWallet (KDE)"), value: "kwallet", enabled: Prefs.isSecretBackendInstalled("kwallet") },
+            { text: qsTr("GNOME Keyring"), value: "gnome", enabled: Prefs.isSecretBackendInstalled("gnome") },
+            { text: qsTr("Decide later"), value: "cancel" }
+        ]
+        onChosen: value => {
+            if (value === "kwallet" || value === "gnome") {
+                Prefs.secretBackend = value
+                // Failed writes are reported by the visible Settings page;
+                // no persisted key means the prompt returns on next login.
+            }
         }
     }
 }

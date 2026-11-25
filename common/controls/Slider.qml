@@ -22,9 +22,14 @@ T.Slider {
     // A tick under the track at a value worth finding again (the suggested
     // one); NaN: none.
     property real mark: NaN
+    property string styleVariant: Theme.controlsVariant
+    readonly property bool expressive: styleVariant === "expressive"
+    // The expressive track and bar knob; a thick slider keeps its own shape
+    // (a quick settings style chose it) and takes only the tonal colors.
+    readonly property bool expressiveShape: expressive && !thick
     // The filled part and the knob's center: the accent, or gray for a muted
     // volume (Quick Settings).
-    property color fillColor: Theme.accentFill
+    property color fillColor: expressive ? Theme.primary : Theme.accentFill
     // A thick track and a wide knob without the center (a quick settings
     // style's, WindowGlass's): the track spans the whole width, filled up to
     // the knob's middle.
@@ -35,7 +40,7 @@ T.Slider {
     signal released(real value)
 
     implicitWidth: 200
-    implicitHeight: 32
+    implicitHeight: expressiveShape ? 40 : 32
     padding: 0
     focusPolicy: Qt.TabFocus
     hoverEnabled: true // do not inherit platform-dependent hover defaults
@@ -87,10 +92,11 @@ T.Slider {
             x: control.thick ? 0 : control.trackStart
             anchors.verticalCenter: parent.verticalCenter
             width: control.thick ? control.availableWidth : control.trackLength
-            height: control.thick ? 10 : 4
+            height: control.expressiveShape ? 12 : control.thick ? 10 : 4
             radius: height / 2
-            color: Theme.controlStrokeStrong
-            opacity: 0.6
+            // Expressive: M3's inactive track is secondary container.
+            color: control.expressive ? Theme.secondaryContainer : Theme.controlStrokeStrong
+            opacity: control.expressive ? 1 : 0.6
         }
         Rectangle {
             visible: !isNaN(control.mark) && control.to > control.from
@@ -110,7 +116,7 @@ T.Slider {
             x: start
             anchors.verticalCenter: parent.verticalCenter
             width: end - start
-            height: control.thick ? 10 : 4
+            height: control.expressiveShape ? 12 : control.thick ? 10 : 4
             radius: height / 2
             color: control.fillColor
         }
@@ -119,14 +125,18 @@ T.Slider {
     handle: Rectangle {
         x: control.trackStart + control.visualPosition * control.trackLength - width / 2
         anchors.verticalCenter: parent.verticalCenter
-        implicitWidth: control.thick ? 40 : 20
-        implicitHeight: control.thick ? 25 : 20
-        radius: control.thick ? 12 : 10
-        color: control.thick ? Theme.popup : Theme.light ? "#ffffff" : "#454545"
-        border.width: control.knobBorder ? 1 : 0
+        implicitWidth: control.expressiveShape ? 8 : control.thick ? 40 : 20
+        implicitHeight: control.expressiveShape ? 28 : control.thick ? 25 : 20
+        radius: control.expressiveShape ? Math.min(Theme.shapeSmall, height / 2) : control.thick ? 12 : 10
+        // Expressive and thick: the knob the fill's color, the filled part's
+        // rounded end (Vela's choice: a surface-colored knob read as a gap
+        // in the tonal track).
+        color: control.expressiveShape ? Theme.primary : control.thick && control.expressive ? control.fillColor
+            : control.thick ? Theme.popup : Theme.light ? "#ffffff" : "#454545"
+        border.width: control.expressive ? 0 : control.knobBorder ? 1 : 0
         border.color: Theme.light ? Qt.rgba(0, 0, 0, 0.1) : Qt.rgba(1, 1, 1, 0.09)
         Rectangle {
-            visible: !control.thick
+            visible: !control.thick && !control.expressiveShape
             anchors.centerIn: parent
             width: control.pressed ? 10 : control.hovered ? 14 : 12
             height: width

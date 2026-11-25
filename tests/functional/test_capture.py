@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Deferred SHM capture pixels, cancellation and presentation at 180 Hz.
+"""Deferred SHM capture pixels, cancellation and presentation at 180 Hz by default.
 
 Output and window sources retain buffers until GPU completion and the final
 CPU row copy. The original animation workload must still satisfy the same
@@ -24,11 +24,19 @@ from harness import TIME_SCALE, Session, tool
 # Neither do they on a host slow enough to need longer waits: it measures its
 # CPU.
 INSTRUMENTED = os.environ.get("VELA_GPU_COVERAGE") == "1" or TIME_SCALE > 1
+# Minimum desktop refresh. A stream gets at least two presentation slots
+# per target capture per client; deferred copies can cross frame boundaries.
+# Intel sets 60 here: a single 1440p stream then uses 120 Hz for its 60 fps
+# floor, while 4K and multi-client streams use 60 Hz. AMD retains 180 Hz.
+REFRESH_HZ = int(os.environ.get("VELA_CAPTURE_TEST_REFRESH_HZ", "180"))
+if REFRESH_HZ < 60:
+    raise ValueError("VELA_CAPTURE_TEST_REFRESH_HZ must be at least 60")
 
 
 class Captures(unittest.TestCase):
     def test_captures_during_animations(self):
-        with Session(size="2560x1440@180") as vela:
+        size = f"2560x1440@{REFRESH_HZ}"
+        with Session(size=size) as vela:
             window = vela.open_window(400, 300, decorated=True)
             vela.wait_still(window)
             path = os.path.join(vela.directory, "capture.png")
@@ -65,7 +73,7 @@ class Captures(unittest.TestCase):
             state = vela.state()
             missed = state.output["missed"] - before
             readback = state["readback"]
-            print(f"capture: 2560x1440@180 captures={captures} missed_vblanks={missed} "
+            print(f"capture: {size} captures={captures} missed_vblanks={missed} "
                   f"completed={readback['completed']} cancelled={readback['cancelled']} "
                   f"failed={readback['failed']} rejected={readback['rejected']} "
                   f"pending={readback['pending']}", flush=True)
@@ -74,11 +82,11 @@ class Captures(unittest.TestCase):
             self.assertEqual(readback["failed"], 0)
             self.assertEqual(readback["cancelled"], 0)
             self.assertEqual(readback["rejected"], 0)
-            # Uncached readback can be slow, so verify repeated successful
-            # captures there without imposing the cached path's rate/latency bound.
+            # Uncached or instrumented/slow-host readback still has to
+            # complete repeatedly, without a cached-path throughput floor.
             uncached = "Vulkan readback staging: uncached fallback" in vela.log_text()
-            self.assertGreaterEqual(captures, 3 if uncached else 20, "too few captures to tell")
-            if not uncached:
+            self.assertGreaterEqual(captures, 3 if uncached or INSTRUMENTED else 20, "too few captures to tell")
+            if not uncached and not INSTRUMENTED:
                 self.assertLess(missed, captures, f"{missed} vblanks missed during {captures} captures")
 
 
@@ -148,51 +156,65 @@ class DeferredCapture(unittest.TestCase):
     def test_stream_latency_and_idle_metrics(self):
         # No sleeps between capture requests, no PNG encoding and no fresh
         # sessions per frame. Compare untouched new SHM pages with buffer reuse.
-        for size, clients in (("2560x1440@180", 1), ("3840x2160@180", 1), ("2560x1440@180", 4)):
-            with self.subTest(size=size, clients=clients), Session(size=size) as vela:
+        for resolution, clients in (("2560x1440", 1), ("3840x2160", 1), ("2560x1440", 4)):
+            target_fps = 30 if resolution.startswith("3840") else 60
+            refresh_hz = max(REFRESH_HZ, 2 * target_fps // clients)
+            size = f"{resolution}@{refresh_hz}"
+            with Session(size=size) as vela:
                 window = vela.open_window(400, 300, decorated=True)
                 for mode in ("bench-fresh", "bench-reuse", "idle"):
-                    if mode == "idle":
-                        vela.wait_still(window)
-                    before = vela.state()
-                    process = self.probe(vela, mode, clients)
-                    if mode != "idle":
-                        end = time.monotonic() + 3.2
-                        maximize = True
-                        while time.monotonic() < end:
-                            vela.command(f"window {window} {'maximize' if maximize else 'restore'}")
-                            maximize = not maximize
-                            time.sleep(0.2)
-                    output, errors = process.communicate(timeout=10)
-                    self.assertEqual(process.returncode, 0, errors)
-                    metrics = json.loads(output)
-                    after = vela.state()
-                    metrics.update(size=size, missed=after.output["missed"] - before.output["missed"],
-                                   output_frames=after.output["frames"] - before.output["frames"],
-                                   gpu_copies=after["readback"]["submitted"] - before["readback"]["submitted"])
-                    print("capture-stream: " + json.dumps(metrics, sort_keys=True), flush=True)
-                    self.assertGreater(metrics["frames"], 0)
-                    if mode == "idle":
-                        self.assertEqual(metrics["frames"], clients,
-                                         "persistent capture must wait for source damage on an idle desktop")
-                        self.assertLessEqual(metrics["output_frames"], 2)
-                    elif not INSTRUMENTED and "Vulkan readback staging: uncached fallback" not in vela.log_text():
-                        # Explicit floors beyond the old 512 KiB/ms scheduler's
-                        # theoretical ceiling (~35.7 / ~16.1 frames/s). Buffer
-                        # reuse must sustain a typical 60/30 fps screen stream.
-                        is_4k = size.startswith("3840")
-                        minimum_fps = (30 if is_4k else 60) if mode == "bench-reuse" else (20 if is_4k else 40)
-                        self.assertGreaterEqual(metrics["fps"], minimum_fps)
-                        self.assertGreaterEqual(min(metrics["client_frames"]) / metrics["seconds"],
-                                                0.8 * minimum_fps / clients, "one capture client starved")
-                        self.assertLess(metrics["p95_ms"], 150 if clients > 1 else 100)
-                        self.assertLess(metrics["missed"], metrics["frames"],
-                                        "sustained capture exceeded the presentation budget")
-                        slots = metrics["output_frames"] + metrics["missed"]
-                        self.assertLessEqual(metrics["missed"], 0.05 * slots,
-                                             "capture lost more than 5% of presentation slots")
-                    self.assertEqual(after["readback"]["failed"], before["readback"]["failed"])
-                    self.assertEqual(after["readback"]["rejected"], before["readback"]["rejected"])
+                    with self.subTest(size=size, clients=clients, mode=mode):
+                        if mode == "idle":
+                            vela.wait_still(window)
+                        before = vela.state()
+                        process = self.probe(vela, mode, clients)
+                        try:
+                            if mode != "idle":
+                                end = time.monotonic() + 3.2
+                                maximize = True
+                                while time.monotonic() < end:
+                                    vela.command(f"window {window} {'maximize' if maximize else 'restore'}")
+                                    maximize = not maximize
+                                    time.sleep(0.2)
+                            output, errors = process.communicate(timeout=10)
+                        finally:
+                            # subTest continues after a failure. Do not let a
+                            # timed-out probe consume GPU resources during the
+                            # next mode's independent performance measurement.
+                            if process.poll() is None:
+                                process.kill()
+                                process.communicate(timeout=5)
+                                vela.wait_for(lambda s: s["readback"]["pending"] == 0,
+                                              timeout=5, what="readback after probe termination")
+                        self.assertEqual(process.returncode, 0, errors)
+                        metrics = json.loads(output)
+                        after = vela.state()
+                        metrics.update(size=size, missed=after.output["missed"] - before.output["missed"],
+                                       output_frames=after.output["frames"] - before.output["frames"],
+                                       gpu_copies=after["readback"]["submitted"] - before["readback"]["submitted"])
+                        print("capture-stream: " + json.dumps(metrics, sort_keys=True), flush=True)
+                        self.assertGreater(metrics["frames"], 0)
+                        if mode == "idle":
+                            self.assertEqual(metrics["frames"], clients,
+                                             "persistent capture must wait for source damage on an idle desktop")
+                            self.assertLessEqual(metrics["output_frames"], 2)
+                        elif not INSTRUMENTED and "Vulkan readback staging: uncached fallback" not in vela.log_text():
+                            # Explicit floors beyond the old 512 KiB/ms scheduler's
+                            # theoretical ceiling (~35.7 / ~16.1 frames/s). Buffer
+                            # reuse must sustain a typical 60/30 fps screen stream.
+                            is_4k = size.startswith("3840")
+                            minimum_fps = (30 if is_4k else 60) if mode == "bench-reuse" else (20 if is_4k else 40)
+                            self.assertGreaterEqual(metrics["fps"], minimum_fps)
+                            self.assertGreaterEqual(min(metrics["client_frames"]) / metrics["seconds"],
+                                                    0.8 * minimum_fps / clients, "one capture client starved")
+                            self.assertLess(metrics["p95_ms"], 150 if clients > 1 else 100)
+                            self.assertLess(metrics["missed"], metrics["frames"],
+                                            "sustained capture exceeded the presentation budget")
+                            slots = metrics["output_frames"] + metrics["missed"]
+                            self.assertLessEqual(metrics["missed"], 0.05 * slots,
+                                                 "capture lost more than 5% of presentation slots")
+                        self.assertEqual(after["readback"]["failed"], before["readback"]["failed"])
+                        self.assertEqual(after["readback"]["rejected"], before["readback"]["rejected"])
 
     def test_queue_limit_reports_failure_and_recovers(self):
         with Session(size="3840x2160@180") as vela:

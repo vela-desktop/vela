@@ -4,7 +4,6 @@
 
 """Real native window sequence/controller; root transport/accounting are fixtures."""
 import json
-import os
 from pathlib import Path
 import subprocess
 import sys
@@ -22,17 +21,21 @@ def run_condition(env,target,profile,directory,pattern,keyboard):
     from vela_bench.platform_workloads import resource_condition,resource_metrics
     from vela_bench.archive import read_json
     from test_platform_workloads import sample
-    processes=[];counter=0
+    processes=[]
+    counter=0
     class Host:
         def spawn(self,command,errors):
-            if command[0].endswith('vela-bench-input'):argv=keyboard
+            if command[0].endswith('vela-bench-input'):
+                argv=keyboard
             else:
                 at=next(i for i,v in enumerate(command) if v.endswith('/vela-pattern'))
                 argv=[str(pattern),*command[at+1:]]
             process=subprocess.Popen(argv,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0)
-            processes.append(process);return process
+            processes.append(process)
+            return process
         def run(self,command,**options):
-            if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
+            if '--property=ActiveState' in command:
+                return SimpleNamespace(stdout='inactive\n',returncode=0)
             assert command[-3:]==['--user','stop','vela-benchmark-measurement.service'],command
             return SimpleNamespace(stdout='',returncode=0)
     def snapshot(uid,**options):
@@ -69,4 +72,5 @@ def main():
         print(json.dumps(result,indent=2))
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()

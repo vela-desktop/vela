@@ -13,6 +13,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# CPU code generation and compiler feature probes (also tested standalone).
+include(cmake/VelaCpuTarget.cmake)
+
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
@@ -23,38 +26,57 @@ option(VELA_BUILD_CAPTURE_TOOLS "Build the lightweight screen-dump CLI separatel
 option(VELA_BUILD_GPU_TEST_TOOLS "Build GPU-intensive test clients (only relevant when VELA_BUILD_TOOLS=ON)" ON)
 
 option(VELA_BUILD_COMPOSITOR "Build the compositor (needs wlroots)" ON)
+option(VELA_BUILD_FUZZERS "Build libFuzzer fuzz targets (needs Clang)" OFF)
 option(VELA_BUILD_SHELL "Build the shell, Files and Settings (needs Qt 6 and LayerShellQt)" ON)
 option(VELA_BUILD_TOOLS "Build the test tools (vela-screen-dump, vela-windows, vela-input...) and the tests (ctest)" ON)
+if(VELA_BUILD_FUZZERS AND NOT VELA_BUILD_COMPOSITOR)
+    message(FATAL_ERROR "VELA_BUILD_FUZZERS requires VELA_BUILD_COMPOSITOR. For a standalone build, use sh fuzz/build.sh.")
+endif()
 if(VELA_BUILD_TOOLS)
     enable_testing()
-    find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
-    if(Python3_VERSION VERSION_GREATER_EQUAL "3.11")
-        add_test(NAME benchmark-core COMMAND ${Python3_EXECUTABLE} -m unittest discover
-            -s ${PROJECT_SOURCE_DIR}/benchmarks/tests -v)
-        set_tests_properties(benchmark-core PROPERTIES
-            ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/benchmarks" TIMEOUT 30)
-    endif()
+    find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME benchmark-core COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s ${PROJECT_SOURCE_DIR}/benchmarks/tests -v)
+    set_tests_properties(benchmark-core PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/benchmarks" TIMEOUT 30)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
     set_tests_properties(packaging-update PROPERTIES TIMEOUT 120 LABELS distro-packaging)
     add_test(NAME script-tests COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/scripts/tests -v)
+    # The script suite runs Git and release-signing subprocesses under parallel CI load.
+    set_tests_properties(script-tests PROPERTIES TIMEOUT 120)
     add_test(NAME documentation COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-docs.py)
     add_test(NAME shared-values COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-shared-values.py)
+    # Direct libc allocations outside common/alloc (docs/memory-allocation-policy.md, "Enforcement").
+    add_test(NAME allocation-sites COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-allocations.py)
+    # The context menu entries' keys: the menus' and Settings' (docs/renderer.md §14.12).
+    add_test(NAME context-menu-keys COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-menu-keys.py)
     # Reports only until the private controls are replaced (docs/visual-coherence.md §8).
     add_test(NAME qml-motion COMMAND ${Python3_EXECUTABLE} ${PROJECT_SOURCE_DIR}/scripts/check-qml-motion.py)
     add_test(NAME functional-harness COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/tests/harness -v)
-    set_tests_properties(script-tests documentation shared-values qml-motion functional-harness PROPERTIES TIMEOUT 30)
+    set_tests_properties(documentation shared-values allocation-sites context-menu-keys qml-motion
+        functional-harness PROPERTIES TIMEOUT 30)
     set_tests_properties(functional-harness PROPERTIES
         ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/tests/functional")
 endif()
 
-option(VELA_BUILD_REPORT "Build the standalone diagnostic reporter (needs Python 3)" ON)
+option(VELA_BUILD_REPORT "Build the standalone diagnostic reporter (needs Python 3.13+)" ON)
 if(VELA_BUILD_REPORT)
     add_subdirectory(report)
 endif()
 
+# The allocation helpers, in every build: the C code allocates through them,
+# and every C++ program installs their new handler (alloc/new_handler.h).
+add_subdirectory(common/alloc)
+# The shortcut table and matcher (needs xkbcommon), for the compositor, the
+# shell and Settings only: a reporter-only build must not need xkbcommon.
+if(VELA_BUILD_COMPOSITOR OR VELA_BUILD_SHELL)
+    add_subdirectory(common/shortcuts)
+    # The terminal lookup and vela-terminal (Win+Enter, the updater, Settings).
+    add_subdirectory(common/terminal)
+endif()
 if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(compositor)
     add_subdirectory(brightness)
@@ -62,6 +84,9 @@ if(VELA_BUILD_COMPOSITOR)
     add_subdirectory(bluetooth)
     add_subdirectory(updates)
     add_subdirectory(session)
+    # Parsers of untrusted bytes: replayed in ctest, fuzzed with libFuzzer
+    # when VELA_BUILD_FUZZERS is on (docs/testing.md, "Fuzzing").
+    add_subdirectory(fuzz)
 endif()
 option(VELA_BUILD_POLKIT "Build the polkit agent (needs polkit-agent-1; the prompt also needs the shell's Qt)" ON)
 if(VELA_BUILD_SHELL OR VELA_BUILD_CAPTURE_TOOLS OR VELA_BUILD_TOOLS)
@@ -172,13 +197,17 @@ if(VELA_PACKAGE_DEB)
     # Executables, icon themes and launch scripts require these at runtime
     # even when not linked as ELF libraries (shlibdeps handles the rest).
     # Vela uses Breeze by default; Qt needs the SVG icon engine to render it.
+    # ScreenCast and Screenshot use wlr; this is required even without Recommends.
     set(CPACK_DEBIAN_PACKAGE_DEPENDS
-        "git, curl, apt, dpkg, sudo, util-linux, xdg-utils, xdg-terminal-exec, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3, python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
+        "git, curl, apt, dpkg, sudo, util-linux, xdg-utils, xdg-terminal-exec, xdg-desktop-portal-wlr, breeze-icon-theme, qt6-svg-plugins, qt6-wayland, layer-shell-qt, xwayland, pipewire, wireplumber, polkitd, dbus-user-session, python3 (>= 3.13), python3-numpy, python3-pil, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtqml-workerscript")
     # Bluetooth needs only BlueZ (docs/bluetooth.md §10), as Fedora's
     # Recommends and Arch's optional dependency. Settings > Updates runs
     # vela-update in a terminal (docs/updates.md §6.3): xdg-terminal-exec
-    # (Depends) picks any one installed, Konsole by default.
-    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "bluez, konsole | x-terminal-emulator")
+    # (Depends) picks any one installed, Konsole by default. GTK remains a
+    # recommended backend for generic portals; wlr is a hard dependency for
+    # screen capture (session/vela-portals.conf).
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS
+        "bluez, konsole | x-terminal-emulator, xdg-desktop-portal, xdg-desktop-portal-gtk")
     # Unlike the native Arch/Fedora specs, CPack installs these explicitly.
     install(PROGRAMS "${PROJECT_SOURCE_DIR}/packaging/vela-update"
         DESTINATION "${CMAKE_INSTALL_BINDIR}")

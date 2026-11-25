@@ -112,6 +112,58 @@ class ReportingTests(unittest.TestCase):
             self.assertNotIn(b"also-excluded", data)
             self.assertEqual(json.loads(archive.read("manifest.json"))["collectors"]["logs"]["status"], "excluded")
 
+    def test_staging_rejects_unsafe_names_before_writing(self):
+        for name in ("", ".", "..", "../outside", "/absolute", "logs//a", "logs/./a", "logs/a\x00"):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                self.report.add_text("logs", name, "rejected")
+        self.assertFalse(self.report.artifacts)
+
+    def test_review_validates_names_even_if_artifact_metadata_is_malformed(self):
+        outside = self.report.directory.parent / (self.report.directory.name + "-sentinel")
+        outside.write_text("untouched")
+        self.addCleanup(outside.unlink)
+        name = "../" + outside.name
+        self.report.artifacts[name] = {"collection": "logs", "kind": "text", "size": 9}
+        for action in (self.report.preview, self.report.remove):
+            with self.subTest(action=action.__name__), self.assertRaises(ValueError):
+                action(name)
+        self.assertEqual(outside.read_text(), "untouched")
+        self.assertIn(name, self.report.artifacts)
+
+    def test_staged_parent_symlink_cannot_redirect_reads_writes_or_removal(self):
+        self.report.add_text("logs", "logs/evidence.txt", "original")
+        outside = self.root / "outside"
+        outside.mkdir()
+        sentinel = outside / "evidence.txt"
+        sentinel.write_text("untouched")
+        (self.report.directory / "logs").rename(self.report.directory / "original-logs")
+        (self.report.directory / "logs").symlink_to(outside, target_is_directory=True)
+        actions = [lambda: self.report.preview("logs/evidence.txt"),
+                   lambda: self.report.remove("logs/evidence.txt"),
+                   lambda: self.report.add_text("logs", "logs/evidence.txt", "overwrite"),
+                   lambda: self.report.export(self.root / "escaped.zip")]
+        for action in actions:
+            with self.assertRaises(OSError):
+                action()
+            self.assertEqual(sentinel.read_text(), "untouched")
+            self.assertIn("logs/evidence.txt", self.report.artifacts)
+        self.assertFalse((self.root / "escaped.zip").exists())
+
+    def test_staged_leaf_symlink_is_never_previewed_or_exported(self):
+        name = self.report.add_text("logs", "evidence.txt", "original")
+        outside = self.root / "outside.txt"
+        outside.write_text("private outside data")
+        staged = self.report.directory / name
+        staged.unlink()
+        staged.symlink_to(outside)
+        with self.assertRaises(OSError):
+            self.report.preview(name)
+        with self.assertRaises(OSError):
+            self.report.export(self.root / "escaped.zip")
+        self.report.remove(name)
+        self.assertEqual(outside.read_text(), "private outside data")
+        self.assertFalse(staged.is_symlink())
+
     def test_excluding_resources_removes_derived_observations(self):
         identity = self.fake_process()
         self.report.context = {"processes": [identity], "duration": 1}
@@ -319,7 +371,8 @@ class ReportingTests(unittest.TestCase):
     def test_journal_window_boot_scope_and_invalid_context(self):
         self.report.context = {"boot": "-1", "incident_time": "2026-10-01T12:00:00+02:00"}
         calls = []
-        runner = lambda args, **kwargs: calls.append(args) or Result("collected", "fixture")
+        def runner(args, **kwargs):
+            return calls.append(args) or Result("collected", "fixture")
         Collector(self.report, runner).session_journal()
         args = calls[0]
         self.assertEqual(args[args.index("--boot") + 1], "-1")
@@ -392,7 +445,8 @@ class ReportingTests(unittest.TestCase):
                           "boot_id=bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb\nincident\n")
         os.utime(source, (1791486800, 1791486800))
         calls = []
-        runner = lambda args, **kw: calls.append(args) or Result("collected", "fixture")
+        def runner(args, **kw):
+            return calls.append(args) or Result("collected", "fixture")
         Collector(self.report, runner).collect(["logs", "kernel_journal"], {"log_path": str(source)}, {})
         query = next(c for c in calls if "-k" in c)
         self.assertEqual(query[query.index("--boot") + 1], boot)
@@ -437,7 +491,8 @@ class ReportingTests(unittest.TestCase):
 
     def test_unknown_incident_boot_never_substitutes_current_boot(self):
         calls = []
-        runner = lambda args, **kw: calls.append(args) or Result("collected")
+        def runner(args, **kw):
+            return calls.append(args) or Result("collected")
         Collector(self.report, runner).collect(["kernel_journal"], {}, {})
         self.assertEqual(self.report.results["kernel_journal"]["status"], "unavailable")
         self.assertEqual(calls, [])
@@ -457,10 +512,12 @@ class ReportingTests(unittest.TestCase):
 
     def test_explicit_previous_boot_index_is_checked_against_incident_header(self):
         self.report.context = {"boot": "-1", "log_session": {"boot_id": "b" * 32}}
-        runner = lambda args, **kw: Result("collected", f"-1 {'c' * 32} dates\n")
+        def runner(args, **kw):
+            return Result("collected", f"-1 {'c' * 32} dates\n")
         with self.assertRaisesRegex(ValueError, "conflicts"):
             Collector(self.report, runner).journal_args()
-        runner = lambda args, **kw: Result("collected", f"-1 {'b' * 32} dates\n")
+        def runner(args, **kw):
+            return Result("collected", f"-1 {'b' * 32} dates\n")
         self.assertEqual(Collector(self.report, runner).journal_args(), ["--boot", "b" * 32])
 
     def test_incident_boot_listing_is_shared_across_collectors(self):
@@ -491,14 +548,31 @@ class ReportingTests(unittest.TestCase):
         compositor = bindir / "vela-compositor"
         compositor.write_text('#!/bin/sh\nprintf "compositor arguments: %s\\n" "$*" >&2\n')
         compositor.chmod(0o700)
-        template = Path(__file__).resolve().parents[2] / "session/vela-session.in"
+        helperdir = self.root / "libexec with spaces"
+        helperdir.mkdir()
+        cpu_check = helperdir / "vela-cpu-check"
+        cpu_check.write_text('#!/bin/sh\nexit 0\n')
+        cpu_check.chmod(0o700)
+        # The launcher sources a real temporary credential selector. Include it
+        # in this isolated fixture (including directories with spaces) so we
+        # test the installed session contract, not an incomplete fake install.
+        project = Path(__file__).resolve().parents[2]
+        selector = helperdir / "credential-compat/select-backend"
+        selector.parent.mkdir()
+        selector.write_bytes((project / "session/credential-compat/select-backend").read_bytes())
+        config_home = self.home / ".config"
+        config_home.mkdir()
+        template = project / "session/vela-session.in"
         launcher = self.root / "session"
-        launcher.write_text(template.read_text().replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir)))
+        launcher.write_text(template.read_text()
+                            .replace("@CMAKE_INSTALL_FULL_BINDIR@", str(bindir))
+                            .replace("@CMAKE_INSTALL_FULL_LIBEXECDIR@", str(helperdir)))
         state = self.home / "state"
         (state / "vela").mkdir(parents=True)
         (state / "vela/vela.log").write_text("previous incident\n")
         result = subprocess.run(["sh", str(launcher), "--test"], capture_output=True,
-                                env=dict(os.environ, XDG_STATE_HOME=str(state)), timeout=5)
+                                env=dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(config_home),
+                                         XDG_STATE_HOME=str(state)), timeout=5)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual((state / "vela/vela.log.old").read_text(), "previous incident\n")
         context = {"log_path": str(state / "vela/vela.log")}
@@ -507,6 +581,16 @@ class ReportingTests(unittest.TestCase):
         self.assertIn("started_at", self.report.context["log_session"])
         self.assertIn("--supervise -s", self.report.preview("logs/vela.log"))
         self.assertIn("--test", self.report.preview("logs/vela.log"))
+
+        # Fail before executing the compositor when the preflight rejects the CPU.
+        cpu_check.write_text('#!/bin/sh\necho "unsupported CPU" >&2\nexit 1\n')
+        rejected = subprocess.run(["sh", str(launcher), "--test"], capture_output=True,
+                                  env=dict(os.environ, HOME=str(self.home), XDG_CONFIG_HOME=str(config_home),
+                                         XDG_STATE_HOME=str(state)), timeout=5)
+        self.assertEqual(rejected.returncode, 1, rejected.stderr)
+        error_log = (state / "vela/vela.log").read_text()
+        self.assertIn("unsupported CPU", error_log)
+        self.assertNotIn("compositor arguments:", error_log)
 
     def test_retained_resource_samples_survive_without_live_process(self):
         source = self.home / "incident.log"
@@ -643,7 +727,8 @@ class ReportingTests(unittest.TestCase):
         info = argparse.Namespace(st_mode=stat.S_IFSOCK, st_uid=os.getuid())
         probe = "DP-3: bus /dev/i2c-9 (aux)\n  result: no-answer in 540 ms (lock 0 ms), transfers rdwr\n"
         calls = []
-        runner = lambda args, **kwargs: calls.append(args) or Result("collected", probe)
+        def runner(args, **kwargs):
+            return calls.append(args) or Result("collected", probe)
         self.report.context = {"socket": "/fixture/socket"}
         with patch("vela_report.collectors.brightness_helper", return_value=Path("/usr/lib/vela/vela-brightness")), \
                 patch("vela_report.collectors.Path.lstat", return_value=info), \

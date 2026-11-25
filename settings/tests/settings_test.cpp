@@ -10,6 +10,7 @@
 // VELA_TEST_ANIMATION_EFFECTS=no it turns animation effects off (two ctest
 // entries).
 
+#include "accessibleprobe.h"
 #include "controls.h"
 #include "quicktest.h"
 
@@ -31,6 +32,7 @@ public slots:
         // Controls set their accessible role and state only once a screen
         // reader is there.
         QAccessible::setActive(true);
+        vela::test::AccessibleProbe::install();
         vela::controls::install(*engine, Appearance::Mode::Apps);
         qmlRegisterSingletonType(QUrl::fromLocalFile(QStringLiteral(FAKE_BLUETOOTH)), "Vela.Bluetooth", 1, 0,
             "Bluetooth");

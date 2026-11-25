@@ -3,8 +3,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Rent a single-GPU NVIDIA container on Vast.ai as a one-job GitHub runner.
 
-`start` picks the cheapest offer that can build and test Vela under a price
-cap, starts the CI image there with a just-in-time runner and waits until
+`start` ranks eligible offers by price, CPU capacity, reliability and driver
+within a price cap, starts the CI image with a just-in-time runner and waits until
 the runner is online; an offer that fails is destroyed and the next one
 tried. `stop` destroys every instance and runner of a label, so it also
 cleans up after a `start` that was cancelled halfway.
@@ -17,6 +17,7 @@ import argparse
 import itertools
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -26,7 +27,7 @@ import urllib.request
 VAST = "https://console.vast.ai/api"
 GITHUB = "https://api.github.com"
 # GeForce RTX cards, from the RTX 2060 up: the drivers Vulkan 1.4 needs no
-# longer support anything before Turing. The price cap decides among them.
+# longer support anything before Turing. Offers are ranked within the cap.
 GPUS = (
     "RTX 2060", "RTX 2060S", "RTX 2070", "RTX 2070S", "RTX 2080", "RTX 2080S", "RTX 2080 Ti",
     "RTX 3050", "RTX 3060", "RTX 3060 Ti", "RTX 3070", "RTX 3070 Ti",
@@ -41,7 +42,22 @@ MIN_DRIVER = 570  # Vulkan 1.4
 # 595.84 did: newer drivers are tried first, still under the price cap.
 PREFERRED_DRIVER = 590
 ATTEMPTS = 5
-ONLINE_TIMEOUT = 12 * 60
+# A slow/stuck image pull must not consume the old 12-minute allowance.
+# Once Vast reports running, the JIT runner should register much sooner.
+IMAGE_LOAD_TIMEOUT = 6 * 60
+RUNNER_READY_TIMEOUT = 150
+POLL_INTERVAL = 15
+# Status strings seen during failed Vast image pulls; trying a different host
+# is preferable to waiting for an already failed pull to time out.
+FATAL_STARTUP_MESSAGES = (
+    "could not resolve host",
+    "temporary failure in name resolution",
+    "no such host",
+    "manifest unknown",
+    "unauthorized",
+    "no space left on device",
+    "failed to pull",
+)
 
 
 def request(method, url, headers, body=None):
@@ -91,9 +107,24 @@ def suitable(offer, max_price, gpu=None):
             and driver_major(offer) >= MIN_DRIVER)
 
 
+def offer_rank(offer):
+    """Prefer value from reliable hosts, not only the lowest hourly price.
+
+    GPU tests run serially, so CPU gains have diminishing returns. Weight
+    effective CPU count sublinearly and cap it at 24 to avoid overpaying for
+    large shared hosts; reliability penalizes hosts close to the 95% floor.
+    A suitable recent driver is still the first priority.
+    """
+    cpus = min(float(offer["cpu_cores_effective"]), 24.0)
+    reliability = float(offer["reliability2"])
+    price = float(offer["dph_total"])
+    value = price / (cpus / 8.0) ** 0.5 * (1.0 + 3.0 * (1.0 - reliability))
+    return (driver_major(offer) < PREFERRED_DRIVER, value, -reliability, price)
+
+
 def choose(offers, max_price, gpu=None, tried=()):
     fitting = (o for o in offers if suitable(o, max_price, gpu) and o.get("machine_id") not in tried)
-    return sorted(fitting, key=lambda o: (driver_major(o) < PREFERRED_DRIVER, o["dph_total"]))
+    return sorted(fitting, key=offer_rank)
 
 
 def search(max_price, gpu=None):
@@ -142,25 +173,47 @@ def stop(org, label):
 
 def wait_online(org, runner_id, instance_id):
     start = time.monotonic()
+    running_since = None
     last = None
-    while time.monotonic() - start < ONLINE_TIMEOUT:
+    while True:
+        # Read the runner first: it can register before Vast reports running.
         if github("GET", f"/orgs/{org}/actions/runners/{runner_id}").get("status") == "online":
             return True
         state = next((i for i in vast("GET", "/v1/instances/").get("instances", [])
                       if i.get("id") == instance_id), None)
-        if state is None or state.get("actual_status") in ("exited", "offline"):
-            print(f"Instance {instance_id} stopped: {state and state.get('status_msg')}")
+        if state is None or state.get("actual_status") in ("exited", "offline", "error", "failed"):
+            print(f"Instance {instance_id} stopped: {state and state.get('status_msg')}", flush=True)
             return False
-        now = (state.get("actual_status"), (state.get("status_msg") or "").strip()[:100])
+        status = state.get("actual_status")
+        message = (state.get("status_msg") or "").strip()
+        now = (status, message[:200])
         if now != last:
             print(f"  {int(time.monotonic() - start)} s: {now[0]}, {now[1]}", flush=True)
             last = now
-        time.sleep(15)
-    print(f"Runner not online after {ONLINE_TIMEOUT // 60} minutes")
-    return False
+        if status == "running":
+            if running_since is None:
+                running_since = time.monotonic()
+            if time.monotonic() - running_since >= RUNNER_READY_TIMEOUT:
+                print(f"Runner not online {RUNNER_READY_TIMEOUT} s after instance "
+                      f"{instance_id} started; trying another host", flush=True)
+                return False
+        else:
+            if any(error in message.lower() for error in FATAL_STARTUP_MESSAGES):
+                print(f"Instance {instance_id} image startup failed; trying another host", flush=True)
+                return False
+            if time.monotonic() - start >= IMAGE_LOAD_TIMEOUT:
+                print(f"Image not running after {IMAGE_LOAD_TIMEOUT} s on instance "
+                      f"{instance_id}; trying another host", flush=True)
+                return False
+        time.sleep(POLL_INTERVAL)
 
 
-def start(org, label, image, runner_version, max_price, gpu):
+def start(org, label, image, runner_version, runner_sha256, max_price, gpu):
+    # Fail on malformed checksums before allocating paid hardware.
+    if not re.fullmatch(r"[0-9a-f]{64}", runner_sha256):
+        raise ValueError("runner SHA256 must be 64 lowercase hexadecimal digits")
+    if not re.fullmatch(r"ghcr\.io/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@sha256:[0-9a-f]{64}", image):
+        raise ValueError("NVIDIA CI image must be pinned to a sha256 digest")
     tried = set()
     for attempt in range(1, ATTEMPTS + 1):
         # Offers come and go: search again for every attempt.
@@ -185,20 +238,27 @@ def start(org, label, image, runner_version, max_price, gpu):
                 "runtype": "args",
                 "args": ["/usr/local/bin/vela-ci-runner"],
                 "env": {"VELA_RUNNER_JITCONFIG": jit["encoded_jit_config"],
-                        "VELA_RUNNER_VERSION": runner_version},
+                        "VELA_RUNNER_VERSION": runner_version,
+                        "VELA_RUNNER_SHA256": runner_sha256},
             })
         except RuntimeError as error:
             print(f"Offer {offer['id']} not rented: {error}")
             github("DELETE", f"/orgs/{org}/actions/runners/{jit['runner']['id']}")
             continue
         instance_id = created.get("new_contract")
-        if instance_id and wait_online(org, jit["runner"]["id"], instance_id):
+        try:
+            online = bool(instance_id) and wait_online(org, jit["runner"]["id"], instance_id)
+        except (RuntimeError, urllib.error.URLError, TimeoutError) as error:
+            print(f"Runner {name} startup probe failed: {error}", flush=True)
+            online = False
+        if online:
             print(f"Runner {name} online on instance {instance_id}")
             # The job's outputs: only the file the runner names, never a path
             # from the command line.
             if output := os.environ.get("GITHUB_OUTPUT"):
                 with open(output, "a", encoding="utf-8") as out:
                     out.write(f"gpu={summary}\n")
+                    out.write(f"cpu_cores={offer['cpu_cores_effective']}\n")
             return
         stop(org, name)
     sys.exit(f"No runner came online after {ATTEMPTS} offers")
@@ -211,17 +271,19 @@ def main():
     parser.add_argument("--label", required=True)
     parser.add_argument("--image")
     parser.add_argument("--runner-version")
+    parser.add_argument("--runner-sha256")
     parser.add_argument("--max-price", type=float, default=0.12)
-    parser.add_argument("--gpu", default="", help="One GPU from the list instead of the cheapest")
+    parser.add_argument("--gpu", default="", help="Restrict the rental to one RTX GPU model instead of automatic ranking")
     args = parser.parse_args()
     if args.gpu and args.gpu not in GPUS:
         parser.error(f"--gpu must be one of: {', '.join(GPUS)}")
     if args.command == "stop":
         stop(args.org, args.label)
-    elif not args.image or not args.runner_version:
-        parser.error("start needs --image and --runner-version")
+    elif not args.image or not args.runner_version or not args.runner_sha256:
+        parser.error("start needs --image, --runner-version and --runner-sha256")
     else:
-        start(args.org, args.label, args.image, args.runner_version, args.max_price, args.gpu or None)
+        start(args.org, args.label, args.image, args.runner_version,
+              args.runner_sha256, args.max_price, args.gpu or None)
 
 
 if __name__ == "__main__":

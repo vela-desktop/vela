@@ -19,6 +19,11 @@ VERSION = 'p2-neutral-client-v3'
 PHASES = ('responsiveness', 'motion', 'slow-apps')
 INPUT_WARMUP, INPUT_SAMPLES = 5, 100
 MOTION_WARMUP, MOTION_SAMPLES = 30, 600
+# A deliberately unready 150 ms GPU buffer can pace the entire output when
+# ready-wait is disabled. Keep every sample, including in that diagnostic
+# condition: 630 frames at the accepted 225 ms/job upper bound need 142 s.
+SLOW_MOTION_TIMEOUT = 170
+PRODUCER_TIMEOUT = 230
 SPEC_V1 = {'version': 'p2-neutral-client-v1', 'input_warmup_actions': INPUT_WARMUP, 'input_actions': INPUT_SAMPLES,
         'motion_warmup_frames': MOTION_WARMUP, 'motion_frames': MOTION_SAMPLES,
         'producer_delay_ms': 150, 'producer_sync_modes': ['explicit', 'implicit'],
@@ -173,11 +178,13 @@ def producer_metrics(rows, mode, window, *, physical_output_required=True, uid=N
 
 def run_motion(host, record, directory, target, layout, profile, label):
     prefix = directory / f'{target}-measure-{label}-motion'
+    slow = label in ('explicit', 'implicit')
+    timeout = SLOW_MOTION_TIMEOUT if slow else 55
     command = user_command(record, layout, 'measurement', [str(layout.probe), '--frames',
-        str(MOTION_WARMUP + MOTION_SAMPLES), '--timeout', '55'], runtime_seconds=60)
+        str(MOTION_WARMUP + MOTION_SAMPLES), '--timeout', str(timeout)], runtime_seconds=180 if slow else 60)
     outcome = {'status': 'failed', 'scenario': label + '-motion'}
     try:
-        result = host.run(command, check=False, timeout=65)
+        result = host.run(command, check=False, timeout=185 if slow else 65)
         prefix.with_suffix('.jsonl').write_text(result.stdout)
         prefix.with_suffix('.stderr').write_text(result.stderr)
         if result.returncode:
@@ -220,32 +227,41 @@ def run_contention(host,record,directory,target,layout,kind,measure,control,heal
     prefix=directory/f'{target}-contention-{kind}'
     command=([str(layout.helper.parent/'vela-bench-cpuload'),'--json','--until-stdin-eof'] if kind=='cpu' else
              [str(layout.helper.parent/'vela-slowgpu'),'--contention','--json','--until-stdin-eof'])
-    process=None;lines=None
+    process=None
+    lines=None
     with prefix.with_suffix('.stderr').open('wb') as errors,ThreadPoolExecutor(max_workers=1) as pool:
         try:
-            if progress:progress(kind+'-contention-start')
+            if progress:
+                progress(kind+'-contention-start')
             health()
             process=host.spawn(user_command(record,layout,'producer',command,runtime_seconds=120),errors)
-            lines=Lines(process);deadline=time.monotonic()+105
+            lines=Lines(process)
+            deadline=time.monotonic()+105
             lines.next(deadline)
-            while not contention.ready(lines.records,kind,record['uid']):lines.next(deadline)
+            while not contention.ready(lines.records,kind,record['uid']):
+                lines.next(deadline)
             def drain():
-                while lines.next(deadline).get('event')!=kind+'-load-summary':pass
+                while lines.next(deadline).get('event')!=kind+'-load-summary':
+                    pass
             future=pool.submit(drain)
             try:
                 sample=measure(kind+'-')
             finally:
-                process.stdin.close();process.stdin=None
+                process.stdin.close()
+                process.stdin=None
             future.result(timeout=8)
-            if process.wait(timeout=5):raise BenchError('Contention helper failed')
+            if process.wait(timeout=5):
+                raise BenchError('Contention helper failed')
             window=[sample['input']['window_monotonic_ns'][0],sample['motion']['window_monotonic_ns'][1]]
             sample['contention']=contention.metrics(lines.records,kind,window,record['uid'])
             sample['degradation']=paired_metrics(control,sample)
             health()
             return sample
         finally:
-            stop_instrument(host,record,layout,'producer');stop_process(process)
-            if lines:prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in lines.records))
+            stop_instrument(host,record,layout,'producer')
+            stop_process(process)
+            if lines:
+                prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in lines.records))
 
 
 def run_workload(host, record, directory, target, layout, profile, phase, health, progress=None):
@@ -288,18 +304,24 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
                         if progress:
                             progress(mode + '-producer-start')
                         command = user_command(record, layout, 'producer', [str(layout.helper.parent / 'vela-slowgpu'),
-                            '150', '--json', '--until-stdin-eof', *(['--implicit'] if mode == 'implicit' else [])], runtime_seconds=120)
+                            '150', '--json', '--until-stdin-eof', '--timeout', str(PRODUCER_TIMEOUT),
+                            *(['--implicit'] if mode == 'implicit' else [])], runtime_seconds=240)
                         process = host.spawn(command, errors)
                         lines = Lines(process)
-                        deadline = time.monotonic() + 112
+                        deadline = time.monotonic() + 235
                         while lines.next(deadline).get('event') != 'producer-presented':
                             pass
                         def drain():
                             while lines.next(deadline).get('event') != 'producer-summary':
                                 pass
                         future = pool.submit(drain)
-                        sample = measure(mode + '-')
-                        process.stdin.close()
+                        try:
+                            sample = measure(mode + '-')
+                        finally:
+                            # Request orderly completion even if a probe fails;
+                            # the reader must not wait for the producer's full
+                            # watchdog just to leave the executor context.
+                            process.stdin.close()
                         future.result(timeout=12)
                         if process.wait(timeout=5):
                             raise BenchError('GPU producer exited unsuccessfully')
@@ -324,7 +346,8 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
                 sample=run_contention(host,record,directory,target,layout,kind,measure,
                     result['scenarios'][control_name],health,progress)
                 if kind=='gpu':
-                    gpu=sample['contention']['source'];producer=result['scenarios']['explicit']['producer']['device']
+                    gpu=sample['contention']['source']
+                    producer=result['scenarios']['explicit']['producer']['device']
                     if any(gpu[key]!=producer[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
                         raise BenchError('GPU contention changed device from the acquire-fence producer')
                 result['scenarios'][kind]=sample
@@ -342,11 +365,13 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
 
 def audit_measurements(directory, target, profile, phase):
     saved = read_json(directory / f'{target}-measurements.json')
-    method=saved.get('method');spec={SPEC_V1['version']:SPEC_V1,SPEC_V2['version']:SPEC_V2,VERSION:SPEC}.get(method)
+    method=saved.get('method')
+    spec={SPEC_V1['version']:SPEC_V1,SPEC_V2['version']:SPEC_V2,VERSION:SPEC}.get(method)
     if not spec or saved.get('status') != 'passed' or saved.get('spec') != spec or saved.get('phase') != phase or saved.get('failures') != []:
         raise BenchError('Measurement workload failed or its specification changed')
     names = ['neutral'] if phase != 'slow-apps' else ['explicit-control', 'explicit', 'implicit-control', 'implicit']
-    if phase=='slow-apps' and method!=SPEC_V1['version']:names+=['cpu-control','cpu','gpu-control','gpu']
+    if phase=='slow-apps' and method!=SPEC_V1['version']:
+        names+=['cpu-control','cpu','gpu-control','gpu']
     actual = {}
     for name in names:
         label = '' if name == 'neutral' else name + '-'
@@ -383,7 +408,8 @@ def audit_measurements(directory, target, profile, phase):
             row['contention']=contention.metrics(load,name,window,int(uid))
             row['degradation']=paired_metrics(actual[name+'-control'],row)
             if name=='gpu':
-                gpu=row['contention']['source'];producer=actual['explicit']['producer']['device']
+                gpu=row['contention']['source']
+                producer=actual['explicit']['producer']['device']
                 if any(gpu[key]!=producer[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
                     raise BenchError('GPU contention device differs from acquire-fence producer')
         actual[name] = row

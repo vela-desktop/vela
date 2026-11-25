@@ -1,6 +1,6 @@
 # Performance claims and reproduction
 
-Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers in the [README](../README.md#performance).
+Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers quoted in the [README](../README.md#why-vela).
 
 The [automated benchmark suite design](benchmark-suite.md) proposes one
 unattended campaign for desktop comparisons and Vela-version regressions.
@@ -98,6 +98,73 @@ limitations:
 ```
 
 Run multiple independent samples. Preserve their individual results as well as a median and dispersion; avoid quoting a single run as a general guarantee. Test machines should not run unrelated heavy workloads during an idle measurement.
+
+## CPU targets: controlled A/B methodology
+
+For x86-64, the project baseline is **x86-64-v3**. A local build may use
+`-DVELA_CPU_TARGET=znver5` on Ryzen 9000 / Zen 5, or
+`-DVELA_CPU_TARGET=native` on the machine where it will run. These options
+change only code compiled from Vela's C/C++ sources; they do not rebuild
+the system's Qt, wlroots, glibc, pixman or Mesa libraries, and do not change
+the SPIR-V shader compiler settings.
+
+To evaluate the baseline against the old generic architecture, or compare
+Zen 5 tuning, use separate build directories from **the exact same commit**:
+
+```sh
+cmake -S . -B build-cpu-generic -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVELA_CPU_TARGET=x86-64
+cmake -S . -B build-cpu-v3 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVELA_CPU_TARGET=x86-64-v3
+cmake -S . -B build-cpu-znver5 -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVELA_CPU_TARGET=znver5
+cmake --build build-cpu-generic --parallel
+cmake --build build-cpu-v3 --parallel
+cmake --build build-cpu-znver5 --parallel
+```
+
+The generic target is **measurement-only and unsupported for normal use**.
+The `znver5` target requires a supporting compiler (for example GCC 14 or
+newer) **and** a Zen 5 CPU; CMake validates compiler acceptance, not whether
+the machine running the resulting executable supports its instruction set.
+Never distribute a locally specialized binary as a standard v3 package.
+On Arch local package builds, set
+`VELA_CPU_TARGET=znver5 makepkg -si` (or use `native`), rather than relying
+only on `makepkg.conf` CFLAGS: Vela deliberately applies its CPU target last.
+
+Measure the `vela-scene-diff-bench` executable **from each build directory**
+(method in [scene-diff-benchmark.md](scene-diff-benchmark.md)); a microbenchmark
+does not require a running Vela session. For compositor/shell measurements,
+`scripts/measure.sh` measures an **already running** Vela session, not
+binaries in a build directory. For each candidate, first stop the previous
+candidate and launch the selected build, for example, in another terminal:
+
+```sh
+VELA_STATS=1 scripts/run-nested.sh build-cpu-v3
+# Repeat separately for build-cpu-generic and build-cpu-znver5.
+```
+
+Before measuring, identify the compositor and shell PIDs of that candidate
+and verify both `readlink -f /proc/<pid>/exe` paths against the corresponding
+`build-cpu-v3/compositor/vela-compositor` and
+`build-cpu-v3/shell/vela-shell` paths (or the selected build directory).
+Do not rely on `pgrep` order or measure the previously installed desktop.
+Use the candidate's `WAYLAND_DISPLAY` (from its shell process environment)
+to disambiguate multiple sessions, then run:
+
+```sh
+scripts/measure.sh -d <candidate-WAYLAND_DISPLAY> -s 30 --json
+```
+
+Avoid `--files` unless `vela-files` also resolves to the matching build;
+that option otherwise uses the executable from `PATH`. Run the compositor
+and shell under the same workload for every target, testing unchanged scenes,
+heavy window movement/restacking, popup churn, and multi-output loads.
+Alternate run order, warm caches and repeat samples. **Archive each result
+with its `VELA_CPU_TARGET`, build directory, verified executable paths,
+CMake build type, compiler and flags, Git commit, CPU affinity, governor,
+GPU driver and power profile**; the current `measure.sh` JSON does not
+embed the CPU target automatically. Assess median and tail frame times, missed
+vblanks, input latency, CPU, memory and binary size. A faster microbenchmark
+does **not** establish a smoother desktop, so do not claim a gain before
+results are archived.
 
 ## Frame timing and sharpness
 

@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "lock.h"
+#include "alloc/alloc.h"
 #include "lock_retry_policy.h"
+#include "lock_state.h"
 
 #include "listen.h"
 #include "a11y.h"
@@ -30,6 +32,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <sys/wait.h>
 #include <string.h>
 #include <sys/stat.h>
@@ -96,6 +99,24 @@ static int handle_lock_fatal_exit(void *data)
     lock_unsafe_exit(data);
 }
 
+// Reserve fatal_waiting for every output, so that the fatal path never has
+// to grow it. Called whenever the fatal path becomes reachable (the lock
+// engages) and whenever the outputs change while locked.
+static void lock_reserve_fatal_waiting(struct vela_lock *lock)
+{
+    int outputs = wl_list_length(&lock->server->outputs);
+    if (outputs > lock->fatal_waiting_capacity) {
+        lock->fatal_waiting = vela_grow(lock->fatal_waiting, &lock->fatal_waiting_capacity,
+            outputs, sizeof(*lock->fatal_waiting));
+    }
+}
+
+// The fatal path itself allocates nothing (docs/memory-allocation-policy.md,
+// "The premise", item 3): the black backdrop is already current (the lock is
+// engaged, and every layout change while locked rebuilds it), fatal_waiting
+// is reserved, and the timer was created with the lock. What it cannot avoid
+// is the frame path that renders the black frames, and libwayland's leave
+// events; a crash there restarts locked through the shared lock state.
 static void lock_fatal_shutdown(struct vela_lock *lock)
 {
     if (lock->fatal_exit_pending) {
@@ -118,23 +139,26 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     }
     wlr_seat_keyboard_clear_focus(server->seat);
     wlr_seat_pointer_clear_focus(server->seat);
-    vela_lock_update_layout(lock);
     vela_scene_changed(server->scene);
     struct vela_output *output;
     wl_list_for_each (output, &server->outputs, link) {
         if (!output->wlr->enabled || !output->powered) {
             continue;
         }
-        lock->fatal_waiting = vela_grow(lock->fatal_waiting, &lock->fatal_waiting_capacity,
-            lock->fatal_waiting_count + 1, sizeof(*lock->fatal_waiting));
-        lock->fatal_waiting[lock->fatal_waiting_count++] = output;
         vela_output_schedule_frame(output);
+        if (lock->fatal_waiting_count < lock->fatal_waiting_capacity) {
+            lock->fatal_waiting[lock->fatal_waiting_count++] = output;
+        } else {
+            lock->fatal_waiting_incomplete = true; // a missed reservation: never expected
+        }
     }
-    if (lock->fatal_waiting_count == 0) {
+    if (lock->fatal_waiting_count == 0 && !lock->fatal_waiting_incomplete) {
         wlr_log(WLR_ERROR, "Lock: no active outputs to blank before terminating session");
         lock_unsafe_exit(lock);
     }
-    lock->fatal_timer = wl_event_loop_add_timer(server->loop, handle_lock_fatal_exit, lock);
+    if (lock->fatal_waiting_incomplete) {
+        wlr_log(WLR_ERROR, "Lock: not every output is tracked; waiting for the full blackout timeout");
+    }
     if (!lock->fatal_timer ||
         wl_event_source_timer_update(lock->fatal_timer, VELA_LOCK_FATAL_TIMEOUT_MS) < 0) {
         wlr_log_errno(WLR_ERROR, "Lock: cannot schedule bounded session shutdown");
@@ -143,15 +167,26 @@ static void lock_fatal_shutdown(struct vela_lock *lock)
     wlr_log(WLR_ERROR, "Lock: ending session after the black backdrop is committed");
 }
 
-// Own a pending locker launcher so a non-registering process cannot survive
-// into the next attempt. The shell is launched in its own session.
-static void lock_stop_launcher(struct vela_lock *lock)
+// The launch's connection stops being trusted: a later attempt gets a new
+// one. The client itself goes when its process does.
+static void lock_forget_locker_client(struct vela_lock *lock)
 {
-    if (lock->launcher_pid <= 0) {
+    if (!lock->locker_client) {
         return;
     }
-    pid_t pid = lock->launcher_pid;
-    lock->launcher_pid = 0;
+    lock->locker_client = NULL;
+    wl_list_remove(&lock->locker_client_destroy.link);
+    wl_list_init(&lock->locker_client_destroy.link);
+}
+
+static void handle_locker_client_destroy(struct wl_listener *listener, void *data)
+{
+    struct vela_lock *lock = wl_container_of(listener, lock, locker_client_destroy);
+    lock_forget_locker_client(lock);
+}
+
+static void signal_launcher(pid_t pid)
+{
     // Signal before reaping to prevent PID reuse across retries.
     if (kill(-pid, SIGKILL) < 0 && errno != ESRCH) {
         wlr_log_errno(WLR_ERROR, "Lock: failed to stop launcher process group");
@@ -159,20 +194,124 @@ static void lock_stop_launcher(struct vela_lock *lock)
     if (kill(pid, SIGKILL) < 0 && errno != ESRCH) {
         wlr_log_errno(WLR_ERROR, "Lock: failed to stop launcher");
     }
+}
+
+static void stop_launcher(pid_t pid)
+{
+    signal_launcher(pid);
     while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
 }
 
+static void lock_stop_launcher(struct vela_lock *lock)
+{
+    if (lock) {
+        lock_forget_locker_client(lock);
+        if (lock->launcher_pid > 0) {
+            stop_launcher(lock->launcher_pid);
+            lock->launcher_pid = 0;
+        }
+    }
+}
+
+// The client must receive the roundtrip after unlock_and_destroy before it
+// can finish. Keep its PID unreaped until the grace period ends, so cleanup
+// also covers surviving members of the original launcher's process group.
+struct exiting_launcher {
+    struct wl_list link;
+    struct wl_event_source *timer;
+    pid_t pid;
+};
+
+static void forget_exiting_launcher(struct exiting_launcher *launcher)
+{
+    wl_event_source_remove(launcher->timer);
+    wl_list_remove(&launcher->link);
+    free(launcher);
+}
+
+static int finish_launcher(void *data)
+{
+    struct exiting_launcher *launcher = data;
+    signal_launcher(launcher->pid);
+    pid_t done;
+    do {
+        done = waitpid(launcher->pid, NULL, WNOHANG);
+    } while (done < 0 && errno == EINTR);
+    if (done == 0 && wl_event_source_timer_update(launcher->timer, 50) == 0) {
+        return 0;
+    }
+    if (done == 0) {
+        stop_launcher(launcher->pid);
+    }
+    forget_exiting_launcher(launcher);
+    return 0;
+}
+
+static void allow_launcher_exit(struct vela_lock *lock)
+{
+    lock_forget_locker_client(lock);
+    if (!lock->launcher_pid) {
+        return;
+    }
+    struct exiting_launcher *launcher = VELA_NEW(struct exiting_launcher);
+    launcher->pid = lock->launcher_pid;
+    launcher->timer = wl_event_loop_add_timer(lock->server->loop, finish_launcher, launcher);
+    if (!launcher->timer || wl_event_source_timer_update(launcher->timer, 1000) < 0) {
+        if (launcher->timer) {
+            wl_event_source_remove(launcher->timer);
+        }
+        free(launcher);
+        lock_stop_launcher(lock);
+        return;
+    }
+    wl_list_insert(&lock->exiting_launchers, &launcher->link);
+    lock->launcher_pid = 0;
+}
+
+// The locker gets a connection of its own, already open (WAYLAND_SOCKET):
+// the compositor then knows which client it launched. Everything the child
+// needs is prepared before fork(): the compositor has other threads.
 static void lock_start_launcher(struct vela_lock *lock, const char *command)
 {
+    int pair[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, pair) != 0) {
+        wlr_log_errno(WLR_ERROR, "Lock: unable to create the locker's connection");
+        return; // retry already scheduled
+    }
+    char wrapped[PATH_MAX + 128];
+    if (!vela_format(wrapped, sizeof(wrapped), "export WAYLAND_SOCKET=%d; unset QT_WAYLAND_RECONNECT; %s",
+            pair[1], command)) {
+        wlr_log(WLR_ERROR, "Lock: locker command too long");
+        close(pair[0]);
+        close(pair[1]);
+        return;
+    }
+    struct wl_client *client = wl_client_create(lock->server->display, pair[0]);
+    if (!client) {
+        wlr_log_errno(WLR_ERROR, "Lock: unable to create the locker's client");
+        close(pair[0]);
+        close(pair[1]);
+        return;
+    }
     pid_t pid = fork();
     if (pid < 0) {
         wlr_log_errno(WLR_ERROR, "Lock: unable to launch locker");
+        close(pair[1]);
+        wl_client_destroy(client);
         return; // retry already scheduled
     }
     if (pid == 0) {
-        vela_exec_shell(command);
+        // Async-signal-safe only: keep the locker's end across exec.
+        if (fcntl(pair[1], F_SETFD, 0) != 0) {
+            _exit(127);
+        }
+        vela_exec_shell(wrapped);
     }
+    close(pair[1]);
     lock->launcher_pid = pid;
+    lock->locker_client = client;
+    lock->locker_client_destroy.notify = handle_locker_client_destroy;
+    wl_client_add_destroy_listener(client, &lock->locker_client_destroy);
 }
 
 // All retry paths share this arm operation, including crashes after registration.
@@ -240,7 +379,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, new_surface);
     struct wlr_session_lock_surface_v1 *wlr = data;
-    struct lock_surface *surface = calloc(1, sizeof(*surface));
+    struct lock_surface *surface = VELA_NEW(struct lock_surface);
     surface->server = lock->server;
     surface->wlr = wlr;
     surface->tree = vela_tree_create(lock->server->layers.lock);
@@ -283,6 +422,8 @@ static void handle_unlock(struct wl_listener *listener, void *data)
         lock->pointer_retarget_idle = NULL;
     }
     server->locked = false;
+    // Only now may a crash restart the session unlocked.
+    vela_lock_state_store(server->lock_state, false);
     vela_bluetooth_report_lock(server, false);
     if (server->runtime_dir_fd >= 0
         && !vela_lock_marker_remove_at(server->runtime_dir_fd, server->socket_name)) {
@@ -304,7 +445,11 @@ static void handle_unlock(struct wl_listener *listener, void *data)
 static void handle_lock_destroy(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, destroy);
-    lock_stop_launcher(lock);
+    if (lock->server->locked) {
+        lock_stop_launcher(lock);
+    } else {
+        allow_launcher_exit(lock);
+    }
     // This wlroots lock is being torn down. A timer-arm failure may initiate
     // terminal blackout, which must never walk surfaces on the dying object.
     lock->lock = NULL;
@@ -348,6 +493,17 @@ static void handle_new_lock(struct wl_listener *listener, void *data)
     struct wlr_session_lock_v1 *wlr = data;
     if (lock->fatal_exit_pending || lock->lock) {
         wlr_log(WLR_INFO, "Lock: refusing duplicate or unsafe locker registration");
+        wlr_session_lock_v1_destroy(wlr);
+        return;
+    }
+    // Locked by Vela (Win+L, inactivity, a restart, a locker that crashed):
+    // only the locker Vela launched may take over. Whoever holds the lock can
+    // unlock, so any other client would be a way around the password.
+    struct wl_client *client = wl_resource_get_client(wlr->resource);
+    if (server->locked && (!lock->locker_client || client != lock->locker_client)) {
+        pid_t pid = 0;
+        wl_client_get_credentials(client, &pid, NULL, NULL);
+        wlr_log(WLR_ERROR, "Lock: refusing a lock from a client Vela did not launch (process %d)", (int)pid);
         wlr_session_lock_v1_destroy(wlr);
         return;
     }
@@ -420,7 +576,7 @@ static void handle_new_inhibitor(struct wl_listener *listener, void *data)
 {
     struct vela_lock *lock = wl_container_of(listener, lock, new_inhibitor);
     struct wlr_idle_inhibitor_v1 *inhibitor = data;
-    struct inhibitor_watch *watch = calloc(1, sizeof(*watch));
+    struct inhibitor_watch *watch = VELA_NEW(struct inhibitor_watch);
     watch->lock = lock;
     vela_listen(&inhibitor->events.destroy, &watch->destroy, handle_inhibitor_destroy);
     vela_lock_note_activity(lock);
@@ -621,21 +777,30 @@ static int handle_caffeine_timer(void *data)
 
 struct vela_lock *vela_lock_create(struct vela_server *server)
 {
-    struct vela_lock *lock = calloc(1, sizeof(*lock));
+    struct vela_lock *lock = VELA_NEW(struct vela_lock);
     lock->server = server;
     lock->lock_on_idle = true;
     vela_node_set_enabled(&server->layers.lock->node, false);
     // First the backdrop, then (above) the lock program's surfaces.
+    wl_list_init(&lock->exiting_launchers);
     lock->backdrop_tree = vela_tree_create(server->layers.lock);
     lock->respawn = wl_event_loop_add_timer(server->loop, handle_respawn, lock);
     if (!lock->respawn) {
         wlr_log_errno(WLR_ERROR, "Unable to create locker retry timer");
     }
+    // Created now, armed only by the fatal path: that path must not need a
+    // new event source (an allocation and a descriptor) to end the session.
+    // Without it, the fatal path exits at once instead of after the blackout.
+    lock->fatal_timer = wl_event_loop_add_timer(server->loop, handle_lock_fatal_exit, lock);
+    if (!lock->fatal_timer) {
+        wlr_log_errno(WLR_ERROR, "Unable to create the lock's fatal shutdown timer");
+    }
     wl_list_init(&lock->new_surface.link);
     wl_list_init(&lock->unlock.link);
     wl_list_init(&lock->destroy.link);
+    wl_list_init(&lock->locker_client_destroy.link);
 
-    lock->manager = wlr_session_lock_manager_v1_create(server->display);
+    lock->manager = VELA_MUST(wlr_session_lock_manager_v1_create(server->display));
     vela_listen(&lock->manager->events.new_lock, &lock->new_lock, handle_new_lock);
 
     // Timed caffeine turns itself off (cheap in every session, tests too).
@@ -644,8 +809,8 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
         wlr_log_errno(WLR_ERROR, "Unable to create caffeine expiry timer");
     }
 
-    lock->idle_notifier = wlr_idle_notifier_v1_create(server->display);
-    lock->idle_inhibit = wlr_idle_inhibit_v1_create(server->display);
+    lock->idle_notifier = VELA_MUST(wlr_idle_notifier_v1_create(server->display));
+    lock->idle_inhibit = VELA_MUST(wlr_idle_inhibit_v1_create(server->display));
     vela_listen(&lock->idle_inhibit->events.new_inhibitor, &lock->new_inhibitor, handle_new_inhibitor);
 
     // Only in the real session: nested or headless nothing turns off (tests
@@ -653,6 +818,9 @@ struct vela_lock *vela_lock_create(struct vela_server *server)
     const char *screen_off = getenv("VELA_SCREEN_OFF");
     if (server->session || (screen_off && *screen_off)) {
         lock->idle_timer = wl_event_loop_add_timer(server->loop, handle_idle_timer, lock);
+        if (!lock->idle_timer) {
+            wlr_log_errno(WLR_ERROR, "Unable to create the idle timer: screens stay on and nothing locks on idle");
+        }
         vela_lock_load_settings(lock);
     }
     return lock;
@@ -664,6 +832,12 @@ void vela_lock_destroy(struct vela_lock *lock)
     lock_stop_launcher(lock);
     if (!lock) {
         return;
+    }
+    struct exiting_launcher *launcher, *next;
+    wl_list_for_each_safe(launcher, next, &lock->exiting_launchers, link)
+    {
+        stop_launcher(launcher->pid);
+        forget_exiting_launcher(launcher);
     }
     if (lock->caffeine_timer) {
         wl_event_source_remove(lock->caffeine_timer);
@@ -703,6 +877,11 @@ void vela_lock_engage(struct vela_lock *lock)
         return;
     }
     server->locked = true;
+    // First, before anything else can fail or crash: from here on a restart
+    // starts locked even if the marker below cannot be created.
+    vela_lock_state_store(server->lock_state, true);
+    // The fatal path is reachable from now on: reserve what it needs.
+    lock_reserve_fatal_waiting(lock);
     vela_bluetooth_report_lock(server, true);
     // Cancel the active DnD grab before hiding the desktop. Ending the
     // matching wlroots grab invokes its cancellation path (not its drop path).
@@ -775,23 +954,8 @@ void vela_lock_screen(struct vela_lock *lock)
     const char *custom = getenv("VELA_LOCK");
     if (custom && *custom) {
         snprintf(command, sizeof(command), "%s", custom);
-    } else {
-        char self[PATH_MAX];
-        ssize_t n = readlink("/proc/self/exe", self, sizeof(self) - 1);
-        if (n > 0) {
-            self[n] = '\0';
-            char *slash = strrchr(self, '/');
-            if (slash) {
-                *slash = '\0';
-            }
-            const char *candidates[] = { "%s/vela-lock", "%s/../lock/vela-lock" };
-            for (size_t i = 0; i < 2 && !command[0]; ++i) {
-                char path[PATH_MAX];
-                if (vela_format(path, sizeof(path), candidates[i], self) && access(path, X_OK) == 0) {
-                    snprintf(command, sizeof(command), "'%s'", path);
-                }
-            }
-        }
+    } else if (!vela_find_program("vela-lock", "lock", command, sizeof(command))) {
+        command[0] = '\0';
     }
     if (!command[0]) {
         wlr_log(WLR_ERROR, "Lock: vela-lock not found; keeping desktop hidden and retrying");
@@ -809,7 +973,7 @@ void vela_lock_output_rendered(struct vela_lock *lock, struct vela_output *outpu
                 continue;
             }
             lock->fatal_waiting[i] = lock->fatal_waiting[--lock->fatal_waiting_count];
-            if (lock->fatal_waiting_count == 0) {
+            if (lock->fatal_waiting_count == 0 && !lock->fatal_waiting_incomplete) {
                 wlr_log(WLR_ERROR, "Lock: blackout committed on all active outputs; ending session");
                 // Permit scanout to catch up with the committed black frames.
                 if (!lock->fatal_timer ||
@@ -842,6 +1006,7 @@ void vela_lock_update_layout(struct vela_lock *lock)
     if (!server->locked) {
         return;
     }
+    lock_reserve_fatal_waiting(lock);
     // A black backdrop per output, below the lock program's surfaces: even
     // before it draws, or when it's gone, nothing else shows.
     clear_backdrop(lock);
@@ -869,6 +1034,7 @@ void vela_lock_update_layout(struct vela_lock *lock)
     // Defer the hit test: a layout-change callback may precede wlroots'
     // output-removal cursor warp, and a click must work without motion.
     if (!lock->pointer_retarget_idle) {
-        lock->pointer_retarget_idle = wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock);
+        lock->pointer_retarget_idle
+            = VELA_MUST(wl_event_loop_add_idle(server->loop, retarget_pointer_after_layout, lock));
     }
 }

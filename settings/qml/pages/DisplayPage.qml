@@ -11,6 +11,7 @@ import Vela.Controls
 Page {
     id: page
     property string selectedName: ""
+    property bool arrangementWouldIsolateDisplay: false
     readonly property int selected: Math.max(0, outputs.findIndex(o => o.name === selectedName))
     function selectOutput(index) {
         if (outputs[index]) selectedName = outputs[index].name
@@ -29,6 +30,7 @@ Page {
     // Confirmation starts only after the compositor has applied the change.
     // Its timer and previous configuration survive this page and client.
     function change(changes) {
+        arrangementWouldIsolateDisplay = false
         if (output && Displays.available && !Displays.pending)
             Displays.apply(output.name, changes)
     }
@@ -37,6 +39,7 @@ Page {
         function onConfirmationRequested() { confirm.open() }
         function onConfirmationFinished() { confirm.close() }
         function onOutputsChanged() {
+            page.arrangementWouldIsolateDisplay = false
             if (!page.outputs.some(o => o.name === page.selectedName)) page.selectOutput(0)
         }
     }
@@ -95,11 +98,9 @@ Page {
         readonly property var bounds: {
             let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
             for (const o of page.enabledOutputs) {
-                const w = o.current ? o.current.width / o.scale : 0
-                const h = o.current ? o.current.height / o.scale : 0
-                const rotated = o.transform === "90" || o.transform === "270"
                 x0 = Math.min(x0, o.x); y0 = Math.min(y0, o.y)
-                x1 = Math.max(x1, o.x + (rotated ? h : w)); y1 = Math.max(y1, o.y + (rotated ? w : h))
+                x1 = Math.max(x1, o.x + (o.logicalWidth || 0))
+                y1 = Math.max(y1, o.y + (o.logicalHeight || 0))
             }
             return { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) }
         }
@@ -111,9 +112,8 @@ Page {
                 id: monitor
                 required property var modelData
                 required property int index
-                readonly property bool rotated: modelData.transform === "90" || modelData.transform === "270"
-                readonly property real logicalWidth: modelData.current ? (rotated ? modelData.current.height : modelData.current.width) / modelData.scale : 0
-                readonly property real logicalHeight: modelData.current ? (rotated ? modelData.current.width : modelData.current.height) / modelData.scale : 0
+                readonly property int logicalWidth: modelData.logicalWidth || 0
+                readonly property int logicalHeight: modelData.logicalHeight || 0
                 readonly property real homeX: (arrangement.width - arrangement.bounds.width * arrangement.zoom) / 2 + (modelData.x - arrangement.bounds.x) * arrangement.zoom
                 readonly property real homeY: (arrangement.height - arrangement.bounds.height * arrangement.zoom) / 2 + (modelData.y - arrangement.bounds.y) * arrangement.zoom
                 visible: modelData.enabled
@@ -137,12 +137,15 @@ Page {
                     anchors.fill: parent
                     drag.target: page.enabledOutputs.length > 1 ? monitor : null
                     drag.threshold: 4
-                    onPressed: page.selectOutput(monitor.index)
+                    onPressed: {
+                        page.arrangementWouldIsolateDisplay = false
+                        page.selectOutput(monitor.index)
+                    }
                     onReleased: {
                         if (!drag.active && monitor.x === monitor.homeX && monitor.y === monitor.homeY) {
                             return
                         }
-                        page.placeNextTo(monitor.index, monitor.x, monitor.y, monitor.width, monitor.height)
+                        page.placeNextTo(monitor.index, monitor.x, monitor.y)
                         monitor.x = Qt.binding(() => monitor.homeX)
                         monitor.y = Qt.binding(() => monitor.homeY)
                     }
@@ -153,42 +156,85 @@ Page {
 
     // The dragged output sticks to the nearest side of another, with edges
     // aligned when close: like Windows, no gaps or overlaps.
-    function placeNextTo(index, px, py, pw, ph) {
+    function placeNextTo(index, px, py) {
         const moving = outputs[index]
         const zoom = arrangement.zoom
         const toLogicalX = v => (v - (arrangement.width - arrangement.bounds.width * zoom) / 2) / zoom + arrangement.bounds.x
         const toLogicalY = v => (v - (arrangement.height - arrangement.bounds.height * zoom) / 2) / zoom + arrangement.bounds.y
-        const w = (pw + 2) / zoom
-        const h = (ph + 2) / zoom
+        const w = moving.logicalWidth
+        const h = moving.logicalHeight
+        if (!(w > 0 && h > 0)) return
         const cx = toLogicalX(px) + w / 2
         const cy = toLogicalY(py) + h / 2
-        let best = null
-        for (let i = 0; i < outputs.length; ++i) {
-            const o = outputs[i]
-            if (i === index || !o.enabled || !o.current) continue
-            const rotated = o.transform === "90" || o.transform === "270"
-            const ow = (rotated ? o.current.height : o.current.width) / o.scale
-            const oh = (rotated ? o.current.width : o.current.height) / o.scale
-            const ocx = o.x + ow / 2
-            const ocy = o.y + oh / 2
-            const dx = cx - ocx
-            const dy = cy - ocy
-            let x, y
-            if (Math.abs(dx) / (ow + w) > Math.abs(dy) / (oh + h)) {
-                x = dx > 0 ? o.x + ow : o.x - w
-                y = Math.max(o.y - h + 1, Math.min(o.y + oh - 1, cy - h / 2))
-                if (Math.abs(y - o.y) < oh * 0.1) y = o.y // aligned at the top
-            } else {
-                y = dy > 0 ? o.y + oh : o.y - h
-                x = Math.max(o.x - w + 1, Math.min(o.x + ow - 1, cx - w / 2))
-                if (Math.abs(x - o.x) < ow * 0.1) x = o.x
+        const neighbors = outputs.filter((o, i) => i !== index && o.enabled && o.logicalWidth > 0 && o.logicalHeight > 0)
+            .map(o => ({ x: o.x, y: o.y, w: o.logicalWidth, h: o.logicalHeight }))
+        let nearestDisconnected = Infinity
+        function connected(x, y) {
+            if (neighbors.some(o => x < o.x + o.w && o.x < x + w && y < o.y + o.h && o.y < y + h))
+                return false
+            const reached = [{ x: x, y: y, w: w, h: h }]
+            const remaining = neighbors.slice()
+            for (let i = 0; i < reached.length && remaining.length; ++i) {
+                const a = reached[i]
+                for (let j = remaining.length - 1; j >= 0; --j) {
+                    const b = remaining[j]
+                    const vertical = (a.x + a.w === b.x || b.x + b.w === a.x) &&
+                                     a.y < b.y + b.h && b.y < a.y + a.h
+                    const horizontal = (a.y + a.h === b.y || b.y + b.h === a.y) &&
+                                       a.x < b.x + b.w && b.x < a.x + a.w
+                    if (vertical || horizontal)
+                        reached.push(remaining.splice(j, 1)[0])
+                }
             }
-            const distance = Math.hypot(dx, dy)
-            if (!best || distance < best.distance) best = { x: Math.round(x), y: Math.round(y), distance: distance }
+            if (remaining.length === 0)
+                return true
+            nearestDisconnected = Math.min(nearestDisconnected, Math.hypot(x + w / 2 - cx, y + h / 2 - cy))
+            return false
+        }
+        let best = null
+        function considerEdge(fixed, target, start, size, length, vertical) {
+            const min = start - length + 1
+            const max = start + size - 1
+            const projected = Math.round(Math.max(min, Math.min(max, target)))
+            const aligned = Math.abs(projected - start) < size * 0.1 ? start : projected
+            const usable = pos => vertical ? connected(fixed, pos) : connected(pos, fixed)
+            let closest = aligned
+            if (!usable(aligned)) {
+                let distance = Infinity
+                const positions = [projected, min, max]
+                for (const neighbor of neighbors) {
+                    const near = vertical ? neighbor.y : neighbor.x
+                    const far = near + (vertical ? neighbor.h : neighbor.w)
+                    // A candidate can become usable where it stops overlapping
+                    // a neighbor or starts sharing a positive-length edge.
+                    positions.push(near - length, near - length + 1, far - 1, far)
+                }
+                for (const pos of positions) {
+                    const offset = Math.abs(pos - target)
+                    if (pos >= min && pos <= max && offset < distance && usable(pos)) {
+                        closest = pos
+                        distance = offset
+                    }
+                }
+                if (!Number.isFinite(distance)) return
+            }
+            const x = vertical ? fixed : closest
+            const y = vertical ? closest : fixed
+            const distance = Math.hypot(x + w / 2 - cx, y + h / 2 - cy)
+            if (!best || distance < best.distance) best = { x, y, distance }
+        }
+        for (const o of neighbors) {
+            considerEdge(o.x - w, cy - h / 2, o.y, o.h, h, true)
+            considerEdge(o.x + o.w, cy - h / 2, o.y, o.h, h, true)
+            considerEdge(o.y - h, cx - w / 2, o.x, o.w, w, false)
+            considerEdge(o.y + o.h, cx - w / 2, o.x, o.w, w, false)
         }
         if (best && (best.x !== moving.x || best.y !== moving.y)) {
             selectOutput(index)
             change({ x: best.x, y: best.y })
+        } else {
+            arrangementWouldIsolateDisplay = Number.isFinite(nearestDisconnected) &&
+                                             (!best || nearestDisconnected < best.distance)
         }
     }
 
@@ -215,10 +261,12 @@ Page {
     }
 
     Card {
-        visible: Displays.error !== ""
+        visible: page.arrangementWouldIsolateDisplay || Displays.error !== ""
         icon: "dialog-warning"
         title: qsTr("Could not change display settings")
-        description: Displays.error
+        description: page.arrangementWouldIsolateDisplay
+            ? qsTr("This move would leave a display unreachable. Keep all displays connected along their edges.")
+            : Displays.error
     }
 
     Binding {

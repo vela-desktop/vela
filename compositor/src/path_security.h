@@ -14,6 +14,12 @@ bool vela_path_component_safe(const char *name);
 // must not be empty, "." or ".."; absolute paths are rejected.
 bool vela_relative_path_safe(const char *path);
 
+// Open a regular file for reading, resolving checked components relative to
+// directory descriptors. Reject parent traversal and control characters;
+// retain ordinary symlink aliases, duplicate separators and '.' components.
+// The returned descriptor is close-on-exec. FIFOs/devices are never read.
+int vela_path_open_read(const char *path);
+
 // Open the actual XDG_RUNTIME_DIR (absolute, private, owned), rejecting a
 // final symlink. Caller owns the returned O_PATH directory fd.
 int vela_runtime_dir_open(const char *path);
@@ -28,8 +34,20 @@ bool vela_runtime_dir_fd_private(int fd);
 // Create/check/remove the screen-lock marker relative to the exact runtime
 // directory inode opened by the supervisor. The display is one path component.
 bool vela_lock_marker_create_at(int runtime_fd, const char *display);
-bool vela_lock_marker_present_at(int runtime_fd, const char *display);
 bool vela_lock_marker_remove_at(int runtime_fd, const char *display);
+
+// Whether the marker exists. Only ENOENT is "absent": an fstatat error, an
+// invalid display or descriptor, or an entry that is not this user's private
+// regular file is "unknown", which every caller treats as locked.
+enum vela_lock_marker {
+    VELA_LOCK_MARKER_ABSENT,
+    VELA_LOCK_MARKER_PRESENT,
+    VELA_LOCK_MARKER_UNKNOWN,
+};
+enum vela_lock_marker vela_lock_marker_state_at(int runtime_fd, const char *display);
+
+// Present or unknown: the fail-closed reading of the marker.
+bool vela_lock_marker_present_at(int runtime_fd, const char *display);
 
 // The lock marker stays directly within the private runtime directory.
 // This builder is also tested without having to start a compositor.

@@ -40,7 +40,7 @@ Flickable {
                     width: 220
                     height: 56
                     radius: Theme.radius
-                    color: folderMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: folderMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter
@@ -95,7 +95,7 @@ Flickable {
                     height: 72
                     opacity: mounted ? 1 : 0.85
                     radius: Theme.radius
-                    color: driveMouse.containsMouse ? Theme.subtleHover : Theme.subtleRest
+                    color: driveMouse.containsMouse ? Theme.hoverLayer : Theme.restLayer
                     Image {
                         x: 10
                         anchors.verticalCenter: parent.verticalCenter
@@ -154,7 +154,7 @@ Flickable {
                                     entries.push(
                                         { text: qsTr("Open in new &tab"), icon: "tab-new", action: () => page.tab.openInNewTab(d.path) },
                                         { separator: true },
-                                        { text: qsTr("Open in &Terminal"), icon: "utilities-terminal", action: () => System.openTerminal(d.path) })
+                                        { text: qsTr("Open in &Terminal"), icon: "utilities-terminal-symbolic", action: () => System.openTerminal(d.path) })
                                     if (d.removable) entries.push({ text: qsTr("E&ject"), icon: "media-eject", action: () => Places.eject(d.device) })
                                     entries.push({ separator: true },
                                         { text: qsTr("P&roperties"), icon: "document-properties", action: () => Ops.showProperties([d.path]) })

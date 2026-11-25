@@ -30,6 +30,10 @@
 #include <stdint.h>
 #include <wayland-server-core.h>
 
+#include "lock_keys.h"
+#include "shortcuts.h"
+#include "super_numbers.h"
+
 struct vela_server;
 struct vela_tree;
 struct vela_surface_node;
@@ -59,9 +63,16 @@ struct vela_drag_icon {
     struct wl_listener destroy;
 };
 
+// A custom shortcut's combination (common/shortcuts/custom.h).
+struct vela_custom_shortcut {
+    struct vela_combo combo;
+    char text[128];
+};
+
 struct vela_input {
     struct vela_server *server;
     struct wl_list pointers; // vela_pointer.link
+    struct wl_list lid_switches;
     struct wl_list keyboards; // vela_keyboard.link
 
     // From vela.conf.
@@ -79,11 +90,36 @@ struct vela_input {
         int steps; // "switch app" steps already taken
     } swipe;
 
-    // Super pressed and released alone: opens the Start menu.
+    // Super pressed and released alone: opens the Start menu, unless
+    // super-opens-start=no (docs/keyboard.md §10). The taskbar numbers
+    // while Super is held follow super_tap either way.
     bool super_tap;
+    bool super_opens_start;
+    enum vela_super_numbers super_numbers;
+    struct wl_event_source *super_timer;
+    struct vela_keyboard *super_keyboard;
+    bool super_hints_visible;
     // The layout written to the log last time (keyboard.c): only changes are
     // logged.
     char keymap_logged[1024];
+
+    // Caps Lock and Num Lock, the seat's (keyboard.c, docs/keyboard.md §8.1):
+    // every physical keyboard follows them. Known once the first physical
+    // keyboard has appeared and taken Num Lock's startup state (§7).
+    bool locks_known;
+    bool caps_locked;
+    bool num_locked;
+    enum vela_numlock numlock; // numlock= in vela.conf
+    bool caps_lock_osd; // caps-lock-osd= in vela.conf (§8.3)
+    // The user's custom shortcuts (shortcuts.conf, docs/keyboard.md §9.5):
+    // their combinations only, and each one's normalized text for the shell.
+    struct vela_custom_shortcut *custom;
+    size_t custom_count;
+    size_t custom_capacity;
+    // Num Lock's state to keep for numlock=last, written a second after the
+    // last change and at exit.
+    struct wl_event_source *numlock_timer;
+    bool numlock_unsaved;
 
     // Implicit grab, as Wayland wants: while a button is held, the pointer
     // stays with the surface it was pressed on (even outside it, even on
@@ -139,6 +175,7 @@ void vela_input_destroy(struct vela_input *input);
 // touchpads.
 void vela_input_reload(struct vela_input *input);
 
+void vela_input_hide_super_hints(struct vela_input *input);
 bool vela_input_has_touchpad(const struct vela_input *input);
 // The focused app keeps the shortcuts to itself.
 bool vela_input_shortcuts_inhibited(const struct vela_input *input);

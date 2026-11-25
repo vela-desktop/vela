@@ -13,7 +13,7 @@ import tempfile
 import time
 import unittest
 
-from harness import BUILD, Session
+from harness import BUILD, TIME_SCALE, Session
 import test_shell
 
 LOCK = os.path.join(BUILD, "lock", "vela-lock")
@@ -56,7 +56,7 @@ class ShellChoices(test_shell.RealShell):
     def settled_region(self, box, still=1.0, timeout=15):
         """The region once it stops changing for `still` seconds: at startup
         the bar takes the wallpaper's tint and the tray fills in."""
-        deadline = time.monotonic() + timeout
+        deadline = time.monotonic() + timeout * TIME_SCALE
         last, since = self.region(*box), time.monotonic()
         while time.monotonic() < deadline:
             time.sleep(0.25)
@@ -78,7 +78,12 @@ class ShellChoices(test_shell.RealShell):
         box = self.clock_box()
         before = self.settled_region(box)
         self.write_shell_conf(f"[{key.split('/')[0]}]\n{key.split('/')[1]}={off}\n")
-        changed = self.wait_region(box, lambda r: r != before, f"the clock with {key}={off}")
+        self.wait_region(box, lambda r: r != before, f"the clock with {key}={off}")
+        # A changed frame can still contain the old layout or tint while Qt
+        # resizes the clock and its neighbours. Finish that transition before
+        # replacing the configuration again.
+        changed = self.settled_region(box)
+        self.assertNotEqual(changed, before, f"the clock with {key}={off} did not stay changed")
         self.write_shell_conf(f"[{key.split('/')[0]}]\n{key.split('/')[1]}={on}\n")
         self.wait_region(box, lambda r: r == before, f"the clock with {key}={on} again")
         return before, changed
@@ -128,16 +133,6 @@ class Personalization(ShellChoices):
         self.assertLess(len(colors(without)), len(colors(before)) / 3, "the date's line is still drawn")
         self.check_desktop()
 
-    def test_the_clock_turns_12_hour(self):
-        # 13:45 reads 1:45 PM.
-        self.toggles_clock("clock/hours", "12", "24")
-        self.check_desktop()
-
-    def test_the_clock_shows_seconds(self):
-        # 13:45 reads 13:45:07, the clock wider.
-        self.toggles_clock("taskbar/clockSeconds", "true", "false")
-        self.check_desktop()
-
     def test_the_clock_hides_the_number_of_notifications(self):
         # One notification: "1" by the clock, until Settings hides it.
         test_shell.QtShell.send_notification(self, "Counted", actions="[]", expire_timeout=1500)
@@ -155,31 +150,20 @@ class Personalization(ShellChoices):
         self.wait_region(box, lambda r: r == counted, "the number back")
         self.check_desktop()
 
-    def test_the_notification_center_follows_the_time_format(self):
-        # A notification's time in the center reads as the taskbar's clock.
+    def test_the_notification_center_opens_after_a_notification(self):
+        # Retain the real popup-to-center interaction on the GPU. The time
+        # format bindings are checked directly by shell-clock-formats.
         test_shell.QtShell.send_notification(self, "Time format", actions="[]", expire_timeout=1500)
         self.vela.wait_for(lambda s: self.layer(s, "vela-notifications"), timeout=8, what="the popup shown")
         self.vela.wait_for(lambda s: not self.mapped(s, "vela-notifications"), timeout=10, what="the popup gone")
 
-        def center():
-            self.vela.input("key", "super+n")
-            state = self.vela.wait_for(lambda s: self.layer(s, "vela-notification-center"), what="the center open")
-            time.sleep(1.0) # its entrance over
-            layer = self.layer(state, "vela-notification-center")
-            # Its first notification's row, under the header.
-            shot = self.region(layer["x"], layer["y"], layer["w"], min(layer["h"], 200))
-            self.vela.input("key", "Escape")
-            self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"), timeout=5,
-                               what="the center closed")
-            return shot
-
-        hour24 = center()
-        self.write_shell_conf("[clock]\nhours=12\n")
-        time.sleep(1.0)
-        self.assertTrue(center() != hour24, "the notification's time didn't change")
-        self.write_shell_conf("[clock]\nhours=24\n")
-        time.sleep(1.0)
-        self.assertTrue(center() == hour24, "the notification's time didn't come back")
+        with self.input_session() as send:
+            send("key", "super+n", "sleep", 900)
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-notification-center"),
+                               what="the center open")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-notification-center"),
+                               timeout=5, what="the center closed")
         self.check_desktop()
 
     def taskbar_has(self, test):
@@ -191,8 +175,10 @@ class Personalization(ShellChoices):
     def test_start_icon(self):
         # Vela's sail, then a picture (red), the distribution's logo (green,
         # os-release's LOGO= found as a loose file), and the sail again.
-        red = lambda r, g, b: r > 200 and g < 40 and b < 40
-        green = lambda r, g, b: g > 200 and r < 40 and b < 40
+        def red(r, g, b):
+            return r > 200 and g < 40 and b < 40
+        def green(r, g, b):
+            return g > 200 and r < 40 and b < 40
         picture = os.path.join(self.vela.directory, "Pictures", "start.svg")
         with open(picture, "w") as file:
             file.write(square("#ff0000"))
@@ -219,8 +205,10 @@ class Personalization(ShellChoices):
     def test_start_picture_follows_its_file(self):
         # The picture chosen is edited or deleted, Settings writes nothing:
         # the button shows the new image, then the sail.
-        red = lambda r, g, b: r > 200 and g < 40 and b < 40
-        blue = lambda r, g, b: b > 200 and r < 40 and g < 40
+        def red(r, g, b):
+            return r > 200 and g < 40 and b < 40
+        def blue(r, g, b):
+            return b > 200 and r < 40 and g < 40
         picture = os.path.join(self.vela.directory, "Pictures", "start.svg")
         with open(picture, "w") as file:
             file.write(square("#ff0000"))
@@ -274,22 +262,28 @@ class Personalization(ShellChoices):
             file.write("[Desktop Entry]\nType=Application\nName=Pinned Files\nExec=true\nIcon=system-file-manager\n")
         time.sleep(1.0) # the app list sees it
 
-        def middle():
-            layer = self.open_start()
-            # Between the search box (its caret blinks) and the footer.
-            box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
-            shot = self.region(*box)
-            self.close_start()
-            return shot
+        # Keep the same panel open while Settings changes it. Reopening can
+        # compare different entrance/hover frames instead of the pinned apps.
+        self.vela.input("move", 0, 0)
+        layer = self.open_start()
+        # Between the search box (its caret blinks) and the footer.
+        box = (layer["x"], layer["y"] + layer["h"] // 4, layer["w"], layer["h"] // 2)
+        shown = self.settled_region(box)
 
-        shown = middle()
+        # Edge pixels can round differently when Qt redraws the same layout.
+        def matches_pinned(rows):
+            for actual, reference in zip(rows, shown, strict=True):
+                if actual != reference and any(abs(a - b) > 2 for a, b in zip(actual, reference, strict=True)):
+                    return False
+            return True
+
         self.write_shell_conf("[start]\nshowPinned=false\n")
-        time.sleep(1.0)
-        hidden = middle()
-        self.assertTrue(shown != hidden, "Start looks the same with its pinned apps hidden")
+        self.wait_region(box, lambda r: not matches_pinned(r), "Start without its pinned apps")
+        hidden = self.settled_region(box)
+        self.assertFalse(matches_pinned(hidden), "Start looks the same with its pinned apps hidden")
         self.write_shell_conf("[start]\nshowPinned=true\n")
-        time.sleep(1.0)
-        self.assertTrue(middle() == shown, "the pinned apps didn't come back")
+        self.wait_region(box, matches_pinned, "the pinned apps back in Start")
+        self.close_start()
         self.check_desktop()
 
 
@@ -323,30 +317,51 @@ class LockClock(unittest.TestCase):
 
     def time_width(self, hours, size="1920x1080@60"):
         """How wide the lock screen's time is drawn with clock/hours=."""
+        return self.lock_clock(hours, size)[0]
+
+    def lock_clock(self, hours, size="1920x1080@60", theme=None):
+        """The lock screen's time with clock/hours= (and a theme of the
+        session's own): its width and the colors of its text."""
         with Session(size=size, env={"VELA_LOCK": LOCK}) as vela:
             folder = os.path.join(vela.env["XDG_CONFIG_HOME"], "Vela")
             os.makedirs(folder, exist_ok=True)
             with open(os.path.join(folder, "vela-shell.conf"), "w") as file:
                 file.write(f"[clock]\nhours={hours}\n")
+            if theme:
+                themes = os.path.join(vela.env["XDG_CONFIG_HOME"], "vela", "themes")
+                os.makedirs(themes, exist_ok=True)
+                with open(os.path.join(themes, "lock-test.conf"), "w") as file:
+                    file.write(theme)
+                with open(vela.config_path(), "a") as conf:
+                    conf.write("theme=lock-test\n")
             vela.command("lock")
             output = vela.wait_for(lambda s: s["locked"], what="locked").output
 
             width = 0
+            colors = []
+            # The time's box (lock/main.cpp): from 12% of the height, 150
+            # tall (200 expressive); its text is near white over the dimmed
+            # wallpaper (expressive: a light primary, bright in one channel).
+            expressive = theme is not None and "controls-variant=expressive" in theme
+            bottom = 180 if expressive else 130
+
+            def text(color):
+                return max(color) > 200 and sum(color) > 450 if expressive else min(color) > 200
 
             def drawn(_):
-                nonlocal width
+                nonlocal width, colors
                 image = vela.pixels()
-                # The time's box (lock/main.cpp): from 12% of the height, 150
-                # tall; its text is near white over the dimmed wallpaper.
                 top = int(output["h"] * 0.12)
+                colors = [image.at(x, y) for x in range(image.width) for y in range(top + 20, top + bottom, 3)
+                          if text(image.at(x, y))]
                 columns = [x for x in range(image.width)
-                           if any(min(image.at(x, y)) > 200 for y in range(top + 20, top + 130, 3))]
+                           if any(text(image.at(x, y)) for y in range(top + 20, top + bottom, 3))]
                 width = columns[-1] - columns[0] if columns else 0
                 return width > 0
             vela.wait_for(drawn, timeout=10, read_state=False, what="the lock screen's time")
             time.sleep(0.5) # its first frames over
             drawn(None)
-            return width
+            return width, colors
 
     def test_the_lock_screen_follows_the_time_format(self):
         # "1:45 PM" is wider than "13:45" whatever the time: AM or PM after it.
@@ -356,6 +371,19 @@ class LockClock(unittest.TestCase):
         # 300 wide: a 12-hour time at 120 pixels (about 340 wide) would be
         # cut at both sides.
         self.assertLessEqual(self.time_width(12, size="300x700@60"), 300 * 0.9 + 2)
+
+    def test_the_expressive_lock_screen_clock(self):
+        # Vela Expressive's (controls-variant=expressive): the time larger
+        # and bolder, in the accent's primary (the default blue's: a light
+        # blue on the dark wallpaper, not white), still within a narrow
+        # output.
+        theme = "# Lock Test: expressive\nschema-version=1\ncontrols-variant=expressive\n"
+        default = self.time_width(24)
+        width, colors = self.lock_clock(24, theme=theme)
+        self.assertGreater(width, default * 1.2, "the expressive time isn't larger")
+        tinted = [c for c in colors if c[2] - c[0] > 20]
+        self.assertGreater(len(tinted), len(colors) // 2, f"the time isn't in primary: {colors[:8]}")
+        self.assertLessEqual(self.lock_clock(12, size="300x700@60", theme=theme)[0], 300 * 0.9 + 2)
 
 
 if __name__ == "__main__":

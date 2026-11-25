@@ -3,6 +3,8 @@
 
 #include "tray.h"
 
+#include "../../common/trayitem.h"
+
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -65,33 +67,6 @@ QImage decodePixmaps(const QVariant& value)
     }
     argument.endArray();
     return best;
-}
-
-// The ToolTip title: (sa(iiay)ss).
-QString tooltipTitle(const QVariant& value)
-{
-    if (!value.canConvert<QDBusArgument>()) {
-        return {};
-    }
-    const QDBusArgument argument = value.value<QDBusArgument>();
-    QString iconName;
-    QString title;
-    QString description;
-    argument.beginStructure();
-    argument >> iconName;
-    argument.beginArray();
-    while (!argument.atEnd()) {
-        int width = 0;
-        int height = 0;
-        QByteArray bytes;
-        argument.beginStructure();
-        argument >> width >> height >> bytes;
-        argument.endStructure();
-    }
-    argument.endArray();
-    argument >> title >> description;
-    argument.endStructure();
-    return title;
 }
 
 // An icon by name, looked up first in the directory the app gives
@@ -246,7 +221,9 @@ struct TrayModel::Item {
     QString service;
     QString path;
     QString title;
+    QString key; // what the user's choice is saved by: Id, or the title
     QString status;
+    QImage pixmap;
     QString icon; // source for Image
     QString menuPath;
     bool itemIsMenu = false;
@@ -257,6 +234,28 @@ struct TrayModel::Item {
 TrayModel::TrayModel(QObject* parent)
     : QAbstractListModel(parent)
 {
+    connect(this, &QAbstractItemModel::rowsInserted, this, &TrayModel::entriesChanged);
+    connect(this, &QAbstractItemModel::rowsRemoved, this, &TrayModel::entriesChanged);
+    connect(this, &QAbstractItemModel::dataChanged, this, &TrayModel::entriesChanged);
+}
+
+QVariantList TrayModel::entries() const
+{
+    QVariantList result;
+    for (int row = 0; row < rowCount(); ++row) {
+        const Item* item = itemAt(row);
+        if (item->loaded && !item->icon.isEmpty()) {
+            result.append(QVariantMap {
+                { QStringLiteral("row"), row },
+                { QStringLiteral("icon"), item->icon },
+                { QStringLiteral("title"), item->title },
+                { QStringLiteral("key"), item->key },
+                { QStringLiteral("attention"), item->status == QLatin1String("NeedsAttention") },
+                { QStringLiteral("passive"), item->status == QLatin1String("Passive") },
+            });
+        }
+    }
+    return result;
 }
 
 TrayModel::~TrayModel() = default;
@@ -359,9 +358,12 @@ void TrayModel::refresh(Item* item)
         }
         const QVariantMap properties = reply.value();
         item->status = properties.value(QStringLiteral("Status")).toString();
-        item->title = tooltipTitle(properties.value(QStringLiteral("ToolTip")));
+        item->title = vela::tray::tooltipTitle(properties.value(QStringLiteral("ToolTip")));
         if (item->title.isEmpty()) {
             item->title = properties.value(QStringLiteral("Title")).toString();
+        }
+        if (item->key.isEmpty() || vela::tray::hasId(properties)) {
+            item->key = vela::tray::key(properties);
         }
         item->itemIsMenu = properties.value(QStringLiteral("ItemIsMenu")).toBool();
         item->menuPath = properties.value(QStringLiteral("Menu")).value<QDBusObjectPath>().path();
@@ -371,22 +373,35 @@ void TrayModel::refresh(Item* item)
         const bool attention = item->status == QLatin1String("NeedsAttention");
         const QString themePath = properties.value(QStringLiteral("IconThemePath")).toString();
         QString name = properties.value(QLatin1String(attention ? "AttentionIconName" : "IconName")).toString();
-        QImage image = decodePixmaps(properties.value(QLatin1String(attention ? "AttentionIconPixmap" : "IconPixmap")));
+        QImage image;
+        if (name.isEmpty()) {
+            image = decodePixmaps(properties.value(QLatin1String(attention ? "AttentionIconPixmap" : "IconPixmap")));
+        }
         if (attention && name.isEmpty() && image.isNull()) {
             name = properties.value(QStringLiteral("IconName")).toString();
-            image = decodePixmaps(properties.value(QStringLiteral("IconPixmap")));
+            if (name.isEmpty()) image = decodePixmaps(properties.value(QStringLiteral("IconPixmap")));
         }
         if (!name.isEmpty()) {
+            item->pixmap = {};
             item->icon = iconSource(name, themePath);
         } else if (!image.isNull()) {
             const QString key = QString::number(++m_serial);
-            m_pixmaps.insert(key, image);
+            item->pixmap = std::move(image);
             item->icon = QStringLiteral("image://tray/") + key;
         }
         item->loaded = true;
         const int row = rowOf(item);
         Q_EMIT dataChanged(index(row), index(row));
     });
+}
+
+QImage TrayModel::pixmap(const QString& key) const
+{
+    const QString url = QStringLiteral("image://tray/") + key;
+    for (const auto& item : m_items) {
+        if (item->icon == url) return item->pixmap;
+    }
+    return {};
 }
 
 int TrayModel::rowOf(const Item* item) const
@@ -482,10 +497,17 @@ void TrayModel::scroll(int row, int delta)
     }
 }
 
-void TrayModel::requestMenu(int row, int anchorX)
+void TrayModel::requestMenu(int row, int anchorX, bool always)
 {
     Item* item = itemAt(row);
-    if (!item || item->menuPath.isEmpty() || item->menuPath == QLatin1String("/")) {
+    if (!item) {
+        return;
+    }
+    if (item->menuPath.isEmpty() || item->menuPath == QLatin1String("/")) {
+        // No menu of the app's: a right click still gets the shell's entries.
+        if (always) {
+            Q_EMIT menuReady(row, anchorX, {});
+        }
         return;
     }
     QDBusConnection bus = QDBusConnection::sessionBus();
@@ -499,18 +521,19 @@ void TrayModel::requestMenu(int row, int anchorX)
         QStringLiteral("GetLayout"));
     layout << 0 << -1 << QStringList();
     auto* pending = new QDBusPendingCallWatcher(bus.asyncCall(layout), this);
-    connect(pending, &QDBusPendingCallWatcher::finished, this, [this, row, anchorX](QDBusPendingCallWatcher* p) {
-        p->deleteLater();
-        const QDBusMessage reply = p->reply();
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().size() < 2) {
-            return;
-        }
-        const QVariantMap root = parseMenuEntry(reply.arguments().at(1).value<QDBusArgument>());
-        const QVariantList entries = root.value(QStringLiteral("children")).toList();
-        if (!entries.isEmpty()) {
-            Q_EMIT menuReady(row, anchorX, entries);
-        }
-    });
+    connect(
+        pending, &QDBusPendingCallWatcher::finished, this, [this, row, anchorX, always](QDBusPendingCallWatcher* p) {
+            p->deleteLater();
+            const QDBusMessage reply = p->reply();
+            QVariantList entries;
+            if (reply.type() == QDBusMessage::ReplyMessage && reply.arguments().size() >= 2) {
+                const QVariantMap root = parseMenuEntry(reply.arguments().at(1).value<QDBusArgument>());
+                entries = root.value(QStringLiteral("children")).toList();
+            }
+            if (!entries.isEmpty() || always) {
+                Q_EMIT menuReady(row, anchorX, entries);
+            }
+        });
 }
 
 void TrayModel::activateMenuEntry(int row, int entryId)

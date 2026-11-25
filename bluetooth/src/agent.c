@@ -18,6 +18,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "caller.h"
 #include "describe.h"
 #include "log.h"
@@ -128,10 +129,11 @@ void vela_bt_question_resend(struct vela_bt_daemon *d)
 
 int vela_bt_present_questions(struct vela_bt_daemon *d, sd_bus_message *call)
 {
-    if (!d->presenters && sd_bus_track_new(d->session, &d->presenters, NULL, NULL) < 0) {
-        return -ENOMEM;
+    int r = d->presenters ? 0 : sd_bus_track_new(d->session, &d->presenters, NULL, NULL);
+    if (r < 0) {
+        return r;
     }
-    int r = sd_bus_track_add_sender(d->presenters, call);
+    r = sd_bus_track_add_sender(d->presenters, call);
     if (r < 0) {
         return r;
     }
@@ -203,34 +205,24 @@ static int on_expired(sd_event_source *source, uint64_t usec, void *data)
 static void ask(struct vela_bt_daemon *d, struct vela_bt_device *device, enum vela_bt_question_kind kind,
     sd_bus_message *request, uint32_t passkey, uint16_t entered, const char *pin, const char *uuid)
 {
-    struct vela_bt_question *question = calloc(1, sizeof(*question));
-    if (!question) {
-        if (request) {
-            sd_bus_reply_method_error(request, &SD_BUS_ERROR_MAKE_CONST(REJECTED, "Rejected"));
-        }
-        return;
-    }
+    struct vela_bt_question *question = VELA_NEW(struct vela_bt_question);
     question->id = ++d->question_id;
     question->kind = kind;
-    question->device = strdup(device->path);
-    question->name = strdup(device->name ? device->name : "");
-    question->icon = strdup(device->icon && *device->icon ? device->icon : "bluetooth");
-    question->address = strdup(device->address ? device->address : "");
-    question->uuid = strdup(uuid ? uuid : "");
+    question->device = vela_strdup(device->path);
+    question->name = vela_strdup(device->name ? device->name : "");
+    question->icon = vela_strdup(device->icon && *device->icon ? device->icon : "bluetooth");
+    question->address = vela_strdup(device->address ? device->address : "");
+    question->uuid = vela_strdup(uuid ? uuid : "");
     question->unsolicited = !(device->operation && device->operation->kind == VELA_BT_ADD);
     question->expires = vela_bt_now() + QUESTION_US;
     question->passkey = passkey;
     question->entered = entered;
     snprintf(question->pin, sizeof(question->pin), "%s", pin ? pin : "");
     question->request = sd_bus_message_ref(request);
-    if (!question->device || !question->name || !question->icon || !question->address || !question->uuid) {
-        if (request) {
-            sd_bus_reply_method_error(request, &SD_BUS_ERROR_MAKE_CONST(REJECTED, "Rejected"));
-        }
-        free_question(question);
-        return;
+    if (sd_event_add_time(d->event, &question->timer, CLOCK_MONOTONIC, question->expires, 0, on_expired, d) < 0) {
+        // It still ends with BlueZ's Cancel or the user's answer.
+        vela_bt_log("question timer: failed");
     }
-    sd_event_add_time(d->event, &question->timer, CLOCK_MONOTONIC, question->expires, 0, on_expired, d);
     d->question = question;
     vela_bt_log("question %llu: %s for %s%s", (unsigned long long)question->id, vela_bt_question_kind_name(kind),
         device->path, question->unsolicited ? " (unsolicited)" : "");

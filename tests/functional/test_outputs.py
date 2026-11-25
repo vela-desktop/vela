@@ -88,6 +88,80 @@ class Outputs(unittest.TestCase):
         self.vela.command("test-output remove HEADLESS-2")
         self.vela.wait_for(lambda s: len(s["outputs"]) == 1, what="one output again")
 
+    def test_unplugging_the_middle_output_closes_the_gap(self):
+        state = self.add_second()
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="three outputs")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        self.assertEqual(third["x"], second["x"] + second["w"])
+
+        self.vela.command("test-output remove HEADLESS-2")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2 and any(
+            o["name"] == "HEADLESS-3" and o["x"] == second["x"] for o in s["outputs"]),
+            what="third output fills the gap left by the middle one")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        self.assertEqual(third["y"], 0)
+
+    def test_resize_follows_the_output_when_the_middle_monitor_is_unplugged(self):
+        self.add_second()
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="three outputs")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        window = self.vela.open_window(300, 200)
+        frame = self.vela.state().window(window)
+        self.vela.input("move", frame["x"] + 50, frame["y"] + 50, "keydown", "super", "down",
+                        "sleep", "50", "move", third["x"] + 200, third["y"] + 200,
+                        "sleep", "50", "up", "keyup", "super")
+        state = self.vela.wait_for(lambda s: s.window(window)["output"] == third["name"])
+        frame = state.window(window)
+        grab_x, grab_y = frame["x"] + frame["w"] - 20, frame["y"] + frame["h"] - 20
+        with self.vela.input_session() as send:
+            send("move", grab_x, grab_y, "keydown", "super", "down", "right",
+                 "move", grab_x + 30, grab_y + 20)
+            try:
+                self.vela.wait_for(lambda s: s.window(window)["w"] == frame["w"] + 30)
+                self.vela.command("test-output remove HEADLESS-2")
+                moved = self.vela.wait_for(lambda s: len(s["outputs"]) == 2
+                                           and s.window(window)["x"] < frame["x"])
+                dx = moved.window(window)["x"] - frame["x"]
+                send("rel", 30, 20)
+                self.vela.wait_for(lambda s: s.window(window)["w"] == frame["w"] + 60
+                                   and s.window(window)["x"] == frame["x"] + dx,
+                                   what="the ongoing resize continues from the translated window")
+            finally:
+                send("up", "right", "keyup", "super")
+
+    def test_resize_continues_when_only_the_pointer_moves_on_hotplug(self):
+        self.add_second()
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="three outputs")
+        third = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        window = self.vela.open_window(300, 200)
+        frame = self.vela.state().window(window)
+        self.vela.input("move", frame["x"] + 50, frame["y"] + 50, "keydown", "super", "down",
+                        "sleep", "50", "move", 150, 200, "sleep", "50", "up", "keyup", "super")
+        state = self.vela.wait_for(lambda s: s.window(window)["x"] == 100, what="the window near the left edge")
+        frame = state.window(window)
+        grab_x, grab_y = frame["x"] + frame["w"] - 20, frame["y"] + frame["h"] - 20
+        target_x = third["x"] + 100
+        width = frame["w"] + target_x - grab_x
+        with self.vela.input_session() as send:
+            send("move", grab_x, grab_y, "keydown", "super", "down", "right", "move", target_x, grab_y)
+            try:
+                wide = self.vela.wait_for(lambda s: s.window(window)["w"] == width,
+                                          what="the resize pointer on the third output")
+                self.assertEqual(wide.window(window)["output"], "HEADLESS-1")
+                self.vela.command("test-output remove HEADLESS-2")
+                self.vela.wait_for(lambda s: any(o["name"] == third["name"] and o["x"] == 1920 for o in s["outputs"]),
+                                   what="the pointer's output shifts left")
+                send("rel", 30, 0)
+                self.vela.wait_for(lambda s: s.window(window)["w"] == width + 30
+                                   and s.window(window)["x"] == frame["x"],
+                                   what="the resize continues after only the pointer moves")
+            finally:
+                send("up", "right", "keyup", "super")
+
     def test_windows_are_rescued_and_come_back(self):
         state = self.add_second()
         second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
@@ -136,9 +210,57 @@ class Outputs(unittest.TestCase):
                         "move", 1200, 300, "sleep", "100", "up", "keyup", "super")
         self.vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2", what="on the second output")
         self.vela.keys("super+up")
-        state = self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
+        self.vela.wait_for(lambda s: s.window(window)["maximized"], what="maximized")
+        # The state flag precedes the client's configure acknowledgement and
+        # resized buffer. Check the final geometry after those have arrived.
+        state = self.vela.wait_for(lambda s: s.window(window)["w"] == second["w"],
+                                   what="the maximized client's resized buffer")
         maximized = state.window(window)
         self.assertEqual((maximized["x"], maximized["w"]), (960, 960))
+
+    def test_qhd_maximize_and_edge_snap_use_its_own_geometry(self):
+        # The resolutions from #301, at 100% scale and with distinct positions.
+        self.vela.command("test-output add 1920x1200")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="the laptop panel")
+        self.vela.randr("--output", "HEADLESS-2", "--scale", "1")
+        self.vela.command("test-output add 2560x1440")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 3, what="the QHD output")
+        qhd = next(o for o in state["outputs"] if o["name"] == "HEADLESS-3")
+        x, y = qhd["x"], qhd["y"]
+        self.assertEqual((qhd["w"], qhd["h"]), (2560, 1440))
+
+        def drag(window, target_x, target_y, preview=None):
+            frame = self.vela.state().window(window)
+            grab_x, grab_y = frame["x"] + 50, frame["y"] + 50
+            with self.vela.input_session() as send:
+                send("move", grab_x, grab_y, "keydown", "super", "down", "sleep", "50",
+                     "move", x + 700, y + 700, "sleep", "50", "move", target_x, target_y)
+                try:
+                    if preview is not None:
+                        self.vela.wait_for(lambda s: s["snapPreview"] == list(preview),
+                                           what=f"the snap preview fills QHD geometry {preview}")
+                finally:
+                    send("up", "keyup", "super")
+
+        def check(window, expected):
+            self.vela.wait_for(lambda s: tuple(s.window(window)[k] for k in ("x", "y", "w", "h")) == expected,
+                               what=f"window fills QHD geometry {expected}")
+
+        window = self.vela.open_window(300, 200)
+        drag(window, x + 900, y + 700)
+        self.vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-3")
+        self.vela.keys("super+up")
+        check(window, (x, y, 2560, 1440))
+
+        for target, expected in (
+            ((x + 2, y + 700), (x, y, 1280, 1440)),
+            ((x + 2557, y + 700), (x + 1280, y, 1280, 1440)),
+            ((x + 1280, y + 2), (x, y, 2560, 1440)),
+        ):
+            with self.subTest(target=target):
+                window = self.vela.open_window(300, 200)
+                drag(window, *target, preview=expected)
+                check(window, expected)
 
     def test_above_layout_normalizes_origin_without_moving_window_to_other_monitor(self):
         # Reproduces Isaac's original topology: secondary 1920x1080 located
@@ -170,17 +292,30 @@ class Outputs(unittest.TestCase):
                          (before["x"], before["y"]))
         self.assertEqual(state.window(window)["output"], "HEADLESS-1")
 
-    def settings_preview(self):
+    def settings_preview(self, disable=None):
         executable = os.path.join(BUILD, "settings", "vela-displays-test")
         if not os.path.exists(executable):
             self.skipTest("native Settings backend test client not built")
-        process = subprocess.Popen([executable, "--preview-client", self.vela.display],
-                                   env=self.vela.client_env, stdout=subprocess.DEVNULL,
-                                   stderr=self.vela.log)
+        command = [executable, "--preview-client", self.vela.display]
+        if disable:
+            command.append(disable)
+        process = subprocess.Popen(command, env=self.vela.client_env,
+                                   stdout=subprocess.DEVNULL, stderr=self.vela.log)
         self.vela.clients.append(process)
-        self.vela.wait_for(lambda s: s.output["scale"] == 1.5,
-                           what="native Settings preview applied")
+        if disable:
+            self.vela.wait_for(lambda s: any(o["name"] == disable and not o["enabled"] for o in s["outputs"]),
+                               what="native Settings disable preview applied")
+        else:
+            self.vela.wait_for(lambda s: s.output["scale"] == 1.5,
+                               what="native Settings preview applied")
         return process
+
+    def test_unplugging_the_disabled_output_cancels_its_preview(self):
+        self.add_second()
+        settings = self.settings_preview(disable="HEADLESS-2")
+        self.vela.command("test-output remove HEADLESS-2")
+        self.assertEqual(settings.wait(timeout=5), 0)
+        self.assertEqual([o["name"] for o in self.vela.state()["outputs"]], ["HEADLESS-1"])
 
     def test_settings_crash_reverts_native_preview(self):
         before = self.vela.state().output

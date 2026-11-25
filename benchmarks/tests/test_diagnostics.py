@@ -10,7 +10,7 @@ import unittest
 
 from vela_bench import BenchError
 from vela_bench.archive import atomic_json, read_json
-from vela_bench.diagnostics import export_report, parse_probe, pilot_results, probe_command, run_probe
+from vela_bench.diagnostics import export_report, parse_probe, pilot_results, probe_command, run_probe, stop_instrument
 from vela_bench.host import Layout
 
 
@@ -34,6 +34,23 @@ def encode(rows):
 
 
 class PresentationDiagnostics(unittest.TestCase):
+    def test_collected_transient_cleanup_requires_missing_and_inactive_readbacks(self):
+        for code, active, loaded, accepted in ((5, 'inactive', 'not-found', True),
+                (5, 'inactive', 'loaded', False), (5, 'failed', 'not-found', False),
+                (5, 'active', 'not-found', False), (1, 'inactive', 'not-found', False)):
+            with self.subTest(code=code, active=active, loaded=loaded):
+                def run(argv, **kwargs):
+                    if 'stop' in argv:
+                        self.assertFalse(kwargs['check'])
+                        return SimpleNamespace(returncode=code, stdout='', stderr='not loaded')
+                    return SimpleNamespace(returncode=0, stdout=active if '--property=ActiveState' in argv else loaded)
+                host = SimpleNamespace(run=run)
+                if accepted:
+                    stop_instrument(host, {'uid':1001, 'gid':1001}, Layout(), 'calibration')
+                else:
+                    with self.assertRaises(BenchError):
+                        stop_instrument(host, {'uid':1001, 'gid':1001}, Layout(), 'calibration')
+
     def test_statistics_use_matching_submission_clock_and_explicit_client_scope(self):
         result = parse_probe(encode(stream()), frames=3)
         self.assertEqual(result["submission_to_presentation_ms"]["p95"], 3)
@@ -52,15 +69,33 @@ class PresentationDiagnostics(unittest.TestCase):
 
     def test_truncated_duplicate_missing_or_forged_feedback_never_produces_statistics(self):
         mutations = []
-        rows = stream(); rows[-1]["complete"] = False; mutations.append(rows)
-        rows = stream(); rows[-1]["presented"] = 2; mutations.append(rows)
-        rows = stream(); del rows[3]; mutations.append(rows)
-        rows = stream(); rows.insert(4, copy.deepcopy(rows[3])); mutations.append(rows)
-        rows = stream(); rows[3]["commit_clock_ns"] += 1; mutations.append(rows)
-        rows = stream(); rows[3]["presentation_ns"] = 0; mutations.append(rows)
-        rows = stream(); rows[2]["frame"] = True; mutations.append(rows)
-        rows = stream(); rows[1]["scope"] = "desktop-latency"; mutations.append(rows)
-        rows = stream(); rows[0]["presentation_clock_id"] = -1; mutations.append(rows)
+        rows = stream()
+        rows[-1]["complete"] = False
+        mutations.append(rows)
+        rows = stream()
+        rows[-1]["presented"] = 2
+        mutations.append(rows)
+        rows = stream()
+        del rows[3]
+        mutations.append(rows)
+        rows = stream()
+        rows.insert(4, copy.deepcopy(rows[3]))
+        mutations.append(rows)
+        rows = stream()
+        rows[3]["commit_clock_ns"] += 1
+        mutations.append(rows)
+        rows = stream()
+        rows[3]["presentation_ns"] = 0
+        mutations.append(rows)
+        rows = stream()
+        rows[2]["frame"] = True
+        mutations.append(rows)
+        rows = stream()
+        rows[1]["scope"] = "desktop-latency"
+        mutations.append(rows)
+        rows = stream()
+        rows[0]["presentation_clock_id"] = -1
+        mutations.append(rows)
         for rows in mutations:
             with self.subTest(rows=rows), self.assertRaises(BenchError):
                 parse_probe(encode(rows), frames=3)

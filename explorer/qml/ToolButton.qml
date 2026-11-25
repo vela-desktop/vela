@@ -11,15 +11,29 @@ import Vela.Controls
 // button: a click, Space or Enter activate it; Tab gives it the focus and a
 // ring, a click doesn't, so the keyboard stays with the view. Its color fades
 // between states (Fill).
+//
+// Expressive: M3's extra small buttons (32 high: the icon button with 6 on
+// each side, with text 16), round, state layers of on surface variant (M3's
+// standard icon button), the pressed shape (small, 8) and, `checked`, a
+// square (medium, 12) secondary container (Vela's selected look), the
+// corners morphing on the fast spatial curve; the label in Medium; the
+// tooltip M3's plain one.
 T.ToolButton {
     id: button
     property alias usable: button.enabled
+    property string styleVariant: Theme.controlsVariant
+    readonly property bool expressive: styleVariant === "expressive"
+    readonly property real stateLayer: down ? Theme.statePressed : hovered ? Theme.stateHover : 0
     property bool menu: false // with the little arrow: opens a menu
+    // In the corner of a rounder shape (a tab): its radius and how far
+    // inside it the button is, for Theme.nested.
+    property real outerRadius: 0
+    property real outerGap: 0
     property string tooltip
 
     implicitWidth: implicitContentWidth + leftPadding + rightPadding
     implicitHeight: 32
-    leftPadding: text !== "" ? 10 : 8
+    leftPadding: expressive ? (text !== "" ? 16 : 6) : text !== "" ? 10 : 8
     rightPadding: leftPadding
     spacing: 8
     focusPolicy: Qt.TabFocus
@@ -42,8 +56,19 @@ T.ToolButton {
     }
 
     background: Fill {
-        color: button.down ? Theme.subtlePressed : button.hovered || button.checked ? Theme.subtleHover : Theme.subtleRest
-        FocusRing { visible: button.visualFocus }
+        radius: !button.expressive ? Theme.nested(button.outerRadius, button.outerGap, Theme.radius)
+            : button.down ? Theme.shapeSmall
+            : button.checked ? Theme.shapeMedium
+            : height / 2
+        color: button.expressive
+            ? (button.checked ? Theme.mix(Theme.secondaryContainer, Theme.secondaryContainerText, button.stateLayer)
+                              : Qt.rgba(Theme.surfaceVariantText.r, Theme.surfaceVariantText.g, Theme.surfaceVariantText.b, button.stateLayer))
+            : button.down ? Theme.subtlePressed : button.hovered || button.checked ? Theme.subtleHover : Theme.subtleRest
+        Behavior on radius {
+            enabled: button.expressive && Theme.motion > 0
+            Spatial { speed: "fast"; rest: Theme.fast }
+        }
+        FocusRing { visible: button.visualFocus; expressive: button.expressive }
     }
 
     contentItem: Item {
@@ -63,8 +88,9 @@ T.ToolButton {
                 visible: button.text !== ""
                 anchors.verticalCenter: parent.verticalCenter
                 text: button.text
-                color: Theme.text
+                color: button.expressive && button.checked ? Theme.secondaryContainerText : Theme.text
                 font.pixelSize: Theme.fontBody
+                font.weight: button.expressive ? Font.Medium : Font.Normal
             }
             Chevron {
                 visible: button.menu
@@ -97,15 +123,15 @@ T.ToolButton {
         z: 1000
         width: tipText.implicitWidth + 16
         height: tipText.implicitHeight + 10
-        radius: Theme.radius
-        color: Theme.flyout
-        border.width: 1
+        radius: button.expressive ? Theme.shapeExtraSmall : Theme.radius
+        color: button.expressive ? Theme.inverseSurface : Theme.flyout
+        border.width: button.expressive ? 0 : 1
         border.color: Theme.stroke
         Text {
             id: tipText
             anchors.centerIn: parent
             text: button.tooltip
-            color: Theme.text
+            color: button.expressive ? Theme.inverseSurfaceText : Theme.text
             font.pixelSize: Theme.fontCaption
         }
     }

@@ -26,7 +26,6 @@ Window {
         }
         return null
     }
-    property bool capsLock: false
     property bool showDetails: false
 
     function answer() {
@@ -418,19 +417,6 @@ Window {
                                     Accessible.name: Request.promptText !== "" ? Request.promptText : qsTr("Password")
                                     onAccepted: window.answer()
                                 onActiveFocusChanged: if (activeFocus) Qt.callLater(window.reveal, fieldRow)
-                                    // Caps Lock: an uppercase letter without Shift (or the
-                                    // opposite). Qt doesn't tell the key's state.
-                                    Keys.onPressed: event => {
-                                        const t = event.text
-                                        if (t.length === 1 && t.toUpperCase() !== t.toLowerCase()) {
-                                            const upper = t === t.toUpperCase()
-                                            const shift = (event.modifiers & Qt.ShiftModifier) !== 0
-                                            window.capsLock = upper !== shift
-                                        } else if (event.key === Qt.Key_CapsLock) {
-                                            window.capsLock = !window.capsLock
-                                        }
-                                        event.accepted = false
-                                    }
                                 }
                                 // Its beats in twelfths of `fast`: 270 ms at Vela's
                                 // speed, scaled with every other duration.
@@ -469,7 +455,8 @@ Window {
                             Text {
                                 textFormat: Text.PlainText
                                 width: parent.width
-                                visible: window.capsLock && !Request.echo && field.activeFocus
+                                // The keyboard's real state (capslock.h).
+                                visible: Request.capsLock && !Request.echo && field.activeFocus
                                 text: qsTr("Caps Lock is on.")
                                 color: Theme.caution
                                 font.pixelSize: Theme.fontCaption

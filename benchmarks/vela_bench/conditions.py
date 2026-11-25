@@ -345,8 +345,9 @@ def brightness_snapshot(host, primary, sysfs=Path("/sys")):
         return {'backend': 'sysfs-backlight', 'device': path.name, 'value': value, 'maximum': maximum,
                 'connector': physical.name, 'edid_sha256': edid}
     ddc = physical / "ddc"
-    if ddc.exists() and re.fullmatch(r"i2c-[0-9]+", ddc.resolve().name):
-        bus = int(ddc.resolve().name.removeprefix("i2c-"))
+    endpoint = ddc.resolve() if ddc.exists() else None
+    if endpoint is not None and re.fullmatch(r"i2c-[0-9]+", endpoint.name):
+        bus = int(endpoint.name.removeprefix("i2c-"))
         try:
             raw, attempts = read_ddc_brightness(host, bus)
         except BenchError as exc:
@@ -354,35 +355,65 @@ def brightness_snapshot(host, primary, sysfs=Path("/sys")):
         match = re.fullmatch(r"VCP\s+10\s+C\s+(\d+)\s+(\d+)\s*", raw.strip())
         if not match or not 0 <= int(match[1]) <= int(match[2]) <= 65535 or int(match[2]) == 0:
             raise BenchError("Primary monitor has no verified DDC brightness range")
-        if (physical / "edid").read_bytes() != raw_edid or (physical / "status").read_text().strip() != "connected":
+        if ((physical / "edid").read_bytes() != raw_edid or
+                (physical / "status").read_text().strip() != "connected" or ddc.resolve() != endpoint):
             raise BenchError("Primary monitor changed during DDC readiness checks")
         return {"backend": "ddcutil-vcp10", "bus": bus, "value": int(match[1]), "maximum": int(match[2]),
                 "connector": physical.name, "edid_sha256": edid, "read_attempts": attempts}
     raise BenchError("No verified primary brightness control; no software dimming substitute selected")
 
 
-def set_brightness(host, snapshot, value, sysfs=Path("/sys")):
+def set_brightness(host, snapshot, value, sysfs=Path("/sys"), *, retry_ddc_write=False):
     if type(value) is not int or not 0 <= value <= snapshot["maximum"]:
         raise BenchError("Brightness outside recorded hardware range")
-    # Rediscover the endpoint and EDID before every write, including recovery.
-    current = brightness_snapshot(host, snapshot["connector"].split("-", 1)[1], sysfs)
-    for key in ("backend", "connector", "edid_sha256", "maximum", "bus", "device"):
-        if current.get(key) != snapshot.get(key):
-            raise BenchError("Brightness endpoint identity changed; refusing hardware write")
+
+    def read_current():
+        current = brightness_snapshot(host, snapshot["connector"].split("-", 1)[1], sysfs)
+        for key in ("backend", "connector", "edid_sha256", "maximum", "bus", "device"):
+            if current.get(key) != snapshot.get(key):
+                raise BenchError("Brightness endpoint identity changed")
+        return current
+
+    current = read_current()
     # A verified read is sufficient when the panel is already at its target.
     # In particular, failed startup before configuration needs no DDC write.
     if current["value"] == value:
         return current
     if snapshot["backend"] == "ddcutil-vcp10":
-        try:
-            host.run([*DDC_COMMAND, "--bus", str(snapshot["bus"]), "setvcp", "10", str(value)], timeout=5)
-        except BenchError as exc:
-            raise BenchError(f"DDC brightness write failed on bus {snapshot['bus']}: {exc}") from exc
+        bus = snapshot["bus"]
+        command = [*DDC_COMMAND, "--bus", str(bus), "setvcp", "10", str(value)]
+        attempts = 2 if retry_ddc_write else 1
+        for attempt in range(attempts):
+            try:
+                host.run(command, timeout=5)
+            except BenchError as exc:
+                failure = f"DDC brightness write failed on bus {bus}: {exc}"
+                if not retry_ddc_write or not isinstance(exc, HostOperationError):
+                    raise BenchError(failure) from exc
+                operation = exc.operation
+                message = f"DDC communication failed for monitor on bus /dev/i2c-{bus}"
+                output_lines = (operation["stdout"] + "\n" + operation["stderr"]).splitlines()
+                lost_communication = operation["returncode"] == 1 and message in output_lines
+                if not lost_communication and operation["timeout_seconds"] is None:
+                    raise BenchError(failure) from exc
+                # The monitor may have applied the absolute value before the
+                # command failed. Verify identity and value before retrying.
+                time.sleep(.3)
+                try:
+                    current = read_current()
+                except (BenchError, OSError) as read_error:
+                    raise BenchError(f"{failure}; DDC read-back: {read_error}") from read_error
+                if current["value"] == value:
+                    return current
+                if attempt + 1 == attempts:
+                    raise BenchError(failure) from exc
+            else:
+                break
     else:
         path = sysfs / "class/backlight" / snapshot["device"] / "brightness"
         path.write_text(str(value))
     for _ in range(3):
-        current = brightness_snapshot(host, snapshot["connector"].split("-", 1)[1], sysfs)
+        current = read_current()
         if current["value"] == value:
             return current
         time.sleep(.1)
@@ -427,7 +458,7 @@ def greeter_outputs(host, layout, greeter, *, activate=False):
             return normalized_outputs(raw, "plasma")
         except OutputsUnavailable as exc:
             if time.monotonic() >= deadline:
-                raise BenchError(f"Greeter snapshot on tty{greeter['vt']}: {exc}; output announcement deadline expired") from exc
+                raise OutputsUnavailable(f"Greeter snapshot on tty{greeter['vt']}: {exc}; output announcement deadline expired") from exc
             time.sleep(.2)
 
 
@@ -436,6 +467,8 @@ def snapshot_conditions(host, layout, sessions, *, activate=False):
     outputs = greeter_outputs(host, layout, greeter, activate=activate)
     profile = desired_profile(outputs)
     return {"schema": 1, "source": "declared-wayland-greeter", "outputs": outputs, "profile": profile,
+            "greeter": {"uid": greeter['uid'], "gid": greeter['gid'],
+                        "account": pwd.getpwuid(greeter['uid']).pw_name},
             "output_identities": output_identities(outputs),
             "brightness": brightness_snapshot(host, profile["primary"]), "power_profile": power_snapshot(host),
             "power_sources": power_sources()}
@@ -514,6 +547,13 @@ def restore_conditions(host, layout, snapshot, get_sessions):
         result["components"]["outputs"] = "failed"
         result["errors"].append("Output restoration: " + str(exc))
         result["output_failure_stage"] = output_stage
+        # The active-VT announcement deadline can expire after greeter restart.
+        # A second attempt must still rediscover and validate exact identities
+        # and modes before applying anything. Other query/read-back failures
+        # remain ineligible for a restart.
+        if isinstance(exc, OutputsUnavailable) and output_stage == 'greeter-query':
+            result['output_restart_eligible'] = True
+            result['output_restart_reason'] = 'output-announcement-deadline'
         if isinstance(exc, HostOperationError):
             result["output_failed_operation"] = exc.operation
             try:
@@ -528,7 +568,7 @@ def restore_conditions(host, layout, snapshot, get_sessions):
                 and isinstance(failure, dict) and failure.get("schema") == 1
                 and failure.get("event") == "output-configuration-failed"
                 and failure.get("stage") == "kscreen-set-config")
-    for name, operation in (("brightness", lambda: set_brightness(host, snapshot["brightness"], snapshot["brightness"]["value"])),
+    for name, operation in (("brightness", lambda: set_brightness(host, snapshot["brightness"], snapshot["brightness"]["value"], retry_ddc_write=True)),
                             ("power_profile", lambda: set_power(host, snapshot["power_profile"]))):
         try:
             operation()

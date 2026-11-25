@@ -170,7 +170,8 @@ static void pointerButton(int code, int pressed)
 static int setupKeyboard(void)
 {
     struct xkb_context* context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-    struct xkb_rule_names names = { .rules = "evdev", .model = "pc105", .layout = "us" };
+    const char *layout = getenv("VELA_TEST_XKB_LAYOUT");
+    struct xkb_rule_names names = { .rules = "evdev", .model = "pc105", .layout = layout ? layout : "us" };
     keymap = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
     if (!keymap) {
         fprintf(stderr, "vela-input: can't create the keyboard layout\n");
@@ -367,7 +368,7 @@ static int runActions(int count, char** words)
             ok = pressCombo(arg1);
             ++i;
         } else if (!strcmp(action, "keycode") && arg1) {
-            char* end;
+            char *end;
             long code = strtol(arg1, &end, 10);
             if (!*arg1 || *end || code < 1 || code > KEY_MAX) {
                 fprintf(stderr, "vela-input: invalid evdev keycode\n");

@@ -29,6 +29,7 @@
 
 #include <linux/rfkill.h>
 
+#include <cstdio>
 #include <cstring>
 
 namespace {
@@ -94,6 +95,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
     int restartWindowMs = 0; // bounded retry-window tests
     bool stoppedBeingVisible = false; // the test pressed "Stop being visible"
     QString daemonName; // its unique name: signals of an earlier daemon don't count
+    QByteArray daemonLog; // its stderr, when startDaemon() was asked to keep it
     QString mouse;
     QString headset;
     QString keyboard;
@@ -186,6 +188,16 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         QStringList writes;
         fake->run([&] { writes = fake->writes; });
         return writes;
+    }
+
+    bool pendingPower(bool on)
+    {
+        bool pending = false;
+        fake->run([&] {
+            const auto& adapter = fake->adapters[hci0];
+            pending = adapter.powerPending && adapter.pendingOn == on;
+        });
+        return pending;
     }
 
     bool fromDaemon() const { return calledFromDBus() && message().service() == daemonName; }
@@ -284,11 +296,12 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         return indexes;
     }
 
-    bool startDaemon()
+    bool startDaemon(const QMap<QString, QString>& extra = {}, bool keepLog = false)
     {
         // The last test's signals may still be queued here (blocking calls
         // don't process events): from now on they don't count.
         daemonName.clear();
+        daemonLog.clear();
         operations.clear();
         asked.clear();
         questionChanges.clear();
@@ -308,8 +321,11 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         if (restartWindowMs > 0) {
             environment.insert(QStringLiteral("VELA_BT_RESTART_WINDOW_MS"), QString::number(restartWindowMs));
         }
+        for (auto it = extra.begin(); it != extra.end(); ++it) {
+            environment.insert(it.key(), it.value());
+        }
         daemon.setProcessEnvironment(environment);
-        daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+        daemon.setProcessChannelMode(keepLog ? QProcess::SeparateChannels : QProcess::ForwardedErrorChannel);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
         if (!daemon.waitForStarted()) {
             return false;
@@ -321,6 +337,16 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         daemonName = bus.interface()->serviceOwner(service);
         // As Vela's UI does: from now on the question signals come here.
         return !daemonName.isEmpty() && errorOf(call(QStringLiteral("Questions"))).isEmpty();
+    }
+
+    // The daemon's stderr so far (startDaemon with keepLog), still shown
+    // on the test's own.
+    QString logged()
+    {
+        const QByteArray more = daemon.readAllStandardError();
+        std::fwrite(more.constData(), 1, size_t(more.size()), stderr);
+        daemonLog += more;
+        return QString::fromUtf8(daemonLog);
     }
 
     int stopDaemon()
@@ -1043,6 +1069,59 @@ private slots:
         QCOMPARE(fakeWrites().count(QStringLiteral("/org/bluez/hci0 Powered=true")), 4);
     }
 
+    void powerReversalRetriesBusyWithoutTrustingStaleState_data()
+    {
+        QTest::addColumn<bool>("initialPower");
+        QTest::newRow("off-then-on") << true;
+        QTest::newRow("on-then-off") << false;
+    }
+
+    void powerReversalRetriesBusyWithoutTrustingStaleState()
+    {
+        QFETCH(bool, initialPower);
+        fake->run([&] {
+            fake->setPowered(hci0, initialPower);
+            auto& adapter = fake->adapters[hci0];
+            adapter.busyWhilePending = true;
+            adapter.powerDelayMs = -1; // hold each accepted Set until explicitly released
+        });
+        QTRY_COMPARE(adapterInUse().value(QStringLiteral("powered")).toBool(), initialPower);
+
+        const QString firstWrite = QStringLiteral("/org/bluez/hci0 Powered=")
+            + (initialPower ? QStringLiteral("false") : QStringLiteral("true"));
+        const QString reverseWrite = QStringLiteral("/org/bluez/hci0 Powered=")
+            + (initialPower ? QStringLiteral("true") : QStringLiteral("false"));
+
+        QDBusPendingCall first = start(QStringLiteral("SetPowered"), { !initialPower });
+        QTRY_VERIFY(fakeWrites().contains(firstWrite));
+        QVERIFY(pendingPower(!initialPower));
+
+        QDBusPendingCall reversal = start(QStringLiteral("SetPowered"), { initialPower });
+        QCOMPARE(errorOf(first), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
+        QTRY_VERIFY(fakeWrites().contains(reverseWrite)); // first attempt returns Busy
+
+        // An unrelated adapter update must not complete a reversal using
+        // the cached state from before the first power request.
+        fake->run([&] { fake->setDiscoverableOutside(hci0, true); });
+        QTest::qWait(550); // beyond the first 400 ms retry
+        QVERIFY(pendingPower(!initialPower));
+        QVERIFY2(!reversal.isFinished(), "reversal replied before BlueZ accepted its Set");
+
+        // Release the original transition; the newest Set can now be
+        // accepted, but must still wait for its own Powered change.
+        fake->run([&] { fake->completePendingPower(hci0); });
+        QTRY_VERIFY(pendingPower(initialPower));
+        QVERIFY2(!reversal.isFinished(), "reversal replied before its Powered change");
+        fake->run([&] { fake->completePendingPower(hci0); });
+
+        QCOMPARE(errorOf(reversal, 10000), QString());
+        QTRY_COMPARE(adapterInUse().value(QStringLiteral("powered")).toBool(), initialPower);
+        bool physical = !initialPower;
+        fake->run([&] { physical = fake->adapters[hci0].powered; });
+        QCOMPARE(physical, initialPower);
+        QVERIFY(fakeWrites().count(reverseWrite) >= 2);
+    }
+
     void hardBlockIsReported()
     {
         fake->run([this] { fake->setPowered(hci0, false); });
@@ -1402,6 +1481,80 @@ private slots:
         QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
         // Free again.
         QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(mouse), false })), QString());
+    }
+
+    // ------------------------- event sources that fail (point 2b of the
+    // allocation policy), through compositor/tests/sd_event_fail_preload.c --
+
+#ifdef VELA_SD_EVENT_FAIL_PRELOAD
+    // The daemon again, ready as init() leaves it, with `failing` sources
+    // and its log kept: each test checks the line of the source that failed,
+    // which the same outcome with the source would not show.
+    void restartFailing(const QString& failing)
+    {
+        QCOMPARE(stopDaemon(), 0);
+        QVERIFY(startDaemon({ { QStringLiteral("LD_PRELOAD"), QStringLiteral(VELA_SD_EVENT_FAIL_PRELOAD) },
+                                { QStringLiteral("VELA_TEST_SD_EVENT_FAIL"), failing } },
+            true));
+        QTRY_COMPARE(devices().size(), 3);
+        QTRY_VERIFY(property(QStringLiteral("Active")).toBool());
+        QTRY_VERIFY(velaIsTheDefaultAgent());
+        QCOMPARE(errorOf(call(QStringLiteral("PresentQuestions"))), QString());
+    }
+#endif
+
+    // Without its expiry timer, a question still ends with its answer.
+    void questionWithoutItsTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        restartFailing(QStringLiteral("time_after=55000000")); // its 60 s expiry
+        onDevice(mouse, [](FakeBluez::Device& device) {
+            device.method = FakeBluez::Device::Confirm;
+            device.passkey = 4321;
+        });
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
+        const Asked question = nextQuestion(0);
+        QCOMPARE(question.kind(), QStringLiteral("confirm-passkey"));
+        QTRY_VERIFY(logged().contains(QStringLiteral("vela-bluetooth: question timer: failed")));
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
+#endif
+    }
+
+    // Without its 30 s timeout, a removal ends when BlueZ removes Device1.
+    void removeWithoutItsTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        restartFailing(QStringLiteral("time_relative=30000000"));
+        QCOMPARE(errorOf(start(QStringLiteral("Remove"), { object(headset) })), QString());
+        QVERIFY(!devices().contains(headset));
+        QTRY_VERIFY(logged().contains(QStringLiteral("vela-bluetooth: ") + headset + QStringLiteral(": remove timer: failed")));
+#endif
+    }
+
+    // Without its 90 s pairing timeout, an adopted Add ends with the answer.
+    void adoptedAddWithoutItsTimer()
+    {
+#ifndef VELA_SD_EVENT_FAIL_PRELOAD
+        QSKIP("needs the vela-sd-event-fail-preload target");
+#else
+        restartFailing(QStringLiteral("time_relative=90000000"));
+        deviceAsks(mouse, QStringLiteral("RequestConfirmation"), { 99u });
+        const Asked question = nextQuestion(0);
+        QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), true });
+        const Asked adopted = nextQuestion(1);
+        QCOMPARE(adopted.id, question.id);
+        QTRY_COMPARE(devices().value(mouse).value(QStringLiteral("operation")).toString(), QStringLiteral("pairing"));
+        QTRY_VERIFY(logged().contains(QStringLiteral("vela-bluetooth: ") + mouse + QStringLiteral(": pairing timer: failed")));
+        QCOMPARE(answer(question.id, QStringLiteral("accept")), QString());
+        QCOMPARE(errorOf(add), QString());
+        QVERIFY(devices().value(mouse).value(QStringLiteral("paired")).toBool());
+#endif
     }
 
     // Add on the device that is asking takes its request over: no Pair.

@@ -14,12 +14,14 @@ import shutil
 import time
 import unittest
 
-ROOT=Path(__file__).resolve().parents[2]
-sys.path[:0]=[str(ROOT/'benchmarks'),str(ROOT/'tests/functional')]
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/functional"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from harness import Session,tool
 from vela_bench.conditions import normalized_outputs,desired_profile
 from vela_bench.host import Layout
 from vela_bench.platform_workloads import run_workload,audit_measurements
+
+ROOT = Path(__file__).resolve().parents[2]
 
 KEYBOARD='''import json,subprocess,sys,time
 device=subprocess.Popen([sys.argv[1],'-'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
@@ -41,7 +43,8 @@ class ScalingController(unittest.TestCase):
     def test_scaling_matrix_real_fractional_buffers_and_offline_pixel_audit(self):
         from types import SimpleNamespace
         with Session(size='1920x1080@60') as session,tempfile.TemporaryDirectory() as temporary:
-            layout=Layout(Path(temporary));directory=Path(temporary)
+            layout=Layout(Path(temporary))
+            directory=Path(temporary)
             env=dict(session.client_env)
             if os.environ.get('VELA_TEST_CORPUS'):
                 env['DISPLAY']=session.wait_for_log('Xwayland on DISPLAY=',lambda line:line.split('DISPLAY=')[1].split()[0])
@@ -57,13 +60,16 @@ class ScalingController(unittest.TestCase):
                         argv=[tool(Path(command[at]).name),*command[at+1:]]
                     return subprocess.Popen(argv,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,env=env,bufsize=0)
                 def run(self,command,**options):
-                    if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
+                    if '--property=ActiveState' in command:
+                        return SimpleNamespace(stdout='inactive\n',returncode=0)
                     if 'wlr-randr' in command or '/usr/bin/wlr-randr' in command:
                         at=next(i for i,v in enumerate(command) if v.endswith('wlr-randr'))
                         return subprocess.run(command[at:],env=env,capture_output=True,text=True,check=True,timeout=15)
                     if '_capture' in command:
                         path=str(directory/'transient.png')
-                        began=time.monotonic_ns();session.screenshot(path);end=time.monotonic_ns()
+                        began=time.monotonic_ns()
+                        session.screenshot(path)
+                        end=time.monotonic_ns()
                         capture=json.loads(subprocess.check_output([tool('vela-bench-desktop'),'--analyze',path],env=env,text=True))
                         capture.update(event='capture',backend='ext-image-copy-capture-v1',index=0,
                                        begin_monotonic_ns=str(began),end_monotonic_ns=str(end))
@@ -84,15 +90,19 @@ class ScalingController(unittest.TestCase):
                 with (directory/'corpus-errors').open('wb') as errors:
                     keyboard=Host().spawn([str(layout.helper.parent/'vela-bench-input')],errors)
                     try:
-                        keys=Lines(keyboard);keys.next(time.monotonic()+5);time.sleep(.5)
+                        keys=Lines(keyboard)
+                        keys.next(time.monotonic()+5)
+                        time.sleep(.5)
                         corpus.run(Host(),record,directory,'vela',layout,profile,lambda:None,
                             lambda label:print(label,flush=True),outcome,keyboard,keys,errors)
                         self.assertEqual(len(corpus.audit(outcome,directory,profile,'vela')),sum(v.get('cases',0) for v in outcome['corpus_availability'].values()))
                         self.assertTrue(all(outcome['corpus_availability'][case]['status']=='supported' for case in ('qt-wayland','gtk-wayland','qt-xwayland')))
                     finally:
-                        stop_process(keyboard);apply_outputs(Host(),record,layout,'vela',profile['outputs'])
+                        stop_process(keyboard)
+                        apply_outputs(Host(),record,layout,'vela',profile['outputs'])
                         atomic_json(directory/'corpus-result.json',outcome)
-                        if os.environ.get('VELA_P4_EVIDENCE'):shutil.copytree(directory,os.environ['VELA_P4_EVIDENCE'])
+                        if os.environ.get('VELA_P4_EVIDENCE'):
+                            shutil.copytree(directory,os.environ['VELA_P4_EVIDENCE'])
                 print('CORPUS PASSED '+json.dumps(outcome['corpus_availability']),flush=True)
                 return
             outcome=run_workload(Host(),record,directory,'vela',layout,profile,'scaling',lambda:None)
@@ -103,8 +113,10 @@ class ScalingController(unittest.TestCase):
             self.assertEqual(next(o for o in actual if o['enabled'])['scale'],1.)
             if os.environ.get('VELA_P4_EVIDENCE'):
                 output=Path(os.environ['VELA_P4_EVIDENCE'])
-                if not output.is_absolute():output=ROOT/output
-                if output.exists():raise RuntimeError('Development evidence destination already exists')
+                if not output.is_absolute():
+                    output=ROOT/output
+                if output.exists():
+                    raise RuntimeError('Development evidence destination already exists')
                 shutil.copytree(directory,output)
                 (output/'development-scope.json').write_text(json.dumps({'scope':'isolated-headless-production-P4-controller',
                     'physical_acceptance':False,'kernel_uinput_qualified':False,'capture_and_pixel_audit':True,
@@ -115,4 +127,5 @@ class ScalingController(unittest.TestCase):
                     text+=f"<tr><td>{html.escape(name)}</td><td>{row['metrics'].get('different_pixels',row['metrics'].get('span_error_pixels'))}</td><td>{row['metrics']['offscreen_pixels']}</td><td><a href='{html.escape(row['image_file'])}'>capture</a></td></tr>"
                 (output/'report.html').write_text(text+'</table></html>')
 
-if __name__=='__main__':unittest.main()
+if __name__=='__main__':
+    unittest.main()

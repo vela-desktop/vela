@@ -3,6 +3,8 @@
 
 #include "report.h"
 
+#include "alloc/alloc.h"
+
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
@@ -19,7 +21,7 @@ static char *string_at(sd_json_variant *object, const char *key)
 {
     sd_json_variant *value = sd_json_variant_by_key(object, key);
     const char *s = value && sd_json_variant_is_string(value) ? sd_json_variant_string(value) : "";
-    return strdup(s ? s : "");
+    return vela_strdup(s ? s : "");
 }
 
 static int64_t integer_at(sd_json_variant *object, const char *key)
@@ -42,10 +44,7 @@ static int pairs_at(sd_json_variant *object, const char *key, const char *first_
     if (n == 0) {
         return 0;
     }
-    *pairs = calloc(n, sizeof(**pairs));
-    if (!*pairs) {
-        return -ENOMEM;
-    }
+    *pairs = VELA_NEW_N(struct vela_up_pair, n);
     for (size_t i = 0; i < n; ++i) {
         sd_json_variant *entry = sd_json_variant_by_index(array, i);
         if (!entry || !sd_json_variant_is_object(entry)) {
@@ -54,9 +53,6 @@ static int pairs_at(sd_json_variant *object, const char *key, const char *first_
         struct vela_up_pair *pair = &(*pairs)[(*count)++];
         pair->first = string_at(entry, first_key);
         pair->second = string_at(entry, second_key);
-        if (!pair->first || !pair->second) {
-            return -ENOMEM;
-        }
     }
     return 0;
 }
@@ -94,22 +90,20 @@ static int check_from(sd_json_variant *v, struct vela_up_check *check)
     check->changes_total = total > 0 && total <= UINT32_MAX ? (uint32_t)total : 0;
     sd_json_variant *error = sd_json_variant_by_key(v, "error");
     bool has_error = error && sd_json_variant_is_object(error);
-    check->error_code = has_error ? string_at(error, "code") : strdup("");
-    check->error_message = has_error ? string_at(error, "message") : strdup("");
+    check->error_code = has_error ? string_at(error, "code") : vela_strdup("");
+    check->error_message = has_error ? string_at(error, "message") : vela_strdup("");
     int r = pairs_at(v, "changes", "commit", "summary", &check->changes, &check->change_count);
     if (r >= 0) {
         r = pairs_at(v, "notes", "version", "text", &check->notes, &check->note_count);
     }
-    if (r < 0 || !check->channel || !check->status || !check->installed_package || !check->installed_version
-        || !check->version || !check->tag || !check->commit || !check->source || !check->error_code
-        || !check->error_message) {
+    if (r < 0) {
         vela_up_check_clear(check);
-        return r < 0 ? r : -ENOMEM;
+        return r;
     }
     // A failure without its code is still a failure.
     if (strcmp(check->status, "error") == 0 && !*check->error_code) {
         free(check->error_code);
-        check->error_code = strdup("failed");
+        check->error_code = vela_strdup("failed");
     }
     check->valid = true;
     return 0;
@@ -186,12 +180,7 @@ int vela_up_run_read(const char *path, struct vela_up_run *run)
         int64_t start = integer_at(v, "start_time");
         run->start_time = start > 0 ? (uint64_t)start : 0;
         run->started_at = integer_at(v, "started_at");
-        if (!run->action || !run->channel || !run->phase) {
-            vela_up_run_clear(run);
-            r = -ENOMEM;
-        } else {
-            run->present = run->pid > 0;
-        }
+        run->present = run->pid > 0;
     }
     sd_json_variant_unref(v);
     return r;
@@ -220,15 +209,9 @@ int vela_up_install_read(const char *path, struct vela_up_install *install)
         install->finished_at = integer_at(v, "finished_at");
         sd_json_variant *error = sd_json_variant_by_key(v, "error");
         bool has_error = error && sd_json_variant_is_object(error);
-        install->error_code = has_error ? string_at(error, "code") : strdup("");
-        install->error_message = has_error ? string_at(error, "message") : strdup("");
-        if (!install->channel || !install->result || !install->installed_version || !install->error_code
-            || !install->error_message) {
-            vela_up_install_clear(install);
-            r = -ENOMEM;
-        } else {
-            install->present = true;
-        }
+        install->error_code = has_error ? string_at(error, "code") : vela_strdup("");
+        install->error_message = has_error ? string_at(error, "message") : vela_strdup("");
+        install->present = true;
     }
     sd_json_variant_unref(v);
     return r;
@@ -402,94 +385,6 @@ void vela_up_options_argv(const struct vela_up_options *o, const char *command, 
         argv[n++] = tag;
     }
     argv[n] = NULL;
-}
-
-// `name`'s full path in `path`, or NULL.
-static char *find_program(const char *path, const char *name)
-{
-    if (!name || !*name) {
-        return NULL;
-    }
-    if (strchr(name, '/')) {
-        return access(name, X_OK) == 0 ? strdup(name) : NULL;
-    }
-    for (const char *dir = path ? path : ""; *dir;) {
-        size_t length = strcspn(dir, ":");
-        char candidate[PATH_MAX];
-        if (length > 0 && (size_t)snprintf(candidate, sizeof(candidate), "%.*s/%s", (int)length, dir, name)
-                < sizeof(candidate)
-            && access(candidate, X_OK) == 0) {
-            return strdup(candidate);
-        }
-        dir += length;
-        dir += *dir == ':';
-    }
-    return NULL;
-}
-
-void vela_up_strv_free(char **strv)
-{
-    for (char **s = strv; s && *s; ++s) {
-        free(*s);
-    }
-    free(strv);
-}
-
-char **vela_up_terminal(const char *path, const char *vela_terminal)
-{
-    char *program = find_program(path, "xdg-terminal-exec");
-    if (program) {
-        char **argv = calloc(2, sizeof(*argv));
-        if (!argv) {
-            free(program);
-            return NULL;
-        }
-        argv[0] = program;
-        return argv;
-    }
-    // VELA_TERMINAL as the shell reads it: a command, maybe with options.
-    const char *chosen = vela_terminal && *vela_terminal ? vela_terminal : "konsole";
-    size_t words = 0;
-    for (const char *c = chosen; *c;) {
-        c += strspn(c, " ");
-        if (*c) {
-            ++words;
-            c += strcspn(c, " ");
-        }
-    }
-    // No terminal needs more; a longer VELA_TERMINAL is a mistake.
-    enum { MAX_WORDS = 64 };
-    if (words > MAX_WORDS) {
-        return NULL;
-    }
-    char **argv = calloc(MAX_WORDS + 2, sizeof(*argv));
-    if (!argv) {
-        return NULL;
-    }
-    size_t n = 0;
-    for (const char *c = chosen; *c;) {
-        c += strspn(c, " ");
-        size_t length = strcspn(c, " ");
-        if (length > 0) {
-            argv[n++] = strndup(c, length);
-        }
-        c += length;
-    }
-    char *found = n > 0 && argv[0] ? find_program(path, argv[0]) : NULL;
-    if (!found) {
-        vela_up_strv_free(argv);
-        return NULL;
-    }
-    free(argv[0]);
-    argv[0] = found;
-    argv[n++] = strdup("-e");
-    for (size_t i = 0; i < n; ++i) {
-        if (!argv[i]) {
-            vela_up_strv_free(argv);
-            return NULL;
-        }
-    }
-    return argv;
 }
 
 // /proc/PID/exe's target, without " (deleted)"; `deleted` says whether it

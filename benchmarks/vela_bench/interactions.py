@@ -68,7 +68,8 @@ def run(scene,keyboard,target,profile,ready,keyboard_lines,failure_path=None):
             for operation in SPEC['actions_per_cycle']:
                 began=time.monotonic_ns()
                 key=command(target,operation)
-                keyboard.stdin.write((key+'\n').encode());keyboard.stdin.flush()
+                keyboard.stdin.write((key+'\n').encode())
+                keyboard.stdin.flush()
                 injection=keyboard_lines.next(time.monotonic()+5)
                 injection['command']=key
                 if (injection.get('event')!='injected' or type(injection.get('before_monotonic_ns')) is not int
@@ -78,7 +79,8 @@ def run(scene,keyboard,target,profile,ready,keyboard_lines,failure_path=None):
                 actions.append({'operation':operation,'injection':injection,'pattern':state,
                                 'verified_monotonic_ns':time.monotonic_ns()})
                 remaining=(injection['before_monotonic_ns']+SPEC['minimum_command_interval_ns']-time.monotonic_ns())/1e9
-                if remaining>0:time.sleep(remaining)
+                if remaining>0:
+                    time.sleep(remaining)
         row={'event':'window-interaction-complete','method':METHOD,'target':target,'spec':SPEC,
              'begin_monotonic_ns':lines.records[0]['monotonic_ns'],'end_monotonic_ns':time.monotonic_ns(),
              'keyboard_ready':ready,'initial':initial,'pattern_events':lines.records,'actions':actions}
@@ -106,14 +108,16 @@ def audit(raw,target,profile):
     events=row.get('pattern_events')
     if not isinstance(events,list) or not 1<=len(events)<=1024:
         raise BenchError('Missing window interaction source records')
-    by_sequence={};previous=None
+    by_sequence={}
+    previous=None
     for event in events:
         native_pattern(event,profile)
         if ((previous is None and event['sequence']!=1)
                 or (previous and (event['sequence']!=previous['sequence']+1 or event['monotonic_ns']<previous['monotonic_ns']))
                 or not row['begin_monotonic_ns']<=event['monotonic_ns']<=row['end_monotonic_ns']):
             raise BenchError('Window interaction native stream is reordered or truncated')
-        by_sequence[event['sequence']]=event;previous=event
+        by_sequence[event['sequence']]=event
+        previous=event
     if row['begin_monotonic_ns']!=events[0]['monotonic_ns']:
         raise BenchError('Window interaction start differs from its native source')
     initial=row.get('initial',{})
@@ -122,12 +126,15 @@ def audit(raw,target,profile):
     actions=row.get('actions')
     if not isinstance(actions,list) or len(actions)!=2*SPEC['cycles']:
         raise BenchError('Window interaction did not complete its fixed action count')
-    last_sequence=initial['sequence'];last_before=None;last_verified=initial['monotonic_ns']
+    last_sequence=initial['sequence']
+    last_before=None
+    last_verified=initial['monotonic_ns']
     for index,action in enumerate(actions,1):
         if not isinstance(action,dict) or not isinstance(action.get('injection'),dict) or not isinstance(action.get('pattern'),dict):
             raise BenchError('Invalid window interaction action record')
         operation=SPEC['actions_per_cycle'][(index-1)%2]
-        injection=action.get('injection',{});pattern=action.get('pattern',{})
+        injection=action.get('injection',{})
+        pattern=action.get('pattern',{})
         before,after=injection.get('before_monotonic_ns'),injection.get('after_monotonic_ns')
         verified=action.get('verified_monotonic_ns')
         if (action.get('operation')!=operation or injection.get('command')!=command(target,operation)
@@ -139,7 +146,9 @@ def audit(raw,target,profile):
                 or by_sequence.get(pattern['sequence'])!=pattern
                 or not before<=pattern['monotonic_ns']<=verified or not matches(pattern,operation,profile)):
             raise BenchError('Window interaction action, receipt or native state was not verified')
-        last_sequence=pattern['sequence'];last_before=before;last_verified=verified
+        last_sequence=pattern['sequence']
+        last_before=before
+        last_verified=verified
     return {'method':METHOD,'cycles':SPEC['cycles'],'verified_actions':len(actions),
             'state_evidence':SPEC['state_evidence'],'capture_enabled':False,'latency_measurement':False,
             'minimum_command_interval_ns':SPEC['minimum_command_interval_ns'],

@@ -214,7 +214,7 @@ Window {
                 anchors { right: parent.right; top: parent.top; margins: 8 }
                 width: 32
                 height: 32
-                radius: Theme.radius
+                radius: Theme.nested(Theme.radiusOverlay, 8, Theme.radius) // 8 inside the dialog
                 color: closeMouse.containsMouse ? "#c42b1c" : "#00c42b1c"
                 Text {
                     anchors.centerIn: parent

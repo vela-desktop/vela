@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from vela_bench import BenchError
 from vela_bench.conditions import (brightness_snapshot, compare_outputs, desired_profile, display_command,
-                                   greeter_environment, greeter_outputs, normalized_outputs, output_identities, restore_conditions, set_brightness, set_power)
+                                   greeter_environment, greeter_outputs, normalized_outputs, output_identities, restore_conditions, set_brightness, set_power, OutputsUnavailable)
 from vela_bench.host import HostOperationError, Layout
 
 
@@ -114,10 +114,14 @@ class ControlledConditions(unittest.TestCase):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 user, session, runtime, run, proc = self.greeter_fixture(Path(temporary))
                 result = {"schema": 1, "method": "kwin-socket-peer-v1", "uid": user.pw_uid, "pid": 777, "wayland_display": "wayland-0"}
-                if case == "foreign-uid": result["uid"] += 1
-                elif case == "missing-name": result["wayland_display"] = None
-                elif case == "boolean-pid": result["pid"] = True
-                elif case == "wrong-method": result["method"] = "unverified-guess"
+                if case == "foreign-uid":
+                    result["uid"] += 1
+                elif case == "missing-name":
+                    result["wayland_display"] = None
+                elif case == "boolean-pid":
+                    result["pid"] = True
+                elif case == "wrong-method":
+                    result["method"] = "unverified-guess"
                 helper = Path("/fixed/vela-bench-desktop")
                 host = SimpleNamespace(run=Mock(side_effect=[SimpleNamespace(returncode=0, stdout="", stderr=""),
                     SimpleNamespace(returncode=0, stdout=json.dumps(result), stderr="")]))
@@ -126,7 +130,8 @@ class ControlledConditions(unittest.TestCase):
                         resolved = greeter_environment([session], proc, host=host, run=run, desktop=helper)
                         self.assertEqual(resolved["environment"]["WAYLAND_DISPLAY"], "wayland-0")
                     else:
-                        with self.assertRaises(BenchError): greeter_environment([session], proc, host=host, run=run, desktop=helper)
+                        with self.assertRaises(BenchError):
+                            greeter_environment([session], proc, host=host, run=run, desktop=helper)
                 argv = host.run.call_args.args[0]
                 self.assertEqual(argv[:4], ["setpriv", f"--reuid={user.pw_uid}", f"--regid={user.pw_gid}", "--clear-groups"])
                 self.assertEqual(argv[-2:], [str(helper), "--resolve-wayland"])
@@ -164,8 +169,10 @@ class ControlledConditions(unittest.TestCase):
                 else:
                     endpoint = runtime / ("bus" if case == "bus-file" else "wayland-0")
                     endpoint.unlink()
-                    if case == "wayland-symlink": endpoint.symlink_to(runtime / "bus")
-                    else: endpoint.write_text("not a socket")
+                    if case == "wayland-symlink":
+                        endpoint.symlink_to(runtime / "bus")
+                    else:
+                        endpoint.write_text("not a socket")
                 host = SimpleNamespace(run=lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="WAYLAND_DISPLAY=wayland-0\n"))
                 with patch("vela_bench.conditions.pwd.getpwuid", return_value=user), self.assertRaises(BenchError):
                     greeter_environment([session], proc, host=host, run=run)
@@ -285,7 +292,6 @@ class ControlledConditions(unittest.TestCase):
         self.assertFalse(any("--apply" in call.args[0] for call in host.run.call_args_list))
 
     def test_inactive_greeter_is_activated_before_query_and_empty_announcements_are_retried(self):
-        from unittest.mock import Mock
         # Real DRM greeters may publish no heads while another VT is active.
         calls, active, reads = [], 3, 0
         def run(argv, **kwargs):
@@ -330,6 +336,20 @@ class ControlledConditions(unittest.TestCase):
                 self.assertEqual(result["outputs_requested"], plasma())
                 self.assertEqual(result["outputs_before"], plasma())
 
+    def test_only_exhausted_output_announcement_permits_query_restart(self):
+        for error, eligible in ((OutputsUnavailable('announcement deadline'), True),
+                                (BenchError('invalid socket or inventory'), False)):
+            with self.subTest(error=error), \
+                    patch('vela_bench.conditions.greeter_environment', return_value={}), \
+                    patch('vela_bench.conditions.greeter_outputs', side_effect=error), \
+                    patch('vela_bench.conditions.set_brightness'), patch('vela_bench.conditions.set_power'):
+                result = restore_conditions(SimpleNamespace(), Layout(),
+                    {'brightness': {'value':25}, 'power_profile':'balanced'}, lambda: [])
+                self.assertEqual(result['status'], 'failed')
+                self.assertEqual(result.get('output_restart_eligible', False), eligible)
+                if eligible:
+                    self.assertEqual(result['output_restart_reason'], 'output-announcement-deadline')
+
     def test_restoration_readback_checks_identity_and_exact_layout_without_a_restart(self):
         from unittest.mock import Mock
         for changed in (False, True):
@@ -369,7 +389,7 @@ class ControlledConditions(unittest.TestCase):
                                         "power_profile": "balanced"}, lambda: [])
             self.assertEqual(result["status"], "failed")
             self.assertEqual(result["components"], {"outputs": "failed", "brightness": "passed", "power_profile": "passed"})
-            brightness.assert_called_once()
+            brightness.assert_called_once_with(unittest.mock.ANY, {"value": 25}, 25, retry_ddc_write=True)
             power.assert_called_once()
 
     def test_personal_session_cannot_supply_the_greeter_environment(self):

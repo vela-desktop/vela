@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 import QtQuick
+import QtQuick.Controls as C
 
 // The Windows 11 dialog inside a window (ContentDialog): above the content,
 // which darkens; title, text, any content (the default property) and up to
@@ -9,9 +10,17 @@ import QtQuick
 // enabled}]). `chosen(value)` with the pressed one; Esc chooses "cancel",
 // Enter the accent button. It grows in from 1.05 and fades out (PanelMotion);
 // close() without a value closes it without choosing. One choice per
-// opening: once it leaves, nothing chooses again.
+// opening: once it leaves, nothing chooses again. Taller than the window
+// allows (24 above and below), the body scrolls and the buttons stay.
+//
+// Expressive (M3's basic dialog): extra large corners (28), the headline in
+// headline small, 24 around and between the text and the actions, no
+// footer band: the actions at the trailing edge, the accent one a tonal
+// button closest to it, the others text buttons.
 Item {
     id: dialog
+    property string styleVariant: Theme.controlsVariant
+    readonly property bool expressive: styleVariant === "expressive"
     property string title
     property string text
     property var buttons: [{ text: qsTr("OK"), accent: true, value: "ok" }]
@@ -66,69 +75,102 @@ Item {
         Shadow {
             target: panel
             depth: Theme.shadow.dialog
+            radius: panel.radius
         }
 
         Rectangle {
             id: panel
             width: parent.width
-            height: body.height + footer.height
-            radius: Theme.radiusOverlay
+            height: scroller.height + footer.height
+            radius: dialog.expressive ? Theme.shapeExtraLarge : Theme.radiusOverlay
             color: Theme.dialog
-            border.width: 1
+            border.width: dialog.expressive ? 0 : 1
             border.color: Theme.dialogStroke
             Keys.onEscapePressed: dialog.close("cancel")
             Keys.onReturnPressed: dialog.accept()
             Keys.onEnterPressed: dialog.accept()
 
-            Column {
-                id: body
-                x: 24
-                width: parent.width - 48
-                topPadding: 24
-                bottomPadding: 24
-                spacing: 12
-                Text {
-                    width: parent.width
-                    text: dialog.title
-                    visible: text !== ""
-                    color: Theme.text
-                    font.pixelSize: Theme.fontSubtitle
-                    font.weight: Font.DemiBold
-                    wrapMode: Text.Wrap
+            Flickable {
+                id: scroller
+                objectName: "dialogBody"
+                width: parent.width
+                height: Math.min(body.height, Math.max(0, dialog.height - 48 - footer.height))
+                contentWidth: width
+                contentHeight: body.height
+                clip: contentHeight > height
+                interactive: contentHeight > height
+                boundsBehavior: Flickable.StopAtBounds
+                C.ScrollBar.vertical: C.ScrollBar {
+                    policy: scroller.interactive ? C.ScrollBar.AsNeeded : C.ScrollBar.AlwaysOff
                 }
-                Text {
-                    width: parent.width
-                    text: dialog.text
-                    visible: text !== ""
-                    color: Theme.text
-                    font.pixelSize: Theme.fontBody
-                    wrapMode: Text.Wrap
-                }
-                Item {
-                    id: extra
-                    width: parent.width
-                    height: childrenRect.height
-                    visible: children.length > 0
+
+                Column {
+                    id: body
+                    x: 24
+                    width: scroller.width - 48
+                    topPadding: 24
+                    bottomPadding: 24
+                    // M3: 16 between the headline and the body.
+                    spacing: dialog.expressive ? 16 : 12
+                    Text {
+                        objectName: "title"
+                        width: parent.width
+                        text: dialog.title
+                        visible: text !== ""
+                        color: Theme.text
+                        // M3's headline small: 24 (Regular) where the body is
+                        // 14, scaled with a theme's body size.
+                        font.pixelSize: dialog.expressive ? Math.round(Theme.fontBody * 24 / 14) : Theme.fontSubtitle
+                        font.weight: dialog.expressive ? Font.Normal : Font.DemiBold
+                        wrapMode: Text.Wrap
+                    }
+                    Text {
+                        objectName: "text"
+                        width: parent.width
+                        text: dialog.text
+                        visible: text !== ""
+                        // M3: the supporting text in on surface variant.
+                        color: dialog.expressive ? Theme.textSecondary : Theme.text
+                        font.pixelSize: Theme.fontBody
+                        wrapMode: Text.Wrap
+                    }
+                    Item {
+                        id: extra
+                        width: parent.width
+                        height: childrenRect.height
+                        visible: children.length > 0
+                    }
                 }
             }
             Rectangle {
                 id: footer
-                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: 1 }
-                height: 80
-                color: Theme.dialogFooter
+                objectName: "footer"
+                anchors { left: parent.left; right: parent.right; bottom: parent.bottom; margins: dialog.expressive ? 0 : 1 }
+                // Expressive: the buttons (40) and the 24 below them; the
+                // body's bottom padding is the 24 above.
+                height: dialog.expressive ? 64 : 80
+                color: dialog.expressive ? "transparent" : Theme.dialogFooter
                 bottomLeftRadius: Theme.radiusOverlay - 1
                 bottomRightRadius: Theme.radiusOverlay - 1
                 Row {
-                    anchors { fill: parent; margins: 24 }
+                    anchors { fill: parent; margins: 24; topMargin: dialog.expressive ? 0 : 24 }
                     spacing: 8
+                    // Expressive: from the trailing edge, so the first button
+                    // (the accent one, where Fluent puts it first) is closest
+                    // to it.
+                    layoutDirection: dialog.expressive ? Qt.RightToLeft : Qt.LeftToRight
                     Repeater {
                         model: dialog.buttons
                         delegate: Button {
                             required property var modelData
                             objectName: "button:" + modelData.value
-                            width: (parent.width - 8 * (dialog.buttons.length - 1)) / dialog.buttons.length
+                            styleVariant: dialog.styleVariant
+                            width: dialog.expressive ? implicitWidth : (parent.width - 8 * (dialog.buttons.length - 1)) / dialog.buttons.length
                             text: modelData.text
-                            accent: modelData.accent === true
+                            accent: !dialog.expressive && modelData.accent === true
+                            // Expressive: the accent action tonal, the others
+                            // text buttons (M3's dialog actions).
+                            subtle: dialog.expressive && modelData.accent !== true
                             usable: dialog.usable(modelData)
                             onClicked: dialog.close(modelData.value)
                         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 #include "output_preview.h"
+#include "alloc/alloc.h"
 #include "output_manager.h"
 #include "output.h"
 #include "server.h"
@@ -31,6 +32,7 @@ struct vela_output_preview {
     struct wl_listener configuration_destroy;
     struct wl_event_source *timer;
     struct wlr_output_configuration_v1 *before;
+    struct wlr_output_configuration_v1 *preferences;
     char *preserve_position;
     bool finished;
 };
@@ -56,7 +58,7 @@ static void finish(struct vela_output_preview *preview, uint32_t result)
     }
     if (preview->before) {
         if (result == VELA_OUTPUT_PREVIEW_V1_RESULT_CONFIRMED) {
-            if (!vela_output_manager_save(preview->owner->server)) {
+            if (!vela_output_manager_save(preview->owner->server, preview->preferences)) {
                 result = VELA_OUTPUT_PREVIEW_V1_RESULT_SAVE_FAILED;
                 wlr_log(WLR_ERROR, "Display configuration confirmed but could not be persisted");
             }
@@ -66,6 +68,8 @@ static void finish(struct vela_output_preview *preview, uint32_t result)
         }
         wlr_output_configuration_v1_destroy(preview->before);
         preview->before = NULL;
+        wlr_output_configuration_v1_destroy(preview->preferences);
+        preview->preferences = NULL;
     }
     if (preview->owner->active == preview) {
         preview->owner->active = NULL;
@@ -111,7 +115,7 @@ static void request_confirm(struct wl_client *client, struct wl_resource *resour
 {
     struct vela_output_preview *preview = wl_resource_get_user_data(resource);
     // A premature confirmation must never remove the safety net.
-    if (preview->before) {
+    if (preview->before && !preview->owner->server->output_rearrange) {
         finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_CONFIRMED);
     }
 }
@@ -137,25 +141,10 @@ static void protect(struct wl_client *client, struct wl_resource *resource, uint
             "Expected a wlr output configuration owned by this client");
         return;
     }
-    struct vela_output_preview *preview = calloc(1, sizeof(*preview));
-    if (!preview) {
-        wl_client_post_no_memory(client);
-        return;
-    }
+    struct vela_output_preview *preview = VELA_NEW(struct vela_output_preview);
     preview->owner = owner;
-    preview->preserve_position = strdup(preserve_position);
-    if (!preview->preserve_position) {
-        free(preview);
-        wl_client_post_no_memory(client);
-        return;
-    }
-    preview->resource = wl_resource_create(client, &vela_output_preview_v1_interface, 1, id);
-    if (!preview->resource) {
-        free(preview->preserve_position);
-        free(preview);
-        wl_client_post_no_memory(client);
-        return;
-    }
+    preview->preserve_position = vela_strdup(preserve_position);
+    preview->resource = VELA_MUST(wl_resource_create(client, &vela_output_preview_v1_interface, 1, id));
     wl_resource_set_implementation(preview->resource, &preview_impl, preview, destroy_resource);
     wl_list_insert(owner->previews.prev, &preview->link);
     preview->configuration = configuration;
@@ -186,31 +175,23 @@ static const struct vela_output_preview_manager_v1_interface manager_impl = {
 
 static void bind_manager(struct wl_client *client, void *data, uint32_t version, uint32_t id)
 {
-    struct wl_resource *resource = wl_resource_create(client, &vela_output_preview_manager_v1_interface, 1, id);
-    if (!resource) {
-        wl_client_post_no_memory(client);
-        return;
-    }
+    struct wl_resource *resource
+        = VELA_MUST(wl_resource_create(client, &vela_output_preview_manager_v1_interface, 1, id));
     wl_resource_set_implementation(resource, &manager_impl, data, NULL);
 }
 
 void vela_output_preview_init(struct vela_server *server)
 {
-    struct vela_output_previews *owner = calloc(1, sizeof(*owner));
-    if (!owner) {
-        return;
-    }
+    struct vela_output_previews *owner = VELA_NEW(struct vela_output_previews);
     owner->server = server;
     wl_list_init(&owner->previews);
-    owner->global = wl_global_create(server->display, &vela_output_preview_manager_v1_interface, 1, owner, bind_manager);
-    if (!owner->global) {
-        free(owner);
-        return;
-    }
+    owner->global = VELA_MUST(
+        wl_global_create(server->display, &vela_output_preview_manager_v1_interface, 1, owner, bind_manager));
     server->output_previews = owner;
 }
 
-bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output_configuration_v1 *config)
+bool vela_output_preview_can_apply(
+    struct vela_server *server, struct wlr_output_configuration_v1 *config, const char **implicit_position)
 {
     struct vela_output_previews *owner = server->output_previews;
     if (!owner) {
@@ -222,27 +203,18 @@ bool vela_output_preview_can_apply(struct vela_server *server, struct wlr_output
             return false;
         }
     }
-    if (owner->active && owner->active->configuration != config->resource) {
+    if (server->output_rearrange || (owner->active && owner->active->configuration != config->resource)) {
         return false;
     }
     if (owner->active && owner->active->preserve_position[0]) {
-        // Disabled heads do not advertise positions. A fresh client can ask
-        // to retain the remembered position instead of submitting (0,0).
-        struct wlr_output_configuration_head_v1 *head;
-        wl_list_for_each (head, &config->heads, link) {
-            struct vela_output *output = head->state.output->data;
-            if (output && !output->wlr->enabled && output->has_last_position && head->state.enabled
-                && !strcmp(output->wlr->name, owner->active->preserve_position)) {
-                head->state.x = output->last_x;
-                head->state.y = output->last_y;
-            }
-        }
+        *implicit_position = owner->active->preserve_position;
     }
     return true;
 }
 
 bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_configuration_v1 *config,
-    struct wlr_output_configuration_v1 *before, bool succeeded, bool restored)
+    struct wlr_output_configuration_v1 *before, struct wlr_output_configuration_v1 *preferences, bool succeeded,
+    bool restored)
 {
     struct vela_output_previews *owner = server->output_previews;
     struct vela_output_preview *preview = owner ? owner->active : NULL;
@@ -259,12 +231,21 @@ bool vela_output_preview_applied(struct vela_server *server, struct wlr_output_c
     wl_list_remove(&preview->configuration_destroy.link);
     preview->configuration = NULL;
     preview->before = before;
+    preview->preferences = preferences;
     if (wl_event_source_timer_update(preview->timer, VELA_OUTPUT_PREVIEW_TIMEOUT_MS) < 0) {
         finish(preview, VELA_OUTPUT_PREVIEW_V1_RESULT_REVERTED);
     } else {
         vela_output_preview_v1_send_applied(preview->resource, VELA_OUTPUT_PREVIEW_TIMEOUT_MS);
     }
     return true;
+}
+
+void vela_output_preview_hotplug(struct vela_server *server)
+{
+    struct vela_output_previews *owner = server->output_previews;
+    if (owner && owner->active) {
+        finish(owner->active, VELA_OUTPUT_PREVIEW_V1_RESULT_REVERTED);
+    }
 }
 
 void vela_output_preview_finish(struct vela_server *server)

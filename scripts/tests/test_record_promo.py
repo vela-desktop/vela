@@ -1,5 +1,6 @@
 """Offline regression tests for the single-build promo capture workflow."""
 import importlib.util
+import hashlib
 from pathlib import Path
 import tempfile
 import types
@@ -122,13 +123,20 @@ class PromoTests(unittest.TestCase):
         host = {"HOME": "/home/real-user", "XDG_RUNTIME_DIR": "/run/user/1000",
                 "XDG_DATA_HOME": "/home/real-user/.local/share",
                 "DBUS_SESSION_BUS_ADDRESS": "unix:path=/run/user/1000/bus",
-                "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket"}
+                "DBUS_SYSTEM_BUS_ADDRESS": "unix:path=/run/dbus/system_bus_socket",
+                "WAYLAND_DISPLAY": "wayland-0", "DISPLAY": ":0", "WAYLAND_SOCKET": "3"}
         desktop = promo.Desktop(Path("/nonexistent-build"), promo.StartMenu())
         with (mock.patch.dict(promo.capture.os.environ, host),
-              mock.patch.object(promo.capture.subprocess, "Popen", return_value=bus) as popen):
+              mock.patch.object(promo.capture.subprocess, "Popen", return_value=bus) as popen,
+              mock.patch.object(promo.capture.harness, "stop_process_group") as stop):
             with self.assertRaisesRegex(RuntimeError, "D-Bus"):
                 desktop.__enter__()
         command, env = popen.call_args.args[0], popen.call_args.kwargs["env"]
+        # What it activates must not reach the host's display, and goes with it.
+        for key in ("WAYLAND_DISPLAY", "DISPLAY", "WAYLAND_SOCKET"):
+            self.assertNotIn(key, env)
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+        stop.assert_called_once_with(bus)
         private = desktop.private_runtime.parent
         address = f"unix:path={private / 'runtime' / 'bus'}"
         self.assertIn(f"--address={address}", command)
@@ -323,9 +331,19 @@ class PromoTests(unittest.TestCase):
             one.write_bytes(b"compositor")
             two.write_bytes(b"recorder")
             original = promo.build_fingerprint({"a": one, "b": two})
+            self.assertEqual(original, hashlib.sha256(b"a\0compositor\0b\0recorder\0").hexdigest())
             self.assertEqual(original, promo.build_fingerprint({"b": two, "a": one}))
             two.write_bytes(b"new recorder")
             self.assertNotEqual(original, promo.build_fingerprint({"a": one, "b": two}))
+
+    def test_artifact_digest_preserves_full_binary_content_and_size(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "capture.mp4"
+            for payload in (b"", bytes(range(256)) * 4097 + b"\0trailing bytes"):
+                with self.subTest(size=len(payload)):
+                    path.write_bytes(payload)
+                    self.assertEqual(promo.artifact_digest(path), {
+                        "sha256": hashlib.sha256(payload).hexdigest(), "size": len(payload)})
 
     def test_resume_requires_matching_manifest_and_complete_outputs(self):
         with tempfile.TemporaryDirectory() as folder:

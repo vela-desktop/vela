@@ -12,7 +12,8 @@ import QtQuick
 // so with animation effects off only the opacity changes), how long its
 // entrance moves (`duration`), and what `closed()` does.
 //
-// The fade in always takes `fast`, the exit always `normal`; menus, previews,
+// The fade in always takes `fast`, the exit always `normal` (it never
+// overshoots, whatever the motion variant); menus, previews,
 // Alt+Tab and Task View vanish at once (`instantExit`, K5).
 Item {
     id: motion
@@ -44,14 +45,26 @@ Item {
         return Qt.rect(left, top, Math.max(0, Math.min(a.x + a.width, w) - left),
                        Math.max(0, Math.min(a.y + a.height, h) - top))
     }
+    // Under motion-variant=expressive the entrance overshoots its rest by
+    // `overshoot` of its offset (and of its scale's change), on the side
+    // opposite to where it comes from: the travel takes that in too.
+    readonly property real overshoot: Theme.spatialOvershoot("default")
     readonly property rect travel: {
         const dx = offset.x * Theme.motion
         const dy = offset.y * Theme.motion
-        const grow = Math.max(0, scaleFrom - 1) * Theme.motion
+        const ox = -dx * overshoot
+        const oy = -dy * overshoot
+        // Two arguments at a time: with three, Math.min() gave a wrong
+        // travel in the compiled binding (seen with Qt 6.12).
+        const left = Math.min(Math.min(0, dx), ox)
+        const top = Math.min(Math.min(0, dy), oy)
+        const right = Math.max(Math.max(0, dx), ox)
+        const bottom = Math.max(Math.max(0, dy), oy)
+        const grow = Math.max(Math.max(0, scaleFrom - 1), (1 - scaleFrom) * overshoot) * Theme.motion
         const gx = width * grow / 2
         const gy = height * grow / 2
-        return Qt.rect(x + Math.min(0, dx) - gx, y + Math.min(0, dy) - gy,
-                       width + Math.abs(dx) + 2 * gx, height + Math.abs(dy) + 2 * gy)
+        return Qt.rect(x + left - gx, y + top - gy,
+                       right - left + width + 2 * gx, bottom - top + height + 2 * gy)
     }
     // 0 at rest, 1 where the panel comes from.
     property real away: 1
@@ -128,7 +141,9 @@ Item {
 
     ParallelAnimation {
         id: enter
-        Eased { target: motion; property: "away"; to: 0; duration: motion.duration }
+        // The default variant: decelerate in `duration`; expressive, M3's
+        // default spatial curve, which overshoots a little (Theme.qml).
+        Spatial { target: motion; property: "away"; to: 0; speed: "default"; rest: motion.duration }
         Eased { target: motion; property: "opacity"; to: 1; duration: Theme.fast }
     }
     ParallelAnimation {

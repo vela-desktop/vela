@@ -6,6 +6,7 @@
 Headless feedback explicitly bypasses physical-output parsing only in this
 unprivileged test. No primary runner flag can enable that path.
 """
+import argparse
 import json
 import os
 from pathlib import Path
@@ -18,12 +19,14 @@ import time
 from types import SimpleNamespace
 from unittest.mock import patch
 
-ROOT=Path(__file__).resolve().parents[2]
-sys.path[:0]=[str(ROOT/'benchmarks'),str(ROOT/'tests/functional')]
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/functional"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from harness import Session,tool
 from vela_bench import measurements
 from vela_bench.archive import atomic_json
-from vela_bench.host import Layout
+from vela_bench.host import ACCOUNT, Layout
+from vela_bench.model import vela_environment
+from vela_bench.pilot import desktop_environment
 
 KEYBOARD='''import json,sys,subprocess,time
 p=subprocess.Popen([sys.argv[1],'-'],stdin=subprocess.PIPE,stdout=subprocess.PIPE,text=True)
@@ -39,23 +42,37 @@ finally:
 '''
 
 
-def main():
-    with Session(size='1280x720@60') as session,tempfile.TemporaryDirectory() as temporary:
-        directory=Path(temporary);layout=Layout(directory);groups={}
+def main(vela_sync_test=False):
+    user = SimpleNamespace(pw_uid=os.getuid(), pw_name=ACCOUNT, pw_dir='/tmp', pw_shell='/bin/sh')
+    created = desktop_environment('vela', user,
+        {'XDG_SESSION_ID': 'private-test', 'XDG_SEAT': 'seat0', 'XDG_VTNR': '3'}, vela_sync_test=vela_sync_test)
+    runtime = {key: created[key] for key in vela_environment(vela_sync_test)}
+    with Session(size='1280x720@60', env=runtime) as session,tempfile.TemporaryDirectory() as temporary:
+        directory=Path(temporary)
+        layout=Layout(directory)
+        groups={}
+        observed = dict(item.decode().split('=', 1) for item in
+            Path(f'/proc/{session.process.pid}/environ').read_bytes().split(b'\0') if b'=' in item)
+        assert {key: observed[key] for key in vela_environment(True) if key in observed} == runtime
+        atomic_json(directory/'runtime-profile.json', {'vela_sync_test': vela_sync_test, 'environment': runtime})
         cpus=','.join(map(str,sorted(os.sched_getaffinity(0))[:2]))
         class Host:
             def spawn(self,command,errors):
                 role=next((v.removeprefix('--unit=') for v in command if v.startswith('--unit=')),'fixture-input')
-                if command[0].endswith('vela-bench-input'):argv=[sys.executable,'-c',KEYBOARD,tool('vela-input')]
+                if command[0].endswith('vela-bench-input'):
+                    argv=[sys.executable,'-c',KEYBOARD,tool('vela-input')]
                 else:
                     at=next(i for i,v in enumerate(command) if Path(v).name in ('vela-bench-probe','vela-slowgpu','vela-bench-cpuload'))
                     argv=[tool(Path(command[at]).name),*command[at+1:]]
-                    if argv[0].endswith('vela-bench-cpuload'):argv=['taskset','-c',cpus,*argv]
+                    if argv[0].endswith('vela-bench-cpuload'):
+                        argv=['taskset','-c',cpus,*argv]
                 p=subprocess.Popen(argv,env=session.client_env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,
                     stderr=errors,bufsize=0,start_new_session=True)
-                groups[role]=p;return p
+                groups[role]=p
+                return p
             def run(self,command,**options):
-                if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
+                if '--property=ActiveState' in command:
+                    return SimpleNamespace(stdout='inactive\n',returncode=0)
                 if str(layout.probe) in command:
                     at=command.index(str(layout.probe))
                     return subprocess.run([tool('vela-bench-probe'),*command[at+1:]],env=session.client_env,
@@ -64,8 +81,11 @@ def main():
                     p=groups.get(command[-1])
                     if p and p.poll() is None:
                         os.killpg(p.pid,signal.SIGTERM)
-                        try:p.wait(timeout=3)
-                        except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait(timeout=3)
+                        try:
+                            p.wait(timeout=3)
+                        except subprocess.TimeoutExpired:
+                            os.killpg(p.pid,signal.SIGKILL)
+                            p.wait(timeout=3)
                 return SimpleNamespace(stdout='',stderr='',returncode=0)
         original_motion,original_producer=measurements.motion_metrics,measurements.producer_metrics
         def motion(raw,rows,profile,**options):return original_motion(raw,rows,profile,**dict(options,physical_output_required=False))
@@ -79,6 +99,13 @@ def main():
                 assert result['status']=='passed',result['failures']
                 assert len(result['scenarios'])==8
                 assert measurements.audit_measurements(directory,'vela',profile,'slow-apps')==result
+                for mode in ('explicit', 'implicit'):
+                    rows = [json.loads(line) for line in
+                            (directory / f'vela-producer-{mode}.jsonl').read_text().splitlines()]
+                    calibrated = next(row for row in rows if row['event'] == 'calibrated')
+                    assert calibrated['clock'] == 'gpu-timestamps'
+                    assert 135 <= calibrated['gpu_duration_ms'] <= 165
+                    assert 3 <= calibrated['samples'] <= 64
                 for kind in ('cpu','gpu'):
                     sample=result['scenarios'][kind]
                     assert sample['input']['actions']==100 and sample['motion']['submitted']==600
@@ -86,12 +113,18 @@ def main():
                 print('P2_FULL_PASSED '+json.dumps({kind:result['scenarios'][kind]['contention'] for kind in ('cpu','gpu')}),flush=True)
         finally:
             for p in groups.values():
-                try:os.killpg(p.pid,signal.SIGTERM)
-                except ProcessLookupError:pass
-                try:p.wait(timeout=3)
-                except subprocess.TimeoutExpired:os.killpg(p.pid,signal.SIGKILL);p.wait(timeout=3)
+                try:
+                    os.killpg(p.pid,signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+                try:
+                    p.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    os.killpg(p.pid,signal.SIGKILL)
+                    p.wait(timeout=3)
             if os.environ.get('VELA_P2_EVIDENCE'):
-                destination=Path(os.environ['VELA_P2_EVIDENCE']);shutil.copytree(directory,destination)
+                destination=Path(os.environ['VELA_P2_EVIDENCE'])
+                shutil.copytree(directory,destination)
                 atomic_json(destination/'development-scope.json',{'physical_acceptance':False,'kernel_uinput':False,
                     'scope':'private-headless-production-P2; virtual-input; CPU-affinity-limited-to-two-cores','profile':profile})
 
@@ -113,17 +146,22 @@ def motion_only(env,target,directory,tools):
         control=animate(kind+'-control')
         command=([str(tools/'vela-bench-cpuload'),'--json','--until-stdin-eof'] if kind=='cpu' else
                  [str(tools/'vela-slowgpu'),'--contention','--json','--until-stdin-eof'])
-        if kind=='cpu':command=['taskset','-c',cpus,*command]
+        if kind=='cpu':
+            command=['taskset','-c',cpus,*command]
         with (directory/(target+'-'+kind+'.stderr')).open('wb') as errors,ThreadPoolExecutor(max_workers=1) as pool:
             process=subprocess.Popen(command,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0,start_new_session=True)
             lines=Lines(process)
             try:
-                while not lines.records or not ready(lines.records,kind,os.getuid()):lines.next(time.monotonic()+15)
+                while not lines.records or not ready(lines.records,kind,os.getuid()):
+                    lines.next(time.monotonic()+15)
                 def drain():
-                    while lines.next(time.monotonic()+5).get('event')!=kind+'-load-summary':pass
+                    while lines.next(time.monotonic()+5).get('event')!=kind+'-load-summary':
+                        pass
                 future=pool.submit(drain)
                 loaded=animate(kind)
-                process.stdin.close();process.stdin=None;future.result(timeout=6)
+                process.stdin.close()
+                process.stdin=None
+                future.result(timeout=6)
                 assert process.wait(timeout=3)==0
                 load=metrics(lines.records,kind,loaded['window_monotonic_ns'],os.getuid())
                 result[kind]={'control':control,'motion':loaded,'contention':load,'input_measured':False}
@@ -133,13 +171,19 @@ def motion_only(env,target,directory,tools):
                 assert metrics([json.loads(line) for line in file.read_text().splitlines()],kind,loaded['window_monotonic_ns'],os.getuid())==load
             finally:
                 stop_process(process)
-                try:os.killpg(process.pid,signal.SIGTERM)
-                except ProcessLookupError:pass
+                try:
+                    os.killpg(process.pid,signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
     atomic_json(directory/(target+'-contention-motion.json'),result)
     return {'conditions':list(result),'scope':'private-compositor; real CPU/GPU work and foreground motion; no kernel input or physical timing qualification',
             'measured_frames_per_condition':600,'raw_audit':True}
 
 if __name__=='__main__':
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--vela-sync-test',action='store_true')
+    options=parser.parse_args()
     if os.getuid()==0 or not any(Path('/dev/dri').glob('renderD*')):
-        print('SKIP: private P2 integration requires an unprivileged user and GPU render node');sys.exit(77)
-    main()
+        print('SKIP: private P2 integration requires an unprivileged user and GPU render node')
+        sys.exit(77)
+    main(options.vela_sync_test)

@@ -39,6 +39,15 @@
 // window, as games do, and logs "vela-pattern: pointer-locked" and
 // "vela-pattern: pointer-unlocked"; a middle click lets the pointer go (the
 // lock is destroyed). Implies --log-pointer.
+// --cycle-app-ids N: once the window is shown, sets N distinct app ids
+// ("vela.pattern.cycle0", ...), each with a commit the compositor has
+// handled before the next, then its own again, and logs
+// "vela-pattern: app-ids-cycled": a client that keeps changing its app_id
+// (the icon cache's budget, docs/memory-allocation-policy.md).
+// --log-keys: writes "vela-pattern: keyboard-enter KEY..." with the keys held
+// when the window gets the keyboard, and "vela-pattern: key KEY STATE" for
+// every key event (evdev codes): what reaches the app of the keys the
+// compositor keeps (Super's numbers).
 
 #define _GNU_SOURCE
 #include <math.h>
@@ -108,6 +117,7 @@ static int transientMaximized;
 static int transientSiblings;
 static int fullscreenParent;
 static int logPointer;
+static int logKeys;
 static int lockPointer;
 static struct wl_seat* seat;
 static struct zwp_pointer_constraints_v1* pointerConstraints;
@@ -164,12 +174,53 @@ static const struct wl_pointer_listener pointerListener = {
     .axis = onPointerAxis,
 };
 
+static void onKeymap(void *data, struct wl_keyboard *keyboard, uint32_t format, int32_t fd, uint32_t size)
+{
+    close(fd);
+}
+static void onKeyboardEnter(
+    void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *entered, struct wl_array *keys)
+{
+    char line[256] = "vela-pattern: keyboard-enter";
+    const uint32_t *pressed = keys->data;
+    for (size_t i = 0; i < keys->size / sizeof(*pressed); i++) {
+        const size_t used = strlen(line);
+        snprintf(line + used, sizeof(line) - used, " %u", pressed[i]);
+    }
+    fprintf(stderr, "%s\n", line);
+}
+static void onKeyboardLeave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *left)
+{
+}
+static void onKey(
+    void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+{
+    fprintf(stderr, "vela-pattern: key %u %u\n", key, state);
+}
+static void onModifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t depressed, uint32_t latched,
+    uint32_t locked, uint32_t group)
+{
+}
+
+static const struct wl_keyboard_listener keyboardListener = {
+    .keymap = onKeymap,
+    .enter = onKeyboardEnter,
+    .leave = onKeyboardLeave,
+    .key = onKey,
+    .modifiers = onModifiers,
+};
+
 static void onSeatCapabilities(void* data, struct wl_seat* seat, uint32_t capabilities)
 {
     static struct wl_pointer* pointer;
-    if ((capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
+    static struct wl_keyboard *keyboard;
+    if (logPointer && (capabilities & WL_SEAT_CAPABILITY_POINTER) && !pointer) {
         pointer = wl_seat_get_pointer(seat);
         wl_pointer_add_listener(pointer, &pointerListener, NULL);
+    }
+    if (logKeys && (capabilities & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
+        keyboard = wl_seat_get_keyboard(seat);
+        wl_keyboard_add_listener(keyboard, &keyboardListener, NULL);
     }
 }
 
@@ -177,8 +228,8 @@ static const struct wl_seat_listener seatListener = { .capabilities = onSeatCapa
 
 static void onGlobal(void* data, struct wl_registry* registry, uint32_t name, const char* interface, uint32_t version)
 {
-    if (logPointer && !seat && !strcmp(interface, wl_seat_interface.name)) {
-        // Version 1: no pointer frames to answer.
+    if ((logPointer || logKeys) && !seat && !strcmp(interface, wl_seat_interface.name)) {
+        // Version 1: no pointer frames nor key repeat info to answer.
         seat = wl_registry_bind(registry, name, &wl_seat_interface, 1);
         wl_seat_add_listener(seat, &seatListener, NULL);
     } else if (lockPointer && !strcmp(interface, zwp_pointer_constraints_v1_interface.name)) {
@@ -280,9 +331,9 @@ static void draw(void)
         printf("{\"event\":\"pattern\",\"method\":\"coordinate-pattern-v1\",\"protocol\":\"wayland\","
                "\"viewport\":true,\"sequence\":%u,\"logical_width\":%d,\"logical_height\":%d,"
                "\"scale120\":%u,\"buffer_width\":%d,\"buffer_height\":%d,\"maximized\":%s,"
-               "\"monotonic_ns\":%llu}\n", ++benchmarkSequence, logicalWidth, logicalHeight,
-               scale120, width, height, maximized ? "true" : "false",
-               (unsigned long long)now.tv_sec*1000000000ull+(unsigned long long)now.tv_nsec);
+               "\"monotonic_ns\":%llu}\n",
+            ++benchmarkSequence, logicalWidth, logicalHeight, scale120, width, height, maximized ? "true" : "false",
+            (unsigned long long)now.tv_sec * 1000000000ull + (unsigned long long)now.tv_nsec);
         fflush(stdout);
     }
 }
@@ -471,7 +522,7 @@ static void onToplevelConfigure(void* data, struct xdg_toplevel* t, int32_t widt
     pendingWidth = width;
     pendingHeight = height;
     maximized = 0;
-    uint32_t* state = NULL;
+    uint32_t *state = NULL;
     wl_array_for_each(state, states) if (*state == XDG_TOPLEVEL_STATE_MAXIMIZED) maximized = 1;
 }
 
@@ -492,6 +543,7 @@ int main(int argc, char** argv)
     int arg = 1;
     const char* appId = "vela.pattern";
     int decorated = 0;
+    int cycleAppIds = 0;
     for (; arg < argc && !strncmp(argv[arg], "--", 2); ++arg) {
         if (!strcmp(argv[arg], "--scale1")) {
             legacy = 1;
@@ -517,10 +569,14 @@ int main(int argc, char** argv)
             transientSiblings = 1;
         } else if (!strcmp(argv[arg], "--log-pointer")) {
             logPointer = 1;
+        } else if (!strcmp(argv[arg], "--log-keys")) {
+            logKeys = 1;
         } else if (!strcmp(argv[arg], "--lock-pointer")) {
             logPointer = lockPointer = 1;
         } else if (!strcmp(argv[arg], "--fullscreen-parent")) {
             fullscreenParent = 1;
+        } else if (!strcmp(argv[arg], "--cycle-app-ids") && arg + 1 < argc) {
+            cycleAppIds = atoi(argv[++arg]);
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
             // For tests that depend on the app (system dialogs).
             appId = argv[++arg];
@@ -577,6 +633,20 @@ int main(int argc, char** argv)
     wl_surface_commit(surface);
 
     while (running && wl_display_dispatch(display) != -1) {
+        if (cycleAppIds > 0 && configured) {
+            for (int i = 0; i < cycleAppIds; ++i) {
+                char cycled[64];
+                snprintf(cycled, sizeof(cycled), "vela.pattern.cycle%d", i);
+                xdg_toplevel_set_app_id(toplevel, cycled);
+                wl_surface_commit(surface);
+                wl_display_roundtrip(display);
+            }
+            xdg_toplevel_set_app_id(toplevel, appId);
+            wl_surface_commit(surface);
+            wl_display_roundtrip(display);
+            cycleAppIds = 0;
+            fprintf(stderr, "vela-pattern: app-ids-cycled\n");
+        }
     }
     return 0;
 }

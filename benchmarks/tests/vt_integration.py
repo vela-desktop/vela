@@ -23,20 +23,24 @@ from vela_bench.pilot import reserve_vt
 
 
 def main():
-    if os.getuid()==0: raise RuntimeError('Run this isolated user-manager check unprivileged')
+    if os.getuid()==0:
+        raise RuntimeError('Run this isolated user-manager check unprivileged')
     runtime=Path('/run/user')/str(os.getuid())
     units=runtime/'systemd/user'
     units.mkdir(parents=True,exist_ok=True)
     env=dict(SAFE_ENV,XDG_RUNTIME_DIR=str(runtime),DBUS_SESSION_BUS_ADDRESS='unix:path='+str(runtime/'bus'))
     prefix='vela-benchmark-vt-check-'+uuid.uuid4().hex
-    canonical=prefix+'-canonical@.service';alias=prefix+'-alias@.service'
+    canonical=prefix+'-canonical@.service'
+    alias=prefix+'-alias@.service'
     def mapped(name):return (prefix+'-canonical' if name.startswith('getty@') else prefix+'-alias')+'@tty4.service'
     names=[mapped('getty@tty4.service'),mapped('autovt@tty4.service')]
     paths=[units/name for name in (canonical,alias,*names)]
-    if any(path.exists() or path.is_symlink() for path in paths):raise RuntimeError('Unexpected private fixture collision')
+    if any(path.exists() or path.is_symlink() for path in paths):
+        raise RuntimeError('Unexpected private fixture collision')
     def run(argv,check=True):
         result=subprocess.run(argv,env=env,stdin=subprocess.DEVNULL,capture_output=True,text=True,timeout=8)
-        if check and result.returncode:raise HostOperationError(argv,result.returncode,result.stdout,result.stderr)
+        if check and result.returncode:
+            raise HostOperationError(argv,result.returncode,result.stdout,result.stderr)
         return result
     address=env['DBUS_SESSION_BUS_ADDRESS']
     connection=Gio.DBusConnection.new_for_address_sync(address,
@@ -47,11 +51,13 @@ def main():
         run(['systemctl','--user','daemon-reload'])
         # Preload both aliases and retain the same canonical object while it
         # is being masked, matching the cache state in the failed real run.
-        for name in names:run(['systemctl','--user','show',name,'--property=Names'])
+        for name in names:
+            run(['systemctl','--user','show',name,'--property=Names'])
         connection.call_sync('org.freedesktop.systemd1','/org/freedesktop/systemd1',
             'org.freedesktop.systemd1.Manager','RefUnit',GLib.Variant('(s)',(names[0],)),None,Gio.DBusCallFlags.NONE,5000,None)
         with tempfile.TemporaryDirectory(prefix='vela-vt-reservation-') as temporary:
-            root=Path(temporary);layout=Layout(root)
+            root=Path(temporary)
+            layout=Layout(root)
             observations={'canonical_mask_state_seen_through_unmasked_alias':False}
             class Host:
                 def run(self,command,**options):
@@ -68,7 +74,8 @@ def main():
                         real=units/actual
                         assert real.is_symlink() and os.readlink(real)=='/dev/null',real
                         mirror=layout.path('run/systemd/system')/unit
-                        mirror.parent.mkdir(parents=True,exist_ok=True);mirror.symlink_to('/dev/null')
+                        mirror.parent.mkdir(parents=True,exist_ok=True)
+                        mirror.symlink_to('/dev/null')
                     return result
             state={'target_vt':4,'masked_units':[]}
             reserve_vt(Host(),root,state,layout)
@@ -80,11 +87,15 @@ def main():
             print(json.dumps({'scope':'real-user-manager-private-aliases-no-vt-or-system-units',
                 'both_names_masked':True,'both_starts_refused':True,'owned_masks':state['masked_units'],**observations}))
     finally:
-        for name in names:run(['systemctl','--user','stop',name],check=False)
+        for name in names:
+            run(['systemctl','--user','stop',name],check=False)
         connection.close_sync(None)
-        for path in reversed(paths):path.unlink(missing_ok=True)
+        for path in reversed(paths):
+            path.unlink(missing_ok=True)
         run(['systemctl','--user','daemon-reload'])
-        for name in names:run(['systemctl','--user','reset-failed',name],check=False)
+        for name in names:
+            run(['systemctl','--user','reset-failed',name],check=False)
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()

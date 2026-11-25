@@ -18,7 +18,8 @@ HASH_DATA = bytes(range(256))*4096
 def hash_client():
     began = time.monotonic_ns()
     digest = None
-    for _ in range(HASH_CHUNKS): digest = hashlib.sha256(HASH_DATA).hexdigest()
+    for _ in range(HASH_CHUNKS):
+        digest = hashlib.sha256(HASH_DATA).hexdigest()
     return {'event':'local-work-complete','method':'fixed-sha256-corpus-v1',
             'chunks':HASH_CHUNKS,'bytes':len(HASH_DATA)*HASH_CHUNKS,'digest':digest,
             'begin_monotonic_ns':began,'end_monotonic_ns':time.monotonic_ns()}
@@ -27,7 +28,8 @@ def hash_client():
 def cpu_stat(path):
     values = dict(line.split() for line in path.read_text().splitlines())
     value = values.get('usage_usec')
-    if value is None or not value.isdigit(): raise BenchError('UID cgroup CPU counter unavailable')
+    if value is None or not value.isdigit():
+        raise BenchError('UID cgroup CPU counter unavailable')
     return int(value)
 
 
@@ -36,7 +38,8 @@ def process_stat(raw):
     # at state (3); utime/stime/starttime are fields 14/15/22.
     end = raw.rfind(')')
     fields = raw[end+2:].split()
-    if end < 0 or len(fields) < 20: raise BenchError('Truncated process stat')
+    if end < 0 or len(fields) < 20:
+        raise BenchError('Truncated process stat')
     return int(fields[11])+int(fields[12]), int(fields[19])
 
 
@@ -48,34 +51,41 @@ def transport_identity(process, command, *, proc=Path('/proc')):
     """
     if process.args!=command or command.count('/usr/bin/systemd-run')!=1:
         raise BenchError('Resource transport command is not the owned launch request')
-    if process.poll() is not None:return None
+    if process.poll() is not None:
+        return None
     path=proc/str(process.pid)
     try:
         ticks,start=process_stat((path/'stat').read_text())
         parent=int(next(line.split()[1] for line in (path/'status').read_text().splitlines() if line.startswith('PPid:')))
-        if parent!=os.getpid():raise BenchError('Resource transport is not a direct controller child')
+        if parent!=os.getpid():
+            raise BenchError('Resource transport is not a direct controller child')
         membership=(proc/str(parent)/'cgroup').read_text().strip()
         if (path/'cgroup').read_text().strip()!=membership:
             raise BenchError('Resource transport left its controller cgroup')
         return {'pid':process.pid,'start_ticks':start,'initial_cpu_ticks':ticks,'parent_pid':parent,
                 'cgroup':membership,'command':command[command.index('/usr/bin/systemd-run'):]}
     except (FileNotFoundError,ProcessLookupError):
-        if process.poll() is not None:return None
+        if process.poll() is not None:
+            return None
         raise BenchError('Resource transport identity disappeared before registration')
 
 
 def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup'), transport=None):
-    if type(uid) is not int or uid <= 0: raise BenchError('Resource inventory requires a reserved non-root UID')
+    if type(uid) is not int or uid <= 0:
+        raise BenchError('Resource inventory requires a reserved non-root UID')
     begin = time.monotonic_ns()
     rows, vanished, transports = [], [], []
     for path in sorted(proc.iterdir(), key=lambda p:p.name):
-        if not path.name.isdigit(): continue
+        if not path.name.isdigit():
+            continue
         try:
             status = path.joinpath('status').read_text()
             values = {line.split(':',1)[0]:line.split(':',1)[1].strip() for line in status.splitlines() if ':' in line}
             uids = [int(v) for v in values.get('Uid','').split()]
-            if uid not in uids: continue
-            if uids != [uid]*4: raise BenchError('Reserved UID process changed credentials')
+            if uid not in uids:
+                continue
+            if uids != [uid]*4:
+                raise BenchError('Reserved UID process changed credentials')
             ticks,start = process_stat(path.joinpath('stat').read_text())
             rollup = path.joinpath('smaps_rollup').read_text()
             pss = [line.split() for line in rollup.splitlines() if line.startswith('Pss:')]
@@ -93,7 +103,8 @@ def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup'), transpor
                 raise BenchError(f'Reserved UID process escaped its session accounting boundary: '
                                  f'PID {path.name} ({values.get("Name","")}), start {start}, cgroup {membership}')
             again_ticks,again_start = process_stat(path.joinpath('stat').read_text())
-            if again_start != start or again_ticks < ticks: raise BenchError('PID identity changed while sampling')
+            if again_start != start or again_ticks < ticks:
+                raise BenchError('PID identity changed while sampling')
             row={'pid':int(path.name),'start_ticks':start,'cpu_ticks':again_ticks,
                          'pss_kib':int(pss[0][1]),'name':values.get('Name','')[:80],
                          'cgroup':membership,'classification':'benchmark-workload' if
@@ -101,16 +112,20 @@ def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup'), transpor
             if is_transport:
                 row.update(classification='collector-transport',parent_pid=parent,command=command)
                 transports.append(row)
-            else:rows.append(row)
+            else:
+                rows.append(row)
         except (FileNotFoundError, ProcessLookupError):
             # Exits are visible gaps in the point-in-time PSS inventory; cgroup
             # CPU still includes their work, unlike summing surviving PIDs.
-            if 'uids' in locals() and uid in uids: vanished.append(int(path.name))
+            if 'uids' in locals() and uid in uids:
+                vanished.append(int(path.name))
         except PermissionError as exc:
-            if path.stat().st_uid == uid: raise BenchError('Reserved UID process accounting permission denied') from exc
+            if path.stat().st_uid == uid:
+                raise BenchError('Reserved UID process accounting permission denied') from exc
         finally:
             uids = []
-    if not rows: raise BenchError('No live reserved UID processes in resource inventory')
+    if not rows:
+        raise BenchError('No live reserved UID processes in resource inventory')
     cpu_begin = time.monotonic_ns()
     usage = cpu_stat(cgroup/'user.slice'/f'user-{uid}.slice'/'cpu.stat')
     cpu_end = time.monotonic_ns()
@@ -123,7 +138,8 @@ def snapshot(uid, *, proc=Path('/proc'), cgroup=Path('/sys/fs/cgroup'), transpor
 
 
 def metrics(rows, uid, transport=None):
-    if len(rows) < 2: raise BenchError('Resource window has fewer than two samples')
+    if len(rows) < 2:
+        raise BenchError('Resource window has fewer than two samples')
     previous = None
     process_counters = {}
     transport_rows=[]
@@ -148,7 +164,8 @@ def metrics(rows, uid, transport=None):
             raise BenchError('Invalid collector or process accounting coverage')
         identities = set()
         controls=row.get('controller_transports',[])
-        if not isinstance(controls,list) or len(controls)>1:raise BenchError('Invalid controller transport inventory')
+        if not isinstance(controls,list) or len(controls)>1:
+            raise BenchError('Invalid controller transport inventory')
         for control in controls:
             if (transport is None or any(control.get(k)!=transport[k] for k in
                     ('pid','start_ticks','parent_pid','cgroup','command'))
@@ -170,8 +187,10 @@ def metrics(rows, uid, transport=None):
             if transport and process['pid']==transport['pid']:
                 raise BenchError('Controller transport was counted as a session process')
             key = (process['pid'],process['start_ticks'])
-            if key in identities: raise BenchError('Duplicate process in resource inventory')
-            if process['cpu_ticks'] < process_counters.get(key,0): raise BenchError('Live process CPU counter moved backwards')
+            if key in identities:
+                raise BenchError('Duplicate process in resource inventory')
+            if process['cpu_ticks'] < process_counters.get(key,0):
+                raise BenchError('Live process CPU counter moved backwards')
             process_counters[key]=process['cpu_ticks']
             identities.add(key)
         if previous and (row['begin_monotonic_ns'] < previous['end_monotonic_ns']
@@ -183,7 +202,8 @@ def metrics(rows, uid, transport=None):
         previous=row
     first,last=rows[0],rows[-1]
     elapsed=(last['cpu_end_monotonic_ns']-first['cpu_end_monotonic_ns'])/1e9
-    if elapsed <= 0: raise BenchError('Empty resource measurement interval')
+    if elapsed <= 0:
+        raise BenchError('Empty resource measurement interval')
     cpu=(last['cpu_usage_usec']-first['cpu_usage_usec'])/1e6
     pss=[sum(p['pss_kib'] for p in row['processes'])/1024 for row in rows]
     session_pss=[sum(p['pss_kib'] for p in row['processes'] if p['classification']=='session')/1024 for row in rows]

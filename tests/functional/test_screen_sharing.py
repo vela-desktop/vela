@@ -322,12 +322,16 @@ class TheIndicator(test_shell.RealShell):
         # The icon: just left of and above its dot.
         dot = self.red()
         x, y = str(min(p[0] for p in dot) - 6), str(min(p[1] for p in dot) - 4)
-        self.vela.input("move", x, y, "sleep", "300", "move", str(int(x) + 1), y, "sleep", "900")
-        self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-tooltip"), what="the tooltip")
-        self.vela.input("click", "left")
-        self.vela.wait_for(lambda s: self.mapped(s, "vela-context-menu"), what="the menu")
-        self.vela.input("key", "Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-context-menu"), what="the menu to close")
+        # Keep one virtual seat keyboard for the tooltip, menu and Escape.
+        # Launching a fresh vela-input for Escape can move focus away from the
+        # Qt menu; its Keys.onEscapePressed then never sees the key.
+        with self.input_session() as send:
+            send("move", x, y, "sleep", 300, "move", str(int(x) + 1), y, "sleep", 900)
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-taskbar-tooltip"), what="the tooltip")
+            send("click", "left")
+            self.vela.wait_for(lambda s: self.mapped(s, "vela-context-menu"), what="the menu")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-context-menu"), what="the menu to close")
         share.stdin.close()
         share.wait(5)
         # A second of grace, then gone.

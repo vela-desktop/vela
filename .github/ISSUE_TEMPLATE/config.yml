@@ -1,0 +1,7 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+blank_issues_enabled: true
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/vela-desktop/vela/security/advisories/new
+    about: Report privately; see SECURITY.md.

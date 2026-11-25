@@ -40,6 +40,14 @@ VT_GETSTATE, VT_OPENQRY = 0x5603, 0x5600
 TERMINAL = ("done", "failed", "cancelled")
 
 
+def runtime_environment(plan, target):
+    from .model import vela_environment
+    expected = vela_environment(plan.get('vela_sync_test', False))
+    if plan.get('vela_runtime_environment', {}) != expected:
+        raise BenchError('Vela runtime flags differ from the fixed sync-test profile')
+    return expected if target == 'vela' else {}
+
+
 def properties(text):
     return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
 
@@ -141,11 +149,16 @@ def resolve_targets(requested=None, *, check_trust=True):
     return {x: available[x] for x in ("vela", "plasma") if x in chosen}
 
 
-def preview(targets=None, seconds=30, presentation_probe=False, controlled=False, calibrate=False):
+def preview(targets=None, seconds=30, presentation_probe=False, controlled=False, calibrate=False, vela_sync_test=False):
     if type(seconds) is not int or not 5 <= seconds <= 120:
         raise BenchError("Pilot dwell time must be 5–120 seconds per desktop")
     selected = resolve_targets(targets, check_trust=False)
+    from .model import vela_environment
+    runtime = vela_environment(vela_sync_test)
+    if runtime and 'vela' not in selected:
+        raise BenchError('--vela-sync-test requires the Vela target')
     return {"kind": "session-lifecycle-pilot", "targets": selected, "target_order": list(selected),
+            **({'vela_sync_test': True, 'vela_runtime_environment': runtime} if runtime else {}),
             "input_policy": INPUT_POLICY,
             "desktop_profile_policy": PROFILE_POLICY,
             "seconds_per_target": seconds, "presentation_probe": presentation_probe or calibrate,
@@ -200,13 +213,14 @@ def create_fixture(state):
 
 
 def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), presentation_probe=False, controlled=False,
-          calibrate=False, countdown=True, run_id=None, fault=None, campaign_run_id=None, campaign_block_id=None):
+          calibrate=False, countdown=True, run_id=None, fault=None, campaign_run_id=None, campaign_block_id=None,
+          vela_sync_test=False):
     if campaign_run_id is not None and not re.fullmatch(r"[0-9a-f]{32}", campaign_run_id):
         raise BenchError("Invalid campaign identity for controlled pilot")
     record = load_setup(host, layout)
     require_current_home_isolation(record)
     presentation_probe, controlled = presentation_probe or calibrate, controlled or calibrate
-    plan = preview(targets, seconds, presentation_probe, controlled, calibrate)
+    plan = preview(targets, seconds, presentation_probe, controlled, calibrate, vela_sync_test=vela_sync_test)
     plan['autostart_inventory'] = autostart_inventory(layout)
     request = None
     if campaign_block_id is not None:
@@ -214,6 +228,8 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
         if campaign_run_id is None or len(plan["targets"]) != 1 or fault:
             raise BenchError("Campaign exercises require one target, fresh calibration and no fault")
         request = block_request(layout, campaign_run_id, campaign_block_id, next(iter(plan["targets"])))
+        if request.get('vela_runtime_environment', {}) != runtime_environment(plan, next(iter(plan['targets']))):
+            raise BenchError('Pilot runtime flags differ from the immutable campaign')
         if not calibrate and not (request["measurement_executed"] and request["block"]["phase"]=="overhead" and controlled and not presentation_probe):
             raise BenchError("Only resource blocks may omit input/capture calibration")
         if request["measurement_executed"] and request["block"]["phase"] == "slow-apps":
@@ -242,7 +258,8 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
     resource_interaction=bool(request and request['measurement_executed'] and request['block']['phase']=='overhead')
     if calibrate or fault or resource_interaction:
         needed=list(("vela-bench-input", "vela-screen-dump") if calibrate else ("vela-bench-input",))
-        if resource_interaction:needed+=['vela-pattern','vela-bench-probe']
+        if resource_interaction:
+            needed+=['vela-pattern','vela-bench-probe']
         for name in needed:
             path = layout.helper.parent / name
             if str(path) not in record["files"]:
@@ -300,6 +317,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
                  "conditions_restore_required": False,
                  "campaign_run_id": campaign_run_id,
                  "campaign_block": request,
+                 "input_isolation_acquisition": "not-started",
                  "fault": fault, "unit": unit,
                  "display_manager_was_active": manager_state == "active", "restore_required": False,
                  "cleanup_errors": [], "result": "pending", "fixture": f"/home/.vela-benchmark-{run_id}",
@@ -358,7 +376,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
         return 130
 
 
-def session_command(target, vt, record, layout=Layout(), *, directory=None):
+def session_command(target, vt, record, layout=Layout(), *, directory=None, vela_sync_test=False):
     if target not in ("vela", "plasma") or type(vt) is not int or not 1 <= vt <= 63:
         raise BenchError("Invalid fixed session operation")
     props = {"Description": "Vela benchmark P0 session " + record["account_tag"],
@@ -382,13 +400,16 @@ def session_command(target, vt, record, layout=Layout(), *, directory=None):
     command += [f"--setenv={key}={value}" for key, value in {"XDG_SESSION_TYPE": "wayland", "XDG_SESSION_CLASS": "user",
                  "XDG_SEAT": "seat0", "XDG_VTNR": str(vt), "XDG_SESSION_DESKTOP": target,
                  "XDG_CURRENT_DESKTOP": "Vela:KDE" if target == "vela" else "KDE"}.items()]
-    return command + ["/usr/bin/python3", "-I", str(layout.helper), "_session", target]
+    from .model import vela_environment
+    if vela_environment(vela_sync_test) and target != 'vela':
+        raise BenchError('Sync-test flags may only be applied to Vela')
+    return command + ["/usr/bin/python3", "-I", str(layout.helper), "_session", target] + (['--vela-sync-test'] if vela_sync_test else [])
 
 
-def launch_session(host, target, vt, record, layout, directory):
+def launch_session(host, target, vt, record, layout, directory, *, vela_sync_test=False):
     began=int(time.time())-1
     try:
-        host.run(session_command(target,vt,record,layout,directory=directory),timeout=50)
+        host.run(session_command(target,vt,record,layout,directory=directory,vela_sync_test=vela_sync_test),timeout=50)
     except BenchError as exc:
         evidence={'schema':1,'status':'failed','error':str(exc),'unit':SESSION_UNIT}
         for name,command in (
@@ -398,7 +419,8 @@ def launch_session(host, target, vt, record, layout, directory):
             try:
                 result=host.run(command,check=False,timeout=5)
                 evidence[name]=properties(result.stdout) if name=='properties' else result.stdout[-8192:]
-                if result.returncode: evidence[name+'_error']=getattr(result,'stderr','')[-1000:]
+                if result.returncode:
+                    evidence[name+'_error']=getattr(result,'stderr','')[-1000:]
             except (BenchError,OSError) as diagnostic:
                 evidence[name+'_error']=str(diagnostic)
         atomic_json(directory/f'{target}-launch-failure.json',evidence)
@@ -460,6 +482,7 @@ def check_profile_environment(environment, home, runtime):
 
 
 def verify_session(host, record, state, layout=Layout()):
+    fixture = fixture_path(state)
     uid = record["uid"]
     session, managers = select_login_session(logind_sessions(host), uid)
     for key, value in {"Active": "yes", "Remote": "no", "Type": "wayland", "Class": "user", "Seat": "seat0",
@@ -480,13 +503,18 @@ def verify_session(host, record, state, layout=Layout()):
     # exclusion in BOTH process trees, without inspecting personal documents.
     for pid in (leader, manager):
         view = Path(f"/proc/{pid}/root")
-        if (view / state["fixture"].lstrip("/")).exists():
+        if (view / fixture.relative_to("/")).exists():
             raise BenchError("Synthetic personal-home fixture visible in target/user-manager namespace")
         if not (view / str(layout.home).lstrip("/") / ".pilot-profile").is_file():
             raise BenchError("Managed NSS home unavailable in target/user-manager namespace")
         raw = Path(f"/proc/{pid}/environ").read_bytes()
         environment = dict(item.decode("utf-8", errors="replace").split("=", 1) for item in raw.split(b"\0") if b"=" in item)
         check_profile_environment(environment, str(layout.home), str(runtime))
+        if pid == leader:
+            from .model import vela_environment
+            observed = {key: environment[key] for key in vela_environment(True) if key in environment}
+            if observed != runtime_environment(state.get('plan', {}), state.get('target')):
+                raise BenchError('Live session runtime flags differ from the authorized profile')
     bus = f"unix:path={runtime}/bus"
     query = host.run(["setpriv", f"--reuid={uid}", f"--regid={record['gid']}", "--clear-groups", "busctl",
                       "--address=" + bus, "get-property", "org.freedesktop.systemd1",
@@ -494,6 +522,7 @@ def verify_session(host, record, state, layout=Layout()):
     if shlex.split(query.stdout) != ["s", "active"]:
         raise BenchError("The full graphical session target is not active")
     return {"session": session, "manager_sessions": managers, "user_manager_pid": int(manager), "runtime": str(runtime),
+            "vela_runtime_environment": observed,
             "fixture_hidden_from_both_trees": True, "graphical_session_target": "active"}
 
 
@@ -601,9 +630,11 @@ def worker(host, layout=Layout()):
         state = read_json(directory / "state.json")
         if state.get("stage") != "queued":
             raise BenchError("Pilot is not queued")
+        state['input_isolation_acquisition'] = 'not-started'
         input_guard = None
         try:
             require_current_home_isolation(record)
+            runtime_environment(state.get('plan', {}), 'vela')
             target_vt = state.get("target_vt")
             if type(target_vt) is not int or not 1 <= target_vt <= 63:
                 raise BenchError("Invalid launch virtual terminal")
@@ -637,14 +668,17 @@ def worker(host, layout=Layout()):
                 # Probing may take time on a resumed DRM compositor. Never
                 # stop a personal session that appeared during acquisition.
                 require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
+                greeter_release_preflight(host, state)
                 update(directory, state, "takeover", conditions_restore_required=True)
             if state["display_manager_was_active"]:
                 quiesce_display_manager(host, directory, state, layout)
             reserve_vt(host, directory, state, layout)
+            update(directory, state, 'takeover', input_isolation_acquisition='acquiring')
             input_guard = InputIsolation(layout, on_failure=lambda evidence:
                                          atomic_json(directory / 'input-isolation.json', evidence))
             input_guard.start()
             atomic_json(directory / "input-isolation.json", input_guard.evidence())
+            update(directory, state, 'takeover', input_isolation_acquisition='active')
             # JSON object key sorting must never reorder the planned targets.
             order = state["plan"].get("target_order", list(state["plan"]["targets"]))
             diagnostic_failures = []
@@ -655,7 +689,7 @@ def worker(host, layout=Layout()):
                 update(directory, state, "prepare", target=target)
                 stop_user(host, record, layout)
                 reset_profile(host, record, layout)
-                profile = prepare_profile(layout, record, state['plan'].get('autostart_inventory', []))
+                profile = prepare_profile(layout, record, state['plan'].get('autostart_inventory', []), target=target)
                 atomic_json(directory / f"{target}-desktop-profile.json", profile)
                 cursor_profile = prepare_cursor_profile(layout, record)
                 atomic_json(directory / f"{target}-cursor-profile.json", cursor_profile)
@@ -669,7 +703,8 @@ def worker(host, layout=Layout()):
                 descriptor = os.open(directory / f"{target}-launch.stderr", os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
                 os.close(descriptor)
                 host.run(["chvt", str(target_vt)])
-                launch_session(host,target,target_vt,record,layout,directory)
+                options = {'vela_sync_test': True} if runtime_environment(state['plan'], target) else {}
+                launch_session(host,target,target_vt,record,layout,directory,**options)
                 evidence = wait_session(host, record, state, directory, layout)
                 atomic_json(directory / f"{target}-session.json", evidence)
                 if state.get("conditions_snapshot"):
@@ -773,6 +808,100 @@ def worker(host, layout=Layout()):
     # ExecStopPost owns cleanup, including when this process is killed.
 
 
+def display_manager_start_condition(host, unit, path):
+    if unit not in ('sddm.service', 'plasmalogin.service'):
+        raise BenchError('Invalid display-manager condition unit')
+    # systemctl show prints Conditions=[unprintable] for this compound type.
+    # Read the D-Bus tuple instead of relying on its human-facing formatter.
+    object_path = '/org/freedesktop/systemd1/unit/' + unit.replace('.', '_2e')
+    result = host.run(['busctl', '--system', '--json=short', 'get-property',
+        'org.freedesktop.systemd1', object_path, 'org.freedesktop.systemd1.Unit', 'Conditions'])
+    try:
+        value = json.loads(result.stdout)
+    except (ValueError, TypeError) as exc:
+        raise BenchError('Invalid display-manager Conditions response') from exc
+    if (not isinstance(value, dict) or value.get('type') != 'a(sbbsi)'
+            or not isinstance(value.get('data'), list)):
+        raise BenchError('Invalid display-manager Conditions signature')
+    for row in value['data']:
+        if (isinstance(row, list) and len(row) == 5 and row[0] == 'ConditionPathExists'
+                and row[1] is False and row[2] is False and row[3] == str(path)
+                and type(row[4]) is int and row[4] in (-1, 0, 1)):
+            return value
+    raise BenchError('Display-manager start-inhibition condition was not loaded')
+
+
+def greeter_release_preflight(host, state):
+    """Identify only the snapshotted greeter's login and service sessions."""
+    identity = (state.get('conditions_snapshot') or {}).get('greeter')
+    if identity is None:
+        return None, []  # Historical snapshots and uncontrolled diagnostics.
+    if (not isinstance(identity, dict) or identity.get('account') not in ('plasmalogin', 'sddm')
+            or type(identity.get('uid')) is not int or identity['uid'] <= 0
+            or type(identity.get('gid')) is not int or identity['gid'] < 0):
+        raise BenchError('Invalid snapshotted greeter account')
+    try:
+        named = pwd.getpwnam(identity['account'])
+        numbered = pwd.getpwuid(identity['uid'])
+    except KeyError as exc:
+        raise BenchError('Snapshotted greeter account disappeared') from exc
+    expected = (identity['account'], identity['uid'], identity['gid'])
+    if any((user.pw_name, user.pw_uid, user.pw_gid) != expected for user in (named, numbered)):
+        raise BenchError('Snapshotted greeter account identity changed')
+    sessions_ = logind_sessions(host)
+    require_no_graphical_sessions(sessions_, after_authorization=True)
+    greeters, blocked = [], []
+    for row in sessions_:
+        if row.get('User') != str(identity['uid']):
+            continue
+        if (row.get('Class') in ('manager', 'manager-early') and row.get('Service') == 'systemd-user'
+                and row.get('Type') == 'unspecified' and row.get('Remote') == 'no'
+                and row.get('Seat') == '' and row.get('TTY') == '' and row.get('VTNr') == '0'):
+            continue  # pam_systemd registers user@UID.service itself with logind.
+        session_id = row.get('Id', '')
+        if (row.get('Class') == 'greeter' and row.get('Remote') == 'no' and row.get('Seat') == 'seat0'
+                and re.fullmatch(r'[A-Za-z0-9_-]+', session_id)
+                and row.get('Scope') == f'session-{session_id}.scope'):
+            greeters.append(row)
+        else:
+            blocked.append({key: row.get(key, 'unknown') for key in ('Id', 'Class', 'Type', 'Service', 'Scope')})
+    if blocked:
+        raise BenchError('Snapshotted greeter UID has an unexpected session: ' + json.dumps(blocked))
+    return identity, greeters
+
+
+def stop_greeter_manager(host, directory, state, layout):
+    """Release the greeter's session scopes and services outside its DM cgroup."""
+    identity, greeters = greeter_release_preflight(host, state)
+    if identity is None:
+        return
+    active = host.run(['systemctl', 'show', 'display-manager.service', '--property=ActiveState', '--value']).stdout.strip()
+    if active not in ('inactive', 'failed'):
+        raise BenchError('Greeter user-manager release requires a stopped display manager')
+    evidence = dict(identity, status='stopping', sessions=[{key: row[key] for key in ('Id', 'Scope')} for row in greeters])
+    update(directory, state, state['stage'], greeter_user_release=evidence)
+    atomic_json(directory / 'greeter-user-release.json', evidence)
+    for row in greeters:
+        # PAM helpers can remain in their logind scope after the DM cgroup is
+        # killed. Stopping user@ alone leaves those sessions and DRM VTs alive.
+        unit = f"session-{row['Id']}.scope"
+        command = ['systemctl', 'stop', unit]
+        result = host.run(command, check=False, timeout=45)
+        observed = properties(host.run(['systemctl', 'show', unit, '--property=ActiveState', '--property=LoadState'], timeout=5).stdout)
+        if result.returncode and not (result.returncode == 5 and observed == {'ActiveState': 'inactive', 'LoadState': 'not-found'}):
+            from .host import HostOperationError
+            raise HostOperationError(command, result.returncode, result.stdout, result.stderr)
+        if observed.get('ActiveState') not in ('inactive', 'failed'):
+            raise BenchError('Greeter logind scope remained active after stop')
+    uid = identity['uid']
+    host.run(['systemctl', 'stop', f'user@{uid}.service', f'user-runtime-dir@{uid}.service'], timeout=45)
+    if host.pids(uid) or layout.path(f'run/user/{uid}').exists():
+        raise BenchError('Greeter UID still has processes or runtime state after stop')
+    evidence['status'] = 'released'
+    update(directory, state, state['stage'])
+    atomic_json(directory / 'greeter-user-release.json', evidence)
+
+
 def quiesce_display_manager(host, directory, state, layout):
     """Freeze authentication before the final session check and DM teardown.
 
@@ -780,6 +909,7 @@ def quiesce_display_manager(host, directory, state, layout):
     keeps it paused while thawing systemd's freezer, then SIGKILL and stop.
     ExecStopPost owns mask removal/thaw even if this worker is interrupted.
     """
+    greeter_release_preflight(host, state)
     unit = host.run(['systemctl', 'show', 'display-manager.service', '--property=Id', '--value']).stdout.strip()
     if unit not in ('sddm.service', 'plasmalogin.service'):
         raise BenchError('Display manager has no reviewed authentication-quiescence adapter')
@@ -791,37 +921,55 @@ def quiesce_display_manager(host, directory, state, layout):
         raise BenchError('Unowned display-manager runtime override exists')
     if override.exists() or override.is_symlink():
         raise BenchError('Unowned display-manager restart override exists')
+    # Keep the active unit loadable until it has been thawed and stopped.
+    # A missing, root-owned pilot marker inhibits new start jobs (including
+    # dependency-triggered starts) throughout the stop-to-mask transition.
+    start_condition = directory / 'display-manager-start-blocked'
+    if start_condition.exists() or start_condition.is_symlink():
+        raise BenchError('Display-manager start-inhibition marker unexpectedly exists')
     created_override_directory = not override.parent.exists()
     override.parent.mkdir(exist_ok=True)
     trusted(override.parent, directory=True)
     guard = {'unit': unit, 'mask_requested': False, 'status': 'freezing',
+             'start_condition': str(start_condition),
              'restart_override_requested': True, 'created_override_directory': created_override_directory}
     update(directory, state, 'takeover', display_manager_quiescence=guard)
     with override.open('x') as stream:
-        stream.write('[Service]\nRestart=no\n')
+        stream.write(f'[Unit]\nConditionPathExists={start_condition}\n[Service]\nRestart=no\n')
     host.run(['systemctl', 'daemon-reload'])
     if host.run(['systemctl','show',unit,'--property=Restart','--value']).stdout.strip() != 'no':
         raise BenchError('Display-manager automatic restart could not be inhibited')
+    guard['conditions'] = display_manager_start_condition(host, unit, start_condition)
+    update(directory, state, 'takeover')
     host.run(['systemctl', 'freeze', unit], timeout=15)
     if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
         raise BenchError('Display-manager authentication did not freeze')
-    guard['mask_requested'] = True
-    update(directory, state, 'takeover')
-    mask.symlink_to('/dev/null')
-    host.run(['systemctl', 'daemon-reload'])
-    if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'frozen':
-        raise BenchError('Display-manager authentication resumed before the final login check')
+    # Do not mask/reload the frozen unit: on plasmalogin systemd can lose
+    # its unit reference, making both thaw and kill/stop fail.
     require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
     guard['stop_requested'] = True
     update(directory, state, 'takeover')
     host.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGSTOP', unit], timeout=10)
-    # A pending SIGSTOP prevents authentication from executing after thaw.
-    # Thaw before SIGKILL avoids stale freezer state on an inactive service.
+    # SIGSTOP is already pending on every greeter process. Unfreeze while
+    # the unit remains resolvable, then kill and stop it. The missing-path
+    # condition prevents fresh activations even if the service exits before
+    # the runtime mask becomes effective.
     host.run(['systemctl', 'thaw', unit], timeout=15)
+    if host.run(['systemctl', 'show', unit, '--property=FreezerState', '--value']).stdout.strip() != 'running':
+        raise BenchError('Display-manager authentication did not thaw')
     host.run(['systemctl', 'kill', '--kill-whom=all', '--signal=SIGKILL', unit], timeout=10)
     host.run(['systemctl', 'stop', 'display-manager.service'], timeout=45)
     if host.run(['systemctl', 'show', unit, '--property=ActiveState', '--value']).stdout.strip() not in ('inactive','failed'):
         raise BenchError('Quiesced display manager did not stop')
+    stop_greeter_manager(host, directory, state, layout)
+    # Mask only after the service is stopped; reloading a frozen unit is the
+    # plasmalogin.service failure that originally aborted the campaign.
+    guard['mask_requested'] = True
+    update(directory, state, 'takeover')
+    mask.symlink_to('/dev/null')
+    host.run(['systemctl', 'daemon-reload'])
+    if host.run(['systemctl', 'show', unit, '--property=LoadState', '--value']).stdout.strip() != 'masked':
+        raise BenchError('Display-manager runtime mask was not loaded')
     guard['status'] = 'stopped'
     update(directory, state, 'takeover')
 
@@ -841,7 +989,11 @@ def release_display_manager_quiescence(host, directory, state, layout):
         mask.unlink()
     if guard.get('restart_override_requested') and (override.exists() or override.is_symlink()):
         trusted(override)
-        if override.read_text() != '[Service]\nRestart=no\n':
+        condition = guard.get('start_condition')
+        if condition is not None and condition != str(directory / 'display-manager-start-blocked'):
+            raise BenchError('Owned display-manager start condition changed; refusing removal')
+        expected = (f'[Unit]\nConditionPathExists={condition}\n' if condition else '') + '[Service]\nRestart=no\n'
+        if override.read_text() != expected:
             raise BenchError('Owned display-manager restart override changed; refusing removal')
         override.unlink()
         if guard.get('created_override_directory') and not any(override.parent.iterdir()):
@@ -902,8 +1054,9 @@ def restore_hardware_conditions(host, layout, directory, state, record):
     """Restore the exact snapshot; restart a rejecting greeter at most once.
 
     A successful systemd start does not imply a working DRM greeter. For
-    example, amdgpu can reject KWin's chosen RA24 framebuffer format. Only
-    a native SetConfig failure permits this recovery, never another mode,
+    example, amdgpu can reject KWin's chosen RA24 framebuffer format. A native
+    SetConfig failure or exhausted output-announcement deadline permits this
+    recovery, never another mode,
     backend, benchmark environment or an occupied personal desktop.
     """
     first = restore_conditions(host, layout, state["conditions_snapshot"], lambda: logind_sessions(host))
@@ -921,6 +1074,7 @@ def restore_hardware_conditions(host, layout, directory, state, record):
     if (first["status"] == "passed" or not first.get("output_restart_eligible")
             or not state["display_manager_was_active"] or state.get("output_greeter_restart")):
         return first
+    stop_requested, start_attempted = False, False
     try:
         require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
         if host.pids(record["uid"]) or layout.path(f"run/user/{record['uid']}").exists():
@@ -930,8 +1084,11 @@ def restore_hardware_conditions(host, layout, directory, state, record):
         update(directory, state, "restoring", output_greeter_restart=True)
         evidence["greeter_restart"] = True
         atomic_json(path, evidence)
+        stop_requested = True
         host.run(["systemctl", "stop", "display-manager.service"], timeout=45)
+        stop_greeter_manager(host, directory, state, layout)
         require_no_graphical_sessions(logind_sessions(host), after_authorization=True)
+        start_attempted = True
         restore_display_manager(host, directory, state)
         # Resolve the new greeter's credentials/socket and all physical modes
         # afresh. Do not reuse the old process environment or backend mode IDs.
@@ -941,9 +1098,41 @@ def restore_hardware_conditions(host, layout, directory, state, record):
     except (BenchError, OSError) as exc:
         evidence["restart_error"] = str(exc)
         first["errors"].append("Output greeter recovery: " + str(exc))
+        if stop_requested and not start_attempted:
+            # A refused/failed greeter release must not leave an initially
+            # active login manager off. This does not qualify restoration.
+            try:
+                restore_display_manager(host, directory, state)
+                evidence['display_manager_fallback'] = 'started'
+            except (BenchError, OSError) as error:
+                evidence['display_manager_fallback'] = 'failed'
+                first['errors'].append('Display manager fallback: ' + str(error))
         return first
     finally:
         atomic_json(path, evidence)
+
+
+def preserve_input_release(directory, state):
+    if not state.get('plan', {}).get('input_policy'):
+        return
+    path = directory / 'input-isolation.json'
+    if path.exists():
+        guard = read_json(path)
+        if not isinstance(guard, dict):
+            raise BenchError('Invalid physical-input recovery evidence')
+    elif state.get('input_isolation_acquisition') == 'not-started':
+        # The acquiring marker is persisted before opening any evdev node.
+        # Early takeover failures therefore have a positive no-acquisition
+        # receipt, rather than being confused with lost release evidence.
+        guard = {'policy': state['plan']['input_policy'], 'devices': {}, 'error': None,
+                 'status': 'released', 'acquisition_attempted': False,
+                 'release_method': 'not-acquired-before-worker-exit'}
+    else:
+        return  # Missing evidence after a possible acquisition still blocks continuation.
+    guard['release_verified_after_worker_exit'] = True
+    if guard.get('status') == 'active':
+        guard.update(status='released', release_method='worker-process-exit')
+    atomic_json(path, guard)
 
 
 def recover(host, layout=Layout()):
@@ -966,16 +1155,11 @@ def recover(host, layout=Layout()):
             state.update(restore_required=False, masked_units=[], result="failed", error="Host rebooted during pilot")
             state.pop('display_manager_quiescence', None)
         update(directory, state, "restoring")
-        if state.get("plan", {}).get("input_policy"):
-            guard_path = directory / "input-isolation.json"
-            if guard_path.exists():
-                guard = read_json(guard_path)
-                # ExecStopPost starts after the worker process has exited; all
-                # its evdev descriptors are already closed, even after SIGKILL.
-                guard['release_verified_after_worker_exit'] = True
-                if guard.get('status') == 'active':
-                    guard.update(status='released', release_method='worker-process-exit')
-                atomic_json(guard_path, guard)
+        # ExecStopPost runs after the worker and its children have exited.
+        try:
+            preserve_input_release(directory, state)
+        except (BenchError, OSError, ValueError) as exc:
+            errors.append(str(exc))
         stopped = False
         try:
             released = stop_user(host, record, layout)
@@ -1007,6 +1191,13 @@ def recover(host, layout=Layout()):
         except (BenchError, OSError) as exc:
             errors.append(str(exc))
         if state.get("restore_required"):
+            greeter_stopped = True
+            if state.get('greeter_user_release', {}).get('status') == 'stopping':
+                try:
+                    stop_greeter_manager(host, directory, state, layout)
+                except (BenchError, OSError) as exc:
+                    errors.append(str(exc))
+                    greeter_stopped = False
             try:
                 release_display_manager_quiescence(host, directory, state, layout)
             except (BenchError, OSError) as exc:
@@ -1020,7 +1211,7 @@ def recover(host, layout=Layout()):
                         errors.append(str(exc))
                 else:
                     errors.append("Display manager restart withheld: reserved UID was not fully stopped")
-            if stopped and state.get("conditions_snapshot") and state.get("conditions_restore_required", True):
+            if stopped and greeter_stopped and state.get("conditions_snapshot") and state.get("conditions_restore_required", True):
                 state["conditions_restore"] = restore_hardware_conditions(host, layout, directory, state, record)
                 errors.extend(state["conditions_restore"]["errors"])
             try:
@@ -1060,7 +1251,7 @@ def recover(host, layout=Layout()):
             raise BenchError("Pilot restoration failed: " + "; ".join(errors))
 
 
-def desktop_environment(target, user, inherited):
+def desktop_environment(target, user, inherited, *, vela_sync_test=False):
     if os.getuid() != user.pw_uid or os.geteuid() != user.pw_uid or user.pw_name != ACCOUNT:
         raise BenchError("Desktop entry may only execute as the reserved unprivileged account")
     required = {"XDG_SESSION_ID", "XDG_SEAT", "XDG_VTNR"}
@@ -1077,6 +1268,11 @@ def desktop_environment(target, user, inherited):
                    "XDG_CURRENT_DESKTOP": "Vela:KDE" if target == "vela" else "KDE"}
     environment.update({key: inherited[key] for key in required})
     environment.update(cursor_environment(Path(user.pw_dir)))
+    from .model import vela_environment
+    flags = vela_environment(vela_sync_test)
+    if flags and target != 'vela':
+        raise BenchError('Sync-test flags may only be applied to Vela')
+    environment.update(flags)
     return environment
 
 
@@ -1109,6 +1305,8 @@ def launcher_main(argv=None):
     campaign.add_argument("--exercise", action="store_true")
     from .model import MEASUREMENTS
     campaign.add_argument("--phase", action="append", choices=MEASUREMENTS)
+    for command in (live, campaign, child):
+        command.add_argument('--vela-sync-test', action='store_true')
     args = parser.parse_args(argv)
     host = Host()
     try:
@@ -1131,7 +1329,7 @@ def launcher_main(argv=None):
             print("vela-benchmark-session: " + json.dumps({"stage": "entry", "pid": os.getpid(),
                   "uid": os.getuid(), "euid": os.geteuid(), "target": args.target}), file=sys.stderr, flush=True)
             user = pwd.getpwnam(ACCOUNT)
-            env = desktop_environment(args.target, user, os.environ)
+            env = desktop_environment(args.target, user, os.environ, vela_sync_test=args.vela_sync_test)
             print("vela-benchmark-session: environment validated", file=sys.stderr, flush=True)
             descriptor = resolve_targets([args.target])[args.target]
             os.chdir(user.pw_dir)
@@ -1145,7 +1343,8 @@ def launcher_main(argv=None):
                 print(json.dumps(latest(), allow_nan=False))
                 return 0
             return execute(host, args.target, case=args.case, resume=args.resume, assume_yes=args.yes,
-                           fast=args.fast, seed=args.seed, phases=args.phase, exercise=args.exercise)
+                           fast=args.fast, seed=args.seed, phases=args.phase, exercise=args.exercise,
+                           vela_sync_test=args.vela_sync_test)
         if args.command == "results":
             load_setup(host)
             directory = state_directory()
@@ -1153,7 +1352,7 @@ def launcher_main(argv=None):
             return 0
         if args.command == "session-test":
             return begin(host, args.target, args.seconds, args.yes, presentation_probe=args.probe,
-                         controlled=args.conditions, calibrate=args.calibrate)
+                         controlled=args.conditions, calibrate=args.calibrate, vela_sync_test=args.vela_sync_test)
         if args.command == "_pilot":
             return worker(host) or 0
         if args.command == "recover":

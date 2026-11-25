@@ -3,8 +3,10 @@
 
 #include "server.h"
 
+#include "alloc/alloc.h"
 #include "a11y.h"
 #include "capture_watch.h"
+#include "client_policy.h"
 #include "bluetooth.h"
 #include "updates.h"
 #include "brightness.h"
@@ -16,6 +18,7 @@
 #include "layer.h"
 #include "listen.h"
 #include "lock.h"
+#include "lock_state.h"
 #include "motion.h"
 #include "output.h"
 #include "output_manager.h"
@@ -123,6 +126,9 @@ static void handle_layout_change(struct wl_listener *listener, void *data)
     vela_output_manager_update(server);
     vela_lock_update_layout(server->lock);
     vela_views_check_outputs_later(server);
+    if (server->lid_closed) {
+        vela_output_manager_schedule_lid_update(server);
+    }
 }
 
 // The frame loop must wake at the right moment even with the CPU busy (a
@@ -176,6 +182,9 @@ static bool init(struct vela_server *server)
     server->display = wl_display_create();
     server->loop = wl_display_get_event_loop(server->display);
     struct wl_display *display = server->display;
+    // Before any global exists: sandboxed clients and Xwayland must never
+    // see a privileged one, not even briefly.
+    vela_client_policy_init(server);
 
     // Picks the backend by itself: DRM/KMS from a VT, or a Wayland window when
     // launched inside another session (such as KDE) for testing.
@@ -203,16 +212,21 @@ static bool init(struct vela_server *server)
         return false;
     }
     server->wlr_renderer = vela_renderer_wlr(server->renderer);
-    server->allocator = vela_gbm_allocator_create(vela_vulkan_render_fd(server->vulkan));
+    bool vulkan_buffers = vela_vulkan_exports_buffers(server->vulkan);
+    server->allocator = vulkan_buffers ? vela_vulkan_allocator_create(server->vulkan)
+        : vela_gbm_allocator_create(vela_vulkan_render_fd(server->vulkan));
     if (!server->allocator) {
-        wlr_log(WLR_ERROR, "Can't create the buffer allocator (GBM)");
+        wlr_log(WLR_ERROR, "Can't create the buffer allocator (%s)", vulkan_buffers ? "Vulkan" : "GBM");
         return false;
     }
     // Optional optimization: keep the normal allocator even if cursor-only
     // GBM allocations are unavailable. One allocator for all DRM outputs;
     // swapchains themselves are per-output and hotplug-safe.
-    server->cursor_allocator = vela_gbm_cursor_allocator_create(vela_vulkan_render_fd(server->vulkan),
-        server->renderer);
+    // Venus must not fall back to importing virgl GBM cursor buffers either.
+    if (!vulkan_buffers) {
+        server->cursor_allocator = vela_gbm_cursor_allocator_create(vela_vulkan_render_fd(server->vulkan),
+            server->renderer);
+    }
     wlr_renderer_init_wl_shm(server->wlr_renderer, display);
     // GPU buffers shared with apps, without copies: the formats are those our
     // device can read.
@@ -229,23 +243,23 @@ static bool init(struct vela_server *server)
     // Basic protocols almost every modern application expects. With the
     // renderer, wlroots uploads app buffers to our textures on every commit
     // (only the changed part).
-    server->compositor = wlr_compositor_create(display, 6, server->wlr_renderer);
+    server->compositor = VELA_MUST(wlr_compositor_create(display, 6, server->wlr_renderer));
     vela_ready_init(&server->ready, server->compositor);
-    wlr_subcompositor_create(display);
-    wlr_data_device_manager_create(display);
-    wlr_primary_selection_v1_device_manager_create(display);
-    wlr_data_control_manager_v1_create(display);
+    VELA_MUST(wlr_subcompositor_create(display));
+    VELA_MUST(wlr_data_device_manager_create(display));
+    VELA_MUST(wlr_primary_selection_v1_device_manager_create(display));
+    VELA_MUST(wlr_data_control_manager_v1_create(display));
     // The clipboard for those without a window: the shell's clipboard history
     // (Win+V) and the Snipping Tool.
-    wlr_ext_data_control_manager_v1_create(display, 1);
-    wlr_viewporter_create(display);
-    wlr_single_pixel_buffer_manager_v1_create(display);
-    wlr_fractional_scale_manager_v1_create(display, 1);
-    struct wlr_screencopy_manager_v1 *screencopy = wlr_screencopy_manager_v1_create(display);
-    wlr_presentation_create(display, server->backend, 2);
+    VELA_MUST(wlr_ext_data_control_manager_v1_create(display, 1));
+    VELA_MUST(wlr_viewporter_create(display));
+    VELA_MUST(wlr_single_pixel_buffer_manager_v1_create(display));
+    VELA_MUST(wlr_fractional_scale_manager_v1_create(display, 1));
+    struct wlr_screencopy_manager_v1 *screencopy = VELA_MUST(wlr_screencopy_manager_v1_create(display));
+    VELA_MUST(wlr_presentation_create(display, server->backend, 2));
 
-    server->output_layout = wlr_output_layout_create(display);
-    server->xdg_outputs = wlr_xdg_output_manager_v1_create(display, server->output_layout);
+    server->output_layout = VELA_MUST(wlr_output_layout_create(display));
+    server->xdg_outputs = VELA_MUST(wlr_xdg_output_manager_v1_create(display, server->output_layout));
     vela_output_manager_init(server);
     vela_listen(&server->output_layout->events.change, &server->layout_change, handle_layout_change);
 
@@ -296,7 +310,7 @@ static bool init(struct vela_server *server)
     vela_xwayland_init(server); // X11 apps (xwayland.c)
     server->lock = vela_lock_create(server); // lock and inactivity (lock.c)
     // Accessibility and screen color (a11y.c); VRR and tearing.
-    server->scene->tearing_control = wlr_tearing_control_manager_v1_create(display, 1);
+    server->scene->tearing_control = VELA_MUST(wlr_tearing_control_manager_v1_create(display, 1));
     server->a11y = vela_a11y_create(server);
     vela_output_load_settings(server);
     vela_a11y_load(server->a11y);
@@ -321,7 +335,7 @@ struct vela_server *vela_server_create(bool *unsupported_gpu, bool *device_lost)
 {
     if (unsupported_gpu) *unsupported_gpu = false;
     if (device_lost) *device_lost = false;
-    struct vela_server *server = calloc(1, sizeof(*server));
+    struct vela_server *server = VELA_NEW(struct vela_server);
     server->runtime_dir_fd = -1;
     if (!init(server)) {
         // What was already created is left to the process, which is about to
@@ -379,12 +393,37 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     server->supervised = supervised;
     snprintf(server->socket_name, sizeof(server->socket_name), "%s", socket);
 
+    // It was locked when the previous compositor went down: start locked,
+    // black screen until vela-lock shows up. With the shared page, only a
+    // page saying "unlocked" and a marker that is positively absent start
+    // unlocked; an older supervisor still passes VELA_START_LOCKED. Decided
+    // and engaged before the backend starts and before any client or output
+    // is served: every output is born behind the black backdrop.
+    bool unreadable = false;
+    bool start_locked = vela_lock_restart_locked(server->lock_state, server->runtime_dir_fd,
+        server->socket_name, getenv("VELA_START_LOCKED") != NULL, &unreadable);
+    unsetenv("VELA_START_LOCKED");
+    if (unreadable) {
+        wlr_log(WLR_ERROR, "Lock marker unreadable: treating the screen as locked");
+    }
+    if (start_locked) {
+        vela_lock_engage(server->lock);
+    }
+
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "Can't start the backend");
         return false;
     }
 
     setenv("WAYLAND_DISPLAY", socket, 1);
+    // For Settings, which mustn't offer the nested Alt rows (Alt+E...) as
+    // free combinations; never inherited from a Vela this one runs in.
+    if (server->nested) {
+        setenv("VELA_NESTED", "1", 1);
+    } else {
+        unsetenv("VELA_NESTED");
+    }
+    if (!vela_vulkan_configure_clients(server->vulkan)) return false;
     // Only in the real session (from SDDM or a console): nested or headless,
     // Vela stays a guest of the environment it finds.
     if (server->session) {
@@ -419,12 +458,10 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     wlr_log(WLR_INFO, "Vela running on WAYLAND_DISPLAY=%s%s", socket,
         getenv("VELA_RESTARTED") ? " (restarted after a crash)" : "");
     unsetenv("VELA_RESTARTED");
-    // It was locked when the previous compositor went down: start locked,
-    // black screen until vela-lock shows up.
-    if (getenv("VELA_START_LOCKED")) {
-        unsetenv("VELA_START_LOCKED");
+    // Engaged before the backend started (above): now that WAYLAND_DISPLAY
+    // is set, launch the locker.
+    if (server->locked) {
         wlr_log(WLR_INFO, "The screen was locked: restarting locked");
-        vela_lock_engage(server->lock);
         vela_lock_screen(server->lock);
     }
     if (server->nested) {
@@ -436,7 +473,6 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     vela_polkit_agent_start(server);
     // Initial state first: a restarted compositor must not allow pairing
     // during the brief interval before the Bluetooth child starts.
-    vela_bluetooth_report_lock(server, server->locked);
     vela_bluetooth_start(server);
     vela_updates_start(server);
     vela_brightness_start(server);
@@ -586,7 +622,6 @@ void vela_server_output_rendered(struct vela_server *server, struct vela_output 
 
 void vela_server_animate(struct vela_server *server, int64_t present_ns)
 {
-    vela_xwayland_sync(server);
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
         vela_view_update_shape(view); // corners and shadow for the current state
@@ -602,6 +637,10 @@ void vela_server_animate(struct vela_server *server, int64_t present_ns)
     running |= vela_snapshots_tick(server, now_ms, wall_ms);
     running |= vela_snap_tick_preview(server, now_ms);
     running |= vela_workspaces_tick(server, now_ms, wall_ms);
+    // Publish the geometry this frame actually shows, including the last
+    // opening frame. Once an animation retires there may be no later frame
+    // to correct Xwayland's old position.
+    vela_xwayland_sync(server);
     if (running) {
         vela_server_schedule_frames(server);
     }

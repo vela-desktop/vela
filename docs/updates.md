@@ -6,11 +6,9 @@ background check and the notification. It is the 0.1 release blocker in the
 [release-channels.md](release-channels.md). This document comes before the
 code: decisions are made here, and the code follows them.
 
-> **Status:** U0 (this design), U1 (`vela-update`'s report), U2 (the
-> daemon), U3 (the Qt client), U4 (the Settings page), U5 (the shell's
-> notifications) and U6 (packaging and docs) are done; U7, real updates on
-> real systems, is done in containers, in a real session and against the
-> `v0.1.0` Beta release. See §11.
+> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+>
+> **Remaining:** nothing. Stages U0–U7, including real updates on real systems, are in §11.
 
 ## 1. What there is today
 
@@ -79,7 +77,7 @@ last packages for rollback by hand), a "Terminal" entry in Default apps.
 | Where the logic lives | a session daemon, `vela-update-daemon`, serving `org.vela.Updates` | checks run while Settings is closed; one owner for state, schedule and the running update |
 | How the daemon is started | by the compositor, supervised, like `vela-bluetooth` | it lives exactly as long as the session; no unit files to install |
 | Install | always in a terminal | the password prompt and the build output are visible; no privileged helper to audit |
-| Which terminal | `xdg-terminal-exec`, else `VELA_TERMINAL`, else `konsole` | the freedesktop proposal, packaged by Arch, Fedora and Ubuntu; the rest as the shell does today |
+| Which terminal | the one Win+Enter opens ([keyboard](keyboard.md#11-the-terminal)): the choice in Settings, `VELA_TERMINAL`, then the system default through `xdg-terminal-exec` | the freedesktop proposal, packaged by Arch, Fedora and Ubuntu, with the user's choice first |
 | How the desktop follows an update | state files written by `vela-update` itself (§5.3) | they work for updates started by hand too, and survive the terminal |
 | JSON in C | `sd-json` from libsystemd (257 or later) | already a dependency; no new library |
 | Who notifies | the shell, when the daemon says so (§6.4) | notification texts are translated with Qt; the daemon has no translations |
@@ -139,6 +137,37 @@ An install goes through `resolving` (fetch, select the revision),
 `downloading`, `verifying`, `building`, `installing` (the package manager,
 which may ask for the password). Beta skips `building`. Arch's local build
 installs from makepkg, so it goes from `building` straight to the end.
+
+### Package recipes shown during installation
+
+When installing (not during `--check`), `vela-update` prints the relevant
+packaging recipe **before** downloading/installing a prebuilt package or
+starting a local build. It identifies the selected Git commit, so the recipe
+matches the source revision chosen by `--branch`, `--commit`, or the Beta
+release tag:
+
+- **Arch/CachyOS**: `packaging/arch/PKGBUILD` on Experimental;
+  `packaging/arch/PKGBUILD.beta` on Beta.
+- **Fedora**: `packaging/fedora/vela.spec` on both channels.
+- **Ubuntu 26.10**: `packaging/ubuntu/build-depends` and the DEB/CPack
+  section of `CMakeLists.txt`. Ubuntu packages are built with CPack,
+  not with a Debian `debian/rules` recipe.
+
+Experimental reads from its cached Git mirror at the resolved commit. Beta
+retrieves the recipe directly from GitHub using the resolved release commit,
+so failure to retrieve this **informational** display does not block an
+otherwise valid signed update. Printing a recipe does **not** authenticate
+prebuilt binaries: checksum and Sigstore provenance verification remain
+mandatory, independent steps. Automatic checks and `--check --json` never
+print recipes; JSON stdout stays machine-readable.
+
+For interactive installs with `less` available, the selected recipe opens in a
+**read-only pager**, not in Vim or the user's `$EDITOR`. The updater displays
+instructions before opening it and in the pager's status line: scroll with
+arrow keys or PageUp/PageDown, then press **q** to close the preview and
+continue the update. The viewer runs in `LESSSECURE` mode (no shell escapes).
+For non-interactive runs, or if `less` is unavailable, the recipe is printed
+directly as before without waiting for input. No pager is opened for checks.
 
 ### 5.3 State files
 

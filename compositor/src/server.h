@@ -37,6 +37,7 @@ struct vela_text;
 struct vela_output;
 struct vela_output_previews;
 struct vela_renderer;
+struct vela_client_policy;
 struct vela_scene;
 struct vela_tree;
 struct vela_view;
@@ -111,6 +112,8 @@ struct vela_server {
     struct wlr_output_layout *output_layout;
     struct vela_scene *scene;
     struct wl_list outputs; // vela_output.link
+    bool lid_closed;
+    struct wl_event_source *lid_update;
     // Variable refresh rate (VRR): 0 never, 1 with a fullscreen app (games), 2
     // always. vela.conf "variable-refresh".
     int vrr_mode;
@@ -122,6 +125,9 @@ struct vela_server {
     // Exact XDG_RUNTIME_DIR inode inherited from the supervisor; -1 when
     // running nested/headless without supervision.
     int runtime_dir_fd;
+    // Lock state shared with the supervisor (lock_state.h); NULL when not
+    // supervised, or started by an older supervisor.
+    struct vela_lock_state *lock_state;
 
     struct vela_layers layers;
     struct wlr_layer_shell_v1 *layer_shell;
@@ -175,6 +181,9 @@ struct vela_server {
     struct wl_listener new_toplevel;
     struct wl_listener new_capture_request;
     struct wl_listener new_decoration;
+    struct wlr_xdg_activation_v1 *activation;
+    struct wl_protocol_logger *activation_logger;
+    struct wl_listener new_activation_token;
     struct wl_listener request_activation;
     struct wlr_xwayland *xwayland; // NULL without Xwayland
     struct wl_listener xwayland_ready;
@@ -219,9 +228,12 @@ struct vela_server {
     struct vela_child updates; // vela-update-daemon (updates.h)
     struct vela_brightness *brightness; // every output's brightness (brightness.h)
     struct vela_commands *commands; // the command socket (command.h)
+    // Which globals each client may bind (client_policy.h).
+    struct vela_client_policy *client_policy;
     // wlr-output-management (output_manager.h).
     struct wlr_output_manager_v1 *output_manager;
     struct vela_output_previews *output_previews;
+    struct wl_event_source *output_rearrange;
     struct wl_listener output_manager_apply;
     struct wl_listener output_manager_test;
     struct wl_listener new_output;

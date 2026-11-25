@@ -31,18 +31,14 @@ Settings tile, since Wi-Fi, Bluetooth and the others act on the real system
 bus."""
 
 import argparse
-import bisect
 import hashlib
 import json
 import math
-import mmap
 import os
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from pathlib import Path
 
@@ -64,7 +60,7 @@ TILE_W, TILE_H, TILE_GAP_X, TILE_GAP_Y, PANEL_PADDING = 104, 82, 8, 4, 16
 
 # The capture engine is shared with record-promo.py.
 sys.path.insert(0, str(ROOT / "scripts"))
-from recording_core import (Scene, Desktop, Take, record, lossless, has_drawtext,  # noqa: E402
+from recording_core import (Scene, Desktop, Take as Take, record, lossless, has_drawtext,  # noqa: E402
                             check_user_namespaces)
 
 class Maximize(Scene):
@@ -234,6 +230,8 @@ def cached_worktree_valid(tree, commit, missing):
 
 
 def build(ref, jobs, picks=()):
+    if jobs is not None and (type(jobs) is not int or not 1 <= jobs <= 1024):
+        raise ValueError("Build jobs must be an integer between 1 and 1024.")
     """Build a checked, reproducible worktree of ref and its missing picks."""
     commit = git("rev-parse", "--verify", f"{ref}^{{commit}}")
     missing = []
@@ -266,7 +264,8 @@ def build(ref, jobs, picks=()):
     if not (out / "build.ninja").exists():
         subprocess.run(["cmake", "-S", str(tree), "-B", str(out), "-G", "Ninja"], check=True)
     print(f"{ref}: building {commit[:12]}", flush=True)
-    subprocess.run(["cmake", "--build", str(out), *(["-j", str(jobs)] if jobs else [])], check=True)
+    subprocess.run(["cmake", "--build", str(out), *(["--parallel", str(jobs)] if jobs is not None else [])],
+                   check=True)
     return out
 
 

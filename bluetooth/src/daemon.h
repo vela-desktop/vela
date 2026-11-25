@@ -32,6 +32,7 @@
 struct vela_bt_waiters {
     sd_bus_message **calls;
     size_t count;
+    size_t capacity;
 };
 
 enum vela_bt_kind {
@@ -127,6 +128,7 @@ struct vela_bt_lease {
 struct vela_bt_search {
     struct vela_bt_lease **leases;
     size_t count;
+    size_t capacity;
     uint64_t last_id;
     uint64_t limit_us; // a lease's time limit: 3 minutes, shorter in the tests
     uint64_t restart_window_us; // retry window; shorter only in tests
@@ -153,6 +155,9 @@ struct vela_bt_search {
 struct vela_bt_power {
     bool active;
     bool on;
+    bool reversing; // BlueZ may still be applying the cancelled, opposite Set
+    bool set_accepted; // a Set for this request received a successful reply
+    uint64_t busy_until; // bounded retry window for a reversal refused as Busy
     int attempt;
     char *adapter;
     sd_bus_slot *call;
@@ -174,14 +179,17 @@ struct vela_bt_daemon {
     uint64_t managed_backoff_us;
     struct vela_bt_adapter **adapters; // by hci number
     size_t adapter_count;
+    size_t adapter_capacity;
     struct vela_bt_device **devices;
     size_t device_count;
+    size_t device_capacity;
     char *in_use; // the adapter in use, or NULL
     char *chosen; // the address the user chose (vela.conf), or NULL
     struct vela_bt_device *pairing; // the device whose Add runs
 
     char **removed; // devices for the next DevicesChanged
     size_t removed_count;
+    size_t removed_capacity;
     bool properties_changed;
     sd_event_source *flush;
 

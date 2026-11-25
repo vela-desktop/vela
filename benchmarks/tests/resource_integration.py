@@ -23,7 +23,8 @@ from vela_bench.host import SAFE_ENV
 
 def main():
     uid=os.getuid()
-    if uid==0:raise RuntimeError('Run the private resource check unprivileged')
+    if uid==0:
+        raise RuntimeError('Run the private resource check unprivileged')
     env=dict(SAFE_ENV,XDG_RUNTIME_DIR=f'/run/user/{uid}',DBUS_SESSION_BUS_ADDRESS=f'unix:path=/run/user/{uid}/bus')
     unit='vela-benchmark-resource-check-'+uuid.uuid4().hex+'.service'
     program="import json,os,time;from pathlib import Path;print(json.dumps({'pid':os.getpid(),'cgroup':Path('/proc/self/cgroup').read_text().strip()}),flush=True);time.sleep(3);print('complete',flush=True)"
@@ -39,7 +40,8 @@ def main():
             # Enumerate only our two live fixture PIDs, reading their actual proc
             # records and the real UID counter. No other process is inventoried.
             proc=Path(temporary)
-            for pid in (process.pid,worker['pid']):(proc/str(pid)).symlink_to(Path('/proc')/str(pid))
+            for pid in (process.pid,worker['pid']):
+                (proc/str(pid)).symlink_to(Path('/proc')/str(pid))
             rows=[resources.snapshot(uid,proc=proc,transport=identity)]
             time.sleep(.1)
             rows.append(resources.snapshot(uid,proc=proc,transport=identity))
@@ -57,9 +59,14 @@ def main():
             'offline_metrics_recomputed':True,'root_controller_cgroup_case':'CPU-fixture-only'}))
     finally:
         subprocess.run(['systemctl','--user','stop',unit],env=env,stdin=subprocess.DEVNULL,capture_output=True,timeout=8)
-        if process.poll() is None:process.terminate()
-        try:process.communicate(timeout=3)
-        except subprocess.TimeoutExpired:process.kill();process.communicate(timeout=3)
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.communicate(timeout=3)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate(timeout=3)
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':
+    main()

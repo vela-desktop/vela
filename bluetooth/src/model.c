@@ -6,6 +6,7 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "describe.h"
 #include "log.h"
 #include "rfkill.h"
@@ -30,10 +31,7 @@ static bool set_text(char **text, const char *value)
     if (same(*text, value)) {
         return false;
     }
-    char *copy = strdup(value ? value : "");
-    if (!copy) {
-        return false;
-    }
+    char *copy = vela_strdup(value ? value : "");
     free(*text);
     *text = copy;
     return true;
@@ -238,19 +236,9 @@ void vela_bt_touch(struct vela_bt_daemon *d, struct vela_bt_device *device)
 
 static struct vela_bt_adapter *add_adapter(struct vela_bt_daemon *d, const char *path)
 {
-    struct vela_bt_adapter *adapter = calloc(1, sizeof(*adapter));
-    struct vela_bt_adapter **adapters = realloc(d->adapters, (d->adapter_count + 1) * sizeof(*adapters));
-    if (adapter) {
-        adapter->path = strdup(path);
-    }
-    if (!adapter || !adapters || !adapter->path) {
-        free(adapter);
-        if (adapters) {
-            d->adapters = adapters;
-        }
-        return NULL;
-    }
-    d->adapters = adapters;
+    struct vela_bt_adapter *adapter = VELA_NEW(struct vela_bt_adapter);
+    adapter->path = vela_strdup(path);
+    d->adapters = vela_grow(d->adapters, &d->adapter_capacity, d->adapter_count + 1, sizeof(*d->adapters));
     // In BlueZ's order: hci0 first.
     size_t at = d->adapter_count;
     while (at > 0 && hci_number(d->adapters[at - 1]->path) > hci_number(path)) {
@@ -264,20 +252,10 @@ static struct vela_bt_adapter *add_adapter(struct vela_bt_daemon *d, const char 
 
 static struct vela_bt_device *add_device(struct vela_bt_daemon *d, const char *path)
 {
-    struct vela_bt_device *device = calloc(1, sizeof(*device));
-    struct vela_bt_device **devices = realloc(d->devices, (d->device_count + 1) * sizeof(*devices));
-    if (device) {
-        device->path = strdup(path);
-    }
-    if (!device || !devices || !device->path) {
-        free(device);
-        if (devices) {
-            d->devices = devices;
-        }
-        return NULL;
-    }
+    struct vela_bt_device *device = VELA_NEW(struct vela_bt_device);
+    device->path = vela_strdup(path);
     device->battery = -1;
-    d->devices = devices;
+    d->devices = vela_grow(d->devices, &d->device_capacity, d->device_count + 1, sizeof(*d->devices));
     d->devices[d->device_count++] = device;
     return device;
 }
@@ -303,14 +281,8 @@ static void free_device(struct vela_bt_device *device)
 
 static void note_removed(struct vela_bt_daemon *d, const char *path)
 {
-    char **removed = realloc(d->removed, (d->removed_count + 1) * sizeof(*removed));
-    if (!removed) {
-        return;
-    }
-    d->removed = removed;
-    if ((d->removed[d->removed_count] = strdup(path))) {
-        ++d->removed_count;
-    }
+    d->removed = vela_grow(d->removed, &d->removed_capacity, d->removed_count + 1, sizeof(*d->removed));
+    d->removed[d->removed_count++] = vela_strdup(path);
     sd_event_source_set_enabled(d->flush, SD_EVENT_ONESHOT);
 }
 
@@ -401,7 +373,7 @@ void vela_bt_choose_adapter(struct vela_bt_daemon *d)
         }
     }
     free(d->in_use);
-    d->in_use = path ? strdup(path) : NULL;
+    d->in_use = path ? vela_strdup(path) : NULL;
     if (path) {
         vela_bt_log("adapter in use: %s (%s)", path, choice->address ? choice->address : "?");
     }
@@ -446,9 +418,6 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
             bool added = !adapter;
             if (added) {
                 adapter = add_adapter(d, path);
-                if (!adapter) {
-                    return -ENOMEM;
-                }
             }
             bool was_powered = adapter->powered;
             bool was_discovering = adapter->discovering;
@@ -466,9 +435,6 @@ int vela_bt_read_object(struct vela_bt_daemon *d, const char *path, sd_bus_messa
             struct vela_bt_device *device = vela_bt_device_find(d, path);
             if (!device) {
                 device = add_device(d, path);
-                if (!device) {
-                    return -ENOMEM;
-                }
             }
             if ((r = read_properties(m, read_device_property, device)) < 0) {
                 return r;
@@ -675,4 +641,5 @@ void vela_bt_model_free(struct vela_bt_daemon *d)
     d->adapters = NULL;
     d->removed = NULL;
     d->device_count = d->adapter_count = d->removed_count = 0;
+    d->device_capacity = d->adapter_capacity = d->removed_capacity = 0;
 }

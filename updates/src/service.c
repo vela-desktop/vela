@@ -295,7 +295,12 @@ static int on_flush(sd_event_source *source, void *data)
 void vela_up_changed(struct vela_up_daemon *d)
 {
     if (!d->flush && d->event) {
-        sd_event_add_defer(d->event, &d->flush, on_flush, d);
+        int r = sd_event_add_defer(d->event, &d->flush, on_flush, d);
+        if (r < 0) {
+            // Not deferred, then: emit now.
+            vela_up_log("deferred PropertiesChanged: %s", strerror(-r));
+            on_flush(NULL, d);
+        }
     }
 }
 

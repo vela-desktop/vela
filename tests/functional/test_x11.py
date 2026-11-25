@@ -9,6 +9,7 @@ it, so its window is created while the X window manager is being set up."""
 
 import os
 import select
+import signal
 import subprocess
 import time
 import unittest
@@ -23,7 +24,12 @@ class X11(unittest.TestCase):
     def setUp(self):
         if not os.path.exists(tool("vela-x11")):
             self.skipTest("vela-x11 not built (needs xcb)")
-        self.vela = Session()
+        if self._testMethodName == "test_last_opening_frame_updates_x11_position":
+            # Half-second frames make the final animation step large rather
+            # than a subpixel correction, as on an overloaded remote host.
+            self.vela = Session(size="1920x1080@2", env={"VELA_DEBUG_ANIMATION": "1"})
+        else:
+            self.vela = Session()
         self.vela.start()
         if "Xwayland not available" in self.vela.log_text():
             self.vela.stop()
@@ -68,12 +74,64 @@ class X11(unittest.TestCase):
     def x11_control(self, *args):
         subprocess.run([tool("vela-x11"), *map(str, args)], env=self.env, check=True)
 
+    def test_background_activation_does_not_interrupt_fullscreen(self):
+        path = os.path.join(self.vela.directory, "background-xid")
+        background = self.open_x11("--id-file", path, 300, 200)
+        with open(path, encoding="ascii") as xid_file:
+            xid = xid_file.read().strip()
+        for x11 in (False, True):
+            with self.subTest(x11_game=x11):
+                command = [tool("vela-x11"), "--start-fullscreen", "640", "480"] if x11 else [
+                    tool("vela-pattern"), "--fullscreen-parent", "640", "480"]
+                fullscreen = self.vela.open_window(command=command, env=self.env if x11 else None)
+                self.vela.wait_for(lambda s: s["focused"] == fullscreen and s.window(fullscreen)["fullscreen"],
+                                   what="foreground fullscreen game")
+                baseline = self.vela.pixels()
+                for _ in range(5):
+                    self.x11_control("--activate", xid)
+                    time.sleep(0.05)  # let the XWM receive each asynchronous client message
+                    self.assertEqual(self.vela.state()["focused"], fullscreen)
+                self.assertIsNone(self.vela.pixels().changed_bounds(baseline))
+
+                # Explicit selection still raises the app, including when it
+                # is minimized.
+                self.vela.command(f"window {background} minimize")
+                self.vela.wait_for(lambda s: s.window(background)["minimized"], what="background minimized")
+                self.x11_control("--activate", xid)
+                time.sleep(0.1)
+                state = self.vela.state()
+                self.assertTrue(state.window(background)["minimized"])
+                self.assertEqual(state["focused"], fullscreen)
+                self.vela.command(f"window {background} activate")
+                self.vela.wait_for(lambda s: s["focused"] == background,
+                                   what="explicit window activation")
+                self.vela.command(f"window {fullscreen} close")
+                self.vela.wait_for(lambda s: not s.has(fullscreen), what="game closed")
+
+    def test_last_opening_frame_updates_x11_position(self):
+        path = os.path.join(self.vela.directory, "opening-xid")
+        window = self.open_x11("--id-file", path, 300, 200)
+        self.vela.wait_for_log("retired wall", timeout=5)
+        with open(path, encoding="ascii") as source:
+            xid = source.read().strip()
+        frame = self.vela.state().window(window)
+        expected = (frame["x"], frame["y"] + 32, frame["w"], frame["h"] - 32)
+        # XWM configuration and this query travel over separate connections.
+        # Let Xwayland consume pending configuration, but prevent a later
+        # compositor frame from repairing the stale position under test.
+        os.kill(self.vela.process.pid, signal.SIGSTOP)
+        try:
+            self.vela.wait_for(lambda _: self.x11_geometry(xid) == expected, read_state=False,
+                               what="X11 position from the last opening frame")
+        finally:
+            os.kill(self.vela.process.pid, signal.SIGCONT)
+
     def x11_geometry(self, xid):
         # Query the X11 server, not the Wayland compositor's scene geometry.
         # They can disagree when Vela resizes the X11 window *before* moving
         # its scene node into the final fullscreen/restored position.
         result = subprocess.check_output([tool("vela-x11"), "--geometry", xid],
-                                         env=self.env, text=True)
+                                         env=self.env, text=True, timeout=5)
         return tuple(map(int, result.split()))
 
     def assert_x11_geometry_matches(self, view_id, xid, expected_size=True):

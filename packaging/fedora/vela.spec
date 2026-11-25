@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 #
-# Fedora 44 x86_64 Beta or Experimental package. Build exactly the selected Git commit:
+# Fedora 44/45 x86_64 Beta or Experimental package. Build exactly the selected Git commit:
 #   git archive --format=tar.gz --prefix=vela-0.1.0/ HEAD > SOURCES/vela-0.1.0.tar.gz
 #   rpmbuild -bb packaging/fedora/vela.spec --define "_topdir <rpmbuild-dir>" \
 #     --define "vela_version <CMake project version>" \
@@ -44,6 +44,7 @@ BuildRequires:  wayland-devel
 BuildRequires:  wayland-protocols-devel
 BuildRequires:  wlroots-devel >= 0.20
 BuildRequires:  libxkbcommon-devel
+BuildRequires:  pkgconfig(xkbregistry)
 BuildRequires:  pixman-devel
 BuildRequires:  libinput-devel
 BuildRequires:  libdrm-devel
@@ -64,7 +65,7 @@ BuildRequires:  qt6-qtwayland-devel
 BuildRequires:  qt6-qttools-devel
 BuildRequires:  qt6-qtmultimedia-devel
 BuildRequires:  layer-shell-qt-devel
-BuildRequires:  python3
+BuildRequires:  python3 >= 3.13
 BuildRequires:  pipewire-devel
 BuildRequires:  wireplumber-devel
 # sd-bus: the laptop backlight through logind (docs/brightness.md §5.3), and
@@ -89,21 +90,22 @@ Requires:       qt6-qtwayland
 Requires:       layer-shell-qt
 Requires:       pam
 Requires:       polkit
-Requires:       python3
+Requires:       python3 >= 3.13
 Requires:       xorg-x11-server-Xwayland
 Requires:       pipewire
 Requires:       wireplumber
 Requires:       hicolor-icon-theme
+# ScreenCast and Screenshot use the wlr backend selected in vela-portals.conf.
+Requires:       xdg-desktop-portal-wlr
 
 # Public, attested binary downloads (curl + cosign) and local RPM build fallback.
 # Keep the build toolchain optional for systems using prebuilt releases.
 # curl and python3 are hard requirements of the Beta updater.
-# Cosign is an optional verification prerequisite; Fedora 44 does not ship it
-# in the default repositories, so document the upstream RPM installation.
+# Cosign is an optional verification prerequisite, separately bootstrapped
+# from the official Sigstore release as documented in installation.md.
 # No GitHub CLI is required by vela-update for public alpha releases.
 Recommends:     rpm-build
 Recommends:     dnf5-plugins
-Recommends:     xdg-desktop-portal-wlr
 Recommends:     xdg-desktop-portal-gtk
 Recommends:     breeze-icon-theme
 Recommends:     NetworkManager
@@ -122,9 +124,11 @@ Vulkan renderer, Qt Quick shell, file manager, settings, and lock screen.
 %autosetup -n vela-%{version}
 
 %build
+# Use RPM's interpreter path so generated shebangs have a resolvable dependency.
 %cmake -G Ninja \
     %{?vela_ccache:-DCMAKE_C_COMPILER_LAUNCHER=ccache} \
     %{?vela_ccache:-DCMAKE_CXX_COMPILER_LAUNCHER=ccache} \
+    -DPython3_EXECUTABLE=%{__python3} \
     -DCMAKE_INSTALL_LIBEXECDIR=libexec/vela \
     -DVELA_BUILD_TOOLS=OFF \
     -DVELA_PACKAGE_COMMIT=%{vela_commit}
@@ -147,6 +151,8 @@ install -Dm755 packaging/vela-update-state %{buildroot}%{_libexecdir}/vela/vela-
 %{_datadir}/xdg-desktop-portal/vela-portals.conf
 %{_datadir}/vela/
 %{_prefix}/lib/systemd/user/vela-session.target
+%{_prefix}/lib/systemd/user/vela-gnome-keyring-compat.service
+%{_prefix}/lib/systemd/user/vela-kwallet-compat.service
 %{_prefix}/lib/udev/rules.d/70-vela-i2c.rules
 %{_prefix}/lib/modules-load.d/vela-i2c.conf
 %config(noreplace) /etc/pam.d/vela-lock

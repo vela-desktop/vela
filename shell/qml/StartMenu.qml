@@ -21,18 +21,23 @@ Window {
     property bool atLeft: false
     // A Start menu style (Styles.startMenu): its size, corners and tint.
     readonly property QtObject style: Styles.startMenu
-    readonly property real gap: 12 // above the taskbar
+    readonly property real gap: 12 // from the taskbar
     // With a style, the blur is rounded like the panel (the compositor makes
     // it glass from 4% alpha: the shadow in the corners must stay out).
     readonly property real blurRadius: style.chosen ? style.radius : 0
     readonly property real room: shadow.reach
-    readonly property real roomLeft: atLeft ? 12 : room
+    // Where main.cpp's placeStartMenu() anchors it: against the bar, centered
+    // or at the left; at the top beside a vertical bar (docs/taskbar.md
+    // §11.3).
+    readonly property QtObject bar: Styles.taskbar
+    readonly property int edges: bar.edgeAnchor | (bar.vertical ? 1 : atLeft ? 4 : 0)
     readonly property real panelWidth: style.width - 20
-    width: roomLeft + panelWidth + room
+    width: bar.pad("left", edges, gap, room) + panelWidth + bar.pad("right", edges, gap, room)
     // On short outputs it gets shorter: the search at the top must stay
     // visible, the shadow above it is cut.
-    readonly property real panelHeight: Math.min(style.height - 32, Screen.height - Styles.taskbar.height - 44)
-    height: Math.min(room + panelHeight + gap, Screen.height - Styles.taskbar.height)
+    readonly property real usableHeight: Screen.height - (bar.vertical ? 0 : bar.thickness)
+    readonly property real panelHeight: Math.min(style.height - 32, usableHeight - 44)
+    height: Math.min(bar.pad("top", edges, gap, room) + panelHeight + bar.pad("bottom", edges, gap, room), usableHeight)
     color: "transparent"
     // Asked of logind only once: can the computer suspend?
     readonly property bool canSuspend: Shell.canSuspend()
@@ -73,14 +78,24 @@ Window {
             else
                 pinnedSelection = -1
         }
+        // Changing the header's height can leave GridView at the old content
+        // offset, with restored pins above the viewport. Reposition after
+        // the header and delegates have completed their layout. If a keyboard
+        // selection is active in all apps, keep it visible instead: otherwise
+        // Enter could launch a tile outside the viewport.
+        Qt.callLater(() => {
+            if (selecting && pinnedSelection < 0 && grid.currentIndex >= 0)
+                grid.positionViewAtIndex(grid.currentIndex, GridView.Contain)
+            else
+                grid.positionViewAtBeginning()
+        })
     }
 
-    // The Start menu is above the taskbar, centered or at the left: from its
-    // coordinates to the output's, for right-click menus.
+    // From its coordinates to the output's, for right-click menus.
     function screenPoint(item, x, y) {
         const p = item.mapToItem(null, x, y)
-        return Qt.point((atLeft ? 0 : (Screen.width - root.width) / 2) + p.x,
-                        Screen.height - Styles.taskbar.height - root.height + p.y)
+        const o = bar.origin(edges, root.width, root.height, Screen.width, Screen.height, 0, 0)
+        return Qt.point(o.x + p.x, o.y + p.y)
     }
 
     // An app's menu (docs/renderer.md §14.7): recent files and tasks at the
@@ -89,37 +104,33 @@ Window {
         const entries = []
         const recent = Jumps.recent(id, 5)
         if (recent.length > 0) {
-            entries.push({ header: qsTr("Recent") })
-            recent.forEach(f => entries.push({ text: f.name.replace(/&/g, "&&"), icon: f.icon, action: () => { Apps.launchWithFile(id, f.url); root.close() } }))
+            entries.push({ key: "start.recent", header: qsTr("Recent") })
+            recent.forEach(f => entries.push({ key: "start.recent", text: f.name.replace(/&/g, "&&"), icon: f.icon, action: () => { Apps.launchWithFile(id, f.url); root.close() } }))
         }
         const actions = Apps.actions(id)
         if (actions.length > 0) {
-            entries.push({ header: qsTr("Tasks") })
-            actions.forEach(a => entries.push({ text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => { Apps.launchAction(id, a.id); root.close() } }))
+            entries.push({ key: "start.tasks", header: qsTr("Tasks") })
+            actions.forEach(a => entries.push({ key: "start.tasks", text: a.name.replace(/&/g, "&&"), icon: a.icon, action: () => { Apps.launchAction(id, a.id); root.close() } }))
         }
         if (entries.length > 0) {
             entries.push({ separator: true })
         }
         const inStart = Shell.startPins.indexOf(id) >= 0
         const taskbar = Tasks.isPinned(id)
-            ? { text: qsTr("Unpin from &taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
-            : { text: qsTr("Pin to &taskbar"), icon: "window-pin", action: () => Tasks.pin(id) }
-        const desktop = { text: qsTr("Add to &desktop"), icon: "user-desktop", action: () => root.addToDesktop(id) }
-        const folder = { text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
-        const uninstall = { text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
+            ? { key: "start.taskbar", text: qsTr("Unpin from &taskbar"), icon: "window-unpin", action: () => Tasks.unpin(id) }
+            : { key: "start.taskbar", text: qsTr("Pin to &taskbar"), icon: "window-pin", action: () => Tasks.pin(id) }
+        const desktop = { key: "start.desktop", text: qsTr("Add to &desktop"), icon: "user-desktop-symbolic", action: () => root.addToDesktop(id) }
+        const folder = { key: "start.location", text: qsTr("Open file &location"), icon: "document-open-folder", action: () => { System.showInFolder(Apps.desktopFile(id)); root.close() } }
+        const uninstall = { key: "start.uninstall", text: qsTr("&Uninstall"), icon: "edit-delete", enabled: System.canUninstall(Apps.desktopFile(id)), action: () => { System.uninstall(Apps.desktopFile(id)); root.close() } }
+        // The same flat menu for a pinned tile and for all apps; a pinned
+        // tile can also move to the front.
+        entries.push(inStart
+            ? { key: "start.pin", text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
+            : { key: "start.pin", text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) })
         if (pinnedTile) {
-            entries.push(
-                { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) },
-                { text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) },
-                taskbar, desktop, folder, uninstall)
-        } else {
-            entries.push(
-                inStart
-                    ? { text: qsTr("&Unpin from Start"), icon: "window-unpin", action: () => Shell.unpinFromStart(id) }
-                    : { text: qsTr("&Pin to Start"), icon: "window-pin", action: () => Shell.pinToStart(id) },
-                { text: qsTr("&More"), children: [taskbar, desktop, folder] },
-                uninstall)
+            entries.push({ key: "start.front", text: qsTr("Move to &front"), icon: "go-top", enabled: Shell.startPins.indexOf(id) > 0, action: () => Shell.moveStartPinToFront(id) })
         }
+        entries.push(taskbar, desktop, { separator: true }, folder, uninstall)
         return entries
     }
 
@@ -149,6 +160,8 @@ Window {
         default property alias glyph: glyphSlot.data
         width: parent ? parent.width : 0
         height: 36
+        outerRadius: Theme.radiusOverlay // 4 inside the power menu
+        outerGap: 4
 
         Icon {
             x: 10
@@ -313,15 +326,15 @@ Window {
         onOutside: root.close()
     }
 
-    // It rises 140 units from behind the taskbar, where the window cuts it,
+    // It comes 140 units from behind the taskbar, where the window cuts it,
     // and leaves the same way.
     PanelMotion {
         id: motion
-        x: root.roomLeft
-        y: root.height - root.gap - height
+        x: root.bar.pad("left", root.edges, root.gap, root.room)
+        y: (root.edges & 1) ? root.bar.pad("top", root.edges, root.gap, root.room) : root.height - root.gap - height
         width: root.panelWidth
         height: root.panelHeight
-        offset: Qt.point(0, 140)
+        offset: root.bar.towards(140)
         onClosed: root.visible = false
         onVisibleAreaChanged: Effects.setBlur(root, [visibleArea], root.blurRadius) // the travel while it moves, the panel at rest
 
@@ -336,21 +349,25 @@ Window {
             anchors.fill: parent
             radius: root.style.radius
             color: root.style.surface
-            border.width: 1
+            border.width: root.style.expressive ? 0 : 1 // M3's surfaces have no outline
             border.color: Theme.stroke
 
             // --- search ---
+            // Expressive: M3's search bar, a 56 pill on surface container
+            // high without an outline (the keyboard is always there); the
+            // text 24 from its ends, Vela's choice.
             Rectangle {
                 id: searchBox
+                readonly property int textMargin: root.style.expressive ? 24 : 18
                 anchors { top: parent.top; left: parent.left; right: parent.right; margins: 24 }
-                height: 38
+                height: root.style.expressive ? 56 : 38
                 radius: height / 2
-                color: Theme.control
-                border.width: search.activeFocus ? 1 : 0
+                color: root.style.expressive ? Theme.surfaceContainerHigh : Theme.control
+                border.width: search.activeFocus && !root.style.expressive ? 1 : 0
                 border.color: Theme.accent
 
                 Text {
-                    anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; leftMargin: searchBox.textMargin; verticalCenter: parent.verticalCenter }
                     visible: search.text.length === 0
                     text: qsTr("Search apps")
                     color: Theme.textSecondary
@@ -359,7 +376,7 @@ Window {
 
                 MenuTextField {
                     id: search
-                    anchors { left: parent.left; right: parent.right; leftMargin: 18; rightMargin: 18; verticalCenter: parent.verticalCenter }
+                    anchors { left: parent.left; right: parent.right; leftMargin: searchBox.textMargin; rightMargin: searchBox.textMargin; verticalCenter: parent.verticalCenter }
                     mapToScreen: (x, y) => root.screenPoint(search, x, y)
 
                     onTextChanged: {
@@ -388,7 +405,7 @@ Window {
                 text: search.text.length > 0 ? qsTr("Results") : root.showPinned ? qsTr("Pinned") : qsTr("All apps")
                 color: Theme.text
                 font.pixelSize: Theme.fontBody
-                font.weight: Font.DemiBold
+                font.weight: root.style.expressive ? Theme.weightEmphasis : Font.DemiBold
             }
 
             // --- app grid ---
@@ -413,6 +430,9 @@ Window {
                     width: grid.cellWidth
                     height: grid.cellHeight
                     current: root.selectionShown && root.pinnedSelection < 0 && index === grid.currentIndex
+                    expressive: root.style.expressive
+                    launcherUrl: Apps.desktopUrl(tile.appId)
+                    onLauncherDropped: root.close()
                     onActivated: root.launch(index)
                     onContextRequested: (x, y) => root.openAppMenu(tile, x, y, tile.appId, false)
                 }
@@ -424,6 +444,18 @@ Window {
                     visible: root.showPinned
                     function tileAt(index) {
                         return pinnedTiles.itemAt(index)
+                    }
+
+                    // Expressive: the pinned apps in a tonal container, in
+                    // M3's extra large corners (28): a tile's highlight, 3
+                    // inside it, is that less 3 (Theme.nested). Vela's
+                    // choices.
+                    TonalSurface {
+                        objectName: "pinnedContainer"
+                        visible: root.style.expressive
+                        anchors.fill: pinnedGrid
+                        level: "high"
+                        radius: Theme.shapeExtraLarge
                     }
 
                     Grid {
@@ -443,6 +475,10 @@ Window {
                                 iconName: modelData.iconName
                                 comment: ""
                                 current: root.selectionShown && root.pinnedSelection === index
+                                containerRadius: root.style.expressive ? Theme.shapeExtraLarge : 0
+                                expressive: root.style.expressive
+                                launcherUrl: Apps.desktopUrl(modelData.id)
+                                onLauncherDropped: root.close()
                                 onActivated: {
                                     if (Apps.launchId(modelData.id)) {
                                         root.close()
@@ -458,7 +494,7 @@ Window {
                         text: qsTr("All apps")
                         color: Theme.text
                         font.pixelSize: Theme.fontBody
-                        font.weight: Font.DemiBold
+                        font.weight: root.style.expressive ? Theme.weightEmphasis : Font.DemiBold
                     }
                 }
 
@@ -529,11 +565,12 @@ Window {
                         width: 32
                         height: 32
                         radius: 16
-                        color: Theme.accent
+                        // Expressive: M3's avatar in primary container.
+                        color: root.style.expressive ? Theme.primaryContainer : Theme.accent
                         Text {
                             anchors.centerIn: parent
                             text: Shell.userInitial
-                            color: "white"
+                            color: root.style.expressive ? Theme.primaryContainerText : "white"
                             font.pixelSize: Theme.fontBody
                             font.weight: Font.DemiBold
                         }
@@ -551,6 +588,9 @@ Window {
                 Button {
                     id: powerButton
                     anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
+                    // In the panel's corner, 24 from its side (10 from below).
+                    outerRadius: panel.radius
+                    outerGap: 24
                     width: 40
                     height: 40
                     padding: 0

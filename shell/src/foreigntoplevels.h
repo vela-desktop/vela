@@ -3,12 +3,14 @@
 
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QRect>
 #include <QString>
 #include <QtWaylandClient/QWaylandClientExtensionTemplate>
 
+#include "qwayland-vela-toplevel-identifier-v1.h"
 #include "qwayland-wlr-foreign-toplevel-management-unstable-v1.h"
 
 class QWindow;
@@ -21,12 +23,15 @@ class ForeignToplevel : public QObject, public QtWayland::zwlr_foreign_toplevel_
     Q_OBJECT
 
 public:
+    // With no handle, a window no compositor backs (the tests' own): its
+    // requests do nothing, its events come from whoever calls the handlers.
     explicit ForeignToplevel(::zwlr_foreign_toplevel_handle_v1* handle, QObject* parent = nullptr);
     ~ForeignToplevel() override;
 
     // Applied state: everything changes together at the "done" event.
     QString title;
     QString appId;
+    QString identifier;
     bool activated = false;
     bool minimized = false;
     bool maximized = false;
@@ -35,8 +40,11 @@ public:
     quint64 lastActivated = 0; // to know which of an app's windows is the most recent
     bool ready = false; // received the first "done"
 
-    void requestActivate();
-    void requestMinimize();
+    // Virtual for the tests, which record them.
+    virtual void requestActivate();
+    virtual void requestMinimize();
+    virtual void requestMaximize(bool on);
+    virtual void requestClose();
     // Where its button is (in `panel`'s coordinates): the compositor flies the
     // window there when it's minimized.
     void setButtonRect(QWindow* panel, const QRect& rect);
@@ -63,7 +71,22 @@ private:
         bool fullscreen = false;
         ForeignToplevel* parentWindow = nullptr;
     } m_pending;
-    QRect m_buttonRect;
+    QHash<QWindow*, QRect> m_buttonRects;
+};
+
+class ToplevelIdentifier : public QWaylandClientExtensionTemplate<ToplevelIdentifier>,
+                           public QtWayland::vela_toplevel_identifier_v1 {
+    Q_OBJECT
+
+public:
+    ToplevelIdentifier();
+    ~ToplevelIdentifier() override;
+
+signals:
+    void identified(uint32_t handleId, const QString& identifier);
+
+protected:
+    void vela_toplevel_identifier_v1_identified(uint32_t handleId, const QString& identifier) override;
 };
 
 class ForeignToplevelManager : public QWaylandClientExtensionTemplate<ForeignToplevelManager>,
@@ -81,7 +104,11 @@ signals:
 
 protected:
     void zwlr_foreign_toplevel_manager_v1_toplevel(::zwlr_foreign_toplevel_handle_v1* handle) override;
+    // A new window, listed at its first "done" and gone at "closed".
+    void adopt(ForeignToplevel* window, uint32_t handleId);
 
 private:
     QList<ForeignToplevel*> m_windows;
+    ToplevelIdentifier m_identifier;
+    QHash<uint32_t, ForeignToplevel*> m_handles;
 };

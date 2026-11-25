@@ -56,8 +56,10 @@ jobs:
           # Pillow packages install into /usr/bin/python3, while CMake might
           # auto-detect a different ~/.local/bin/python3.12.
           test -x /usr/bin/python3 || { echo '::error::Install the system python package'; exit 1; }
+          /usr/bin/python3 -c 'import sys; sys.exit(sys.version_info < (3, 13))' || { echo '::error::Python 3.13 or newer is required'; exit 1; }
           command -v cmake >/dev/null || { echo '::error::Install the build dependencies from docs/development.md'; exit 1; }
           command -v ninja >/dev/null || { echo '::error::Install ninja'; exit 1; }
+          command -v ccache >/dev/null || { echo '::error::Install ccache on the GPU runner'; exit 1; }
           /usr/bin/python3 -c 'import numpy, PIL' || { echo '::error::Install python-numpy and python-pillow for system Python'; exit 1; }
           # Strict GPU CI rejects the nine agent tests if dbus-python or
           # dbus-daemon is missing. Fail before the expensive GPU test run.
@@ -94,6 +96,10 @@ jobs:
           # Diagnostic-only counters: no change to GPU test scheduling or assertions.
           echo "VELA_FUNCTIONAL_PROFILE=1" >> "$GITHUB_ENV"
           echo "VELA_GPU_EXPECT_VENDOR=0x8086" >> "$GITHUB_ENV"
+          # Use a 60 Hz baseline on the shared iGPU engine. The single-client
+          # 1440p stream uses 120 Hz to leave headroom for its 60 fps floor.
+          # AMD retains the 180 Hz workload; all capture assertions still run.
+          echo "VELA_CAPTURE_TEST_REFRESH_HZ=60" >> "$GITHUB_ENV"
           # Thirty Vulkan teardown cycles with validation on actual Intel hardware.
           echo "VELA_SHUTDOWN_STRESS_CYCLES=30" >> "$GITHUB_ENV"
           echo "VELA_SHUTDOWN_VALIDATE=1" >> "$GITHUB_ENV"
@@ -142,6 +148,8 @@ jobs:
           fi
           cmake -S . -B "$RUNNER_TEMP/vela-gpu-build" -G Ninja \
             "${extra_flags[@]}" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
             -DPython3_EXECUTABLE=/usr/bin/python3 \
             -DVELA_BUILD_COMPOSITOR=ON \
             -DVELA_BUILD_SHELL=ON \
@@ -153,12 +161,14 @@ jobs:
         run: |
           set -euo pipefail
           jobs="$(nproc)"
-          if (( jobs > 2 )); then jobs=2; fi
+          if (( jobs > 8 )); then jobs=8; fi
+          ccache --zero-stats
           cmake --build "$RUNNER_TEMP/vela-gpu-build" --parallel "$jobs"
+          ccache --show-stats
 
-      # Even a partial GPU-labelled suite such as text-rendering-rhi may not
-      # start Vela. Always prove that its actual Vulkan renderer opens the
-      # Intel render node before reporting success on any selected test set.
+      # Even a partial suite selecting only sharpness/CPU-fence tests may
+      # not start Vela. Prove its actual Vulkan renderer opens the Intel
+      # render node before reporting success on any selected test set.
       - name: Verify Vela renderer on Intel hardware
         shell: bash
         run: |

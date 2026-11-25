@@ -32,6 +32,24 @@ add_library(vela-rendering STATIC src/renderingpolicy.cpp)
 target_include_directories(vela-rendering PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(vela-rendering PRIVATE -Wall -Wextra)
 target_link_libraries(vela-rendering PUBLIC Qt6::Quick PRIVATE vela-process)
+
+# vela-color: Material's HCT color space, tonal palettes, the Tonal Spot
+# scheme and a wallpaper's source color, ported from Material Color
+# Utilities (Apache-2.0, color/LICENSE). Plain C++, no Qt: the shell, the
+# apps' Style and the lock screen compute the same palette.
+add_library(vela-color STATIC
+    color/hct.cpp
+    color/hct.h
+    color/palette.cpp
+    color/palette.h
+    color/scheme.cpp
+    color/scheme.h
+    color/quantize.cpp
+    color/quantize.h)
+target_include_directories(vela-color PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/color)
+target_compile_options(vela-color PRIVATE -Wall -Wextra)
+set_target_properties(vela-color PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CONTROLS_WAYLAND_CLIENT REQUIRED IMPORTED_TARGET wayland-client)
 pkg_get_variable(CONTROLS_WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
@@ -63,11 +81,13 @@ function(vela_theme_token name kind)
 endfunction()
 file(STRINGS ${THEME_QML} themed_lines REGEX "themed\\(\"")
 foreach(line IN LISTS themed_lines)
-    if(NOT line MATCHES "readonly property (color|int|real|bool) [A-Za-z0-9_]+: .*themed\\(\"([A-Za-z0-9_-]+)\"")
-        message(FATAL_ERROR "Theme.qml: themed() outside a `readonly property color|int|real|bool` line:\n${line}")
+    if(NOT line MATCHES "readonly property (color|int|real|bool|string) [A-Za-z0-9_]+: .*themed\\(\"([A-Za-z0-9_-]+)\"")
+        message(FATAL_ERROR "Theme.qml: themed() outside a `readonly property color|int|real|bool|string` line:\n${line}")
     endif()
     if(CMAKE_MATCH_1 STREQUAL "color")
         vela_theme_token(${CMAKE_MATCH_2} Color)
+    elseif(CMAKE_MATCH_1 STREQUAL "string")
+        vela_theme_token(${CMAKE_MATCH_2} Variant)
     else()
         vela_theme_token(${CMAKE_MATCH_2} Number)
     endif()
@@ -137,8 +157,10 @@ qt_add_library(vela-controls STATIC)
 
 set(CONTROLS_QML_FILES
     controls/Theme.qml
+    controls/TonalSurface.qml
     controls/Fill.qml
     controls/Eased.qml
+    controls/Spatial.qml
     controls/ColorFade.qml
     controls/Icon.qml
     controls/Chevron.qml
@@ -148,6 +170,7 @@ set(CONTROLS_QML_FILES
     controls/Slider.qml
     controls/TextBox.qml
     controls/ListItem.qml
+    controls/RoundClip.qml
     controls/Shadow.qml
     controls/PanelMotion.qml
     controls/Dialog.qml
@@ -178,6 +201,7 @@ qt_add_qml_module(vela-controls
 target_include_directories(vela-controls PUBLIC src ${SHELL_SRC} PRIVATE ${CONTROLS_GENERATED_DIR})
 target_compile_options(vela-controls PRIVATE -Wall -Wextra)
 target_link_libraries(vela-controls PUBLIC
+    vela-color # Style.tonal (appearance.cpp)
     vela-rendering
     vela-process
     vela-theme-tokens
@@ -204,6 +228,29 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME controls-no-effects COMMAND vela-controls-test)
     set_tests_properties(controls-no-effects PROPERTIES ENVIRONMENT "VELA_TEST_ANIMATION_EFFECTS=no")
     set_tests_properties(controls controls-no-effects PROPERTIES TIMEOUT 120)
+    # The same runner with a theme of expressive controls and motion
+    # (quicktest.h, VELA_TEST_THEME), on the tests in tests/expressive/ only:
+    # the others assert the default look, and those skip themselves there.
+    add_test(NAME controls-expressive COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    add_test(NAME controls-expressive-no-effects COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+    set_tests_properties(controls-expressive PROPERTIES ENVIRONMENT "VELA_TEST_THEME=expressive")
+    set_tests_properties(controls-expressive-no-effects PROPERTIES
+        ENVIRONMENT "VELA_TEST_THEME=expressive;VELA_TEST_ANIMATION_EFFECTS=no")
+    set_tests_properties(controls-expressive controls-expressive-no-effects PROPERTIES TIMEOUT 120)
+    # Each expressive piece alone inside the default theme (VELA_TEST_THEME=
+    # controls, motion, color): the mixed combinations.
+    foreach(piece controls motion color)
+        add_test(NAME controls-expressive-${piece} COMMAND vela-controls-test -input ${CMAKE_CURRENT_SOURCE_DIR}/tests/expressive)
+        set_tests_properties(controls-expressive-${piece} PROPERTIES TIMEOUT 120 ENVIRONMENT "VELA_TEST_THEME=${piece}")
+    endforeach()
+
+    # vela-color against Material Color Utilities' own results.
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    qt_add_executable(vela-color-test tests/color_test.cpp)
+    target_compile_options(vela-color-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-color-test PRIVATE vela-color Qt6::Test)
+    add_test(NAME color COMMAND vela-color-test)
+    set_tests_properties(color PROPERTIES TIMEOUT 60)
 
     # Real-process environment tests need no GPU, display, or Qt 6.6 APIs.
     qt_add_executable(vela-process-launch-test tests/process_launch.cpp)
@@ -212,8 +259,9 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME process-launch-environment COMMAND vela-process-launch-test)
     set_tests_properties(process-launch-environment PROPERTIES TIMEOUT 30)
 
-    # Actual glyph shader coverage. A missing RHI backend is a skip, never a
-    # pass through Qt Quick's software painter. Mesa software OpenGL works too.
+    # Qt Quick glyph shader coverage uses OpenGL RHI (Mesa software under
+    # Xvfb in hosted CI), not the compositor's real Vulkan GPU. Keep this
+    # separate from real-GPU tests; never fall back to the software painter.
     if(Qt6_VERSION VERSION_GREATER_EQUAL 6.6)
         qt_add_executable(vela-text-rendering-test tests/text_rendering.cpp)
         target_compile_definitions(vela-text-rendering-test PRIVATE
@@ -223,7 +271,7 @@ if(VELA_BUILD_TOOLS)
             vela-controls vela-controlsplugin Qt6::GuiPrivate)
         add_test(NAME text-rendering-rhi COMMAND vela-text-rendering-test)
         set_tests_properties(text-rendering-rhi PROPERTIES
-            TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS "gpu;rhi"
+            TIMEOUT 60 SKIP_RETURN_CODE 77 LABELS "rhi"
             ENVIRONMENT "QT_QPA_PLATFORMTHEME=generic")
     else()
         message(STATUS "Qt ${Qt6_VERSION}: RHI glyph test requires Qt >= 6.6")

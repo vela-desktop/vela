@@ -10,6 +10,7 @@
 // for "Open with", service menus) is prepared afterwards. With
 // VELA_FILES_TIMING=1 it prints how long it took.
 
+#include "alloc/new_handler.h"
 #include "renderingpolicy.h"
 #include "appmodel.h"
 #include "../../common/filetransferrequest.h"
@@ -67,6 +68,7 @@ double sinceProcessStart()
 /** Initialize Files and its text policy, then serve file requests and the Qt event loop. */
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-files");
     QElapsedTimer sinceMain;
     sinceMain.start();
     const bool timing = qEnvironmentVariableIntValue("VELA_FILES_TIMING") > 0;

@@ -12,6 +12,12 @@ target_compile_definitions(vela-bluetooth-daemon-test PRIVATE
     VELA_BLUETOOTH_DAEMON="$<TARGET_FILE:vela-bluetooth-testing>")
 target_link_libraries(vela-bluetooth-daemon-test PRIVATE Qt6::DBus Qt6::Test)
 add_dependencies(vela-bluetooth-daemon-test vela-bluetooth-testing)
+# sd-event sources that fail (compositor/tests/sd_event_fail_preload.c).
+if(TARGET vela-sd-event-fail-preload)
+    target_compile_definitions(vela-bluetooth-daemon-test PRIVATE
+        VELA_SD_EVENT_FAIL_PRELOAD="${VELA_TEST_PRELOAD_PREFIX}$<TARGET_FILE:vela-sd-event-fail-preload>")
+    add_dependencies(vela-bluetooth-daemon-test vela-sd-event-fail-preload)
+endif()
 add_test(NAME bluetooth-daemon COMMAND vela-bluetooth-daemon-test)
 set_tests_properties(bluetooth-daemon PROPERTIES TIMEOUT 180)
 

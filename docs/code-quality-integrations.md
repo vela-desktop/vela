@@ -42,11 +42,13 @@ and only for a full run (no **tests** or **test_filter**). The instrumented
 build exports `VELA_GPU_COVERAGE=1`: tests skip their throughput floors there,
 which would measure gcov rather than Vela.
 
-**Runner prerequisites:** install GCC/G++, `gcov` and `gcovr` on the AMD,
-NVIDIA and Intel host systems in addition to their existing build/test dependencies.
-On Arch/CachyOS the host administrator can use
-`sudo pacman -S --needed gcc gcovr` before dispatching. Workflows do not
-invoke sudo, upgrade system packages or change runner credentials.
+**Runner prerequisites:** install GCC/G++, `gcov` and `gcovr` on the AMD
+and Intel self-hosted runners in addition to their existing build/test
+dependencies. On Arch/CachyOS the host administrator can use
+`sudo pacman -S --needed gcc gcovr ccache` before dispatching.
+The NVIDIA workflow instead rents an ephemeral Vast.ai instance with a
+prebuilt Arch container image that includes the coverage tools. GPU test
+jobs do not upgrade host packages or change runner credentials.
 
 **To use:** Actions → GPU CI - AMD (manual), GPU CI - NVIDIA (manual)
 or GPU CI - Intel (manual)
@@ -56,7 +58,7 @@ or GPU CI - Intel (manual)
 as downloadable artifacts.
 A separate **GitHub-hosted job** downloads the XML and uploads it to
 Codecov with OIDC, so `id-token: write` does not grant privileges to the
-self-hosted GPU runner. All workflows retain their original strict GPU
+hardware GPU test jobs. All workflows retain their original strict GPU
 hardware qualification, tests, and diagnostic artifacts.
 
 Codecov [flags](../.codecov.yml) are `cpu-tests`, `gpu-amd`,

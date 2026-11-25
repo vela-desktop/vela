@@ -261,6 +261,24 @@
     </message>
 </context>
 <context>
+    <name>CapsLockOsd</name>
+    <message>
+        <source>Caps Lock on</source>
+        <translation>Bloc Maiusc attivo</translation>
+    </message>
+    <message>
+        <source>Caps Lock off</source>
+        <translation>Bloc Maiusc disattivato</translation>
+    </message>
+</context>
+<context>
+    <name>ClipboardList</name>
+    <message>
+        <source>See more</source>
+        <translation>Visualizza altro</translation>
+    </message>
+</context>
+<context>
     <name>ClipboardPanel</name>
     <message>
         <source>Clipboard</source>
@@ -285,10 +303,6 @@
     <message>
         <source>There&apos;s nothing here. When you copy something, you&apos;ll find it here to paste it again.</source>
         <translation>Non c&apos;è niente qui. Quando copi qualcosa, lo ritrovi qui per incollarlo di nuovo.</translation>
-    </message>
-    <message>
-        <source>See more</source>
-        <translation>Visualizza altro</translation>
     </message>
     <message>
         <source>&amp;Unpin</source>
@@ -574,6 +588,18 @@
         <translation>&amp;Ingrandisci</translation>
     </message>
     <message>
+        <source>&amp;New desktop</source>
+        <translation>&amp;Nuovo desktop</translation>
+    </message>
+    <message>
+        <source>Move to &amp;desktop</source>
+        <translation>Sposta nel &amp;desktop</translation>
+    </message>
+    <message>
+        <source>Show on &amp;all desktops</source>
+        <translation>Mostra su &amp;tutti i desktop</translation>
+    </message>
+    <message>
         <source>&amp;Close</source>
         <translation>&amp;Chiudi</translation>
     </message>
@@ -608,16 +634,23 @@
         <translation>Silenziate mentre lo schermo è condiviso</translation>
     </message>
     <message>
+        <source>Do not disturb</source>
+        <translation>Non disturbare</translation>
+    </message>
+    <message>
         <source>Clear all</source>
         <translation>Cancella tutto</translation>
     </message>
+</context>
+<context>
+    <name>NotificationList</name>
     <message>
         <source>No new notifications</source>
         <translation>Nessuna nuova notifica</translation>
     </message>
 </context>
 <context>
-    <name>NotificationPopups</name>
+    <name>NotificationToast</name>
     <message>
         <source>Close</source>
         <translation>Chiudi</translation>
@@ -806,6 +839,13 @@
     </message>
 </context>
 <context>
+    <name>QsTile</name>
+    <message>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
+    </message>
+</context>
+<context>
     <name>QuickSettings</name>
     <message>
         <source>Default output</source>
@@ -814,10 +854,6 @@
     <message>
         <source>Default input</source>
         <translation>Ingresso predefinito</translation>
-    </message>
-    <message>
-        <source>%1 settings</source>
-        <translation>Impostazioni di %1</translation>
     </message>
     <message>
         <source>Unmute</source>
@@ -993,26 +1029,10 @@
     </message>
 </context>
 <context>
-    <name>RunDialog</name>
+    <name>QuickSettingsTile</name>
     <message>
-        <source>Browse</source>
-        <translation>Sfoglia</translation>
-    </message>
-    <message>
-        <source>Browse...</source>
-        <translation>Sfoglia...</translation>
-    </message>
-    <message>
-        <source>Type the name of a program, folder, document or Internet resource, and Vela will open it for you.</source>
-        <translation>Digita il nome di un programma, cartella, documento o risorsa Internet e Vela lo aprirà.</translation>
-    </message>
-    <message>
-        <source>Open:</source>
-        <translation>Apri:</translation>
-    </message>
-    <message>
-        <source>Cancel</source>
-        <translation>Annulla</translation>
+        <source>%1 settings</source>
+        <translation>Impostazioni di %1</translation>
     </message>
 </context>
 <context>
@@ -1184,10 +1204,6 @@
         <translation>&amp;Aggiungi a Start</translation>
     </message>
     <message>
-        <source>&amp;More</source>
-        <translation>A&amp;ltro</translation>
-    </message>
-    <message>
         <source>Couldn&apos;t find this application&apos;s launcher.</source>
         <translation>Impossibile trovare l&apos;avviatore di questa applicazione.</translation>
     </message>
@@ -1296,6 +1312,14 @@
 </context>
 <context>
     <name>Taskbar</name>
+    <message>
+        <source>%1 needs attention</source>
+        <translation>%1 richiede attenzione</translation>
+    </message>
+    <message>
+        <source>Show hidden icons</source>
+        <translation>Mostra le icone nascoste</translation>
+    </message>
     <message>
         <source>1 minute remaining</source>
         <translation>1 minuto rimanente</translation>
@@ -1433,20 +1457,8 @@
         <translation>Siste&amp;ma</translation>
     </message>
     <message>
-        <source>Device &amp;manager</source>
-        <translation>Gestione dispositi&amp;vi</translation>
-    </message>
-    <message>
         <source>Net&amp;work connections</source>
         <translation>Conn&amp;essioni di rete</translation>
-    </message>
-    <message>
-        <source>Dis&amp;k management</source>
-        <translation>Gestio&amp;ne disco</translation>
-    </message>
-    <message>
-        <source>Computer mana&amp;gement</source>
-        <translation>&amp;Gestione computer</translation>
     </message>
     <message>
         <source>&amp;Terminal</source>
@@ -1473,10 +1485,6 @@
         <translation>&amp;Cerca</translation>
     </message>
     <message>
-        <source>&amp;Run</source>
-        <translation>E&amp;segui</translation>
-    </message>
-    <message>
         <source>Sh&amp;ut down or sign out</source>
         <translation>&amp;Arresta il sistema o disconnetti</translation>
     </message>
@@ -1499,6 +1507,14 @@
     <message>
         <source>&amp;Desktop</source>
         <translation>Des&amp;ktop</translation>
+    </message>
+    <message>
+        <source>&amp;Hide in the drawer</source>
+        <translation>&amp;Nascondi nel cassetto</translation>
+    </message>
+    <message>
+        <source>&amp;Show on the taskbar</source>
+        <translation>Mo&amp;stra sulla barra delle applicazioni</translation>
     </message>
     <message>
         <source>Task &amp;manager</source>
@@ -1585,10 +1601,6 @@
         <translation>&amp;Impostazioni audio</translation>
     </message>
     <message>
-        <source>&amp;Troubleshoot network problems</source>
-        <translation>&amp;Diagnostica problemi di rete</translation>
-    </message>
-    <message>
         <source>&amp;Network and Internet settings</source>
         <translation>&amp;Impostazioni di rete e Internet</translation>
     </message>
@@ -1603,6 +1615,17 @@
     <message>
         <source>Show desktop</source>
         <translation type="unfinished"></translation>
+    </message>
+</context>
+<context>
+    <name>TaskbarApps</name>
+    <message>
+        <source>Previous apps</source>
+        <translation>App precedenti</translation>
+    </message>
+    <message>
+        <source>Next apps</source>
+        <translation>App successive</translation>
     </message>
 </context>
 <context>
@@ -1682,24 +1705,8 @@
         <translation>Apri &amp;con</translation>
     </message>
     <message>
-        <source>Cu&amp;t</source>
-        <translation>&amp;Taglia</translation>
-    </message>
-    <message>
-        <source>&amp;Copy</source>
-        <translation>&amp;Copia</translation>
-    </message>
-    <message>
         <source>Create &amp;shortcut</source>
         <translation>Crea c&amp;ollegamento</translation>
-    </message>
-    <message>
-        <source>&amp;Delete</source>
-        <translation>&amp;Elimina</translation>
-    </message>
-    <message>
-        <source>Re&amp;name</source>
-        <translation>Ri&amp;nomina</translation>
     </message>
     <message>
         <source>P&amp;roperties</source>
@@ -1784,14 +1791,6 @@
     <message>
         <source>Open in &amp;Terminal</source>
         <translation>Apri in &amp;Terminale</translation>
-    </message>
-    <message>
-        <source>Show more options</source>
-        <translation>Mostra altre opzioni</translation>
-    </message>
-    <message>
-        <source>Shift+F10</source>
-        <translation>Maiusc+F10</translation>
     </message>
     <message>
         <source>Remove from &amp;Favorites</source>

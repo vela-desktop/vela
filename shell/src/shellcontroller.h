@@ -63,8 +63,13 @@ public:
     // settings and the notification center above a centered taskbar's
     // buttons.
     Q_INVOKABLE void placeAbove(QWindow* window, int left);
+    // Anchors a panel at `edges` (layer-shell bits: top 1, bottom 2, left 4,
+    // right 8), `left` and `top` its margins from them: the panels a taskbar
+    // on any edge opens (docs/taskbar.md §11.3).
+    Q_INVOKABLE void placeAnchored(QWindow* window, int edges, int left, int top);
     // A (hidden) shell panel on output `name`: it appears there the next time
     // it opens.
+    Q_INVOKABLE void setPanelKeyboard(QWindow* window, bool on);
     Q_INVOKABLE void placeOnScreen(QWindow* window, const QString& name);
     // Alt+Tab: a click on preview `index` (the compositor switches).
     Q_INVOKABLE void pickSwitcher(int index) { sendToCompositor("switcher-pick " + QByteArray::number(index)); }
@@ -100,6 +105,10 @@ public:
     // The wallpaper's average color (the Mica tint, docs/renderer.md §9.4),
     // also left in the cache for Vela's apps; invalid if it can't be read.
     QColor wallpaperTint(const QString& wallpaper) const;
+    // The wallpaper's source color for a tonal palette (mica.h's
+    // wallpaper-color), also left in the cache for Style and the lock
+    // screen; invalid if it can't be read or has no color for one.
+    QColor wallpaperColor(const QString& wallpaper) const;
     // Locks the screen before the computer suspends.
     void watchSleep();
     // The computer, through systemd-logind (polkit asks for the password if
@@ -123,7 +132,10 @@ signals:
     void chooseSourceCancelled();
     // Windows shortcuts arriving from the compositor.
     void winXRequested(); // Win+X
-    void runRequested(); // Win+R
+    void taskbarAppRequested(int index, const QString& action, const QString& output);
+    void superHeld();
+    void superHintsHidden();
+    void superReleased();
     void showDesktopRequested(); // Win+D
     void quickSettingsRequested(); // Win+A
     void soundOutputRequested(); // Win+Ctrl+V: quick settings' sound page
@@ -157,6 +169,10 @@ signals:
     // The keyboard's media keys: "play-pause", "pause", "stop", "next",
     // "previous".
     void mediaKeyPressed(const QString& key);
+    // Caps Lock turned on or off by a key (docs/keyboard.md §8.3).
+    void capsLockChanged(bool on);
+    // A custom shortcut's combination, normalized (docs/keyboard.md §9.5).
+    void shortcutRequested(const QString& combo);
     // The window menu (right click on the title bar, Alt+Space): on which
     // output and where, in output coordinates.
     void windowMenuRequested(const QString& window, const QString& output, int x, int y, bool maximized,

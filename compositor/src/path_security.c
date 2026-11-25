@@ -3,6 +3,8 @@
 
 #include "path_security.h"
 
+#include "alloc/alloc.h"
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -39,6 +41,83 @@ bool vela_relative_path_safe(const char *path)
 bool vela_path_component_safe(const char *name)
 {
     return vela_relative_path_safe(name) && strchr(name, '/') == NULL;
+}
+
+int vela_path_open_read(const char *path)
+{
+    if (!path || !*path) {
+        errno = EINVAL;
+        return -1;
+    }
+    if (strnlen(path, PATH_MAX) == PATH_MAX) {
+        errno = ENAMETOOLONG;
+        return -1;
+    }
+    // XDG roots are selected by the session user. Resolve each following
+    // component against the directory already opened, never as a new path.
+    int directory = open(*path == '/' ? "/" : ".", O_PATH | O_DIRECTORY | O_CLOEXEC);
+    if (directory < 0) {
+        return -1;
+    }
+    const char *part = path;
+    while (*part) {
+        while (*part == '/') {
+            ++part;
+        }
+        if (!*part) {
+            break;
+        }
+        const char *end = strchr(part, '/');
+        size_t length = end ? (size_t)(end - part) : strlen(part);
+        if (length == 1 && part[0] == '.') {
+            part += length;
+            continue;
+        }
+        char name[NAME_MAX + 1];
+        if (length > NAME_MAX) {
+            close(directory);
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+        memcpy(name, part, length);
+        name[length] = '\0';
+        if (!vela_path_component_safe(name)) {
+            close(directory);
+            errno = EINVAL;
+            return -1;
+        }
+        // Nonblocking open prevents a FIFO from hanging startup before its
+        // type can be checked. Symlinked configuration files remain supported.
+        bool last = !end;
+        int flags = last ? O_RDONLY | O_NONBLOCK | O_CLOEXEC : O_PATH | O_DIRECTORY | O_CLOEXEC;
+        int next = openat(directory, name, flags);
+        int error = errno;
+        close(directory);
+        if (next < 0) {
+            errno = error;
+            return -1;
+        }
+        if (last) {
+            struct stat info;
+            if (fstat(next, &info) != 0) {
+                error = errno;
+                close(next);
+                errno = error;
+                return -1;
+            }
+            if (!S_ISREG(info.st_mode)) {
+                close(next);
+                errno = EINVAL;
+                return -1;
+            }
+            return next;
+        }
+        directory = next;
+        part += length;
+    }
+    close(directory);
+    errno = EISDIR;
+    return -1;
 }
 
 static bool path_has_component_after(const char *path)
@@ -102,11 +181,7 @@ int vela_runtime_dir_open(const char *path)
             return -1;
         }
 
-        char *name = strndup(component, length);
-        if (!name) {
-            close(fd);
-            return -1;
-        }
+        char *name = vela_strndup(component, length);
 
         // Preserve the previous semantics: parent symlinks may be part of a
         // valid absolute XDG path, but the runtime directory itself must not
@@ -223,16 +298,29 @@ bool vela_lock_marker_create_at(int runtime_fd, const char *display)
     return true;
 }
 
-bool vela_lock_marker_present_at(int runtime_fd, const char *display)
+enum vela_lock_marker vela_lock_marker_state_at(int runtime_fd, const char *display)
 {
     char marker[64];
     if (runtime_fd < 0 || !lock_marker_name(display, marker, sizeof(marker))) {
-        return false;
+        return VELA_LOCK_MARKER_UNKNOWN;
     }
     struct stat info;
-    return fstatat(runtime_fd, marker, &info, AT_SYMLINK_NOFOLLOW) == 0
-        && S_ISREG(info.st_mode) && info.st_uid == geteuid()
-        && (info.st_mode & 077) == 0;
+    if (fstatat(runtime_fd, marker, &info, AT_SYMLINK_NOFOLLOW) != 0) {
+        // ENOMEM or a transient error on the runtime directory must never
+        // read as "unlocked": only a positively missing entry does.
+        return errno == ENOENT ? VELA_LOCK_MARKER_ABSENT : VELA_LOCK_MARKER_UNKNOWN;
+    }
+    if (S_ISREG(info.st_mode) && info.st_uid == geteuid() && (info.st_mode & 077) == 0) {
+        return VELA_LOCK_MARKER_PRESENT;
+    }
+    // Something else holds the marker's name: not ours, but not proof that
+    // the screen was unlocked either.
+    return VELA_LOCK_MARKER_UNKNOWN;
+}
+
+bool vela_lock_marker_present_at(int runtime_fd, const char *display)
+{
+    return vela_lock_marker_state_at(runtime_fd, display) != VELA_LOCK_MARKER_ABSENT;
 }
 
 bool vela_lock_marker_remove_at(int runtime_fd, const char *display)

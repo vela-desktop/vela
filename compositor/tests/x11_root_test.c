@@ -162,6 +162,13 @@ static void bind_nothing(struct wl_client *client, void *data, uint32_t version,
 {
 }
 
+static struct vela_x11_root *test_root;
+
+static bool test_filter(const struct wl_client *client, const struct wl_global *global, void *data)
+{
+    return vela_x11_root_global_visible(data, test_root, client, global);
+}
+
 static void set_scale(struct wlr_output *output, float scale)
 {
     struct wlr_output_state state;
@@ -205,6 +212,9 @@ int main(void)
     vela_x11_root_destroy(NULL);
     struct vela_x11_root *root = vela_x11_root_create(&server);
     assert(root);
+    // In the compositor client_policy.c installs the display's filter.
+    test_root = root;
+    wl_display_set_global_filter(display, test_filter, &server);
 
     // Each client sees one xdg-output manager: Xwayland ours (version 2),
     // the other wlroots' (version 3). The shell is Xwayland's alone.
@@ -258,6 +268,7 @@ int main(void)
 
     // Gone with Xwayland still connected: its resources stay, inert.
     vela_x11_root_destroy(root);
+    test_root = NULL;
     zxdg_output_v1_destroy(x_bottom->xdg);
     zxdg_output_manager_v1_destroy(x.manager);
     pump(&x);

@@ -5,6 +5,9 @@
 virtual desktops, close. Every test starts from a new session; states are
 read from the compositor ("state" request)."""
 
+import os
+import re
+import subprocess
 import time
 import unittest
 
@@ -151,6 +154,86 @@ class Windows(unittest.TestCase):
         self.vela.input("keydown", "alt", "key", "tab", "sleep", "100", "keyup", "alt")
         self.vela.wait_for(lambda s: s["focused"] == second, what="Alt+Tab again: back again")
 
+    def test_number_shortcuts_switch_and_move_in_desktop_mode(self):
+        path = self.vela.config_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as conf:
+            conf.write("super-number-keys=desktops\n")
+        self.vela.command("reload-config")
+        window = self.vela.open_window()
+        self.vela.command("workspace new")
+        self.vela.keys("super+shift+2")
+        self.vela.wait_for(lambda s: s.window(window)["workspace"] == 1,
+                           what="the focused window moved by Super+Shift+2")
+        # On AZERTY the physical 2 key produces é without Shift.
+        subprocess.run([tool("vela-input"), "key", "super+eacute"],
+                       env=dict(self.vela.client_env, VELA_TEST_XKB_LAYOUT="fr"), check=True)
+        self.vela.wait_for(lambda s: s["workspace"] == 1, what="the desktop selected by the physical 2 key")
+        self.vela.keys("super+0")
+        self.assertEqual(self.vela.state()["workspaces"], 2)
+        with open(path, "w") as conf:
+            conf.write("super-number-keys=off\n")
+        self.vela.command("reload-config")
+        self.vela.keys("super+1")
+        self.assertEqual(self.vela.state()["workspace"], 1)
+
+    def desktops_mode_with_logged_windows(self):
+        """Super+number on desktops, and a window on each of two desktops
+        whose client logs its keys (vela-pattern --log-keys): returns the second
+        window and its log."""
+        path = self.vela.config_path()
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as conf:
+            conf.write("super-number-keys=desktops\n")
+        self.vela.command("reload-config")
+        self.vela.open_window()
+        self.vela.command("workspace new switch")
+        self.vela.wait_for(lambda s: s["workspace"] == 1, what="desktop 2")
+        log = os.path.join(self.vela.directory, f"client-{len(self.vela.clients) + 1}.log")
+        window = self.vela.open_window(command=[tool("vela-pattern"), "--log-keys", "400", "300"])
+        self.vela.command("workspace switch 0")
+        self.vela.wait_for(lambda s: s["workspace"] == 0, what="desktop 1")
+        return window, log
+
+    @staticmethod
+    def client_log(path):
+        with open(path, errors="replace") as file:
+            return file.read()
+
+    def test_desktop_switch_keeps_the_number_from_the_window_there(self):
+        window, log = self.desktops_mode_with_logged_windows()
+        with self.vela.input_session() as send:
+            send("keydown", "super", "keydown", "2")
+            self.vela.wait_for(lambda s: s["workspace"] == 1 and s["focused"] == window,
+                               what="desktop 2 and its window focused")
+            # Entered with Super alone held (KEY_LEFTMETA, 125): the 2 is
+            # the compositor's, its release too.
+            enters = re.findall(r"keyboard-enter(.*)", self.client_log(log))
+            self.assertEqual([keys.split() for keys in enters[-1:]], [["125"]], enters)
+            send("keyup", "2", "keyup", "super")
+
+    def test_number_released_during_keyboard_move_is_let_go(self):
+        window, log = self.desktops_mode_with_logged_windows()
+        with self.vela.input_session() as send:
+            send("keydown", "super", "keydown", "2")
+            self.vela.wait_for(lambda s: s["workspace"] == 1 and s["focused"] == window,
+                               what="desktop 2 and its window focused")
+            send("keyup", "super")
+            x = self.vela.state().window(window)["x"]
+            self.vela.command("window active move")
+            time.sleep(0.3) # the command's socket is not the keyboard's
+            # Let go during the Move; its step lands with Return.
+            send("keyup", "2", "key", "Right", "key", "Return")
+            self.vela.wait_for(lambda s: s.window(window)["x"] == x + 10, what="the window moved by the keyboard")
+            time.sleep(0.3)
+            mark = len(self.client_log(log))
+            # A plain 2 after the Move: both its press and its release reach
+            # the window (KEY_2 is 3).
+            send("key", "2")
+            self.vela.wait_for(lambda _: "vela-pattern: key 3 0" in self.client_log(log)[mark:],
+                               read_state=False, what="the release of 2 in the window")
+        self.assertIn("vela-pattern: key 3 1", self.client_log(log)[mark:])
+
     def test_virtual_desktops(self):
         window = self.vela.open_window()
         self.vela.keys("super+ctrl+d") # a new desktop, and we go there
@@ -169,7 +252,10 @@ class Windows(unittest.TestCase):
     def test_system_prompt_keeps_focus_over_new_windows(self):
         # The keyring asks for the password while the app that asked opens its
         # window: the dialog stays in front with the keyboard.
-        prompt = self.vela.open_window(300, 200, app_id="org.kde.ksecretd")
+        # Only the installed program gets that place, not any app that takes
+        # its name (test_fullscreen_stack.py has the impostor).
+        program = self.vela.install_prompt("ksecretd")
+        prompt = self.vela.open_window(command=[program, "--app-id", "org.kde.ksecretd", "300", "200"])
         self.vela.wait_for(lambda s: s["focused"] == prompt)
         app = self.vela.open_window()
         state = self.vela.wait_for(lambda s: s.has(app), what="the app's window")
@@ -199,7 +285,8 @@ class Windows(unittest.TestCase):
             y = w["y"] + 50
             time.sleep(0.4)
             image = self.vela.pixels()
-            at = lambda lx, ly: image.at(round(lx * self.scale), round(ly * self.scale))
+            def at(lx, ly):
+                return image.at(round(lx * self.scale), round(ly * self.scale))
             self.assertEqual(at(x + 100, y + 75), magenta, f"popup anchored at {anchor_x}")
             self.assertEqual(at(x + 3, y + 3), magenta)
             self.assertEqual(at(x + 196, y + 146), magenta)

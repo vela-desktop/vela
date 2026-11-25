@@ -9,15 +9,19 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMetaType>
+#include <QRegularExpression>
+#include <QStringView>
 #include <QUrl>
 #include <QtDebug>
 
 #include <algorithm>
+#include <cstring>
 
 namespace {
 
 constexpr int defaultTimeoutMs = 6000; // like Windows (about six seconds)
 constexpr int maxVisible = 4; // the oldest expire early
+constexpr QStringView closeLink = u"</a>";
 
 // "image-data" (and the old "image_data" and "icon_data"): (iiibiiay).
 QImage decodeImage(const QVariant& value)
@@ -36,12 +40,8 @@ QImage decodeImage(const QVariant& value)
     argument.beginStructure();
     argument >> width >> height >> rowStride >> hasAlpha >> bitsPerSample >> channels >> pixels;
     argument.endStructure();
-    if (width <= 0 || height <= 0 || bitsPerSample != 8 || (channels != 3 && channels != 4)
-        || pixels.size() < qsizetype(rowStride) * (height - 1) + qsizetype(width) * channels) {
-        return {};
-    }
-    const QImage::Format format = channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
-    return QImage(reinterpret_cast<const uchar*>(pixels.constData()), width, height, rowStride, format).copy();
+    (void)hasAlpha; // the channel count says it
+    return decodeNotificationImage(width, height, rowStride, bitsPerSample, channels, pixels);
 }
 
 // An icon for Image: file (path or file://) or theme name.
@@ -59,7 +59,141 @@ QString iconSource(const QString& icon)
     return QStringLiteral("image://icon/") + QString::fromUtf8(QUrl::toPercentEncoding(icon));
 }
 
+// One tag of the body, without its angle brackets: what to write in its
+// place, an empty string to drop it, or a null string to show it as text.
+QString keptTag(const QString& tag, int& openLinks)
+{
+    const QString lower = tag.trimmed().toLower();
+    for (const char* simple : { "b", "/b", "i", "/i", "u", "/u", "br", "br/", "br /" }) {
+        if (lower == QLatin1String(simple)) {
+            return QLatin1Char('<') + lower + QLatin1Char('>');
+        }
+    }
+    if (lower == QLatin1String("/a")) {
+        if (openLinks == 0) {
+            return QStringLiteral(""); // closes nothing
+        }
+        --openLinks;
+        return closeLink.toString();
+    }
+    // A delimiter of its own: the pattern contains )" itself.
+    static const QRegularExpression link(QStringLiteral(R"re(^\s*a\s+href\s*=\s*(?:"([^"]*)"|'([^']*)')\s*$)re"),
+        QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = link.match(tag);
+    if (!match.hasMatch()) {
+        return {};
+    }
+    QString href = match.captured(1).isNull() ? match.captured(2) : match.captured(1);
+    href.replace(QLatin1String("&amp;"), QLatin1String("&"));
+    const QUrl url(href, QUrl::StrictMode);
+    const QString scheme = url.scheme().toLower();
+    if (!url.isValid()
+        || (scheme != QLatin1String("http") && scheme != QLatin1String("https") && scheme != QLatin1String("mailto"))) {
+        return {};
+    }
+    ++openLinks;
+    // StyledText takes the attribute literally and stops at either quote.
+    // FullyEncoded protects double quotes and angle brackets; encode apostrophes too.
+    QString encoded = url.toString(QUrl::FullyEncoded);
+    encoded.replace(QLatin1Char('\''), QLatin1String("%27"));
+    return QStringLiteral("<a href=\"") + encoded + QStringLiteral("\">");
+}
+
 } // namespace
+
+QString sanitizeNotificationBody(const QString& body)
+{
+    const QStringView input(body);
+    const QStringView prefix = input.left(std::min(input.size(), qsizetype(maxNotificationBodyChars)));
+    constexpr qsizetype maxEntityLength = 34; // 32 name characters plus & and ;
+    static const QRegularExpression entity(
+        QStringLiteral(R"(^&(?:[A-Za-z][A-Za-z0-9]{0,31}|#[0-9]{1,10}|#[xX][0-9A-Fa-f]{1,8});$)"));
+
+    QString out;
+    out.reserve(prefix.size());
+    int openLinks = 0;
+    for (qsizetype i = 0; i < prefix.size();) {
+        const QChar c = prefix.at(i);
+        qsizetype consumed = 1;
+        int nextOpenLinks = openLinks;
+        QString tag;
+        QStringView piece = prefix.sliced(i, 1);
+        if (c == QLatin1Char('<')) {
+            const qsizetype end = prefix.indexOf(QLatin1Char('>'), i + 1);
+            if (end >= 0) {
+                tag = keptTag(prefix.sliced(i + 1, end - i - 1).toString(), nextOpenLinks);
+            }
+            if (tag.isNull()) {
+                piece = u"&lt;";
+            } else {
+                piece = tag;
+                consumed = end - i + 1;
+            }
+        } else if (c == QLatin1Char('>')) {
+            piece = u"&gt;";
+        } else if (c == QLatin1Char('&')) {
+            const QStringView candidate = input.sliced(i, std::min(input.size() - i, maxEntityLength));
+            const qsizetype end = candidate.indexOf(QLatin1Char(';'));
+            if (end >= 0 && entity.matchView(candidate.first(end + 1)).hasMatch()) {
+                consumed = end + 1;
+                piece = candidate.first(consumed);
+            }
+        } else if (c.isHighSurrogate() && i + 1 < input.size() && input.at(i + 1).isLowSurrogate()) {
+            consumed = 2;
+            piece = input.sliced(i, consumed);
+        }
+        // Append whole tokens and keep room to close every retained link.
+        const qsizetype closingLength = nextOpenLinks * closeLink.size();
+        if (i + consumed > prefix.size() || out.size() + piece.size() + closingLength > maxNotificationBodyChars) {
+            break;
+        }
+        out += piece;
+        openLinks = nextOpenLinks;
+        i += consumed;
+    }
+    for (; openLinks > 0; --openLinks) {
+        out += closeLink;
+    }
+    return out;
+}
+
+QImage decodeNotificationImage(
+    int width, int height, int rowStride, int bitsPerSample, int channels, const QByteArray& pixels)
+{
+    if (width <= 0 || height <= 0 || width > maxNotificationImageSide || height > maxNotificationImageSide
+        || bitsPerSample != 8 || (channels != 3 && channels != 4)) {
+        return {};
+    }
+    // QImage takes a stride of zero or less as "compute it", and would then
+    // read rows the buffer doesn't have: a row must fit in its stride.
+    const qsizetype rowBytes = qsizetype(width) * channels;
+    if (qsizetype(rowStride) < rowBytes) {
+        return {};
+    }
+    // The last row needs only its pixels, not the padding after them: that is
+    // what libnotify sends (gdk_pixbuf_get_pixels_with_length). Both terms
+    // fit in 64 bits: at most 2^31 × 4096 and 4096 × 4.
+    if (pixels.size() < qsizetype(rowStride) * (height - 1) + rowBytes) {
+        return {};
+    }
+    // Row by row, only each row's pixels: a QImage over the D-Bus bytes would
+    // read the whole stride of the last row too, past the buffer's end.
+    const QImage::Format format = channels == 4 ? QImage::Format_RGBA8888 : QImage::Format_RGB888;
+    QImage image(width, height, format);
+    if (image.isNull()) {
+        return {}; // out of memory
+    }
+    for (int y = 0; y < height; ++y) {
+        std::memcpy(image.scanLine(y), pixels.constData() + qsizetype(rowStride) * y, size_t(rowBytes));
+    }
+    // The center draws 28 logical pixels. Keep enough for the largest
+    // scale accepted by Displays, even if a larger output is attached later.
+    constexpr int iconPixels = 28 * 16;
+    if (width > iconPixels || height > iconPixels) {
+        return image.scaled(iconPixels, iconPixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
+    return image;
+}
 
 NotificationServer::NotificationServer(QObject* parent)
     : QAbstractListModel(parent)
@@ -210,8 +344,9 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
     n.id = id;
     n.appName = app_name;
     n.icon = iconFor(id, app_icon, hints);
-    n.summary = summary;
-    n.body = body;
+    // Bounded before anything keeps them (popup, center, replacements).
+    n.summary = summary.left(maxNotificationSummaryChars);
+    n.body = sanitizeNotificationBody(body);
     n.hasDefault = false;
     for (qsizetype i = 0; i + 1 < actions.size(); i += 2) {
         if (actions[i] == QLatin1String("default")) {
@@ -250,6 +385,7 @@ uint NotificationServer::Notify(const QString& app_name, uint replaces_id, const
             Q_EMIT countChanged();
         }
         if (n.transient) {
+            m_images.remove(id); // iconFor() stored it; nothing will show it
             Q_EMIT NotificationClosed(id, uint(Reason::Expired));
         } else {
             toHistory(n);
@@ -333,6 +469,11 @@ void NotificationServer::toHistory(const Notification& n)
         { n.id, n.appName, n.icon, n.summary, n.body, n.actions, n.hasDefault, QDateTime::currentDateTime() });
     m_history.endInsertRows();
     Q_EMIT m_history.countChanged();
+    // A client that never stops would grow the center (and its images)
+    // without end: past the cap the oldest leave, as if they had expired.
+    while (int(m_history.m_items.size()) > maxNotificationHistory) {
+        close(m_history.m_items.back().id, Reason::Expired);
+    }
 }
 
 int NotificationServer::historyRow(uint id) const
@@ -456,6 +597,7 @@ QString NotificationServer::iconFor(uint id, const QString& appIcon, const QVari
             return QStringLiteral("image://notification/%1/%2").arg(id).arg(++serial); // new at every replacement
         }
     }
+    m_images.remove(id); // a replacement can switch from pixels to a file or theme icon
     for (const char* key : { "image-path", "image_path" }) {
         const QString path = hints.value(QLatin1String(key)).toString();
         if (!path.isEmpty()) {

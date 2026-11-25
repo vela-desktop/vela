@@ -3,6 +3,7 @@
 
 #include "command.h"
 
+#include "alloc/alloc.h"
 #include "a11y.h"
 #include "bindings.h"
 #include "capture_watch.h"
@@ -14,10 +15,13 @@
 #include "lock.h"
 #include "output.h"
 #include "output_manager.h"
+#include "path_security.h"
 #include "render/renderer.h"
+#include "security_policy.h"
 #include "scene/frame.h"
 #include "scene/scene.h"
 #include "server.h"
+#include "snap.h"
 #include "switcher.h"
 #include "util.h"
 #include "view.h"
@@ -34,6 +38,7 @@
 #include <sys/un.h>
 #include <unistd.h>
 #include <wlr/backend/headless.h>
+#include <wlr/backend/multi.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_keyboard.h>
@@ -43,6 +48,9 @@
 #include <wlr/util/log.h>
 
 #define MAX_LINE 4096 // a connection sending more is closed
+// The shell, Settings, the CLI and a few watchers are a handful: a peer that
+// opens more only exhausts descriptors and memory.
+#define MAX_CLIENTS 32
 
 // What a connection can follow with "watch <topic>" (docs/brightness.md
 // §7.2): a name, and the whole state as one line.
@@ -69,6 +77,8 @@ struct client {
     // matters, every line is the whole state), and the line being written.
     bool watching[TOPICS];
     char *queued[TOPICS];
+    char *reply; // one ordered reply may wait behind the line being written
+    bool input_closed;
     char *out;
     size_t out_length, out_done;
     bool brightness_live; // shows a brightness slider (brightness-live on)
@@ -79,6 +89,10 @@ struct vela_commands {
     struct wl_event_source *source;
     char path[108];
     struct wl_list clients;
+    int client_count;
+    // test-output, test-power and test-shell: only in a headless session
+    // started with VELA_TEST_COMMANDS=1 (the functional tests).
+    bool test_commands;
 };
 
 static bool starts_with(const char *text, const char *prefix)
@@ -136,6 +150,22 @@ static void state_json(struct vela_server *server, struct vela_buffer *json)
         readbacks.pending, readbacks.bytes, (unsigned long long)readbacks.completed,
         (unsigned long long)readbacks.cancelled, (unsigned long long)readbacks.failed,
         (unsigned long long)readbacks.rejected, (unsigned long long)readbacks.submitted);
+    struct vela_upload_stats uploads = vela_renderer_upload_stats(server->renderer);
+    vela_buffer_appendf(json, ",\"upload\":{\"chunks\":%d,\"chunks_peak\":%d,\"chunks_max\":%d,"
+        "\"in_place\":%llu,\"deferred\":%llu,\"replaced\":%llu,\"completed\":%llu,\"abandoned\":%llu,"
+        "\"pieces\":%llu,\"rejected\":%llu}",
+        uploads.chunks, uploads.chunks_peak, uploads.chunks_max, (unsigned long long)uploads.in_place,
+        (unsigned long long)uploads.deferred, (unsigned long long)uploads.replaced,
+        (unsigned long long)uploads.completed, (unsigned long long)uploads.abandoned,
+        (unsigned long long)uploads.pieces, (unsigned long long)uploads.rejected);
+    vela_buffer_append(json, ",\"snapPreview\":");
+    const struct vela_snapping *snapping = server->snapping;
+    if (snapping->rect && snapping->rect->color.a > 0) {
+        vela_buffer_appendf(json, "[%.3f,%.3f,%.3f,%.3f]", snapping->preview->node.x, snapping->preview->node.y,
+            snapping->rect->width, snapping->rect->height);
+    } else {
+        vela_buffer_append(json, "null");
+    }
     vela_buffer_appendf(json, ",\"held\":%llu,\"outputs\":[", (unsigned long long)server->ready.held_total);
     bool first = true;
     struct vela_output *output;
@@ -254,8 +284,9 @@ static void window_rects_json(struct vela_server *server, struct vela_buffer *js
 }
 
 // Questions with an answer: false if the line isn't one of them.
-static bool answer(struct vela_server *server, int fd, const char *line)
+static bool answer(struct client *client, const char *line)
 {
+    struct vela_server *server = client->server;
     struct vela_buffer reply = { 0 };
     if (strcmp(line, "modifiers") == 0) {
         // The shell doesn't have the keyboard when the taskbar is clicked, so
@@ -298,8 +329,7 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         return false;
     }
     vela_buffer_append(&reply, "\n");
-    (void)!send(fd, reply.data, reply.length, MSG_NOSIGNAL);
-    vela_buffer_finish(&reply);
+    client->reply = reply.data;
     return true;
 }
 
@@ -486,7 +516,7 @@ static void window(struct vela_server *server, const char *line)
 static void end_task(struct vela_server *server, const char *app_id)
 {
     int count = wl_list_length(&server->views);
-    pid_t *pids = calloc((size_t)count + 1, sizeof(*pids));
+    pid_t *pids = VELA_NEW_N(pid_t, (size_t)count + 1);
     int n = 0;
     struct vela_view *view;
     wl_list_for_each (view, &server->views, link) {
@@ -527,6 +557,10 @@ static void brightness(struct vela_server *server, const char *arguments)
 static void run_command(struct vela_server *server, const char *line)
 {
     struct vela_a11y *a11y = server->a11y;
+    if (vela_command_test_only(line) && !(server->commands && server->commands->test_commands)) {
+        wlr_log(WLR_ERROR, "Refused a test-only command: start a headless compositor with VELA_TEST_COMMANDS=1");
+        return;
+    }
     if (strcmp(line, "logout") == 0) {
         wlr_log(WLR_INFO, "Exit requested by the shell");
         wl_display_terminate(server->display);
@@ -538,11 +572,6 @@ static void run_command(struct vela_server *server, const char *line)
         blur_look(server, line + 10);
     } else if (strcmp(line, "paste") == 0) {
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
-    } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
-        || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
-        || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")
-        || strcmp(line, "brightness") == 0 || starts_with(line, "watch ") || starts_with(line, "brightness-live ")) {
-        // already answered to whoever asked, or about the connection itself
     } else if (starts_with(line, "brightness-probe ")) {
         vela_brightness_probe(server, line + 17); // Settings is showing this output
     } else if (starts_with(line, "brightness ")) {
@@ -617,6 +646,8 @@ static void stop_watching(struct client *client)
         free(client->queued[i]);
         client->queued[i] = NULL;
     }
+    free(client->reply);
+    client->reply = NULL;
     free(client->out);
     client->out = NULL;
 }
@@ -627,17 +658,19 @@ static void flush(struct client *client)
 {
     for (;;) {
         if (!client->out) {
+            client->out = client->reply;
+            client->reply = NULL;
             for (int i = 0; i < TOPICS && !client->out; ++i) {
                 if (client->queued[i]) {
                     client->out = client->queued[i];
-                    client->out_length = strlen(client->out);
-                    client->out_done = 0;
                     client->queued[i] = NULL;
                 }
             }
             if (!client->out) {
                 break;
             }
+            client->out_length = strlen(client->out);
+            client->out_done = 0;
         }
         ssize_t n = send(client->fd, client->out + client->out_done, client->out_length - client->out_done,
             MSG_NOSIGNAL | MSG_DONTWAIT);
@@ -657,14 +690,17 @@ static void flush(struct client *client)
             client->out = NULL;
         }
     }
-    wl_event_source_fd_update(client->source, WL_EVENT_READABLE | (client->out ? WL_EVENT_WRITABLE : 0));
+    uint32_t mask = client->reply || client->input_closed ? 0 : WL_EVENT_READABLE;
+    wl_event_source_fd_update(client->source, mask | (client->out ? WL_EVENT_WRITABLE : 0));
 }
 
 static void queue(struct client *client, int topic, const char *line)
 {
     free(client->queued[topic]);
-    client->queued[topic] = strdup(line);
-    flush(client);
+    client->queued[topic] = vela_strdup(line);
+    // The writable callback also resumes dispatch of buffered requests.
+    wl_event_source_fd_update(
+        client->source, WL_EVENT_WRITABLE | (client->reply || client->input_closed ? 0 : WL_EVENT_READABLE));
 }
 
 static char *topic_line(struct vela_server *server, int topic)
@@ -672,9 +708,14 @@ static char *topic_line(struct vela_server *server, int topic)
     struct vela_buffer line = { 0 };
     topics[topic].write(server, &line);
     vela_buffer_append(&line, "\n");
-    char *text = strdup(vela_buffer_text(&line));
+    char *text = vela_strdup(vela_buffer_text(&line));
     vela_buffer_finish(&line);
     return text;
+}
+
+bool vela_commands_test_mode(struct vela_server *server)
+{
+    return server->commands && server->commands->test_commands;
 }
 
 void vela_commands_notify(struct vela_server *server, const char *name)
@@ -741,6 +782,9 @@ static void client_destroy(struct client *client)
 {
     bool live = client->brightness_live;
     wl_list_remove(&client->link);
+    if (client->server->commands) {
+        --client->server->commands->client_count;
+    }
     wl_event_source_remove(client->source);
     close(client->fd);
     stop_watching(client);
@@ -757,53 +801,99 @@ static int handle_client(int fd, uint32_t mask, void *data)
     if (mask & WL_EVENT_WRITABLE) {
         flush(client);
     }
-    char chunk[256];
-    ssize_t n = -1;
-    // Bound each event-loop turn to MAX_LINE bytes, not the lifetime of the
-    // socket. A stream may contain thousands of short, valid commands. Do
-    // not read past the remaining capacity: that would silently discard the
-    // tail of a read, then close an otherwise valid connection on a burst.
-    // Once this buffer fills, drain its complete lines below and let the
-    // still-readable fd wake us again for the next batch.
-    while (client->length < MAX_LINE) {
-        size_t room = MAX_LINE - client->length;
-        size_t amount = room < sizeof(chunk) ? room : sizeof(chunk);
-        n = read(fd, chunk, amount);
-        if (n <= 0) {
+    // At most one input buffer per turn. When a reply is waiting, leave the
+    // remaining requests here and apply socket backpressure until it moves.
+    if (!client->reply && !client->input_closed && client->length < MAX_LINE) {
+        ssize_t n;
+        do {
+            n = read(fd, client->buffer + client->length, MAX_LINE - client->length);
+        } while (n < 0 && errno == EINTR);
+        if (n > 0) {
+            client->length += (size_t)n;
+        } else if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+            client->input_closed = true;
+        }
+    }
+    size_t used = 0;
+    while (!client->reply && used < client->length) {
+        char *line = client->buffer + used;
+        char *end = memchr(line, '\n', client->length - used);
+        if (!end) {
             break;
         }
-        memcpy(client->buffer + client->length, chunk, (size_t)n);
-        client->length += (size_t)n;
-    }
-    // The complete lines; the rest waits for the next piece.
-    char lines[MAX_LINE + 1];
-    size_t lines_length = 0;
-    char *newline;
-    while ((newline = memchr(client->buffer, '\n', client->length))) {
-        size_t line_length = (size_t)(newline - client->buffer);
-        memcpy(lines + lines_length, client->buffer, line_length);
-        lines[lines_length + line_length] = '\0';
-        lines_length += line_length + 1;
-        client->length -= line_length + 1;
-        memmove(client->buffer, newline + 1, client->length);
-    }
-    for (size_t at = 0; at < lines_length; at += strlen(lines + at) + 1) {
-        if (!connection_line(client, lines + at)) {
-            answer(server, fd, lines + at);
+        *end = '\0';
+        used += (size_t)(end - line) + 1;
+        if (memchr(line, '\0', (size_t)(end - line))) {
+            continue; // discard the entire malformed line
+        }
+        if (connection_line(client, line) || answer(client, line)) {
+            flush(client);
+        } else {
+            run_command(server, line);
         }
     }
-    // A full buffer of COMPLETE lines is not an overlong request: removing
-    // those lines freed capacity. Only an incomplete line occupying all of
-    // MAX_LINE is malformed and must close this client.
-    bool closed = n == 0 || (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) || client->length >= MAX_LINE;
-    if (closed) {
+    client->length -= used;
+    memmove(client->buffer, client->buffer + used, client->length);
+    if ((mask & (WL_EVENT_ERROR | WL_EVENT_HANGUP)) || (!used && client->length == MAX_LINE && !client->reply)
+        || (client->input_closed && !client->out && !client->reply)) {
         client_destroy(client);
     }
-    // After the client is settled: a command can close everything.
-    for (size_t at = 0; at < lines_length; at += strlen(lines + at) + 1) {
-        run_command(server, lines + at);
-    }
     return 0;
+}
+
+// The socket file is private to this user, but the descriptor may have been
+// passed on, and the runtime directory may be reachable from a sandbox.
+// Every command acts on the whole session: only this user's unsandboxed
+// processes may talk to it.
+static bool peer_allowed(struct vela_server *server, int fd)
+{
+    struct ucred peer = { 0 };
+    socklen_t length = sizeof(peer);
+    if (getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &peer, &length) != 0 || length != sizeof(peer)) {
+        wlr_log_errno(WLR_ERROR, "Command socket: can't identify a peer; refused");
+        return false;
+    }
+    if (peer.uid != geteuid()) {
+        wlr_log(WLR_ERROR, "Command socket: refused a peer of another user (uid %u)", (unsigned)peer.uid);
+        return false;
+    }
+    // Only a peer verified to be outside a sandbox: one that exited right
+    // after sending its commands, or hides its /proc root, is refused too.
+    enum vela_sandbox sandbox = vela_peer_sandbox(fd, peer.pid);
+    if (sandbox != VELA_SANDBOX_NONE) {
+        wlr_log(WLR_ERROR, "Command socket: refused a %s peer (process %d)",
+            sandbox == VELA_SANDBOX_FLATPAK ? "sandboxed" : "unverifiable", (int)peer.pid);
+        return false;
+    }
+    if (server->commands->client_count >= MAX_CLIENTS) {
+        wlr_log(WLR_ERROR, "Command socket: %d connections already open; refused another", MAX_CLIENTS);
+        return false;
+    }
+    return true;
+}
+
+static void find_headless(struct wlr_backend *candidate, void *data)
+{
+    if (wlr_backend_is_headless(candidate)) {
+        *(bool *)data = true;
+    }
+}
+
+// Only the functional tests drive outputs, power and the capture indicator
+// through the socket: they ask for it, and only on the headless backend.
+static bool test_commands_enabled(struct vela_server *server)
+{
+    if (!vela_env_one("VELA_TEST_COMMANDS")) {
+        return false;
+    }
+    bool headless = false;
+    wlr_multi_for_each_backend(server->backend, find_headless, &headless);
+    if (!headless || server->session) {
+        wlr_log(WLR_ERROR, "VELA_TEST_COMMANDS ignored: only for a headless compositor");
+        return false;
+    }
+    wlr_log(WLR_INFO, "VELA_TEST_COMMANDS: test-only commands enabled on the command socket");
+    return true;
 }
 
 static int handle_connection(int fd, uint32_t mask, void *data)
@@ -813,31 +903,60 @@ static int handle_connection(int fd, uint32_t mask, void *data)
     if (client_fd < 0) {
         return 0;
     }
-    struct client *client = calloc(1, sizeof(*client));
+    if (!peer_allowed(server, client_fd)) {
+        close(client_fd);
+        return 0;
+    }
+    struct client *client = VELA_NEW(struct client);
     client->server = server;
     client->fd = client_fd;
     client->source = wl_event_loop_add_fd(server->loop, client_fd, WL_EVENT_READABLE, handle_client, client);
+    if (!client->source) {
+        // Descriptors exhausted (epoll or the duplicate): drop this client.
+        wlr_log_errno(WLR_ERROR, "Can't watch a command connection");
+        close(client_fd);
+        free(client);
+        return 0;
+    }
     wl_list_insert(server->commands->clients.prev, &client->link);
+    ++server->commands->client_count;
     return 0;
 }
 
 void vela_commands_listen(struct vela_server *server)
 {
-    struct vela_commands *commands = calloc(1, sizeof(*commands));
+    struct vela_commands *commands = VELA_NEW(struct vela_commands);
     commands->fd = -1;
     wl_list_init(&commands->clients);
     server->commands = commands;
+    commands->test_commands = test_commands_enabled(server);
     const char *runtime_dir = getenv("XDG_RUNTIME_DIR");
-    if (!runtime_dir
+    if (!runtime_dir || !vela_runtime_dir_private(runtime_dir)
+        || !vela_path_component_safe(server->socket_name)
         || !vela_format(commands->path, sizeof(commands->path), "%s/vela-%s.sock", runtime_dir,
             server->socket_name)) {
+        wlr_log(WLR_ERROR, "No command socket: XDG_RUNTIME_DIR must be a private directory owned by this user");
         commands->path[0] = '\0';
         return;
     }
     struct sockaddr_un address = { .sun_family = AF_UNIX };
     snprintf(address.sun_path, sizeof(address.sun_path), "%s", commands->path);
-    unlink(commands->path); // left over from a previous run
+    // Left over from a previous run: only a socket of ours, never whatever
+    // else has that name.
+    struct stat previous;
+    if (lstat(commands->path, &previous) == 0) {
+        if (!S_ISSOCK(previous.st_mode) || previous.st_uid != geteuid()) {
+            wlr_log(WLR_ERROR, "No command socket: %s exists and is not a socket of this user", commands->path);
+            commands->path[0] = '\0';
+            return;
+        }
+        unlink(commands->path);
+    }
     commands->fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+    // No umask() around bind(): it is process-wide, and other threads (the
+    // Vulkan driver's) could create files meanwhile. The private runtime
+    // directory checked above already keeps other users from reaching the
+    // socket before the chmod below.
     if (commands->fd < 0 || bind(commands->fd, (struct sockaddr *)&address, sizeof(address)) != 0
         || listen(commands->fd, 4) != 0) {
         wlr_log_errno(WLR_ERROR, "Can't listen for commands on %s", commands->path);
@@ -848,8 +967,16 @@ void vela_commands_listen(struct vela_server *server)
         }
         return;
     }
-    chmod(commands->path, 0600);
+    if (chmod(commands->path, 0600) != 0) {
+        wlr_log_errno(WLR_ERROR, "Can't restrict %s", commands->path);
+    }
     commands->source = wl_event_loop_add_fd(server->loop, commands->fd, WL_EVENT_READABLE, handle_connection, server);
+    if (!commands->source) {
+        wlr_log_errno(WLR_ERROR, "Can't watch for commands on %s", commands->path);
+        close(commands->fd);
+        commands->fd = -1;
+        unlink(commands->path);
+    }
 }
 
 void vela_commands_stop(struct vela_server *server)

@@ -16,6 +16,8 @@
 
 #include "view.h"
 
+#include "activation.h"
+#include "alloc/alloc.h"
 #include "interact.h"
 #include "focus.h"
 #include "bindings.h"
@@ -131,7 +133,7 @@ static void request_initial_state(struct vela_view *view)
     view->x11_start_fullscreen = false;
     view->x11_start_maximized = false;
     xcb_flush(connection);
-    wl_event_source_timer_update(server->xwayland_property_timer, 1);
+    // handle_map polls the reply and arms the timer once this view is in the list.
 }
 
 static void cancel_initial_state(struct vela_view *view)
@@ -434,6 +436,7 @@ struct unmanaged {
 static struct vela_view *view_create(struct vela_server *server, struct wlr_xwayland_surface *x11);
 static void handle_associate(struct wl_listener *listener, void *data);
 static void handle_map(struct wl_listener *listener, void *data);
+static void update_urgency(struct vela_view *view);
 
 // A BELOW backdrop must render behind fullscreen windows even when Wine
 // changes it to override-redirect while mapped. Ordinary menus stay on top.
@@ -594,7 +597,7 @@ static void handle_unmanaged_set_override_redirect(struct wl_listener *listener,
 
 static struct unmanaged *unmanaged_create(struct vela_server *server, struct wlr_xwayland_surface *x11)
 {
-    struct unmanaged *menu = calloc(1, sizeof(*menu));
+    struct unmanaged *menu = VELA_NEW(struct unmanaged);
     menu->server = server;
     menu->x11 = x11;
     menu->tree = vela_tree_create(server->layers.x11_popups);
@@ -682,6 +685,7 @@ static void handle_map(struct wl_listener *listener, void *data)
         vela_view_set_maximized(view, true, true);
     }
     vela_view_mapped(view);
+    update_urgency(view);
 }
 
 static void handle_unmap(struct wl_listener *listener, void *data)
@@ -788,6 +792,8 @@ static void handle_request_configure(struct wl_listener *listener, void *data)
         vela_surface_set_density(view->x11->surface, d);
     }
     vela_view_sync_x11(view);
+    // Moved to another output at the same size: no commit tells the taskbar.
+    vela_view_update_taskbar_output(view);
 }
 
 static void handle_request_move(struct wl_listener *listener, void *data)
@@ -822,10 +828,26 @@ static void handle_request_minimize(struct wl_listener *listener, void *data)
     vela_view_set_minimized(view, event->minimize);
 }
 
+static void update_urgency(struct vela_view *view)
+{
+    const bool urgent = view->x11->hints && (view->x11->hints->flags & XCB_ICCCM_WM_HINT_X_URGENCY);
+    if (view->mapped && view->x11_urgent != urgent) {
+        view->x11_urgent = urgent;
+        vela_view_set_attention(view, urgent);
+    }
+}
+
+static void handle_set_hints(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct vela_view *view = wl_container_of(listener, view, set_hints);
+    update_urgency(view);
+}
+
 static void handle_request_activate(struct wl_listener *listener, void *data)
 {
     struct vela_view *view = wl_container_of(listener, view, request_activate);
-    vela_focus_new_view(view->server, view);
+    vela_activation_request_x11(view);
 }
 
 static void handle_set_title(struct wl_listener *listener, void *data)
@@ -875,7 +897,7 @@ static void handle_request_skip_taskbar(struct wl_listener *listener, void *data
 {
     struct vela_view *view = wl_container_of(listener, view, request_skip_taskbar);
     // wlroots has already updated the flag: show or hide the taskbar entry.
-    vela_view_show_in_taskbar(view, !view->x11->skip_taskbar && vela_view_on_current_workspace(view));
+    vela_view_show_in_taskbar(view, !view->x11->skip_taskbar);
 }
 
 static void handle_set_override_redirect(struct wl_listener *listener, void *data)
@@ -909,7 +931,7 @@ static void handle_set_override_redirect(struct wl_listener *listener, void *dat
 
 static struct vela_view *view_create(struct vela_server *server, struct wlr_xwayland_surface *x11)
 {
-    struct vela_view *view = calloc(1, sizeof(*view));
+    struct vela_view *view = VELA_NEW(struct vela_view);
     vela_view_init(view, server);
     view->x11 = x11;
     view->x11_density = 1.0;
@@ -924,6 +946,7 @@ static struct vela_view *view_create(struct vela_server *server, struct wlr_xway
     vela_listen(&x11->events.request_maximize, &view->request_maximize, handle_request_maximize);
     vela_listen(&x11->events.request_fullscreen, &view->request_fullscreen, handle_request_fullscreen);
     vela_listen(&x11->events.request_minimize, &view->request_minimize, handle_request_minimize);
+    vela_listen(&x11->events.set_hints, &view->set_hints, handle_set_hints);
     vela_listen(&x11->events.request_activate, &view->request_activate, handle_request_activate);
     vela_listen(&x11->events.set_title, &view->set_title, handle_set_title);
     vela_listen(&x11->events.set_decorations, &view->set_decorations, handle_set_decorations);
@@ -1058,9 +1081,6 @@ void vela_xwayland_init(struct vela_server *server)
     }
     // The outputs in pixels, for Xwayland alone.
     server->x11_root = vela_x11_root_create(server);
-    if (!server->x11_root) {
-        wlr_log(WLR_ERROR, "Xwayland: no xdg-output of its own, X11 apps get logical sizes");
-    }
     // Observe Wine's _WINE_HWND_STYLE notifications while forwarding every
     // event to wlroots for normal XWM management.
     server->xwayland->data = server;

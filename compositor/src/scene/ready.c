@@ -3,6 +3,7 @@
 
 #include "scene/ready.h"
 
+#include "alloc/alloc.h"
 #include "listen.h"
 #include "util.h"
 
@@ -221,7 +222,7 @@ static void handle_client_commit(struct wl_listener *listener, void *data)
         return;
     }
     struct wl_event_loop *loop = wl_display_get_event_loop(wl_client_get_display(wl_resource_get_client(surface->resource)));
-    struct held *held = calloc(1, sizeof(*held));
+    struct held *held = VELA_NEW(struct held);
     held->gate = gate;
     wl_list_init(&held->link);
 
@@ -250,7 +251,7 @@ static void handle_new_surface(struct wl_listener *listener, void *data)
 {
     struct vela_ready *ready = wl_container_of(listener, ready, new_surface);
     struct wlr_surface *surface = data;
-    struct gate *gate = calloc(1, sizeof(*gate));
+    struct gate *gate = VELA_NEW(struct gate);
     gate->ready = ready;
     gate->surface = surface;
     wl_list_init(&gate->held);

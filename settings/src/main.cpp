@@ -9,6 +9,7 @@
 // the page and come to the front (that's how the shell opens "Display
 // settings", "Personalize" and the other menu entries).
 
+#include "alloc/new_handler.h"
 #include "renderingpolicy.h"
 #include "about.h"
 #include "appmodel.h"
@@ -18,15 +19,19 @@
 #include "updates/updates.h"
 #include "brightness.h"
 #include "controls.h"
+#include "customshortcuts.h"
 #include "datetime.h"
 #include "defaultapps.h"
 #include "displays.h"
 #include "iconprovider.h"
 #include "keyboardlayouts.h"
+#include "keyboardpreview.h"
 #include "language.h"
 #include "levelmeter.h"
 #include "network.h"
 #include "preferences.h"
+#include "trayicons.h"
+#include "servicemenus.h"
 #include "systemactions.h"
 #include "systemstatus.h"
 
@@ -117,12 +122,17 @@ private:
 /** Configure text before Qt startup and run Settings with its single-instance request handler. */
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-settings");
     vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("vela-settings"));
     QQmlApplicationEngine* qmlEngine = nullptr;
-    vela::language::install(QStringLiteral("vela-settings"), [&qmlEngine] {
+    KeyboardLayouts* keyboardLayouts = nullptr;
+    vela::language::install(QStringLiteral("vela-settings"), [&qmlEngine, &keyboardLayouts] {
         QGuiApplication::setApplicationDisplayName(QCoreApplication::translate("Settings", "Settings"));
+        if (keyboardLayouts) {
+            keyboardLayouts->setLanguage(vela::language::effective());
+        }
         if (qmlEngine) {
             qmlEngine->retranslate();
         }
@@ -138,7 +148,9 @@ int main(int argc, char* argv[])
     const QCommandLineOption pageOption(QStringLiteral("page"),
         QStringLiteral("The page to open: home, system, display, sound, volume-mixer, notifications, power, about, "
                        "updates, bluetooth, network, personalization, background, colors, themes, taskbar, start, "
-                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, mouse, touchpad, "
+                       "apps, installed-apps, default-apps, time-language, datetime, keyboard, keyboard-layouts, "
+                       "keyboard-typing, keyboard-shortcuts, "
+                       "mouse, touchpad, "
                        "clipboard, night-light, accessibility."),
         QStringLiteral("name"));
     parser.addOption(pageOption);
@@ -174,8 +186,36 @@ int main(int argc, char* argv[])
     DateTime dateTime;
     DefaultApps defaultApps(&apps);
     KeyboardLayouts layouts;
+    // Keyboard > Custom shortcuts: the layouts in use name the keys, and the
+    // modes say which of Vela's combinations are taken.
+    CustomShortcuts shortcuts(
+        [&apps] {
+            QVariantList out;
+            for (const AppModel::Entry& entry : apps.all()) {
+                out.append(QVariantMap { { QStringLiteral("id"), entry.id }, { QStringLiteral("name"), entry.name },
+                    { QStringLiteral("icon"), entry.icon },
+                    { QStringLiteral("keys"), entry.genericName + u' ' + entry.keywords } });
+            }
+            return out;
+        },
+        [&preferences, &layouts] {
+            const QVariantList own = preferences.keyboardLayouts();
+            return own.isEmpty() ? layouts.source().value(QStringLiteral("layouts")).toList() : own;
+        },
+        [&preferences] {
+            return CustomShortcuts::Modes { preferences.colorFilterShortcut(), preferences.superNumberKeys(),
+                qEnvironmentVariable("VELA_NESTED") == QLatin1String("1") };
+        },
+        [] { sendToCompositor("reload-config"); });
+    // Apps installed or removed: their names and icons.
+    QObject::connect(&apps, &AppModel::catalogRevisionChanged, &shortcuts, &CustomShortcuts::refreshItems);
+    layouts.setLanguage(vela::language::effective());
+    keyboardLayouts = &layouts;
+    KeyboardPreview preview; // Keyboard > Layouts: a layout tried before it is added
     SystemStatus status(&bluetooth);
     Brightness brightness;
+    ServiceMenus serviceMenus; // read when Personalization > Context menu opens
+    TrayIcons trayIcons; // Personalization > Taskbar > Notification area
 
     QQmlApplicationEngine engine;
     qmlEngine = &engine;
@@ -193,6 +233,8 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("Apps"), &apps);
     context->setContextProperty(QStringLiteral("System"), &system);
     context->setContextProperty(QStringLiteral("Prefs"), &preferences);
+    context->setContextProperty(QStringLiteral("TrayIcons"), &trayIcons);
+    context->setContextProperty(QStringLiteral("ServiceMenus"), &serviceMenus);
     context->setContextProperty(QStringLiteral("Displays"), &displays);
     context->setContextProperty(QStringLiteral("Audio"), &audio);
     qmlRegisterType<vela::audio::LevelMeter>("Vela.Audio", 1, 0, "LevelMeter");
@@ -203,6 +245,8 @@ int main(int argc, char* argv[])
     context->setContextProperty(QStringLiteral("DateTime"), &dateTime);
     context->setContextProperty(QStringLiteral("DefaultApps"), &defaultApps);
     context->setContextProperty(QStringLiteral("Layouts"), &layouts);
+    context->setContextProperty(QStringLiteral("Shortcuts"), &shortcuts);
+    context->setContextProperty(QStringLiteral("Preview"), &preview);
     context->setContextProperty(QStringLiteral("Status"), &status);
     context->setContextProperty(QStringLiteral("Brightness"), &brightness);
     engine.loadFromModule("Vela.Settings", "Main");

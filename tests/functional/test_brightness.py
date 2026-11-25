@@ -18,6 +18,7 @@ import unittest
 
 import test_shell
 from harness import BUILD, Image, Session, TimeoutError
+import builtins
 
 # The LG of §3 on the first output, the Mi on the second (test-output add).
 MONITORS = """
@@ -126,7 +127,7 @@ class Watcher:
         while True:
             try:
                 chunk = self.socket.recv(65536)
-            except socket.timeout:
+            except builtins.TimeoutError:
                 break
             if not chunk:
                 break
@@ -282,9 +283,7 @@ class SlowWatcher(BrightnessTest):
         # This stream contains 3001 commands, possibly spanning many event
         # loop reads. A query on ANOTHER socket may leapfrog its queued tail:
         # start the confirmation timer only once the entire originating
-        # stream has been consumed. The first same-socket reply can precede
-        # commands in its own read batch, but a second round trip cannot.
-        commands.query("brightness")
+        # stream has been consumed. Requests on one connection run in order.
         applied = commands.query("brightness")
         current = applied["outputs"][0]
         self.assertEqual(current["seq"], 3001,
@@ -563,7 +562,7 @@ class QuickSettings(test_shell.RealShell):
         wait_brightness(self.vela, lambda o: all(o.get(n, {}).get("state") == "ready"
                                                  for n in ("HEADLESS-1", "HEADLESS-2")), "both ready")
         # The shell has its taskbar on the new display too.
-        self.vela.wait_for(lambda s: sum(l["namespace"] == "vela-taskbar" and l["mapped"] for l in s["layers"]) == 2,
+        self.vela.wait_for(lambda s: sum(layer["namespace"] == "vela-taskbar" and layer["mapped"] for layer in s["layers"]) == 2,
                            what="a taskbar on each display")
         time.sleep(0.5)
         box = self.open_panel()

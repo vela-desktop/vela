@@ -3,8 +3,10 @@
 
 #include "process.h"
 
+#include "alloc/alloc.h"
 #include "util.h"
 
+#include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -17,6 +19,28 @@
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/util/log.h>
+
+// `path` in single quotes for sh, a ' in it as '\''.
+static bool quote(char *command, size_t size, const char *path)
+{
+    if (size < 3) {
+        return false;
+    }
+    size_t n = 0;
+    command[n++] = '\'';
+    for (const char *c = path; *c; ++c) {
+        const char *piece = *c == '\'' ? "'\\''" : c;
+        const size_t length = *c == '\'' ? 4 : 1;
+        if (n + length + 2 > size) { // and the closing quote, the NUL
+            return false;
+        }
+        memcpy(command + n, piece, length);
+        n += length;
+    }
+    command[n++] = '\'';
+    command[n] = '\0';
+    return true;
+}
 
 bool vela_find_program(const char *name, const char *build_dir, char *command, size_t size)
 {
@@ -33,10 +57,10 @@ bool vela_find_program(const char *name, const char *build_dir, char *command, s
     char path[PATH_MAX];
     if ((vela_format(path, sizeof(path), "%s/%s", self, name) && access(path, X_OK) == 0)
         || (vela_format(path, sizeof(path), "%s/../%s/%s", self, build_dir, name) && access(path, X_OK) == 0)) {
-        return vela_format(command, size, "'%s'", path);
+        return quote(command, size, path);
     }
     return vela_format(path, sizeof(path), "%s/%s", VELA_LIBEXECDIR, name) && access(path, X_OK) == 0
-        && vela_format(command, size, "'%s'", path);
+        && quote(command, size, path);
 }
 
 void vela_exec_shell(const char *command)
@@ -134,10 +158,11 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
 {
     // A single fork, so the process stays our child and a pidfd in the Wayland
     // loop tells us when it ends.
-    char *copy = strdup(command);
+    char *copy = vela_strdup(command);
     free(child->command);
     child->command = copy;
     child->loop = loop;
+    const pid_t parent = getpid();
     pid_t pid = fork();
     if (pid < 0) {
         wlr_log_errno(WLR_ERROR, "Can't start \"%s\"", command);
@@ -147,21 +172,30 @@ bool vela_child_start(struct vela_child *child, struct wl_event_loop *loop, cons
         // The child dies with the compositor: if the compositor crashes, the
         // supervisor starts another one with new children, and the old ones
         // must not reconnect (QT_WAYLAND_RECONNECT) and make duplicates.
-        prctl(PR_SET_PDEATHSIG, child->death_signal);
+        if (prctl(PR_SET_PDEATHSIG, child->death_signal) < 0 || getppid() != parent) {
+            _exit(127);
+        }
         if (child->keep_fd >= 0) {
             fcntl(child->keep_fd, F_SETFD, 0);
         }
         vela_exec_shell(command);
     }
-    int pidfd = pidfd_open(pid, 0);
-    if (pidfd < 0) {
-        wlr_log_errno(WLR_ERROR, "pidfd_open: \"%s\" won't be restarted", command);
+    child->pid = pid;
+    child->pidfd = pidfd_open(pid, 0);
+    if (child->pidfd >= 0) {
+        child->started_ns = vela_now_ns();
+        child->source = wl_event_loop_add_fd(loop, child->pidfd, WL_EVENT_READABLE, handle_exit, child);
+    }
+    if (!child->source) {
+        wlr_log_errno(WLR_ERROR, "Can't watch \"%s\": stopped", command);
+        // The shell may already have started another process in its
+        // session. The unreaped child still owns its PID during both sends.
+        kill(pid, SIGKILL);
+        kill(-pid, SIGKILL);
+        while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) { }
+        stop_watching(child);
         return false;
     }
-    child->pid = pid;
-    child->pidfd = pidfd;
-    child->started_ns = vela_now_ns();
-    child->source = wl_event_loop_add_fd(loop, pidfd, WL_EVENT_READABLE, handle_exit, child);
     return true;
 }
 

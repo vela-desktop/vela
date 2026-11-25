@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 import importlib.util
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, UTC
 import json
 from pathlib import Path
 import tempfile
@@ -13,7 +13,7 @@ from io import BytesIO
 spec = importlib.util.spec_from_file_location("collector", Path(__file__).parents[1] / "github_distribution_metrics.py")
 m = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(m)
-NOW = datetime(2026, 10, 10, 3, 17, tzinfo=timezone.utc)
+NOW = datetime(2026, 10, 10, 3, 17, tzinfo=UTC)
 
 
 def api(url, token):

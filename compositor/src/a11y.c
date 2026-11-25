@@ -3,6 +3,7 @@
 
 #include "a11y.h"
 
+#include "alloc/alloc.h"
 #include "color.h"
 #include "config.h"
 #include "input.h"
@@ -15,6 +16,7 @@
 #include "sun.h"
 #include "util.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -43,29 +45,36 @@ static const char *yes_no(bool on)
 
 // The system time zone's coordinates, from zone1970.tab (or zone.tab):
 // "+4154+01229" for Europe/Rome. Good enough for sun times.
-static bool timezone_coordinates(double *latitude, double *longitude)
+static bool timezone_name(char *zone, size_t size)
 {
-    char zone[256];
     const char *tz = getenv("TZ");
     if (tz && *tz) {
-        snprintf(zone, sizeof(zone), "%s", tz[0] == ':' ? tz + 1 : tz);
-    } else {
-        char target[512];
-        ssize_t n = readlink("/etc/localtime", target, sizeof(target) - 1);
-        if (n <= 0) {
-            return false;
-        }
-        target[n] = '\0';
-        const char *at = strstr(target, "zoneinfo/");
-        if (!at) {
-            return false;
-        }
-        snprintf(zone, sizeof(zone), "%s", at + 9);
+        return vela_format(zone, size, "%s", tz[0] == ':' ? tz + 1 : tz);
     }
+    char target[512];
+    ssize_t n = readlink("/etc/localtime", target, sizeof(target) - 1);
+    if (n <= 0) {
+        return false;
+    }
+    target[n] = '\0';
+    const char *at = strstr(target, "zoneinfo/");
+    if (!at) {
+        return false;
+    }
+    return vela_format(zone, size, "%s", at + 9);
+}
+
+enum timezone_lookup { TIMEZONE_RETRY, TIMEZONE_MISSING, TIMEZONE_FOUND };
+
+static enum timezone_lookup timezone_coordinates(const char *zone, double *latitude, double *longitude)
+{
     const char *tables[] = { "/usr/share/zoneinfo/zone1970.tab", "/usr/share/zoneinfo/zone.tab" };
+    bool searched = false;
+    bool failed = false;
     for (size_t t = 0; t < sizeof(tables) / sizeof(tables[0]); ++t) {
         FILE *in = fopen(tables[t], "re");
         if (!in) {
+            failed |= errno != ENOENT && errno != ENOTDIR;
             continue;
         }
         char line[512];
@@ -76,11 +85,30 @@ static bool timezone_coordinates(double *latitude, double *longitude)
                 continue;
             }
             fclose(in);
-            return vela_sun_parse_coordinates(coordinates, latitude, longitude);
+            return vela_sun_parse_coordinates(coordinates, latitude, longitude) ? TIMEZONE_FOUND : TIMEZONE_MISSING;
+        }
+        if (ferror(in)) {
+            failed = true;
+        } else {
+            searched = true;
         }
         fclose(in);
     }
-    return false;
+    return searched && !failed ? TIMEZONE_MISSING : TIMEZONE_RETRY;
+}
+
+// Cache completed lookups, including zones with no listed coordinates.
+static void refresh_coordinates(struct vela_a11y *a11y, bool reload)
+{
+    char zone[sizeof(a11y->zone)];
+    if (!timezone_name(zone, sizeof(zone))) {
+        a11y->zone[0] = '\0';
+        a11y->has_coordinates = false;
+    } else if (reload || strcmp(zone, a11y->zone) != 0) {
+        enum timezone_lookup result = timezone_coordinates(zone, &a11y->latitude, &a11y->longitude);
+        a11y->has_coordinates = result == TIMEZONE_FOUND;
+        snprintf(a11y->zone, sizeof(a11y->zone), "%s", result == TIMEZONE_RETRY ? "" : zone);
+    }
 }
 
 // ----------------------------------------------------------------- color --
@@ -133,18 +161,16 @@ static void apply_color(struct vela_a11y *a11y)
 }
 
 // Today's sunset and sunrise here, in minutes after midnight.
-static bool sun_today(int *set, int *rise)
+static bool sun_today(const struct vela_a11y *a11y, int *set, int *rise)
 {
-    double latitude = 0.0;
-    double longitude = 0.0;
-    if (!timezone_coordinates(&latitude, &longitude)) {
+    if (!a11y->has_coordinates) {
         return false;
     }
     time_t now = time(NULL);
     struct tm local;
     localtime_r(&now, &local);
-    *set = vela_sun_time(false, &local, latitude, longitude);
-    *rise = vela_sun_time(true, &local, latitude, longitude);
+    *set = vela_sun_time(false, &local, a11y->latitude, a11y->longitude);
+    *rise = vela_sun_time(true, &local, a11y->latitude, a11y->longitude);
     return *set >= 0 && *rise >= 0;
 }
 
@@ -163,7 +189,7 @@ static void check_night_schedule(struct vela_a11y *a11y)
     int to = a11y->night_to;
     int set = 0;
     int rise = 0;
-    if (sunset && sun_today(&set, &rise)) {
+    if (sunset && sun_today(a11y, &set, &rise)) {
         from = set;
         to = rise;
     }
@@ -183,6 +209,7 @@ static void check_night_schedule(struct vela_a11y *a11y)
 static int handle_schedule_timer(void *data)
 {
     struct vela_a11y *a11y = data;
+    refresh_coordinates(a11y, false);
     check_night_schedule(a11y);
     // A failed gamma test/commit can be temporary. A pending LUT clear must
     // also retry when Night Light is OFF: the monitor may still be tinted.
@@ -200,7 +227,7 @@ static int handle_schedule_timer(void *data)
 
 struct vela_a11y *vela_a11y_create(struct vela_server *server)
 {
-    struct vela_a11y *a11y = calloc(1, sizeof(*a11y));
+    struct vela_a11y *a11y = VELA_NEW(struct vela_a11y);
     a11y->server = server;
     a11y->night_kelvin = VELA_NIGHT_KELVIN_DEFAULT;
     snprintf(a11y->schedule, sizeof(a11y->schedule), "no");
@@ -215,7 +242,11 @@ struct vela_a11y *vela_a11y_create(struct vela_server *server)
     a11y->zoom_from = 1.0;
     a11y->zoom_tween = (struct vela_tween) { -1.0, 1.0, NULL };
     a11y->timer = wl_event_loop_add_timer(server->loop, handle_schedule_timer, a11y);
-    wl_event_source_timer_update(a11y->timer, 60000);
+    if (a11y->timer) {
+        wl_event_source_timer_update(a11y->timer, 60000);
+    } else {
+        wlr_log_errno(WLR_ERROR, "Accessibility: no timer, schedules apply only at the next change");
+    }
     return a11y;
 }
 
@@ -224,7 +255,9 @@ void vela_a11y_destroy(struct vela_a11y *a11y)
     if (!a11y) {
         return;
     }
-    wl_event_source_remove(a11y->timer);
+    if (a11y->timer) {
+        wl_event_source_remove(a11y->timer);
+    }
     free(a11y);
 }
 
@@ -240,6 +273,7 @@ static void start_night_transition(struct vela_a11y *a11y)
 /** Reload accessibility preferences, including the optional Night Light backend. */
 void vela_a11y_load(struct vela_a11y *a11y)
 {
+    refresh_coordinates(a11y, true);
     struct vela_config settings;
     vela_config_read(&settings);
     a11y->night_kelvin = vela_night_temperature(vela_config_get(&settings, "night-light-temperature", NULL),
@@ -598,7 +632,7 @@ bool vela_a11y_json(const struct vela_a11y *a11y, char *out, size_t size)
     char sun[64] = "";
     int set = 0;
     int rise = 0;
-    if (sun_today(&set, &rise)) {
+    if (sun_today(a11y, &set, &rise)) {
         snprintf(sun, sizeof(sun), ",\"sunset\":\"%02d:%02d\",\"sunrise\":\"%02d:%02d\"", set / 60, set % 60,
             rise / 60, rise % 60);
     }

@@ -23,8 +23,10 @@ class VTReservation(unittest.TestCase):
 
     def test_alias_canonical_mask_state_does_not_skip_the_second_name(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);layout=Layout(root)
-            state={'target_vt':4,'masked_units':[]};calls=[]
+            root=Path(temporary)
+            layout=Layout(root)
+            state={'target_vt':4,'masked_units':[]}
+            calls=[]
             class Host:
                 def run(self,command,**options):
                     calls.append(command)
@@ -32,7 +34,8 @@ class VTReservation(unittest.TestCase):
                         # Match the files systemctl actually creates. The
                         # alias query below deliberately repeats canonical state.
                         path=layout.path('run/systemd/system')/command[-1]
-                        path.parent.mkdir(parents=True,exist_ok=True);path.symlink_to('/dev/null')
+                        path.parent.mkdir(parents=True,exist_ok=True)
+                        path.symlink_to('/dev/null')
                     masks=list(layout.path('run/systemd/system').glob('*.service'))
                     return SimpleNamespace(stdout='ActiveState=inactive\nUnitFileState='+('masked-runtime' if masks else 'disabled')+'\nLoadState=masked\n')
             reserve_vt(Host(),root,state,layout)
@@ -42,7 +45,8 @@ class VTReservation(unittest.TestCase):
 
     def test_missing_mask_and_post_mask_activity_abort_before_switching(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);layout=Layout(root)
+            root=Path(temporary)
+            layout=Layout(root)
             class Host:
                 def run(self,command,**options):
                     return SimpleNamespace(stdout='ActiveState=inactive\nUnitFileState=disabled\n')
@@ -52,7 +56,8 @@ class VTReservation(unittest.TestCase):
                 def run(self,command,**options):
                     if command[1]=='mask':
                         path=layout.path('run/systemd/system')/command[-1]
-                        path.parent.mkdir(parents=True,exist_ok=True);path.symlink_to('/dev/null')
+                        path.parent.mkdir(parents=True,exist_ok=True)
+                        path.symlink_to('/dev/null')
                     return SimpleNamespace(stdout=('ActiveState=active\nLoadState=masked\n' if '--property=LoadState' in command
                                                    else 'ActiveState=inactive\nUnitFileState=disabled\n'))
             with self.assertRaisesRegex(BenchError,'reservation did not hold'):
@@ -60,13 +65,17 @@ class VTReservation(unittest.TestCase):
 
     def test_launch_failure_preserves_pre_exec_journal_and_exit_status(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);layout=Layout(root);directory=layout.base/'pilots'/('a'*32)
+            root=Path(temporary)
+            layout=Layout(root)
+            directory=layout.base/'pilots'/('a'*32)
             directory.mkdir(parents=True)
             record={'uid':1001,'account_tag':'fixture','private_homes':[]}
             class Host:
                 def run(self,command,**options):
-                    if command[0]=='systemd-run':raise HostOperationError(command,1)
-                    if command[0]=='systemctl':return SimpleNamespace(stdout='ExecMainStatus=208\nResult=exit-code\n',returncode=0)
+                    if command[0]=='systemd-run':
+                        raise HostOperationError(command,1)
+                    if command[0]=='systemctl':
+                        return SimpleNamespace(stdout='ExecMainStatus=208\nResult=exit-code\n',returncode=0)
                     return SimpleNamespace(stdout='Failed to set up standard input: Operation not permitted\n',returncode=0)
             from unittest.mock import patch
             with patch('vela_bench.pilot.trusted'),self.assertRaisesRegex(BenchError,'ExecMainStatus=208.*standard input') as caught:

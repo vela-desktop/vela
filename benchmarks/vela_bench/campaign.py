@@ -17,7 +17,7 @@ from . import BenchError
 from .archive import append_event, atomic_json, read_json
 from .discovery import discover, file_hash
 from .host import Layout, load_setup, require_workers_stopped, trusted
-from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS
+from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS, vela_environment
 from .qualification import audit_pilot, qualification_summary
 from .calibration import require_uinput
 
@@ -36,22 +36,27 @@ def block_identity(value):
     return value
 
 
-def execution_selection(current, targets, *, case, fast, seed, phases, exercise):
+def execution_selection(current, targets, *, case, fast, seed, phases, exercise, vela_sync_test=False):
     """Build trusted schedules from fixed selections, never an operator script."""
     if type(seed) is not int or not 0 <= seed <= 0xffffffff:
         raise BenchError("Campaign seed is outside uint32 range")
+    runtime = vela_environment(vela_sync_test)
+    if runtime and 'vela' not in targets:
+        raise BenchError('--vela-sync-test requires the Vela target')
+    profile = {'vela_sync_test': True} if runtime else {}
     if case != "observe" and not exercise and not phases:
         return {"kind": "calibration-campaign", "case": case, "fast": fast, "seed": seed,
-                "blocks": blocks_for(targets, case, seed), "scenario_revision": "p0-instruments-v1"}
+                "blocks": blocks_for(targets, case, seed), "scenario_revision": "p0-instruments-v1", **profile}
     if case == "observe":
         from .desktop import PHASES as AVAILABLE, SPEC, VERSION
         phases = phases or list(AVAILABLE)
         if exercise or any(phase not in AVAILABLE for phase in phases):
             raise BenchError("Desktop observation supports responsiveness, motion and slow-apps")
-        config = load_campaign(); config["seed"] = seed
+        config = load_campaign()
+        config["seed"] = seed
         schedule = make_plan(config, {"targets": current["targets"], "environment": current.get("environment", {}),
             "suite": {"installed_files": current.get("launcher_files", {})}},
-            phases=phases, targets=targets, fast=fast, exercise=True)
+            phases=phases, targets=targets, fast=fast, exercise=True, vela_sync_test=vela_sync_test)
         for block in schedule["blocks"]:
             block.update(workload=VERSION, measurement_executed=True, measurement_spec=SPEC,
                          measurement_budget_seconds=240 if block["phase"]=="slow-apps" else 120, requirements=["input", "capture", "native-scene", "instrument-calibration"])
@@ -59,10 +64,11 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
         schedule["estimate"]["basis"] = "provisional desktop action/capture allowances; physical acceptance pending"
         schedule["estimate"]["minimum_seconds"] = 10 + sum(b["measurement_budget_seconds"] + b["preparation_budget_seconds"] for b in schedule["blocks"])
         schedule["estimate"]["includes"] = ["fresh profile", "session launch", "instrument controls", "desktop actions and captures", "cleanup", "report"]
-        schedule.pop("fingerprint", None); schedule["fingerprint"] = fingerprint(schedule)
+        schedule.pop("fingerprint", None)
+        schedule["fingerprint"] = fingerprint(schedule)
         return {"kind":"execution-campaign", "case":"observe", "fast":fast, "seed":seed,
                 "blocks":[dict(block, fault=None) for block in schedule["blocks"]],
-                "execution":schedule, "scenario_revision":VERSION}
+                "execution":schedule, "scenario_revision":VERSION, **profile}
     if case != "calibrate":
         raise BenchError("Phase execution cannot select fault qualification cases")
     if not exercise:
@@ -73,10 +79,10 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise)
     config["seed"] = seed
     schedule = make_plan(config, {"targets": current["targets"], "environment": current.get("environment", {}),
         "suite": {"installed_files": current.get("launcher_files", {})}},
-        phases=phases, targets=targets, fast=fast, exercise=exercise)
+        phases=phases, targets=targets, fast=fast, exercise=exercise, vela_sync_test=vela_sync_test)
     return {"kind": "execution-campaign", "case": "exercise" if exercise else "measure", "fast": fast, "seed": seed,
             "blocks": [dict(block, fault=None) for block in schedule["blocks"]], "execution": schedule,
-            "scenario_revision": schedule["scenario_revision"]}
+            "scenario_revision": schedule["scenario_revision"], **profile}
 
 
 def block_request(layout, run_id, block_id, target):
@@ -104,6 +110,7 @@ def block_request(layout, run_id, block_id, target):
         raise BenchError("Exercise request does not identify one fixed instrument-control block")
     return {"schema": 1, "campaign_run_id": run_id, "plan_fingerprint": fingerprint(plan),
             "block": matches[0], "workload": workload, "measurement_executed": measured,
+            **({'vela_runtime_environment': vela_environment(True)} if plan.get('vela_sync_test') is True and target == 'vela' else {}),
             **({"corpus_inventory": plan["context"]["corpus_inventory"]}
                if measured and matches[0].get("phase")=="scaling" and workload in ("p4-pattern-resources-v5", "p4-pattern-resources-v6") else {})}
 
@@ -215,9 +222,12 @@ def verify_failed_block_restoration(host, layout, source, plan):
             != resolved_conditions(source.parent.parent / 'campaigns' / plan['run_id'], plan)):
         raise BenchError('Failed block differs from the immutable hardware conditions')
     if state.get('plan', {}).get('input_policy'):
-        trusted(source / 'input-isolation.json')
-        guard = read_json(source / 'input-isolation.json')
-        if guard.get('release_verified_after_worker_exit') is not True:
+        path = source / 'input-isolation.json'
+        if not path.is_file():
+            raise BenchError('Failed block has no verified physical-input release evidence')
+        trusted(path)
+        guard = read_json(path)
+        if not isinstance(guard, dict) or guard.get('release_verified_after_worker_exit') is not True:
             raise BenchError('Physical input release was not verified')
     # The terminal state is written at the end of ExecStopPost, just before
     # systemd retires the unit. Allow that short deactivation race to settle.
@@ -358,8 +368,77 @@ def inspect_campaign(directory):
     return result
 
 
+def require_selection_instruments(host, layout, setup, current, selection):
+    """Shared non-takeover instrument checks for single and combined campaigns."""
+    if selection["case"] == "observe":
+        scene = layout.helper.parent / "vela-bench-scene"
+        if str(scene) not in setup["files"]:
+            raise BenchError("Desktop observation requires the installed vela-bench-scene instrument before takeover")
+        trusted(scene)
+        help=host.run([str(scene),'--help'],timeout=10).stdout
+        if '--observe' not in help or '--peer' not in help:
+            raise BenchError('Installed scene lacks P3 v2; rebuild instruments and refresh setup')
+        adapter=layout.helper.parent/'vela-bench-desktop'
+        if str(adapter) not in setup['files']:
+            raise BenchError('Desktop observation requires the installed vela-bench-desktop')
+        trusted(adapter)
+        if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:
+            raise BenchError('Installed adapter lacks P3 workspace support')
+        input_tool=layout.helper.parent/'vela-bench-input'
+        if str(input_tool) not in setup['files']:
+            raise BenchError('Desktop observation requires installed vela-bench-input')
+        trusted(input_tool)
+        if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:
+            raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
+        require_uinput()
+        if 'slow-apps' in selection['execution']['phases']:
+            for name in ('vela-slowgpu','vela-bench-cpuload'):
+                tool=layout.helper.parent/name
+                if str(tool) not in setup['files']:
+                    raise BenchError('Observed slow-apps requires installed '+name)
+                trusted(tool)
+            help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
+            if '--contention' not in help or '--desktop-load' not in help:
+                raise BenchError('Installed GPU helper lacks P3 observed load support')
+            if 'gpu-timestamp-calibration-v1' not in help:
+                raise BenchError('Installed GPU producer lacks GPU timestamp calibration; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
+    if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
+        pattern = layout.helper.parent / "vela-pattern"
+        if str(pattern) not in setup["files"]:
+            raise BenchError("Scaling requires installed vela-pattern; run setup --tools-dir BUILD/tools")
+        trusted(pattern)
+        from .corpus import describe_inventory
+        current['corpus_inventory']=describe_inventory(host,layout,setup)
+    if selection['case']=='measure' and 'overhead' in selection['execution']['phases']:
+        if str(layout.probe) not in setup['files']:
+            raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
+        trusted(layout.probe)
+        for name in ('vela-pattern','vela-bench-input'):
+            path=layout.helper.parent/name
+            if str(path) not in setup['files']:
+                raise BenchError(f'Resource interactions require installed {name} before takeover; run setup --tools-dir BUILD/tools')
+            trusted(path)
+        require_uinput()
+    if selection["case"] == "measure" and "slow-apps" in selection["execution"]["phases"]:
+        producer = layout.helper.parent / "vela-slowgpu"
+        if str(producer) not in setup["files"]:
+            raise BenchError("Selected slow-apps phase requires the installed vela-slowgpu instrument before takeover")
+        trusted(producer)
+        cpu=layout.helper.parent/'vela-bench-cpuload'
+        if str(cpu) not in setup['files']:
+            raise BenchError('Slow-apps requires the installed vela-bench-cpuload; build and refresh setup --tools-dir BUILD/tools')
+        trusted(cpu)
+        help = host.run([str(producer),'--help'],timeout=10).stdout
+        if '--contention' not in help:
+            raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
+        if '--timeout 1..240' not in help:
+            raise BenchError('Installed GPU producer lacks the extended slow-apps deadline; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
+        if 'gpu-timestamp-calibration-v1' not in help:
+            raise BenchError('Installed GPU producer lacks GPU timestamp calibration; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
+
+
 def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=False, fast=False, seed=0,
-            phases=None, exercise=False, layout=Layout()):
+            phases=None, exercise=False, layout=Layout(), vela_sync_test=False):
     from .pilot import begin, resolve_targets, tty_preconditions
     selected = list(resolve_targets(targets))
     tty_preconditions(host)
@@ -375,60 +454,10 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
         root.mkdir(mode=0o700, exist_ok=True)
         trusted(root, directory=True)
         current = context(host, layout, selected)
-        selection = execution_selection(current, selected, case=case, fast=fast, seed=seed, phases=phases, exercise=exercise)
+        selection = execution_selection(current, selected, case=case, fast=fast, seed=seed, phases=phases, exercise=exercise,
+                                        vela_sync_test=vela_sync_test)
         selection['failure_policy'] = 'continue-after-verified-restoration-v1'
-        if selection["case"] == "observe":
-            scene = layout.helper.parent / "vela-bench-scene"
-            if str(scene) not in setup["files"]:
-                raise BenchError("Desktop observation requires the installed vela-bench-scene instrument before takeover")
-            trusted(scene)
-            help=host.run([str(scene),'--help'],timeout=10).stdout
-            if '--observe' not in help or '--peer' not in help:
-                raise BenchError('Installed scene lacks P3 v2; rebuild instruments and refresh setup')
-            adapter=layout.helper.parent/'vela-bench-desktop'
-            if str(adapter) not in setup['files']:raise BenchError('Desktop observation requires the installed vela-bench-desktop')
-            trusted(adapter)
-            if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:raise BenchError('Installed adapter lacks P3 workspace support')
-            input_tool=layout.helper.parent/'vela-bench-input'
-            if str(input_tool) not in setup['files']:raise BenchError('Desktop observation requires installed vela-bench-input')
-            trusted(input_tool)
-            if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
-            require_uinput()
-            if 'slow-apps' in selection['execution']['phases']:
-                for name in ('vela-slowgpu','vela-bench-cpuload'):
-                    tool=layout.helper.parent/name
-                    if str(tool) not in setup['files']:raise BenchError('Observed slow-apps requires installed '+name)
-                    trusted(tool)
-                help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
-                if '--contention' not in help or '--desktop-load' not in help:raise BenchError('Installed GPU helper lacks P3 observed load support')
-        if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
-            pattern = layout.helper.parent / "vela-pattern"
-            if str(pattern) not in setup["files"]:
-                raise BenchError("Scaling requires installed vela-pattern; run setup --tools-dir BUILD/tools")
-            trusted(pattern)
-            from .corpus import describe_inventory
-            current['corpus_inventory']=describe_inventory(host,layout,setup)
-        if selection['case']=='measure' and 'overhead' in selection['execution']['phases']:
-            if str(layout.probe) not in setup['files']:
-                raise BenchError('Resource animation requires installed vela-bench-probe before takeover')
-            trusted(layout.probe)
-            for name in ('vela-pattern','vela-bench-input'):
-                path=layout.helper.parent/name
-                if str(path) not in setup['files']:
-                    raise BenchError(f'Resource interactions require installed {name} before takeover; run setup --tools-dir BUILD/tools')
-                trusted(path)
-            require_uinput()
-        if selection["case"] == "measure" and "slow-apps" in selection["execution"]["phases"]:
-            producer = layout.helper.parent / "vela-slowgpu"
-            if str(producer) not in setup["files"]:
-                raise BenchError("Selected slow-apps phase requires the installed vela-slowgpu instrument before takeover")
-            trusted(producer)
-            cpu=layout.helper.parent/'vela-bench-cpuload'
-            if str(cpu) not in setup['files']:
-                raise BenchError('Slow-apps requires the installed vela-bench-cpuload; build and refresh setup --tools-dir BUILD/tools')
-            trusted(cpu)
-            if '--contention' not in host.run([str(producer),'--help'],timeout=10).stdout:
-                raise BenchError('Installed GPU producer lacks the fixed contention workload; rebuild and refresh setup')
+        require_selection_instruments(host, layout, setup, current, selection)
         if resume:
             directory = root / identity(resume)
             previous = inspect_campaign(directory)
@@ -501,6 +530,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 if refreshed != plan["context"]:
                     raise BenchError("Installed versions or environment changed during campaign")
                 options = {"campaign_block_id": block["id"]} if exercise or measured or observed else {}
+                if vela_sync_test and block['target'] == 'vela':
+                    options['vela_sync_test'] = True
                 outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
                       presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
                       calibrate=not block["fault"] and not (measured and phase=="overhead"),
@@ -617,7 +648,9 @@ def latest(layout=Layout()):
 
 
 def render_export(directory, data):
-    escape = lambda value: html.escape(str(value), quote=True)
+    def escape(value):
+        return html.escape(str(value), quote=True)
+
     exercise = data.get("execution_mode") == "exercise"
     measured = data.get("execution_mode") == "measure"
     observed = data.get("execution_mode") == "observe"
@@ -637,6 +670,8 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
                  "<h1>Qualification and calibration</h1><p>Instrument acceptance evidence.</p>")
     document += "<p>No comparative desktop performance ranking; the five-family suite is incomplete.</p>"
     document += f"<p>Run: {escape(data['run_id'])}. Stage: {escape(data['stage'])}. Selection complete: {escape(data['selection_complete'])}. P0: {escape(data['qualification']['status'])}.</p>"
+    if data['plan'].get('vela_sync_test'):
+        document += '<p>Vela sync-test profile: VELA_SCANOUT=0, VELA_READY_WAIT=0. Plasma uses its normal profile. Keep this campaign separate from normal Vela runs.</p>'
     if 'execution_complete' in data:
         document += (f"<p>Execution finished: {escape(data['execution_complete'])}. Failed blocks: {escape(data['failed_blocks'])}. "
                      "Failed blocks retain their diagnostics and are excluded from performance statistics.</p>")
@@ -717,7 +752,7 @@ def export_campaign(parent, data, layout=Layout()):
     parent = Path(parent)
     parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local export parent, no agent/server.
     directory = parent / ("campaign-" + identity(data["run_id"]))
-    directory.mkdir(mode=0o755)
+    directory.mkdir(mode=0o755)  # NOSONAR S8707: exclusive validated run name beneath the operator-selected export parent.
     hashes = {}
 
     def copy_evidence(path, output):
@@ -786,6 +821,13 @@ def read_export(directory):
         if path.is_symlink() or file_hash(path) != digest:
             raise BenchError("Exported campaign evidence changed")
     data = read_json(directory / "summary.json")
+    frozen_plan = read_json(directory / 'campaign-plan.json') if 'campaign-plan.json' in manifest['files'] else {}
+    if data.get('plan', {}).get('vela_sync_test') is not None or frozen_plan.get('vela_sync_test') is not None:
+        flags = vela_environment(data['plan'].get('vela_sync_test', False))
+        if (not flags or 'campaign-plan.json' not in manifest['files']
+                or data['plan'] != frozen_plan
+                or data['plan'].get('execution', {}).get('vela_runtime_environment', flags) != flags):
+            raise BenchError('Exported Vela runtime profile differs from the immutable campaign')
     if data.get("run_id") != manifest.get("run_id") or data.get("full_suite_complete") is not False:
         raise BenchError("Exported campaign identity/coverage changed")
     if manifest["kind"] != data.get("kind", "") + "-export":
@@ -797,8 +839,19 @@ def read_export(directory):
         if block.get('status') != 'complete':
             accepted.append(block)
             continue
+        if data.get('plan', {}).get('vela_sync_test'):
+            state = read_json(directory / block_identity(block['id']) / 'state.json')
+            session = read_json(directory / block_identity(block['id']) / (block['target'] + '-session.json'))
+            expected = vela_environment(block['target'] == 'vela')
+            if (state['plan'].get('vela_sync_test', False) is not (block['target'] == 'vela')
+                    or state['plan'].get('vela_runtime_environment', {}) != expected
+                    or session.get('vela_runtime_environment') != expected
+                    or state.get('campaign_block', {}).get('vela_runtime_environment', {}) != expected):
+                raise BenchError('Exported live session runtime flags differ from the campaign')
         fresh = audit_pilot(directory / block_identity(block['id']), block['target'], block.get('fault'),
                             instruments=not (data.get('execution_mode')=='measure' and block.get('phase')=='overhead'))
+        if 'vela_runtime_profile' in fresh.get('checks', {}) and not data.get('plan', {}).get('vela_sync_test'):
+            raise BenchError('Exported campaign omitted the live Vela runtime profile')
         saved = block.get('audit', {})
         if (fresh.get('status') != 'passed' or saved.get('status') != 'passed'
                 or any(saved.get('checks', {}).get(key) != value for key,value in fresh.get('checks', {}).items())
@@ -854,8 +907,10 @@ def read_export(directory):
             if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
                 raise BenchError('Exported desktop method differs from planned block')
             if actual.get('method') in ('p3-desktop-observation-v2','p3-desktop-observation-v3'):
-                if 'campaign-plan.json' not in manifest['files']:raise BenchError('Exported desktop has no hashed immutable plan')
-                if actual.get('uid')!=read_json(directory/'campaign-plan.json')['context']['uid']:raise BenchError('Exported desktop UID differs from planned benchmark account')
+                if 'campaign-plan.json' not in manifest['files']:
+                    raise BenchError('Exported desktop has no hashed immutable plan')
+                if actual.get('uid')!=read_json(directory/'campaign-plan.json')['context']['uid']:
+                    raise BenchError('Exported desktop UID differs from planned benchmark account')
             if actual != block.get("audit", {}).get("desktop_observation"):
                 raise BenchError("Exported desktop audit differs from captured evidence")
             observations.append({"id":block["id"],"target":block["target"],"phase":block["phase"],"result":actual})

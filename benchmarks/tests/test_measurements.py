@@ -62,14 +62,17 @@ class Metrics(unittest.TestCase):
         self.assertEqual(result['window_monotonic_ns'][0],injections[5]['before_monotonic_ns'])
         broken=copy.deepcopy(rows)
         broken.remove(next(r for r in broken if r.get('event')=='input' and r['action_id']==1))
-        with self.assertRaises(BenchError): input_metrics(broken,injections)
+        with self.assertRaises(BenchError):
+            input_metrics(broken,injections)
 
     def test_bad_native_backend_and_warmup_counts_cannot_pass(self):
         rows,injections=input_rows()
         next(r for r in rows if r['event']=='probe')['display_protocol']='x11'
-        with self.assertRaises(BenchError): input_metrics(rows,injections)
+        with self.assertRaises(BenchError):
+            input_metrics(rows,injections)
         rows,injections=input_rows()
-        with self.assertRaises(BenchError): input_metrics(rows,injections[:-1])
+        with self.assertRaises(BenchError):
+            input_metrics(rows,injections[:-1])
 
     def test_motion_excludes_warmup_and_keeps_discard_counts_and_refresh_gaps(self):
         raw,rows=motion_rows()
@@ -91,11 +94,14 @@ class Metrics(unittest.TestCase):
     def test_motion_rejects_wrong_refresh_and_truncated_or_unordered_feedback(self):
         raw,rows=motion_rows()
         for profile in ({'mode':{'refresh_mhz':30000}},):
-            with self.assertRaises(BenchError):motion_metrics(raw,rows,profile)
-        with self.assertRaises(BenchError):motion_metrics(raw[:-1],rows,{'mode':{'refresh_mhz':60000}})
+            with self.assertRaises(BenchError):
+                motion_metrics(raw,rows,profile)
+        with self.assertRaises(BenchError):
+            motion_metrics(raw[:-1],rows,{'mode':{'refresh_mhz':60000}})
         shown=next(r for r in rows if r['event']=='presented' and r['frame']==50)
         shown['presentation_ns']=0
-        with self.assertRaises(BenchError):motion_metrics(''.join(json.dumps(r)+'\n' for r in rows),rows,{'mode':{'refresh_mhz':60000}})
+        with self.assertRaises(BenchError):
+            motion_metrics(''.join(json.dumps(r)+'\n' for r in rows),rows,{'mode':{'refresh_mhz':60000}})
 
     def test_gpu_requires_real_job_timestamps_fences_and_window_coverage(self):
         result=producer_metrics(gpu_rows(),'explicit',[400_000_000,1_500_000_000])
@@ -103,21 +109,32 @@ class Metrics(unittest.TestCase):
         self.assertEqual(result['gpu_duration_ms']['p50'],150)
         self.assertFalse(result['contention_excluded'])
         for case in ('ready-fence','missing-completion','no-gpu-delay','wrong-sync','window','clock','wrong-device','partial'):
-            rows=gpu_rows();window=[400_000_000,1_500_000_000]
-            if case=='ready-fence':rows[2]['fence_pending']=False
-            if case=='missing-completion':rows.pop(3)
+            rows=gpu_rows()
+            window=[400_000_000,1_500_000_000]
+            if case=='ready-fence':
+                rows[2]['fence_pending']=False
+            if case=='missing-completion':
+                rows.pop(3)
             if case=='no-gpu-delay':
                 for r in rows:
-                    if r['event']=='gpu-complete':r['gpu_duration_ms']=1
-            if case=='wrong-sync':rows[0]['sync']='implicit'
-            if case=='window':window=[200_000_000,5_000_000_000]
-            if case=='clock':rows[3]['observed_monotonic_ns']=0
-            if case=='wrong-device':rows[0].pop('device_id')
-            if case=='partial':rows[-1]['complete']=False
-            with self.subTest(case=case),self.assertRaises(BenchError):producer_metrics(rows,'explicit',window)
+                    if r['event']=='gpu-complete':
+                        r['gpu_duration_ms']=1
+            if case=='wrong-sync':
+                rows[0]['sync']='implicit'
+            if case=='window':
+                window=[200_000_000,5_000_000_000]
+            if case=='clock':
+                rows[3]['observed_monotonic_ns']=0
+            if case=='wrong-device':
+                rows[0].pop('device_id')
+            if case=='partial':
+                rows[-1]['complete']=False
+            with self.subTest(case=case),self.assertRaises(BenchError):
+                producer_metrics(rows,'explicit',window)
 
     def test_pairing_reports_absolute_deltas_without_claiming_no_contention(self):
-        rows,inj=input_rows();raw,motion=motion_rows()
+        rows,inj=input_rows()
+        raw,motion=motion_rows()
         control={'input':input_metrics(rows,inj),'motion':motion_metrics(raw,motion,{'mode':{'refresh_mhz':60000}})}
         loaded=copy.deepcopy(control)
         loaded['input']['injection_to_presentation_upper_ms']['p50']+=40
@@ -142,9 +159,11 @@ class Metrics(unittest.TestCase):
         self.assertEqual(aggregate(blocks)[0]['independent_blocks'],2)
 
     def test_raw_audit_rejects_changed_summary_and_family_completion_claim(self):
-        rows,inj=input_rows();metrics=input_metrics(rows,inj)
+        rows,inj=input_rows()
+        metrics=input_metrics(rows,inj)
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);prefix=root/'vela-measure-input'
+            root=Path(tmp)
+            prefix=root/'vela-measure-input'
             prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
             atomic_json(prefix.with_suffix('.injections.json'),inj)
             atomic_json(prefix.with_suffix('.json'),{'status':'passed','uinput_cleanup':'passed'})
@@ -154,7 +173,8 @@ class Metrics(unittest.TestCase):
             self.assertEqual(audit_measurements(root,'vela',{},'responsiveness'),summary)
             summary['family_complete']=True
             atomic_json(root/'vela-measurements.json',summary)
-            with self.assertRaises(BenchError):audit_measurements(root,'vela',{},'responsiveness')
+            with self.assertRaises(BenchError):
+                audit_measurements(root,'vela',{},'responsiveness')
 
     def test_unsupported_phase_cannot_be_dispatched_by_privileged_executor(self):
         for phase in ('report','check'):
@@ -187,13 +207,15 @@ class MeasurementCampaign(unittest.TestCase):
         phase=request['block']['phase']
         sample={}
         if phase=='responsiveness':
-            rows,inj=input_rows();prefix=source/(target+'-measure-input')
+            rows,inj=input_rows()
+            prefix=source/(target+'-measure-input')
             prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(r)+'\n' for r in rows))
             atomic_json(prefix.with_suffix('.injections.json'),inj)
             atomic_json(prefix.with_suffix('.json'),{'status':'passed','uinput_cleanup':'passed'})
             sample['input']=input_metrics(rows,inj)
         elif phase=='motion':
-            raw,rows=motion_rows();prefix=source/(target+'-measure-neutral-motion')
+            raw,rows=motion_rows()
+            prefix=source/(target+'-measure-neutral-motion')
             prefix.with_suffix('.jsonl').write_text(raw)
             sample['motion']=motion_metrics(raw,rows,self.snapshot['profile'])
             atomic_json(prefix.with_suffix('.json'),{'status':'passed','metrics':sample['motion']})
@@ -204,7 +226,8 @@ class MeasurementCampaign(unittest.TestCase):
         return 0
 
     def run_campaign(self,**options):
-        import contextlib,io
+        import contextlib
+        import io
         from types import SimpleNamespace
         from vela_bench.campaign import execute
         with contextlib.redirect_stdout(io.StringIO()):
@@ -261,9 +284,74 @@ class MeasurementCampaign(unittest.TestCase):
             self.run_campaign(phases=['slow-apps'])
         self.assertEqual(self.calls,[])
 
+    def test_old_producer_deadline_is_rejected_before_takeover(self):
+        from vela_bench.campaign import execute
+        from types import SimpleNamespace
+        for name in ('vela-slowgpu','vela-bench-cpuload'):
+            self.setup['files'][str(self.layout.helper.parent/name)]='fixture'
+        with self.assertRaisesRegex(BenchError,'extended slow-apps deadline'):
+            execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='--contention --timeout 1..110')),
+                assume_yes=True,layout=self.layout,phases=['slow-apps'],fast=True)
+        self.assertEqual(self.calls,[])
+
+    def test_wall_clock_calibrated_producer_is_rejected_before_takeover(self):
+        from vela_bench.campaign import execute
+        from types import SimpleNamespace
+        for name in ('vela-slowgpu','vela-bench-cpuload'):
+            self.setup['files'][str(self.layout.helper.parent/name)]='fixture'
+        with self.assertRaisesRegex(BenchError,'lacks GPU timestamp calibration'):
+            execute(SimpleNamespace(run=lambda *args,**kwargs:SimpleNamespace(stdout='--contention --timeout 1..240')),
+                assume_yes=True,layout=self.layout,phases=['slow-apps'],fast=True)
+        self.assertEqual(self.calls,[])
+
 
 
 class SlowWorkload(unittest.TestCase):
+    def test_slow_motion_can_finish_after_the_old_deadline_on_either_desktop(self):
+        from types import SimpleNamespace
+        from vela_bench.measurements import run_motion
+        from vela_bench.host import Layout
+        raw, rows = motion_rows()
+        calls = []
+        class Host:
+            def run(self, command, **options):
+                if '--frames' not in command:
+                    return SimpleNamespace(returncode=0, stdout='inactive\n')
+                timeout = int(command[command.index('--timeout') + 1])
+                runtime = next(int(v.split('=')[-1]) for v in command if 'RuntimeMaxSec=' in v)
+                calls.append((timeout, runtime, options['timeout']))
+                # The previous 55 s watchdog kills a progressing probe even
+                # when its complete 630-frame stream would finish at 60 s.
+                complete = min(timeout, runtime, options['timeout']) > 60
+                return SimpleNamespace(returncode=0 if complete else 124,
+                    stdout=raw if complete else raw.rsplit('\n', 2)[0] + '\n', stderr='')
+        with tempfile.TemporaryDirectory() as tmp:
+            for target in ('vela', 'plasma'):
+                for label in ('explicit', 'implicit'):
+                    result = run_motion(Host(), {'uid':1001,'gid':1001}, Path(tmp), target,
+                        Layout(), {'mode':{'refresh_mhz':60000}}, label)
+                    self.assertEqual(result['status'], 'passed', result)
+                    self.assertEqual(result['metrics']['submitted'], 600)
+            self.assertTrue(all(60 < probe < unit < host for probe, unit, host in calls))
+
+    def test_slow_motion_still_rejects_timeout_and_partial_feedback(self):
+        from types import SimpleNamespace
+        from vela_bench.measurements import run_motion
+        from vela_bench.host import Layout
+        raw, _ = motion_rows()
+        for status in (124, 0):
+            class Host:
+                def run(self, command, **options):
+                    if '--frames' in command:
+                        return SimpleNamespace(returncode=status, stdout=raw.rsplit('\n', 2)[0] + '\n', stderr='')
+                    return SimpleNamespace(returncode=0, stdout='inactive\n')
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp:
+                result = run_motion(Host(), {'uid':1001,'gid':1001}, Path(tmp), 'vela',
+                    Layout(), {'mode':{'refresh_mhz':60000}}, 'explicit')
+                self.assertEqual(result['status'], 'failed')
+                self.assertNotIn('metrics', result)
+                self.assertTrue((Path(tmp)/'vela-measure-explicit-motion.jsonl').exists())
+
     def test_production_pairing_and_raw_audit_for_both_sync_modes(self):
         from types import SimpleNamespace
         import io
@@ -276,13 +364,16 @@ class SlowWorkload(unittest.TestCase):
             for row in rows:
                 for key in ('monotonic_ns','commit_clock_ns','presentation_ns','received_monotonic_ns','input_received_monotonic_ns',
                             'submitted_monotonic_ns','observed_monotonic_ns','last_submit_ns','end_request_monotonic_ns'):
-                    if key in row:row[key]+=shift
+                    if key in row:
+                        row[key]+=shift
                 for key in ('delivered_ms','input_delivered_ms'):
-                    if key in row:row[key]+=shift//1_000_000
+                    if key in row:
+                        row[key]+=shift//1_000_000
             return rows
         def inject(host,record,directory,target,layout,health,*,measurement_name):
             calls.append(measurement_name)
-            rows,inj=input_rows();rows=offset(rows,clock)
+            rows,inj=input_rows()
+            rows=offset(rows,clock)
             for row in inj:
                 row['before_monotonic_ns']+=clock
                 row['after_monotonic_ns']+=clock
@@ -293,7 +384,9 @@ class SlowWorkload(unittest.TestCase):
         def animate(host,record,directory,target,layout,profile,label):
             nonlocal clock
             calls.append('motion-'+label)
-            _,rows=motion_rows();rows=offset(rows,clock+12_000_000_000);raw=''.join(json.dumps(r)+'\n' for r in rows)
+            _,rows=motion_rows()
+            rows=offset(rows,clock+12_000_000_000)
+            raw=''.join(json.dumps(r)+'\n' for r in rows)
             clock+=24_000_000_000
             metrics=motion_metrics(raw,rows,profile)
             prefix=directory/(target+'-measure-'+label+'-motion')
@@ -307,13 +400,19 @@ class SlowWorkload(unittest.TestCase):
                 from test_contention import load_rows
                 self.rows=iter(offset(load_rows(process.kind) if process.kind else gpu_rows(process.mode,200),clock-1_000_000_000))
             def next(self,deadline):
-                row=next(self.rows);self.records.append(row);return row
+                row=next(self.rows)
+                self.records.append(row)
+                return row
         class Host:
             def run(self,*args,**kwargs):return SimpleNamespace(returncode=0,stdout='inactive\n')
             def spawn(self,command,errors):
+                if '--contention' not in command and not any(v.endswith('vela-bench-cpuload') for v in command):
+                    self_test.assertIn('--property=RuntimeMaxSec=240', command)
+                    self_test.assertGreater(int(command[command.index('--timeout')+1]), 40+170)
                 return SimpleNamespace(kind='cpu' if any(v.endswith('vela-bench-cpuload') for v in command) else 'gpu' if '--contention' in command else None,
                     mode='implicit' if '--implicit' in command else 'explicit',
                     stdin=io.BytesIO(),stdout=None,stderr=None,poll=lambda:0,wait=lambda timeout:0)
+        self_test = self
         with tempfile.TemporaryDirectory() as tmp, patch('vela_bench.measurements.run_input',side_effect=inject), \
                 patch('vela_bench.measurements.run_motion',side_effect=animate), \
                 patch('vela_bench.measurements.Lines',FakeLines):
@@ -328,4 +427,5 @@ class SlowWorkload(unittest.TestCase):
             self.assertEqual(audit_measurements(directory,'vela',profile,'slow-apps'),result)
 
 
-if __name__=='__main__':unittest.main()
+if __name__=='__main__':
+    unittest.main()

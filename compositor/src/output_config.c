@@ -4,9 +4,9 @@
 #include "output_config.h"
 
 #include "config.h"
+#include "alloc/alloc.h"
 
 #include <limits.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,13 +39,10 @@ struct file {
 
 static struct section *add_section(struct file *file, const char *name, size_t length)
 {
-    if (file->count == file->capacity) {
-        file->capacity = file->capacity ? file->capacity * 2 : 8;
-        file->sections = realloc(file->sections, (size_t)file->capacity * sizeof(*file->sections));
-    }
+    file->sections = vela_grow(file->sections, &file->capacity, file->count + 1, sizeof(*file->sections));
     struct section *section = &file->sections[file->count++];
     memset(section, 0, sizeof(*section));
-    section->name = strndup(name, length);
+    section->name = vela_strndup(name, length);
     return section;
 }
 
@@ -98,26 +95,38 @@ static void modern_value(const char *value, char *out, size_t size)
     }
 }
 
-static void read_file(struct file *file)
+// false when a file exists but could not be read whole: nothing derived
+// from it may be written back. The legacy schermi.conf is read only when
+// outputs.conf is positively missing; an unreadable outputs.conf must not
+// bring back stale settings from it.
+static bool read_file(struct file *file)
 {
     memset(file, 0, sizeof(*file));
     char path[PATH_MAX];
     if (!vela_config_path("outputs.conf", path, sizeof(path))) {
-        return;
+        return false;
     }
-    FILE *in = fopen(path, "r");
+    bool missing = false;
+    FILE *in = vela_config_open(path, &missing);
+    if (!in && !missing) {
+        return false;
+    }
     bool legacy = !in;
-    if (legacy && vela_config_path("schermi.conf", path, sizeof(path))) {
-        in = fopen(path, "r");
-    }
-    if (!in) {
-        return;
+    if (legacy) {
+        if (!vela_config_path("schermi.conf", path, sizeof(path))) {
+            return true; // no legacy file either: no saved outputs
+        }
+        in = vela_config_open(path, &missing);
+        if (!in) {
+            return missing;
+        }
     }
     char *line = NULL;
     size_t capacity = 0;
-    ssize_t n;
+    ssize_t n = 0;
+    int status;
     struct section *current = NULL;
-    while ((n = getline(&line, &capacity, in)) >= 0) {
+    while ((status = vela_read_line(in, &line, &capacity, &n)) > 0) {
         if (n > 0 && line[n - 1] == '\n') {
             line[--n] = '\0';
         }
@@ -148,12 +157,17 @@ static void read_file(struct file *file)
     }
     free(line);
     fclose(in);
+    return status == 0;
 }
 
 bool vela_output_config_load(const char *key, struct vela_saved_output *out)
 {
     struct file file;
-    read_file(&file);
+    if (!read_file(&file)) {
+        // Discard partial reads rather than using incomplete saved settings.
+        free_file(&file);
+        return false;
+    }
     struct section *section = find_section(&file, key);
     if (!section) {
         free_file(&file);
@@ -180,38 +194,25 @@ bool vela_output_config_load(const char *key, struct vela_saved_output *out)
     if (section->has[POSITION] && section->values[POSITION][0]) {
         out->has_position = sscanf(section->values[POSITION], "%d,%d", &out->x, &out->y) == 2;
     }
-    // Older outputs.conf files may have stored a monitor at negative Y
-    // (a screen above the primary). Normalize all *enabled* saved outputs
-    // against the same origin, even if they are loaded one at a time in a
-    // different hotplug order. This preserves the arrangement across restarts.
-    if (out->has_position) {
-        int min_x = INT_MAX, min_y = INT_MAX;
-        for (int i = 0; i < file.count; ++i) {
-            const struct section *head = &file.sections[i];
-            if ((head->has[ENABLED] && strcmp(head->values[ENABLED], "no") == 0)
-                || !head->has[POSITION]) {
-                continue;
-            }
-            int x, y;
-            if (sscanf(head->values[POSITION], "%d,%d", &x, &y) != 2) {
-                continue;
-            }
-            if (x < min_x) {
-                min_x = x;
-            }
-            if (y < min_y) {
-                min_y = y;
-            }
-        }
-        if (min_x != INT_MAX && (int64_t)out->x - min_x <= INT_MAX) {
-            out->x -= min_x;
-        }
-        if (min_y != INT_MAX && (int64_t)out->y - min_y <= INT_MAX) {
-            out->y -= min_y;
+    free_file(&file);
+    return true;
+}
+
+bool vela_output_config_has_absent_output(bool (*present)(const char *key, void *data), void *data)
+{
+    struct file file;
+    bool read = read_file(&file);
+    bool absent = false;
+    for (int i = 0; read && i < file.count; ++i) {
+        const struct section *section = &file.sections[i];
+        if (section->has[POSITION] && (!section->has[ENABLED] || strcmp(section->values[ENABLED], "no") != 0)
+            && !present(section->name, data)) {
+            absent = true;
+            break;
         }
     }
     free_file(&file);
-    return true;
+    return absent;
 }
 
 bool vela_output_config_save(const struct vela_output_config_entry *entries, int count)
@@ -223,7 +224,10 @@ bool vela_output_config_save(const struct vela_output_config_entry *entries, int
         return false;
     }
     struct file file;
-    read_file(&file);
+    if (!read_file(&file)) {
+        free_file(&file);
+        return false; // never replace a file we could not read
+    }
     for (int i = 0; i < count; ++i) {
         const struct vela_output_config_entry *entry = &entries[i];
         struct section *section = find_section(&file, entry->key);

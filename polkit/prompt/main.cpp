@@ -11,9 +11,11 @@
 // outputs. All of them take the pointer: nothing underneath can be touched
 // until the user answers.
 
+#include "alloc/new_handler.h"
 #include "renderingpolicy.h"
 #include "controls.h"
 #include "language.h"
+#include "capslock.h"
 #include "request.h"
 
 #include <LayerShellQt/Window>
@@ -137,6 +139,7 @@ private:
 /** Validate the authentication request and run its Wayland prompt with shared text rendering. */
 int main(int argc, char* argv[])
 {
+    vela::install_new_handler("vela-polkit-prompt");
     if (argc > 1 && (!std::strcmp(argv[1], "--help") || !std::strcmp(argv[1], "-h"))) {
         std::printf("Usage: vela-polkit-prompt\n"
                     "Vela's User Account Control dialog. Started by vela-polkit-agent, which\n"
@@ -160,12 +163,18 @@ int main(int argc, char* argv[])
 
     Windows windows(engine);
     bool shown = false;
+    CapsLock capsLock;
+    QObject::connect(&capsLock, &CapsLock::changed, &request, &Request::setCapsLock);
     QObject::connect(&request, &Request::shownChanged, &app, [&] {
         if (!shown && request.shown()) {
             shown = true;
             if (!windows.show()) {
                 request.cancel();
+                return;
             }
+            // The windows are up, on Wayland: from now on the warning
+            // follows the seat's keyboard, whenever it has one.
+            capsLock.start();
         }
     });
     QObject::connect(&request, &Request::closingChanged, &app, [&] {

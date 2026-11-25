@@ -5,10 +5,13 @@
 settings (night light, color filters, magnifier, sticky keys) with the state
 the shell receives and what stays in vela.conf; scheduled night light;
 sticky keys; Super alone opening Start; the magnifier with Win+plus and
-Win+Esc. The shell is a FakeShell collecting the messages."""
+Win+Esc; Win+Enter's terminal. The shell is a FakeShell collecting the
+messages."""
 
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import tempfile
 import time
@@ -78,7 +81,7 @@ class Accessibility(unittest.TestCase):
         # Scheduled between two times around now: on already at startup.
         now = time.localtime()
         minutes = now.tm_hour * 60 + now.tm_min
-        self.start([f"night-light-schedule=hours", f"night-light-from={clock(minutes - 60)}",
+        self.start(["night-light-schedule=hours", f"night-light-from={clock(minutes - 60)}",
                     f"night-light-to={clock(minutes + 60)}"])
         self.assertTrue(self.a11y()["nightLight"])
         # A range that doesn't include now: it turns off at "reload-config".
@@ -225,6 +228,20 @@ class Accessibility(unittest.TestCase):
         self.shell.wait_for("show-desktop")
         self.assertEqual(self.shell.received("toggle-start"), [])
 
+    def test_super_alone_can_leave_start_closed(self):
+        """super-opens-start=no (docs/keyboard.md §10): Win alone does
+        nothing, its shortcuts and the taskbar numbers while it is held
+        stay."""
+        self.start(["super-opens-start=no"])
+        self.vela.keys("super")
+        self.vela.keys("super+d")
+        self.shell.wait_for("show-desktop")
+        # Held, the taskbar numbers still show; released, Start stays closed.
+        self.vela.input("keydown", "super", "sleep", "800", "keyup", "super")
+        self.shell.wait_for("super-held")
+        time.sleep(0.3)
+        self.assertEqual(self.shell.received("toggle-start"), [])
+
     def test_magnifier_keys(self):
         self.start()
         self.vela.open_window(400, 300)
@@ -266,6 +283,90 @@ class Accessibility(unittest.TestCase):
             expected = ((200 + x // 2 - w["x"]) & 255, (150 + y // 2 - w["y"]) & 255)
             self.assertLessEqual(max(abs(red - expected[0]), abs(green - expected[1])), 2,
                                  f"screen ({x}, {y}) shows {(red, green)}, expected {expected}")
+
+
+class WinEnter(unittest.TestCase):
+    """Win+Enter opens the terminal of docs/keyboard.md §11 through
+    vela-terminal: the user's choice, then VELA_TERMINAL, then
+    xdg-terminal-exec. The PATH is the test's own, so what the host has
+    installed doesn't count."""
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp(prefix="vela-terminal-")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.bin = os.path.join(self.dir, "bin")
+        self.share = os.path.join(self.dir, "share")
+        self.ran = os.path.join(self.dir, "ran")
+
+    def program(self, name):
+        """A fake program that writes its name and arguments to `ran`."""
+        program = os.path.join(self.bin, name)
+        os.makedirs(self.bin, exist_ok=True)
+        with open(program, "w") as script:
+            script.write(f"#!/bin/sh\nprintf '%s\\n' {name} \"$@\" > {shlex.quote(self.ran)}\n")
+        os.chmod(program, 0o700)
+        return program
+
+    def terminal(self, desktop_id, name):
+        """A desktop file for a fake terminal."""
+        program = self.program(name)
+        os.makedirs(os.path.join(self.share, "applications"), exist_ok=True)
+        with open(os.path.join(self.share, "applications", desktop_id), "w") as entry:
+            entry.write(f"[Desktop Entry]\nType=Application\nName={name}\nExec={program} %U\n"
+                        "Categories=System;TerminalEmulator;\n")
+
+    def start(self, path=None, variable=""):
+        # The system's directories stay: Vulkan finds its drivers there.
+        system = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
+        # A headless compositor inherits the desktop name. Model the Vela
+        # session so xdg-terminal-exec reads vela-xdg-terminals.list.
+        self.vela = Session(env={"XDG_CURRENT_DESKTOP": "Vela:KDE",
+                                 "XDG_DATA_DIRS": f"{self.share}:{system}", "PATH": path or self.bin,
+                                 "VELA_TERMINAL": variable})
+        self.vela.start()
+        self.addCleanup(self.vela.stop)
+
+    def choose(self, desktop_id):
+        os.makedirs(self.vela.env["XDG_CONFIG_HOME"], exist_ok=True)
+        with open(os.path.join(self.vela.env["XDG_CONFIG_HOME"], "vela-xdg-terminals.list"), "w") as choice:
+            choice.write(f"{desktop_id}\n")
+
+    def opened(self):
+        self.vela.wait_for(lambda _: os.path.exists(self.ran), what="a terminal", read_state=False)
+        time.sleep(0.2)
+        with open(self.ran) as ran:
+            return ran.read().split()
+
+    def test_xdg_terminal_exec(self):
+        self.program("xdg-terminal-exec")
+        self.start()
+        self.vela.keys("super+Return")
+        self.assertEqual(self.opened(), ["xdg-terminal-exec"])
+
+    def test_vela_terminal_before_xdg_terminal_exec(self):
+        self.program("xdg-terminal-exec")
+        self.start(variable=self.program("first") + " --hold")
+        self.vela.keys("super+Return")
+        self.assertEqual(self.opened(), ["first", "--hold"])
+
+    def test_the_users_choice_before_vela_terminal(self):
+        # xdg-terminal-exec reads the choice itself; Vela only lets it.
+        self.program("xdg-terminal-exec")
+        self.start(variable=self.program("first"))
+        self.choose("b.desktop")
+        self.vela.keys("super+Return")
+        self.assertEqual(self.opened(), ["xdg-terminal-exec"])
+
+    @unittest.skipUnless(shutil.which("xdg-terminal-exec"), "xdg-terminal-exec isn't installed")
+    def test_xdg_terminal_exec_opens_the_choice(self):
+        # The real launcher, with Vela's list and the fake terminals.
+        self.terminal("a.desktop", "first")
+        self.terminal("b.desktop", "chosen")
+        launcher = os.path.dirname(shutil.which("xdg-terminal-exec"))
+        self.start(path=f"{self.bin}:{launcher}:/usr/bin:/bin")
+        self.choose("b.desktop")
+        self.vela.keys("super+Return")
+        self.assertEqual(self.opened(), ["chosen"])
 
 
 if __name__ == "__main__":

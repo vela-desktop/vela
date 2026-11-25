@@ -3,7 +3,6 @@
 
 """Explicit P0 acceptance checks over archived evidence, never a ranking."""
 
-import json
 from pathlib import Path
 
 from . import BenchError
@@ -71,11 +70,19 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
         session = read_json(directory / f"{target}-session.json")
         checks["namespace_isolation"] = session.get("fixture_hidden_from_both_trees") is True
         checks["full_session"] = session.get("graphical_session_target") == "active"
-        if state.get('plan', {}).get('desktop_profile_policy'):
-            from .session_profile import POLICY
+        if 'vela_sync_test' in state.get('plan', {}) or 'vela_runtime_environment' in state.get('plan', {}):
+            from .model import vela_environment
+            flags = vela_environment(state['plan'].get('vela_sync_test', False))
+            checks['vela_runtime_profile'] = (state['plan'].get('vela_runtime_environment', {}) == flags
+                and session.get('vela_runtime_environment') == (flags if target == 'vela' else {}))
+        profile_policy = state.get('plan', {}).get('desktop_profile_policy')
+        if profile_policy:
+            from .session_profile import LEGACY_POLICY, POLICY
             profile = read_json(directory / f'{target}-desktop-profile.json')
             inventory = state['plan'].get('autostart_inventory')
-            checks['quiet_desktop_profile'] = (profile.get('policy') == POLICY
+            checks['quiet_desktop_profile'] = (profile_policy in (LEGACY_POLICY, POLICY)
+                and profile.get('policy') == profile_policy
+                and profile.get('secret_backend') == (profile_policy.get('vela_secret_backend') if target == 'vela' else None)
                 and profile.get('autostart_inventory') == inventory
                 and profile.get('disabled_autostarts') == sorted({row['name'] for row in inventory if not row['allowed']}))
         if state.get('plan', {}).get('input_policy'):
@@ -84,6 +91,7 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
             cursor = read_json(directory / f'{target}-cursor-profile.json')
             checks['physical_input_released'] = (guard.get('policy') == POLICY
                 and guard.get('status') == 'released' and guard.get('error') is None
+                and guard.get('acquisition_attempted') is not False
                 and guard.get('release_verified_after_worker_exit') is True)
             checks['transparent_cursor_profile'] = all(cursor.get(k) == v for k, v in POLICY.items())
         conditions = read_json(directory / f"{target}-conditions.json")

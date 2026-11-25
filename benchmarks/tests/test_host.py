@@ -8,7 +8,9 @@ They are not evidence that PAM/logind works on a real seat.
 """
 
 import contextlib
+import copy
 import io
+import json
 import os
 import shutil
 import subprocess
@@ -28,7 +30,7 @@ from vela_bench.host import (ACCOUNT, Layout, PILOT_UNIT, SESSION_UNIT, check_ac
                             unit_quote, uninstall, useradd_command, update_launcher, require_current_launcher, MODULES, HostOperationError,
                             release_session_unit)
 from vela_bench.pilot import (check_profile_environment, desktop_environment, recover, reserve_vt,
-                             select_login_session, session_command, tty_preconditions, worker,
+                             select_login_session, session_command, worker,
                              preserve_session_log, wait_session, restore_display_manager, restore_hardware_conditions)
 
 
@@ -71,6 +73,11 @@ class FakeHost:
             if self.fail_start:
                 raise BenchError("synthetic display-manager start failure")
             self.manager_active = True
+        elif argv[0] == 'busctl' and argv[-1] == 'Conditions':
+            root=Path(self.account.pw_dir).parents[3]
+            override=root/'run/systemd/system/sddm.service.d/99-vela-benchmark-quiescence.conf'
+            condition=next(line.split('=',1)[1] for line in override.read_text().splitlines() if line.startswith('ConditionPathExists='))
+            stdout=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,condition,0]]})
         elif argv[:2] == ["systemctl", "show"]:
             if '--property=Id' in argv:
                 stdout='sddm.service\n'
@@ -79,7 +86,8 @@ class FakeHost:
             elif '--property=FreezerState' in argv:
                 stdout='frozen\n' if self.manager_frozen else 'running\n'
             elif "--property=LoadState" in argv:
-                stdout = "not-found\n" if "--value" in argv else "LoadState=not-found\n"
+                mask=Path(self.account.pw_dir).parents[3]/'run/systemd/system/sddm.service' if self.account else None
+                stdout = ('masked\n' if argv[2]=='sddm.service' and mask and mask.is_symlink() else 'not-found\n') if '--value' in argv else 'LoadState=not-found\n'
             else:
                 stdout = "active\n" if self.manager_active and argv[2] == "display-manager.service" else "inactive\n"
         elif argv[:2] == ['systemctl','freeze']:
@@ -185,6 +193,19 @@ class HostOperations(unittest.TestCase):
                 with self.assertRaisesRegex(BenchError, "Invalid fixture"):
                     create_fixture(changed)
                 mkdir.assert_not_called()
+
+    def test_session_verification_rejects_foreign_fixture_before_namespace_queries(self):
+        from vela_bench.pilot import verify_session
+        state = {"run_id": "a" * 32, "fixture": "/home/.vela-benchmark-" + "a" * 32}
+        for changed in ({**state, "run_id": "../escape"}, {**state, "run_id": None},
+                        {**state, "fixture": state["fixture"] + "/../other"},
+                        {**state, "fixture": "/home/personal-document"}):
+            with self.subTest(state=changed), patch("vela_bench.pilot.logind_sessions") as sessions, \
+                    patch.object(Path, "exists") as exists:
+                with self.assertRaisesRegex(BenchError, "Invalid fixture"):
+                    verify_session(self.host, {}, changed, self.layout)
+                sessions.assert_not_called()
+                exists.assert_not_called()
 
     def test_recovery_refuses_a_fixture_symlink_without_unlinking_its_target(self):
         self.setup_account()
@@ -832,7 +853,10 @@ class HostOperations(unittest.TestCase):
         record = self.setup_account()
         owned = ("LoadState=loaded\nUser=vela-benchmark\nTransient=yes\nDescription=Vela benchmark P0 session "
                  + record["account_tag"] + "\n")
-        reply = lambda raw: SimpleNamespace(stdout=raw)
+
+        def reply(raw):
+            return SimpleNamespace(stdout=raw)
+
         with patch.object(self.host, "run", side_effect=[reply(owned + "ActiveState=failed\nResult=timeout\n"),
                 reply(""), reply(owned + "ActiveState=inactive\nResult=success\n"), reply("LoadState=not-found\n")]) as run, \
                 patch("vela_bench.host.time.sleep"):
@@ -896,7 +920,7 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(self.host.calls, before)
 
     def test_reserved_session_log_is_preserved_before_profile_reset(self):
-        record = self.setup_account()
+        self.setup_account()
         directory = self.pilot_state(result="failed")
         state = read_json(directory / "state.json")
         state["target"] = "vela"
@@ -982,7 +1006,10 @@ class HostOperations(unittest.TestCase):
         self.setup_account()
         directory = self.pilot_state()
         state = read_json(directory / "state.json")
-        reply = lambda raw="": SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
+        def reply(raw=""):
+            return SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
         responses = [reply("ActiveState=inactive\nResult=success\n"), BenchError("start rejected"),
                      reply("ActiveState=failed\nResult=start-limit-hit\n"), reply(), reply()]
         with patch.object(self.host, "run", side_effect=responses) as run:
@@ -1046,6 +1073,31 @@ class HostOperations(unittest.TestCase):
                                  case in ("second-rejection", "restart-error"))
         self.host.running = []
 
+    def test_refused_greeter_release_restarts_login_but_keeps_restoration_failed(self):
+        record = self.setup_account()
+        directory = self.pilot_state(result='pending')
+        baseline = dict(read_json(directory / 'state.json'), conditions_snapshot={})
+        rejected = {'status': 'failed', 'errors': ['no greeter outputs'], 'output_restart_eligible': True}
+        for fallback_fails in (False, True):
+            with self.subTest(fallback_fails=fallback_fails):
+                state = dict(baseline)
+                self.host.calls.clear()
+                with patch('vela_bench.pilot.restore_conditions', return_value=copy.deepcopy(rejected)) as restore, \
+                     patch('vela_bench.pilot.logind_sessions', return_value=[]), \
+                     patch('vela_bench.pilot.stop_greeter_manager', side_effect=BenchError('release refused')), \
+                     patch('vela_bench.pilot.restore_display_manager',
+                           side_effect=BenchError('start failed') if fallback_fails else None) as manager:
+                    result = restore_hardware_conditions(self.host, self.layout, directory, state, record)
+                restore.assert_called_once()
+                manager.assert_called_once()
+                self.assertEqual(result['status'], 'failed')
+                self.assertIn('Output greeter recovery: release refused', result['errors'])
+                evidence = read_json(directory / 'conditions-recovery.json')
+                self.assertEqual(evidence['display_manager_fallback'], 'failed' if fallback_fails else 'started')
+                self.assertTrue(state['output_greeter_restart'])
+                if fallback_fails:
+                    self.assertIn('Display manager fallback: start failed', result['errors'])
+
     def test_recovery_does_not_reset_existing_failures_or_unrelated_errors_or_loop_on_failure(self):
         self.setup_account()
         directory = self.pilot_state()
@@ -1054,7 +1106,10 @@ class HostOperations(unittest.TestCase):
                                               ("inactive", "start-limit-hit", True)):
             state = read_json(directory / "state.json")
             state["display_manager_rate_limit_reset"] = already_reset
-            reply = lambda raw: SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
+            def reply(raw):
+                return SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
             responses = [reply(f"ActiveState={before}\nResult=success\n"), BenchError("start failed"),
                          reply(f"ActiveState=failed\nResult={result}\n")]
             with self.subTest(before=before, result=result, already_reset=already_reset), \
@@ -1076,6 +1131,35 @@ class HostOperations(unittest.TestCase):
         self.recover_without_fixture_io()
         self.assertEqual(read_json(directory / "state.json")["stage"], "failed")
 
+    def test_recovery_completes_pending_greeter_release_before_restarting_manager(self):
+        self.setup_account()
+        directory = self.pilot_state(result='pending')
+        baseline = read_json(directory / 'state.json')
+        for fails in (False, True):
+            with self.subTest(fails=fails):
+                state = dict(baseline)
+                state['greeter_user_release'] = {'status':'stopping'}
+                atomic_json(directory / 'state.json', state)
+                order = []
+                def release(host, folder, current, layout):
+                    order.append('release')
+                    if fails:
+                        raise BenchError('Greeter release incomplete')
+                    current['greeter_user_release']['status'] = 'released'
+                def start(*args):
+                    order.append('start')
+                    return restore_display_manager(*args)
+                with patch('vela_bench.pilot.stop_greeter_manager', side_effect=release), \
+                     patch('vela_bench.pilot.restore_display_manager', side_effect=start):
+                    if fails:
+                        with self.assertRaisesRegex(BenchError, 'Greeter release incomplete'):
+                            self.recover_without_fixture_io()
+                    else:
+                        self.recover_without_fixture_io()
+                self.assertEqual(order, ['release','start'])
+                result = read_json(directory / 'state.json')
+                self.assertEqual(result['stage'], 'cleanup-failed' if fails else 'failed')
+
     def test_worker_exit_records_automatic_input_release_without_reopening_hardware(self):
         from vela_bench.input_isolation import POLICY
         self.setup_account()
@@ -1090,6 +1174,22 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(evidence['release_method'], 'worker-process-exit')
         self.assertTrue(evidence['release_verified_after_worker_exit'])
         self.assertEqual(read_json(directory / 'state.json')['result'], 'failed')
+        self.input_guard.start.assert_not_called()
+
+    def test_supervised_recovery_records_a_failure_before_input_acquisition(self):
+        from vela_bench.input_isolation import POLICY
+        self.setup_account()
+        directory=self.pilot_state(result='pending')
+        state=read_json(directory/'state.json')
+        state.update(plan={'input_policy':POLICY},input_isolation_acquisition='not-started')
+        atomic_json(directory/'state.json',state)
+        self.assertFalse((directory/'input-isolation.json').exists())
+        self.recover_without_fixture_io()
+        receipt=read_json(directory/'input-isolation.json')
+        self.assertEqual(receipt['status'],'released')
+        self.assertFalse(receipt['acquisition_attempted'])
+        self.assertTrue(receipt['release_verified_after_worker_exit'])
+        self.assertEqual(read_json(directory/'state.json')['cleanup_errors'],[])
         self.input_guard.start.assert_not_called()
 
     def test_uninstall_keeps_evidence_and_removes_only_recorded_files(self):
@@ -1206,6 +1306,8 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(diagnostic["stdout"], "monitor not ready on stdout")
         self.assertNotIn(["systemctl", "stop", "display-manager.service"], self.host.calls)
         self.assertTrue(read_json(directory / "state.json")["restore_required"])
+        self.assertEqual(read_json(directory / 'state.json')['input_isolation_acquisition'],'not-started')
+        self.input_guard.start.assert_not_called()
         self.recover_without_fixture_io()
         self.assertIn(["chvt", "2"], self.host.calls)
         self.assertEqual(read_json(directory / "state.json")["stage"], "failed")
@@ -1227,6 +1329,33 @@ class HostOperations(unittest.TestCase):
             self.recover_without_fixture_io()
         restore.assert_not_called()
         self.assertIn(["chvt", "2"], self.host.calls)
+
+    def test_unexpected_greeter_session_refuses_before_stop_or_hardware_replay(self):
+        self.setup_account()
+        directory = self.pilot_state(result='pending')
+        state = read_json(directory / 'state.json')
+        state.update(stage='queued', conditions_restore_required=False, plan={'controlled_conditions': True})
+        atomic_json(directory / 'state.json', state)
+        user = SimpleNamespace(pw_name='plasmalogin', pw_uid=957, pw_gid=957)
+        snapshot = {'greeter': {'account': 'plasmalogin', 'uid': 957, 'gid': 957}}
+        session = {'Id': '4', 'User': '957', 'Class': 'background', 'Type': 'unspecified', 'Service': 'cron'}
+        with patch('vela_bench.pilot.load_setup', return_value=read_json(self.layout.record)), \
+             patch('vela_bench.pilot.create_fixture'), \
+             patch('vela_bench.pilot.logind_sessions', return_value=[session]), \
+             patch('vela_bench.pilot.snapshot_conditions', return_value=snapshot), \
+             patch('vela_bench.pilot.pwd.getpwnam', return_value=user), \
+             patch('vela_bench.pilot.pwd.getpwuid', return_value=user):
+            with self.assertRaisesRegex(BenchError, 'unexpected session'):
+                worker(self.host, self.layout)
+        self.assertNotIn(['systemctl', 'stop', 'display-manager.service'], self.host.calls)
+        self.assertNotIn('display_manager_quiescence', read_json(directory / 'state.json'))
+        self.assertFalse(read_json(directory / 'state.json')['conditions_restore_required'])
+        self.input_guard.start.assert_not_called()
+        with patch('vela_bench.pilot.restore_conditions') as restore:
+            self.recover_without_fixture_io()
+        restore.assert_not_called()
+        self.assertEqual(read_json(directory / 'state.json')['stage'], 'failed')
+        self.assertIn(['chvt', '2'], self.host.calls)
 
     def test_crash_fixture_targets_its_worker_and_persists_intent_before_the_signal(self):
         self.setup_account()
@@ -1295,14 +1424,16 @@ class HostOperations(unittest.TestCase):
         directory = self.pilot_state()
         state = read_json(directory / "state.json")
         state["masked_units"] = []
-        parent=self.layout.path('etc/systemd/system');parent.mkdir(parents=True,exist_ok=True)
+        parent=self.layout.path('etc/systemd/system')
+        parent.mkdir(parents=True,exist_ok=True)
         (parent/'getty@tty8.service').symlink_to('/dev/null')
         calls=[]
         def invoke(argv,**kwargs):
             calls.append(argv)
             if argv[1]=='mask':
                 path=self.layout.path('run/systemd/system')/argv[-1]
-                path.parent.mkdir(parents=True,exist_ok=True);path.symlink_to('/dev/null')
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.symlink_to('/dev/null')
             return SimpleNamespace(stdout='ActiveState=inactive\nLoadState=masked\nUnitFileState=masked\n')
         with patch.object(self.host, "run", side_effect=invoke):
             reserve_vt(self.host, directory, state,self.layout)

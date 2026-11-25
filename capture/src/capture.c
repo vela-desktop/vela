@@ -10,6 +10,7 @@
 #include <unistd.h>
 
 #include <wayland-client.h>
+#include "alloc/alloc.h"
 #include "ext-image-capture-source-v1-client-protocol.h"
 #include "ext-image-copy-capture-v1-client-protocol.h"
 
@@ -273,8 +274,7 @@ struct vela_capture_job *vela_capture_begin_with_options(struct wl_shm *shm,
     uint32_t options, vela_capture_done_fn done, void *userdata)
 {
     if (!shm || !manager || !source || !done) return NULL;
-    struct vela_capture_job *job = calloc(1, sizeof(*job));
-    if (!job) return NULL;
+    struct vela_capture_job *job = VELA_NEW(struct vela_capture_job);
     job->fd = -1;
     job->shm = shm;
     job->done = done;

@@ -1,0 +1,6 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# C++ tests: the project root's style, not the C library's.
+BasedOnStyle: InheritParentConfig
+PointerAlignment: Left

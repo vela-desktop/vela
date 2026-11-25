@@ -8,10 +8,12 @@
 
 #include "daemon.h"
 
+#include "alloc/alloc.h"
 #include "log.h"
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -23,14 +25,13 @@
 
 static char *path_in(const char *dir, const char *name)
 {
-    char *path = NULL;
-    return asprintf(&path, "%s/%s", dir, name) < 0 ? NULL : path;
+    return vela_asprintf("%s/%s", dir, name);
 }
 
 static void set_string(char **field, const char *value)
 {
     free(*field);
-    *field = value && *value ? strdup(value) : NULL;
+    *field = value && *value ? vela_strdup(value) : NULL;
 }
 
 // A check's outcome, from check.json or our own check's output, in the
@@ -61,32 +62,51 @@ static int on_run_exit(sd_event_source *source, int fd, uint32_t revents, void *
     return 0;
 }
 
-static void watch_run(struct vela_up_daemon *d)
+static int on_run_watch_retry(sd_event_source *source, uint64_t usec, void *data)
 {
-    d->run_watch = sd_event_source_disable_unref(d->run_watch);
-    if (!d->run.present) {
-        return;
+    vela_up_state_reload(data);
+    return 0;
+}
+
+static void retry_run_watch(struct vela_up_daemon *d)
+{
+    int r = sd_event_add_time_relative(d->event, &d->run_watch, CLOCK_MONOTONIC, 250000, 0, on_run_watch_retry, d);
+    if (r < 0) {
+        vela_up_log("retry watching the running update: %s", strerror(-r));
     }
-    int fd = (int)syscall(SYS_pidfd_open, d->run.pid, 0);
+}
+
+static bool watch_live_run(struct vela_up_daemon *d, const struct vela_up_run *run)
+{
+    int fd = (int)syscall(SYS_pidfd_open, run->pid, 0);
     if (fd < 0) {
-        return;
+        if (errno == ESRCH || !vela_up_run_alive("/proc", run)) {
+            return false;
+        }
+        retry_run_watch(d);
+        return true;
     }
-    // Still the run's process now that the pidfd holds it.
-    if (!vela_up_run_alive("/proc", &d->run)) {
+    // Check identity after opening the pidfd. A readable pidfd also
+    // identifies exit before the process has been reaped from /proc.
+    struct pollfd status = { .fd = fd, .events = POLLIN };
+    if (!vela_up_run_alive("/proc", run) || poll(&status, 1, 0) > 0) {
         close(fd);
-        return;
+        return false;
     }
+    // Exit between poll() and registration still leaves the fd readable.
     if (sd_event_add_io(d->event, &d->run_watch, fd, EPOLLIN, on_run_exit, d) < 0) {
         close(fd);
-        return;
+        retry_run_watch(d);
+    } else {
+        sd_event_source_set_io_fd_own(d->run_watch, true);
     }
-    sd_event_source_set_io_fd_own(d->run_watch, true);
+    return true;
 }
 
 static void read_source(struct vela_up_daemon *d)
 {
     char *path = path_in(d->config_dir, "updates.conf");
-    FILE *f = path ? fopen(path, "re") : NULL;
+    FILE *f = fopen(path, "re");
     free(path);
     char *source = NULL;
     char line[4200];
@@ -96,7 +116,7 @@ static void read_source(struct vela_up_daemon *d)
             if (newline) {
                 *newline = '\0';
             }
-            source = strdup(line + 7);
+            source = vela_strdup(line + 7);
             break;
         }
     }
@@ -104,7 +124,7 @@ static void read_source(struct vela_up_daemon *d)
         fclose(f);
     }
     free(d->source);
-    d->source = source && *source ? source : strdup("https://github.com/vela-desktop/vela.git");
+    d->source = source && *source ? source : vela_strdup("https://github.com/vela-desktop/vela.git");
     if (source && !*source) {
         free(source);
     }
@@ -118,7 +138,7 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     // checks within one second must both be observed. Reloads triggered by
     // run.json or install.json must not reapply an old check.
     struct stat observed;
-    if (path && stat(path, &observed) == 0
+    if (stat(path, &observed) == 0
         && (observed.st_dev != d->file_seen_dev || observed.st_ino != d->file_seen_ino
             || observed.st_mtim.tv_sec != d->file_seen_mtime.tv_sec
             || observed.st_mtim.tv_nsec != d->file_seen_mtime.tv_nsec)) {
@@ -133,13 +153,22 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     free(path);
 
+    path = path_in(d->state_dir, "run.json");
+    struct vela_up_run run;
+    int r = vela_up_run_read(path, &run);
+    free(path);
+    d->run_watch = sd_event_source_disable_unref(d->run_watch);
+    bool live = r >= 0 && run.present && watch_live_run(d, &run);
+
+    // If the updater has exited, read the final report it wrote before exit
+    // before considering the remaining run.json an interrupted install.
     path = path_in(d->state_dir, "install.json");
     struct vela_up_install install = { 0 };
-    bool changed = path && stat(path, &observed) == 0
+    bool changed = stat(path, &observed) == 0
         && (observed.st_dev != d->install_seen_dev || observed.st_ino != d->install_seen_ino
             || observed.st_mtim.tv_sec != d->install_seen_mtime.tv_sec
             || observed.st_mtim.tv_nsec != d->install_seen_mtime.tv_nsec);
-    if (path && vela_up_install_read(path, &install) >= 0
+    if (vela_up_install_read(path, &install) >= 0
         && (!d->install.present || install.finished_at >= d->install.finished_at)) {
         if (changed) {
             d->install_seen_dev = observed.st_dev;
@@ -157,35 +186,24 @@ void vela_up_state_reload(struct vela_up_daemon *d)
     }
     free(path);
 
-    path = path_in(d->state_dir, "run.json");
-    struct vela_up_run run;
-    int r = path ? vela_up_run_read(path, &run) : -ENOMEM;
-    free(path);
     vela_up_run_clear(&d->run);
-    if (r >= 0 && run.present) {
-        if (vela_up_run_alive("/proc", &run)) {
-            d->run = run;
-        } else {
-            // Killed without its exit trap: an install that never wrote its
-            // end was cancelled.
-            if (strcmp(run.action, "install") == 0
-                && (!d->install.present || d->install.finished_at < run.started_at)) {
-                vela_up_install_clear(&d->install);
-                d->install.present = true;
-                d->install.channel = strdup(run.channel);
-                d->install.result = strdup("cancelled");
-                d->install.error_code = strdup("cancelled");
-                d->install.error_message = strdup("The update was interrupted.");
-                d->install.installed_version = strdup("");
-                d->install.finished_at = (int64_t)time(NULL);
-            }
-            vela_up_run_clear(&run);
+    if (live) {
+        d->run = run;
+    } else {
+        // Killed without its exit trap: an install that never wrote its end was cancelled.
+        if (r >= 0 && run.present && strcmp(run.action, "install") == 0
+            && (!d->install.present || d->install.finished_at < run.started_at)) {
+            vela_up_install_clear(&d->install);
+            d->install.present = true;
+            d->install.channel = vela_strdup(run.channel);
+            d->install.result = vela_strdup("cancelled");
+            d->install.error_code = vela_strdup("cancelled");
+            d->install.error_message = vela_strdup("The update was interrupted.");
+            d->install.installed_version = vela_strdup("");
+            d->install.finished_at = (int64_t)time(NULL);
         }
-    } else if (r >= 0) {
         vela_up_run_clear(&run);
     }
-    watch_run(d);
-
     if (d->starting
         && ((d->run.present && strcmp(d->run.action, "install") == 0)
             || (d->install.present && d->install.finished_at >= d->starting_at))) {
@@ -212,10 +230,7 @@ static int on_inotify(sd_event_source *source, int fd, uint32_t revents, void *d
 
 static int make_dirs(const char *path)
 {
-    char *copy = strdup(path);
-    if (!copy) {
-        return -ENOMEM;
-    }
+    char *copy = vela_strdup(path);
     for (char *slash = strchr(copy + 1, '/'); slash; slash = strchr(slash + 1, '/')) {
         *slash = '\0';
         mkdir(copy, 0700);
@@ -246,7 +261,7 @@ int vela_up_state_start(struct vela_up_daemon *d)
     }
 
     char *path = path_in(d->state_dir, "announced");
-    FILE *f = path ? fopen(path, "re") : NULL;
+    FILE *f = fopen(path, "re");
     free(path);
     char line[128];
     if (f && fgets(line, sizeof(line), f)) {
@@ -273,7 +288,7 @@ void vela_up_announced(struct vela_up_daemon *d, const char *commit)
     // mkstemp creates a unique file with mode 0600 (regardless of umask).
     // Never open a predictable, potentially pre-existing file for writing.
     char *temp = path_in(d->state_dir, ".announced.XXXXXX");
-    int fd = temp ? mkstemp(temp) : -1;
+    int fd = mkstemp(temp);
     FILE *f = fd >= 0 ? fdopen(fd, "w") : NULL;
     if (!f && fd >= 0) {
         close(fd);

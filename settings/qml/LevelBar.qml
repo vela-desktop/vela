@@ -5,7 +5,8 @@ import QtQuick
 import Vela.Controls
 
 // A sound level, like Windows' input and mixer bars: a thin track, filled
-// up to `level` (0-1, a LevelMeter's).
+// up to `level` (0-1, a LevelMeter's). Expressive: M3's linear progress
+// indicator, 4 high, primary on secondary container.
 Item {
     id: bar
     property real level: 0
@@ -15,13 +16,13 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: height / 2
-        color: Theme.controlStrokeStrong
-        opacity: 0.6
+        color: Theme.expressive ? Theme.secondaryContainer : Theme.controlStrokeStrong
+        opacity: Theme.expressive ? 1 : 0.6
     }
     Rectangle {
         width: parent.width * Math.max(0, Math.min(1, bar.level))
         height: parent.height
         radius: height / 2
-        color: Theme.accentFill
+        color: Theme.expressive ? Theme.primary : Theme.accentFill
     }
 }

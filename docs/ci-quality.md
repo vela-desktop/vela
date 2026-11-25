@@ -9,12 +9,18 @@ expensive Build jobs after an inexpensive source-change check.
 ## Package and updater contracts
 
 The [Build workflow](../.github/workflows/build.yml) runs the offline
-`packaging/tests` suite before the full build. The regular Arch build excludes
-CTest's `packaging-update` to avoid running that same suite twice. It checks public HTTPS defaults, migration of old
+`packaging/tests` suite on Python 3.13 alongside the Arch and Fedora package
+builds. Beta publication requires the suite and the clean-install smoke tests
+to pass. The hosted distro CTest jobs exclude `packaging-update` because Build
+owns the suite. It checks public HTTPS defaults, migration of old
 SSH configuration and mirrors, revision selection, CI artifact selection and
 failure handling. It uses real Git with isolated configuration and rejects
 unexpected transports; package tools are simulated. See [testing.md](testing.md)
 for the local command and test isolation details.
+
+Fedora's test jobs exercise real DNF transactions with fixture RPMs alongside
+the native package builds. The Fedora smoke jobs install the generated RPM in
+a fresh container and check its runtime dependencies and files.
 
 ## Static analysis
 
@@ -65,7 +71,7 @@ tests: passing them does not certify direct KMS or real display power cycling. S
 
 ## GPU CI policy
 
-This is the **normative source** for when self-hosted GPU CI must run.
+This is the **normative source** for when real-hardware GPU CI must run.
 Other documents link here instead of restating the requirements.
 
 - **Required before merging GPU-affecting changes:** obtain successful full
@@ -83,17 +89,24 @@ Other documents link here instead of restating the requirements.
   blockers until fixed, explicitly retested and reclassified.
 - **Pass means:** the workflows actually build the selected revision on
   the expected hardware, run the full `gpu`-labeled CTest suite, and reject
-  missing, failed or skipped test cases. `vulkaninfo` by itself is not
-  a pass; a headless GPU pass does not certify physical DRM/KMS, VT
+  missing, failed or skipped test cases. Qt Quick's separate OpenGL
+  `text-rendering-rhi` test belongs to hosted Mesa/Xvfb CI, not to the
+  real-hardware compositor GPU suite, and is still mandatory there.
+  `vulkaninfo` by itself is not a pass; a headless GPU pass does not certify
+  physical DRM/KMS, VT
   switching, screen sharing, or suspend/resume.
-- **Runner safety:** only manually dispatch trusted, reviewed code to
-  personal self-hosted machines; use unprivileged runner accounts with no
-  personal credentials, privileged sudo, or writable secrets.
+- **Runner safety:** only manually dispatch trusted, reviewed code. AMD and
+  Intel use persistent personal self-hosted machines: keep those runner accounts
+  unprivileged and isolated from personal files, privileged sudo and writable
+  secrets. NVIDIA uses a disposable Vast.ai rental; the GitHub App and Vast.ai
+  credentials stay in the GitHub-hosted orchestration jobs.
 
-The two mandatory runners are AMD Radeon RX 9070 XT (Mesa/RADV, CachyOS) and
-NVIDIA GeForce RTX 4070 Laptop GPU (proprietary driver, Arch/CachyOS).
-An experimental Intel Alder Lake UHD Graphics runner (Mesa/ANV, CachyOS)
-adds optional coverage; it is not yet required for merges or releases.
+The two mandatory hardware test paths are the self-hosted AMD Radeon
+RX 9070 XT (Mesa/RADV, CachyOS) and an NVIDIA RTX GPU rented per run on
+Vast.ai (proprietary driver, Arch Linux container). The NVIDIA GPU model can
+vary between runs. An experimental Intel Alder Lake UHD Graphics runner
+(Mesa/ANV, CachyOS) adds optional coverage; it is not yet required for
+merges or releases.
 
 **Enforcement today:** this is a maintainer/release policy, **not yet an
 automatic GitHub branch-protection gate**. All three workflows currently use
@@ -113,11 +126,13 @@ not supply this label). Register it under Settings → Actions → Runners.
 The CachyOS/Arch runner must have the normal
 [build dependencies](development.md#distribution-dependencies), plus
 `vulkan-tools`, `vulkan-radeon`, `vulkan-validation-layers`, `python-numpy`, `python-pillow`,
-`python-dbus` and the X11 tools of the native-resolution tests (`xorg-xwayland`,
+`python-dbus`, `ccache` and the X11 tools of the native-resolution tests (`xorg-xwayland`,
 `xorg-xrandr`, `xorg-xrdb`, `xorg-xprop`).
 It must be able to access an AMD DRM render node and the RADV Vulkan 1.4
 driver. Install dependencies **on the host**, not inside the workflow;
 the workflow deliberately runs without `sudo` or host package upgrades.
+The build uses `ccache` in the runner user's persistent home cache, while
+each run still configures and builds the exact selected revision from scratch.
 It uses a private XDG runtime directory and CMake build directory within
 the runner's temporary workspace, then runs the existing
 [GPU-labeled CTest suites](testing.md#run-everything)
@@ -133,37 +148,94 @@ a dedicated unprivileged runner account without access to personal files
 or secrets; never give the runner passwordless sudo. The GPU suite starts
 isolated headless Wayland sessions, not a physical DRM/KMS test.
 
-## Manual real-GPU CI (self-hosted NVIDIA)
+## Manual real-GPU CI (rented NVIDIA on Vast.ai)
 
-[GPU CI - NVIDIA (manual)](../.github/workflows/gpu-nvidia.yml) is a
-separate `workflow_dispatch` workflow targeting the `vela-nvidia`
-custom runner label (plus `self-hosted`, `linux` and `x64`).
-The runner group must allow the public Vela repository to use it.
+[GPU CI - NVIDIA (manual)](../.github/workflows/gpu-nvidia.yml) is
+triggered only via `workflow_dispatch`. It does **not** run on the
+former RTX 4070 laptop runner. A GitHub-hosted orchestration job uses
+[scripts/vast-runner.py](../scripts/vast-runner.py) to rent a verified
+single-GPU NVIDIA RTX instance on Vast.ai, register a uniquely labeled
+just-in-time GitHub Actions runner, and launch the hardware job in an
+ephemeral Arch Linux container. The instance and runner registration
+are destroyed in the cleanup job, including when the GPU job fails.
 
-The Arch/CachyOS runner needs the
-[normal build dependencies](development.md#distribution-dependencies),
-`vulkan-tools`, `vulkan-validation-layers`, the proprietary NVIDIA Vulkan
-driver (including `nvidia-utils` and `nvidia-smi`), `python-numpy`,
-`python-pillow` and the same X11 tools (`xorg-xwayland`, `xorg-xrandr`,
-`xorg-xrdb`, `xorg-xprop`). The AMD and NVIDIA workflows check these before building.
-Check with `nvidia-smi` and `vulkaninfo --summary` before dispatching;
-the NVIDIA driver and Vulkan device must support Vulkan 1.4 or newer.
-The workflow looks up the NVIDIA ICD manifest, restricts Vulkan device
-discovery to it, and verifies an accessible NVIDIA DRM render node. This
-avoids accidentally treating the Intel iGPU of a hybrid laptop as tested.
+The `gpu` input optionally selects a supported RTX model; when left
+empty, the script ranks fitting offers by hourly price, effective CPU
+capacity, reported host reliability, and NVIDIA driver version, subject to
+the configured price cap (currently $0.12/hour). It is a cost/performance
+heuristic, not a historical benchmarking service. Offers must meet the
+script's CPU, RAM, disk, GPU VRAM, reliability and driver requirements.
+The actual model and driver can vary between runs. During provisioning,
+an image that cannot start within six minutes is rejected; once the
+instance reports running, the JIT runner must register within 150 seconds.
+Known fatal image-pull errors (such as DNS failures) are rejected earlier,
+and the next eligible rental is tried. The container also refuses to register a
+runner on a host where it has no NVIDIA render node, NVIDIA's Vulkan lacks
+the dmabuf extensions, or the kernel cannot verify a command socket peer the
+way the compositor does (`SO_PEERPIDFD`, Linux 6.5): there every functional
+test would be refused. The host is destroyed and the next offer tried. The GPU's proprietary
+driver, Vulkan ICD and DRM render nodes are provided by the rental host;
+build and test dependencies come from the
+[NVIDIA CI image](../.github/images/nvidia-ci/Dockerfile). The
+[image publishing workflow](../.github/workflows/nvidia-ci-image.yml)
+must first publish the image matching the selected revision's image tree.
+Before renting, the orchestration job resolves that tag to an immutable OCI
+SHA256 manifest digest; the rented host pulls that exact image. Tree tags
+identify source configuration, not dependency versions: a scheduled weekly
+rebuild intentionally refreshes Arch packages even if the Dockerfile has not
+changed. Each publication also receives a unique run tag, and `latest` is
+updated only from `main`. The publish job saves package versions, an SPDX
+SBOM, an `arch-audit` report and a Trivy report as artifacts, and blocks
+publication when either finds a fixable high or critical vulnerability. Trivy
+has no Arch Linux driver and cannot see pacman packages, so those are checked
+by `arch-audit --upgradable` against the
+[Arch security tracker](https://security.archlinux.org/) and
+[scripts/ci-arch-audit-gate.py](../scripts/ci-arch-audit-gate.py); Trivy then
+covers only packages installed outside pacman. If the tracker cannot be
+reached or its report cannot be read, publication fails too. The image leaves out
+libcap's `captree`: Arch builds it with Go only when libcap changes, so its Go
+standard library falls behind Go's security fixes, and nothing in the CI
+uses it.
 
-It builds the chosen trusted revision, runs the same functional and
-sharpness GPU-labeled CTest entries as the AMD workflow, rejects missing
-or skipped suites, and uploads NVIDIA driver details, Vulkan details,
-CTest diagnostics and JUnit XML. It does not run `sudo` or install packages.
-Its headless Wayland tests do **not** exercise physical display/KMS paths.
+The image qualification step checks both the mandatory Vulkan/CTest tools
+and optional promo recording prerequisites before publication. In particular,
+Arch's `pipewire-audio` package supplies `pw-cat` (not the base `pipewire`
+package); this was missing in NVIDIA GPU run #131 on 16 November 2026, where
+the full GPU CTest suite succeeded but optional promo smoke failed. The
+container runner uses `runuser` without a passwordless-sudo rule and checks
+the runner archive against the SHA256 published with its GitHub release before
+extracting it. These checks do not replace a real NVIDIA hardware run.
 
-To run it after the workflow is merged into `main`, use
-Actions → GPU CI - NVIDIA (manual) → Run workflow, selecting a **trusted**
-branch. As with AMD, do not dispatch unreviewed pull request code to a
-persistent personal machine: the build and tests execute locally. Use
-a restricted unprivileged runner account without personal credentials,
-and keep the laptop awake during a run.
+The promo smoke test cannot complete on the rented containers yet. Its
+recordings start the shell and Settings through unprivileged user and mount
+namespaces (`unshare --user --mount`), so that they see a neutral user and a
+private `/usr/share/applications`. Docker's default seccomp profile refuses
+those namespaces to a process without `CAP_SYS_ADMIN`, and Vast.ai does not
+let the rental change it. On 20 November 2026 (run 44787645288, RTX 2060S)
+the full GPU suite passed and every promo dependency, `pw-cat` included, was
+found. The recording then stopped at that namespace check, before any frame
+was captured. Run the promo smoke on the AMD or Intel runners.
+
+The NVIDIA test job sizes Ninja parallelism from the offered effective CPU
+allocation, container CPU affinity/quota and available host/cgroup memory,
+reserving memory for the system and capping builds at 16 concurrent jobs.
+Unlike the AMD and Intel self-hosted runners, no persistent compilation
+cache is configured for these one-off rentals.
+
+The test job checks a real NVIDIA DRM render node and Vulkan >= 1.4,
+restricts Vulkan discovery to the NVIDIA ICD, builds the exact checkout,
+runs the GPU-labeled functional and sharpness suites, rejects missing
+or skipped tests and uploads driver/Vulkan/CTest/JUnit diagnostics. The
+suite uses a private headless Wayland session, **not** physical DRM/KMS.
+The GitHub App key and Vast.ai API key are used only by the GitHub-hosted
+orchestration jobs, not exposed to the rented test container. The
+hardware job does not install host packages or upgrade the rental host.
+
+Use Actions → GPU CI - NVIDIA (manual) → Run workflow on a **trusted,
+reviewed** revision. Running unreviewed code on rented hardware is still
+unsafe; do not assume an ephemeral machine makes untrusted scripts safe.
+Do not confuse the historical RTX 4070 laptop tests with the current
+Vast.ai-backed NVIDIA CI.
 
 ## Manual real-GPU CI (self-hosted Intel, experimental)
 
@@ -183,23 +255,37 @@ verified manually. This does **not** yet establish a passing GPU CI baseline.
 Install the [normal build dependencies](development.md#distribution-dependencies)
 plus `vulkan-intel`, `vulkan-tools`, `vulkan-validation-layers`,
 `python-numpy`, `python-pillow`, `python-dbus`, `dbus`,
-`xorg-xwayland`, `xorg-xrandr`, `xorg-xrdb` and `xorg-xprop`
-on the host. The workflow never installs packages or uses sudo.
+`xorg-xwayland`, `xorg-xrandr`, `xorg-xrdb`, `xorg-xprop`, `breeze-icons`,
+`ccache` on the host. The workflow never installs packages or uses sudo.
+`hicolor-icon-theme` alone supplies no standard action icons. The real-shell
+tests run `vela-shell --check-icons` with their private HOME and configuration;
+this checks actual Qt rendering in light and dark mode, including SVG loading,
+and names missing icons before exercising QML. The shell adds the standard XDG
+icon directories even without a KDE platform plugin; that plugin is not a
+requirement. Provision a CachyOS/Arch Intel
+runner with `sudo pacman -S --needed breeze-icons qt6-svg`, then rerun the failed
+shell suite. Installing the packages is a host administration step, not a
+workflow action.
 It isolates Intel's Mesa ANV ICD (not `intel_hasvk` or Lavapipe),
 requires `DRIVER_ID_INTEL_OPEN_SOURCE_MESA`, Vulkan >= 1.4 and
 PCI vendor `0x8086`, and verifies the DRM render node actually
 selected by Vela. After building, a separate headless compositor smoke
 check verifies Vela's actual Intel renderer **even for partial runs**
-that only select non-compositor GPU-labeled tests (e.g.
-`text-rendering-rhi`). A qualifying `vulkaninfo` result alone is never
-reported as an Intel compositor pass.
+that select only sharpness or CPU-fence tests. A qualifying `vulkaninfo`
+result alone is never reported as an Intel compositor pass.
 
-The Intel build is limited to **two concurrent compiler jobs** for the
-8 GB machine, with a 180-minute job timeout. It executes the same
-GPU-labeled functional, sharpness and sharpness-cpu suites, retains
+The Intel build uses up to **eight concurrent compiler jobs** (bounded
+by `nproc`) on the 8 GB machine, with a 180-minute job timeout. The
+`ccache` compilation cache persists in the runner user's home directory
+across workflow runs; monitor memory pressure under the higher job cap.
+It executes the same GPU-labeled functional, sharpness and sharpness-cpu suites, retains
 strict no-skip/no-missing-test enforcement, shutdown stress and
 validation layers, and uploads Intel-specific Vulkan/CTest/JUnit
-diagnostics. Optional coverage (`gpu-intel`) and promo smoke tests
+diagnostics. SHM capture uses a 60 Hz baseline (`VELA_CAPTURE_TEST_REFRESH_HZ`),
+raised to 120 Hz for the single-client 1440p stream's 60 fps floor, with the
+same fps, latency and missed-slot limits as AMD's 180 Hz workload. This
+qualifies the stated refresh rather than claiming 180 Hz performance on the
+iGPU. Optional coverage (`gpu-intel`) and promo smoke tests
 mirror AMD; the coverage upload is performed by a separate
 GitHub-hosted job, not the self-hosted runner.
 
@@ -218,8 +304,9 @@ although build/GPU load may affect responsiveness.
 
 ### Running only some tests
 
-The whole GPU suite takes about 17 minutes on the NVIDIA laptop; checking
-one failure again doesn't need it. All three workflows take two optional inputs:
+A full GPU suite can take many minutes; its runtime on rented NVIDIA
+hardware varies by host. Rerunning one failure does not require a full
+suite. All three workflows accept two optional test-selection inputs:
 
 - **tests**: a CTest regex, such as `functional-shell` or
   `functional-(capture|x11-native)`.

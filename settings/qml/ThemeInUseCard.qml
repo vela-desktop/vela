@@ -7,14 +7,27 @@ import Vela.Controls
 
 // Themes' summary of the look in use, the layers that make it in one card:
 // the theme, each surface's style over it, and where the accent color comes
-// from. Each line opens the page where it is chosen, the style's own card
-// opened (Main.qml's navigate() with what to reveal); nothing changes here.
+// from (the theme's, the wallpaper's or the user's). Each line opens the
+// page where it is chosen, the style's own card opened (Main.qml's
+// navigate() with what to reveal); nothing changes here.
 Card {
     id: card
     readonly property var tokens: { Prefs.visualTheme; Prefs.surfaceStyles; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme).tokens }
     readonly property string themeName: { Prefs.themesRevision; return Prefs.displayName("", Prefs.visualTheme) || Prefs.visualTheme }
     readonly property bool accentDark: "accent" in tokens || "dark.accent" in tokens
     readonly property bool accentLight: "accent" in tokens || "light.accent" in tokens
+    // Whether the wallpaper has a usable color (Style.wallpaperColor).
+    property bool wallpaperUsable: Style.wallpaperColor.valid
+    readonly property bool wallpaperDark: fromWallpaper(false)
+    readonly property bool wallpaperLight: fromWallpaper(true)
+
+    // The user's accent in a mode is the wallpaper's (accentsource.h's
+    // userAccent()): asked for by the user, or by the theme left to decide.
+    function fromWallpaper(light) {
+        const modeKey = (light ? "light." : "dark.") + "color-source"
+        const asks = (modeKey in tokens ? tokens[modeKey] : tokens["color-source"]) === "wallpaper"
+        return wallpaperUsable && (Prefs.accentSource === "wallpaper" || (Prefs.accentSource === "theme" && asks))
+    }
 
     function styleName(surface) {
         Prefs.themesRevision
@@ -56,8 +69,13 @@ Card {
             objectName: "inUseAccent"
             label: qsTr("Accent color")
             value: card.accentDark && card.accentLight ? qsTr("The theme's")
-                : card.accentDark ? qsTr("The theme's in dark mode, yours in light mode")
-                : card.accentLight ? qsTr("The theme's in light mode, yours in dark mode")
+                : card.accentDark ? (card.wallpaperLight ? qsTr("The theme's in dark mode, the wallpaper's in light mode")
+                    : qsTr("The theme's in dark mode, yours in light mode"))
+                : card.accentLight ? (card.wallpaperDark ? qsTr("The theme's in light mode, the wallpaper's in dark mode")
+                    : qsTr("The theme's in light mode, yours in dark mode"))
+                : card.wallpaperDark && card.wallpaperLight ? qsTr("From the wallpaper")
+                : card.wallpaperDark ? qsTr("From the wallpaper in dark mode, yours in light mode")
+                : card.wallpaperLight ? qsTr("From the wallpaper in light mode, yours in dark mode")
                 : qsTr("Yours")
             page: "colors"
         }

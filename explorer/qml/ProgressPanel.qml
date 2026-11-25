@@ -30,17 +30,21 @@ Item {
         // take focus at the top rather than remaining outside the viewport.
         onCountChanged: if (count > 0) Qt.callLater(() => positionViewAtBeginning())
 
+        // Expressive: each transfer an M3 card (medium corners, no outline)
+        // with M3's linear progress indicator (4, primary on secondary
+        // container).
         delegate: Rectangle {
             id: card
+            readonly property bool expressive: Theme.expressive
             required property var modelData
             objectName: "transferJob:" + modelData.id
             readonly property real fraction: modelData.total > 0
                 ? Math.max(0, Math.min(1, modelData.done / modelData.total)) : 0
             width: ListView.view.width
             height: root.cardHeight
-            radius: Theme.radiusOverlay
+            radius: expressive ? Theme.shapeMedium : Theme.radiusOverlay
             color: Theme.dialog
-            border.width: 1
+            border.width: expressive ? 0 : 1
             border.color: Theme.dialogStroke
 
             Text {
@@ -81,17 +85,18 @@ Item {
                 elide: Text.ElideMiddle
             }
             Rectangle {
+                objectName: "transferTrack"
                 x: 16
-                y: 90
+                y: card.expressive ? 91 : 90
                 width: parent.width - 32
-                height: 6
-                radius: 3
-                color: Theme.control
+                height: card.expressive ? 4 : 6
+                radius: height / 2
+                color: card.expressive ? Theme.secondaryContainer : Theme.control
                 clip: true
                 Rectangle {
                     width: parent.width * card.fraction
                     height: parent.height
-                    radius: 3
+                    radius: height / 2
                     color: card.modelData.error !== "" ? Theme.critical : Theme.accentFill
                     Behavior on width { NumberAnimation { duration: Theme.normal } }
                 }

@@ -23,7 +23,7 @@ import tempfile
 import time
 import unittest
 
-from harness import BUILD, TIME_SCALE, Session, TimeoutError
+from harness import BUILD, TIME_SCALE, PrivateBus, Session, TimeoutError, stop_process_group
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PROMPT = os.path.join(BUILD, "polkit", "vela-polkit-prompt")
@@ -106,13 +106,28 @@ def type_and_enter(vela, text):
     vela.input("sleep", KEYMAP_PAUSE, "type", text, "sleep", "80", "key", "Return", "sleep", "80")
 
 
+def caution_pixels(image):
+    """Pixels in the caution color (Theme.caution, dark or light), every
+    other one: the Caps Lock warning's text."""
+    count = 0
+    for y in range(0, image.height, 2):
+        row = image.rows[y]
+        for x in range(0, image.width, 2):
+            r, g, b = row[x * 3], row[x * 3 + 1], row[x * 3 + 2]
+            if (r > 220 and 200 < g < 240 and b < 60) or (130 < r < 175 and 70 < g < 115 and b < 40):
+                count += 1
+    return count
+
+
 class PromptTests(unittest.TestCase):
     def setUp(self):
         self.vela = Session()
         self.vela.start()
-
-    def tearDown(self):
-        self.vela.stop()
+        self.addCleanup(self.vela.stop)
+        # Install the keyboard before showing the prompt, then retain it.
+        # Replacing its keymap while Qt's exclusive layer gains focus can
+        # deliver the first password before the field has keyboard focus.
+        self.vela.input = self.enterContext(self.vela.input_session())
 
     def test_answer_is_sent_and_done_closes(self):
         prompt = Prompt(self.vela)
@@ -143,6 +158,26 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(prompt.read_line(), "response first")
         type_and_enter(self.vela, "second")  # PAM hasn't answered yet
         prompt.assert_silent()
+
+    def test_caps_lock_warning_follows_the_key(self):
+        """The warning under the field follows Caps Lock's real state
+        (docs/keyboard.md §8.2), not the letters typed."""
+        prompt = Prompt(self.vela)
+        prompt.show()
+        self.vela.input("sleep", KEYMAP_PAUSE)
+        before = caution_pixels(self.vela.pixels())
+        self.vela.input("key", "Caps_Lock", "sleep", "80")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) > before + 20,
+                           what="the Caps Lock warning")
+        # A digit typed meanwhile doesn't change it, and the answer keeps
+        # what was typed.
+        self.vela.input("type", "1", "sleep", "80")
+        self.assertGreater(caution_pixels(self.vela.pixels()), before + 20)
+        self.vela.input("key", "Caps_Lock", "sleep", "80")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) <= before + 5,
+                           what="the Caps Lock warning gone")
+        self.vela.input("key", "Return", "sleep", "80")
+        self.assertEqual(prompt.read_line(), "response 1")
 
     def test_escape_says_no(self):
         prompt = Prompt(self.vela)
@@ -255,6 +290,35 @@ class PromptTests(unittest.TestCase):
         self.assertEqual(prompt.read_line(), "response " + PASSWORD)
 
 
+class PromptKeyboardReplugged(unittest.TestCase):
+    """The Caps Lock warning after the last keyboard went and a mouse came
+    before the next keyboard: the seat loses its keyboard capability and
+    gets it back, with a new wl_keyboard for Qt and the prompt."""
+
+    def setUp(self):
+        self.vela = Session()
+        self.vela.start()
+        self.addCleanup(self.vela.stop)
+
+    def test_the_warning_follows_a_new_keyboard(self):
+        prompt = Prompt(self.vela)
+        with self.vela.input_session() as send:
+            prompt.show()
+            send("sleep", KEYMAP_PAUSE)
+            before = caution_pixels(self.vela.pixels())
+        # That keyboard is gone. A new vela-input adds its pointer first, then
+        # its keyboard: the seat drops the capability, then has it again.
+        Session.input(self.vela, "sleep", KEYMAP_PAUSE, "key", "Caps_Lock", "sleep", "200")
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) > before + 20,
+                           what="the Caps Lock warning, with the new keyboard")
+        # Again: a virtual keyboard keeps its own locks (the compositor syncs
+        # real ones), so this one starts with Caps Lock off, and the warning
+        # goes with it. A prompt still on the old wl_keyboard would keep it.
+        Session.input(self.vela, "sleep", KEYMAP_PAUSE)
+        self.vela.wait_for(lambda _: caution_pixels(self.vela.pixels()) <= before + 5,
+                           what="the Caps Lock warning gone with the next keyboard")
+
+
 class PromptOnTwoOutputs(unittest.TestCase):
     def test_dialog_under_the_pointer_and_veils_elsewhere(self):
         with Session(scale="HEADLESS-1=1,HEADLESS-2=1") as vela:
@@ -281,14 +345,20 @@ class AgentTests(unittest.TestCase):
     """The real agent, started by the compositor, with a fake polkitd."""
 
     def start(self, reject=False, language=None, backend=None):
-        self.bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--print-address=1"],
-                                    stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        self.address = self.bus.stdout.readline().decode().strip()
+        # The system bus of the test: polkitd's, owned by fake_polkitd.py.
+        self.bus = PrivateBus()
+        self.address = self.bus.start()
+        # Cleanups, unlike tearDown, run all, also when one of them fails.
+        self.addCleanup(self.bus.stop)
         self.fake = subprocess.Popen([sys.executable, os.path.join(HERE, "fake_polkitd.py"), self.address]
                                      + (["--reject"] if reject else [])
-                                     + (["--backend", backend] if backend else []), stdout=subprocess.PIPE)
+                                     + (["--backend", backend] if backend else []), stdout=subprocess.PIPE,
+                                     start_new_session=True)
+        self.addCleanup(self.fake.stdout.close)
+        self.addCleanup(stop_process_group, self.fake)
         self.assertEqual(self.fake.stdout.readline().strip(), b"ready")
         self.config = tempfile.mkdtemp(prefix="vela-polkit-test-")
+        self.addCleanup(shutil.rmtree, self.config, ignore_errors=True)
         if language:
             os.makedirs(os.path.join(self.config, "vela"))
             with open(os.path.join(self.config, "vela", "vela.conf"), "w") as conf:
@@ -301,18 +371,9 @@ class AgentTests(unittest.TestCase):
             "XDG_CONFIG_HOME": self.config,
         })
         self.vela.start()
+        self.addCleanup(self.vela.stop)
         connection = dbus.bus.BusConnection(self.address)
         self.control = dbus.Interface(connection.get_object("org.vela.Test", "/org/vela/Test"), "org.vela.Test")
-
-    def tearDown(self):
-        if hasattr(self, "vela"):
-            self.vela.stop()
-        for process in (getattr(self, "fake", None), getattr(self, "bus", None)):
-            if process:
-                process.terminate()
-                process.wait(3)
-        if hasattr(self, "config"):
-            shutil.rmtree(self.config, ignore_errors=True)
 
     def registrations(self, count=1, timeout=8.0):
         deadline = time.monotonic() + timeout

@@ -66,7 +66,8 @@ class Pixels(unittest.TestCase):
         meta={'event':'pattern','method':'coordinate-pattern-v1','protocol':'wayland','viewport':True,
               'logical_width':64,'logical_height':48,'buffer_width':64,'buffer_height':48,'scale120':120,'sequence':1}
         with tempfile.TemporaryDirectory() as tmp:
-            path=Path(tmp)/'image.png';pixels=bytearray(pattern())
+            path=Path(tmp)/'image.png'
+            pixels=bytearray(pattern())
             path.write_bytes(png(64,48,pixels))
             self.assertTrue(pattern_metrics(path,meta,[64,48],1.)['pixel_equality'])
             pixels[(20*64+30)*3]^=1
@@ -74,11 +75,17 @@ class Pixels(unittest.TestCase):
             result=pattern_metrics(path,meta,[64,48],1.)
             self.assertEqual(result['different_pixels'],1)
             self.assertFalse(result['pixel_equality'])
-            with self.assertRaises(BenchError):pattern_metrics(path,dict(meta,buffer_width=65),[64,48],1.)
-            with self.assertRaises(BenchError):pattern_metrics(path,meta,[32,24],1.)
-            with self.assertRaises(BenchError):pattern_metrics(path,meta,[64,48],1.25)
-            damaged=bytearray(path.read_bytes());damaged[-1]^=1;path.write_bytes(damaged)
-            with self.assertRaises(BenchError):png_rgb(path)
+            with self.assertRaises(BenchError):
+                pattern_metrics(path,dict(meta,buffer_width=65),[64,48],1.)
+            with self.assertRaises(BenchError):
+                pattern_metrics(path,meta,[32,24],1.)
+            with self.assertRaises(BenchError):
+                pattern_metrics(path,meta,[64,48],1.25)
+            damaged=bytearray(path.read_bytes())
+            damaged[-1]^=1
+            path.write_bytes(damaged)
+            with self.assertRaises(BenchError):
+                png_rgb(path)
 
 
 class ScalingState(unittest.TestCase):
@@ -87,7 +94,8 @@ class ScalingState(unittest.TestCase):
             directory=Path(tmp)
             profile={'outputs':[],'mode':{'width':1920,'height':1080}}
             def fixture(state,commands):
-                name=f'plasma-scale-100-{state}.png';(directory/name).write_bytes(b'fixture')
+                name=f'plasma-scale-100-{state}.png'
+                (directory/name).write_bytes(b'fixture')
                 return {'scale':1.,'state':state,'image_file':name,'image_sha256':hashlib.sha256(b'fixture').hexdigest(),
                     'outputs':[],'capture':{'event':'capture','index':0,'backend':'kwin-screenshot2-v1',
                         'width':1920,'height':1080,'begin_monotonic_ns':30,'end_monotonic_ns':31},
@@ -126,13 +134,21 @@ class ResourceAccounting(unittest.TestCase):
     def test_rejects_counter_reset_reused_pid_duplicate_and_sampling_gap(self):
         for kind in ('reset','uid','duplicate','boundary','gap','pid-counter'):
             rows=[sample(),sample(3_000_000_000,600_000)]
-            if kind=='reset':rows[-1]['cpu_usage_usec']=0
-            if kind=='uid':rows[-1]['uid']=0
-            if kind=='duplicate':rows[-1]['processes']*=2
-            if kind=='boundary':rows[-1]['processes'][0]['cgroup']='0::/other'
-            if kind=='pid-counter':rows[-1]['processes'][0]['cpu_ticks']=0
-            if kind=='gap':rows[-1]['begin_monotonic_ns']=10_000_000_000;rows[-1]['end_monotonic_ns']=10_000_000_100
-            with self.subTest(kind=kind),self.assertRaises(BenchError):metrics(rows,1001)
+            if kind=='reset':
+                rows[-1]['cpu_usage_usec']=0
+            if kind=='uid':
+                rows[-1]['uid']=0
+            if kind=='duplicate':
+                rows[-1]['processes']*=2
+            if kind=='boundary':
+                rows[-1]['processes'][0]['cgroup']='0::/other'
+            if kind=='pid-counter':
+                rows[-1]['processes'][0]['cpu_ticks']=0
+            if kind=='gap':
+                rows[-1]['begin_monotonic_ns']=10_000_000_000
+                rows[-1]['end_monotonic_ns']=10_000_000_100
+            with self.subTest(kind=kind),self.assertRaises(BenchError):
+                metrics(rows,1001)
 
     def test_real_proc_parser_handles_spaces_and_closing_parentheses(self):
         fields=['S']+['0']*19
@@ -141,19 +157,26 @@ class ResourceAccounting(unittest.TestCase):
 
     def test_snapshot_includes_services_outside_workload_tree_and_refuses_escape(self):
         with tempfile.TemporaryDirectory() as tmp:
-            root=Path(tmp);proc=root/'proc';proc.mkdir();cg=root/'cg/user.slice/user-1001.slice';cg.mkdir(parents=True)
+            root=Path(tmp)
+            proc=root/'proc'
+            proc.mkdir()
+            cg=root/'cg/user.slice/user-1001.slice'
+            cg.mkdir(parents=True)
             (cg/'cpu.stat').write_text('usage_usec 500000\n')
             for pid,uid in ((22,1001),(33,1001),(44,1000)):
-                path=proc/str(pid);path.mkdir()
+                path=proc/str(pid)
+                path.mkdir()
                 (path/'status').write_text(f'Name:\tdaemon\nUid:\t{uid}\t{uid}\t{uid}\t{uid}\n')
-                fields=['S']+['0']*19;fields[19]=str(pid)
+                fields=['S']+['0']*19
+                fields[19]=str(pid)
                 (path/'stat').write_text(f'{pid} (daemon) '+' '.join(fields))
                 (path/'smaps_rollup').write_text('Pss: 1024 kB\n')
                 (path/'cgroup').write_text(f'0::/user.slice/user-{uid}.slice/user@{uid}.service/app.slice/daemon.service')
             data=snapshot(1001,proc=proc,cgroup=root/'cg')
             self.assertEqual({p['pid'] for p in data['processes']},{22,33})
             (proc/'33/cgroup').write_text('0::/system.slice/escaped.service')
-            with self.assertRaises(BenchError):snapshot(1001,proc=proc,cgroup=root/'cg')
+            with self.assertRaises(BenchError):
+                snapshot(1001,proc=proc,cgroup=root/'cg')
 
 
 class P4Planning(unittest.TestCase):
@@ -189,9 +212,11 @@ class ResourceCampaign(unittest.TestCase):
         from vela_bench.platform_workloads import resource_metrics
         self.options.append(options)
         CalibrationCampaign.fake_begin(self,host,targets,**options)
-        source=self.layout.base/'pilots'/options['run_id'];target=targets[0]
+        source=self.layout.base/'pilots'/options['run_id']
+        target=targets[0]
         request=block_request(self.layout,options['campaign_run_id'],options['campaign_block_id'],target)
-        state=read_json(source/'state.json');state['campaign_block']=request
+        state=read_json(source/'state.json')
+        state['campaign_block']=request
         atomic_json(source/'state.json',state)
         scenarios={}
         for index,label in enumerate(RESOURCE_CONDITIONS):
@@ -202,9 +227,11 @@ class ResourceCampaign(unittest.TestCase):
                 work=stream(frames=1800)
                 for row in work:
                     for key in ('monotonic_ns','received_monotonic_ns','presentation_ns','commit_clock_ns'):
-                        if key in row:row[key]+=12_000_000_000+offset
+                        if key in row:
+                            row[key]+=12_000_000_000+offset
                 raw=''.join(json.dumps(r)+'\n' for r in work)
-            if label=='local-hash':raw=json.dumps({'event':'local-work-complete','method':'fixed-sha256-corpus-v1',
+            if label=='local-hash':
+                raw=json.dumps({'event':'local-work-complete','method':'fixed-sha256-corpus-v1',
                 'chunks':resources.HASH_CHUNKS,'bytes':len(resources.HASH_DATA)*resources.HASH_CHUNKS,
                 'digest':hashlib.sha256(resources.HASH_DATA).hexdigest(),
                 'begin_monotonic_ns':12_000_000_000+offset,'end_monotonic_ns':16_000_000_000+offset})
@@ -213,7 +240,8 @@ class ResourceCampaign(unittest.TestCase):
                 raw=json.dumps(transcript(target,state['conditions_snapshot']['profile'],12_000_000_000+offset))
             atomic_json(source/f'{target}-resources-{label}.json',{'uid':1001,'samples':rows,
                 **({'interaction_input_cleanup':'passed'} if label=='window-interaction' else {})})
-            if raw:(source/f'{target}-resources-{label}.work.jsonl').write_text(raw)
+            if raw:
+                (source/f'{target}-resources-{label}.work.jsonl').write_text(raw)
             scenarios[label]={'resources':resource_metrics(rows,1001,label,raw,target=target,profile=state['conditions_snapshot']['profile'])}
         atomic_json(source/f'{target}-session.json',{'session':{'User':'1001'}})
         atomic_json(source/f'{target}-measurements.json',{'schema':1,'method':VERSION,'phase':'overhead','spec':SPEC,
@@ -236,26 +264,34 @@ class ResourceCampaign(unittest.TestCase):
         self.assertIn('window-interaction',data['blocks'][0]['audit']['measurements']['scenarios'])
         first=next(output.glob('overhead-*/vela-resources-idle.json'))
         first.write_text('{}')
-        with self.assertRaises(BenchError):read_export(output)
+        with self.assertRaises(BenchError):
+            read_export(output)
 
     def test_raw_resource_audit_rejects_foreign_uid_overlap_and_counter_reset(self):
         import test_measurements
         from vela_bench.campaign import latest
         from vela_bench.archive import read_json
         self.assertEqual(test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead']),0)
-        data=latest(self.layout);block=data['blocks'][0]
-        source=self.layout.base/'pilots'/block['pilot_run_id'];target=block['target']
+        data=latest(self.layout)
+        block=data['blocks'][0]
+        source=self.layout.base/'pilots'/block['pilot_run_id']
+        target=block['target']
         path=source/f'{target}-resources-active-animation.json'
         original=read_json(path)
         for case in ('uid','overlap','reset','transport'):
             broken=copy.deepcopy(original)
-            if case=='uid':broken['uid']=1002
-            if case=='overlap':broken['samples'][0]['begin_monotonic_ns']=1
-            if case=='reset':broken['samples'][-1]['cpu_usage_usec']=0
-            if case=='transport':broken['controller_transport']={'pid':22,'start_ticks':42,'initial_cpu_ticks':0,
+            if case=='uid':
+                broken['uid']=1002
+            if case=='overlap':
+                broken['samples'][0]['begin_monotonic_ns']=1
+            if case=='reset':
+                broken['samples'][-1]['cpu_usage_usec']=0
+            if case=='transport':
+                broken['controller_transport']={'pid':22,'start_ticks':42,'initial_cpu_ticks':0,
                 'parent_pid':99,'cgroup':'0::/system.slice/vela-benchmark-pilot.service','command':['/usr/bin/systemd-run']}
             atomic_json(path,broken)
-            with self.subTest(case=case),self.assertRaises(BenchError):audit_measurements(source,target,block['profile'],'overhead')
+            with self.subTest(case=case),self.assertRaises(BenchError):
+                audit_measurements(source,target,block['profile'],'overhead')
         atomic_json(path,original)
 
     def test_missing_native_instruments_fail_before_starting_any_worker(self):
@@ -285,21 +321,28 @@ class ResourceCampaign(unittest.TestCase):
         self.assertEqual(self.options,[])
 
     def test_window_cleanup_and_native_action_transcript_are_reaudited(self):
-        import json,test_measurements
+        import json
+        import test_measurements
         from vela_bench.campaign import latest
         from vela_bench.archive import read_json
         test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
-        block=latest(self.layout)['blocks'][0];target=block['target']
+        block=latest(self.layout)['blocks'][0]
+        target=block['target']
         source=self.layout.base/'pilots'/block['pilot_run_id']
         path=source/f'{target}-resources-window-interaction.json'
-        original=read_json(path);changed=copy.deepcopy(original);changed['interaction_input_cleanup']='failed'
+        original=read_json(path)
+        changed=copy.deepcopy(original)
+        changed['interaction_input_cleanup']='failed'
         atomic_json(path,changed)
-        with self.assertRaisesRegex(BenchError,'input cleanup'):audit_measurements(source,target,block['profile'],'overhead')
+        with self.assertRaisesRegex(BenchError,'input cleanup'):
+            audit_measurements(source,target,block['profile'],'overhead')
         atomic_json(path,original)
         transcript_path=source/f'{target}-resources-window-interaction.work.jsonl'
-        changed=json.loads(transcript_path.read_text());changed['actions'].pop()
+        changed=json.loads(transcript_path.read_text())
+        changed['actions'].pop()
         transcript_path.write_text(json.dumps(changed))
-        with self.assertRaisesRegex(BenchError,'fixed action count'):audit_measurements(source,target,block['profile'],'overhead')
+        with self.assertRaisesRegex(BenchError,'fixed action count'):
+            audit_measurements(source,target,block['profile'],'overhead')
 
     def test_v3_raw_resource_archive_remains_auditable_without_new_condition(self):
         import test_measurements
@@ -307,12 +350,19 @@ class ResourceCampaign(unittest.TestCase):
         from vela_bench.archive import read_json
         from vela_bench.platform_workloads import SPEC_V3
         test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
-        data=latest(self.layout);block=data['blocks'][0];target=block['target']
-        source=self.layout.base/'pilots'/block['pilot_run_id'];path=source/f'{target}-measurements.json'
-        saved=read_json(path);del saved['scenarios']['window-interaction']
+        data=latest(self.layout)
+        block=data['blocks'][0]
+        target=block['target']
+        source=self.layout.base/'pilots'/block['pilot_run_id']
+        path=source/f'{target}-measurements.json'
+        saved=read_json(path)
+        del saved['scenarios']['window-interaction']
         atomic_json(path,saved)
-        with self.assertRaisesRegex(BenchError,'Incomplete resource matrix'):audit_measurements(source,target,block['profile'],'overhead')
-        saved['method']=SPEC_V3['version'];saved['spec']=SPEC_V3;atomic_json(path,saved)
+        with self.assertRaisesRegex(BenchError,'Incomplete resource matrix'):
+            audit_measurements(source,target,block['profile'],'overhead')
+        saved['method']=SPEC_V3['version']
+        saved['spec']=SPEC_V3
+        atomic_json(path,saved)
         self.assertEqual(audit_measurements(source,target,block['profile'],'overhead'),saved)
         plan=read_json(self.layout.base/'campaigns'/data['run_id']/'plan.json')
         audit=audit_block(source,block,plan,self.layout)
@@ -336,5 +386,6 @@ class ResourceLifecycle(unittest.TestCase):
             atomic_json(root/'vela-session.json',{'fixture_hidden_from_both_trees':True,'graphical_session_target':'active'})
             atomic_json(root/'vela-conditions.json',{'status':'passed'})
             self.assertEqual(audit_pilot(root,'vela',instruments=False)['status'],'passed')
-            state['plan']['presentation_probe']=True;atomic_json(root/'state.json',state)
+            state['plan']['presentation_probe']=True
+            atomic_json(root/'state.json',state)
             self.assertEqual(audit_pilot(root,'vela',instruments=False)['status'],'failed')

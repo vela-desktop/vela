@@ -11,7 +11,11 @@ find_package(LayerShellQt REQUIRED)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
-qt_add_executable(vela-polkit-prompt main.cpp request.cpp request.h ../protocol.hpp)
+# Caps Lock's real state (capslock.h): a wl_keyboard of our own.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(PROMPT_WAYLAND REQUIRED IMPORTED_TARGET wayland-client xkbcommon)
+
+qt_add_executable(vela-polkit-prompt main.cpp request.cpp request.h capslock.cpp capslock.h ../protocol.hpp)
 set_target_properties(vela-polkit-prompt PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/..)
 
 set(PROMPT_QML_FILES qml/Dialog.qml qml/Veil.qml)
@@ -25,13 +29,14 @@ qt_add_qml_module(vela-polkit-prompt
     QML_FILES ${PROMPT_QML_FILES})
 
 target_compile_options(vela-polkit-prompt PRIVATE -Wall -Wextra)
-target_link_libraries(vela-polkit-prompt PRIVATE
+target_link_libraries(vela-polkit-prompt PRIVATE vela-alloc
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
     vela-controls
     vela-controlsplugin
-    LayerShellQt::Interface)
+    LayerShellQt::Interface
+    PkgConfig::PROMPT_WAYLAND)
 
 install(TARGETS vela-polkit-prompt RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDIR})
 
@@ -41,7 +46,7 @@ install(TARGETS vela-polkit-prompt RUNTIME DESTINATION ${CMAKE_INSTALL_LIBEXECDI
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-polkit-prompt SOURCE_TARGETS vela-polkit-prompt
-    TS_FILES ../i18n/vela-polkit-prompt_it.ts
+    TS_FILES ../i18n/vela-polkit-prompt_it.ts ../i18n/vela-polkit-prompt_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-polkit-prompt_lupdate
     LRELEASE_TARGET vela-polkit-prompt_lrelease

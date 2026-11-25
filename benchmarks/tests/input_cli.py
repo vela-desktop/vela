@@ -55,4 +55,5 @@ def main(binary):
     print('Production evdev shortcut/timestamp/guard checks passed; no kernel device used.')
 
 
-if __name__=='__main__':main(sys.argv[1])
+if __name__=='__main__':
+    main(sys.argv[1])

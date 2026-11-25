@@ -10,10 +10,14 @@
 #include <QRect>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantMap>
 #include <QWindow>
 
 class AppModel;
+class Config;
+class LauncherEntry;
+class Workspaces;
 class ForeignToplevel;
 class ForeignToplevelManager;
 
@@ -35,9 +39,18 @@ public:
         WindowCountRole,
         WindowActiveRole,
         DesktopIdRole,
+        WindowIdsRole,
+        AttentionRole,
+        ActiveWindowIdRole,
+        BadgeCountRole,
+        ProgressRole,
+        HasWindowsRole,
     };
 
     TaskbarModel(AppModel* apps, ForeignToplevelManager* windows, QObject* parent = nullptr);
+
+    TaskbarModel(TaskbarModel* source, Config* config, Workspaces* workspaces, LauncherEntry* launcherEntry,
+        const QString& output, QObject* parent);
 
     int rowCount(const QModelIndex& parent = QModelIndex()) const override;
     QVariant data(const QModelIndex& index, int role) const override;
@@ -59,6 +72,9 @@ public:
     // The button dragged elsewhere: pinned apps stay before the ones only
     // open, and their order is remembered.
     Q_INVOKABLE void move(int from, int to);
+    Q_INVOKABLE bool pinDropped(const QUrl& url, int row);
+    Q_INVOKABLE bool isLauncherDrop(const QUrl& url) const;
+    Q_INVOKABLE void raiseWindow(int row);
     // Middle click: a new window of the app.
     Q_INVOKABLE void launchNew(int row);
     // "Close window" / "Close all windows".
@@ -80,6 +96,7 @@ public:
 
 signals:
     void pinnedIdsChanged();
+    void itemsChanged();
 
 private:
     struct Item {
@@ -89,19 +106,32 @@ private:
         QString icon;
         bool pinned = false;
         QList<ForeignToplevel*> windows;
+        bool attention = false;
+        ForeignToplevel* attentionTarget = nullptr;
+        qlonglong badgeCount = 0;
+        double progress = -1;
     };
 
     void rebuild();
     QList<Item> buildItems();
+    QList<Item> filteredItems() const;
+    int rowForKey(const QString& key) const;
+    ForeignToplevel* attentionWindow(const Item& item) const;
     ForeignToplevel* recentWindow(int row) const;
     void sendButtonRects();
 
+    TaskbarModel* m_source = nullptr;
+    Config* m_config = nullptr;
+    Workspaces* m_workspaces = nullptr;
+    LauncherEntry* m_launcherEntry = nullptr;
+    QString m_output;
     AppModel* m_apps;
     ForeignToplevelManager* m_windows;
     QStringList m_pinnedIds;
     QStringList m_unpinnedOrder; // keys of unpinned apps, in order of appearance
     QList<Item> m_items;
     QPointer<QWindow> m_panel;
+    QList<QPointer<ForeignToplevel>> m_windowsWithRect;
     QHash<QString, QRect> m_buttonRects; // by app key
     bool m_pinsSaved = false;
     QList<QPointer<ForeignToplevel>> m_hiddenByDesktop; // minimized by "Show desktop"

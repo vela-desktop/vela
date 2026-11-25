@@ -19,6 +19,7 @@ target_include_directories(vela-brightness-core PUBLIC ${CMAKE_CURRENT_SOURCE_DI
 target_compile_definitions(vela-brightness-core PUBLIC _GNU_SOURCE)
 target_compile_options(vela-brightness-core PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-brightness-core PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
+target_link_libraries(vela-brightness-core PUBLIC vela-alloc)
 # The built-in backlight is written through logind (§5.3), with sd-bus.
 find_package(PkgConfig)
 if(PkgConfig_FOUND)
@@ -61,6 +62,9 @@ if(VELA_BUILD_TOOLS)
             tests/lines_test.cpp
             tests/scheduler_test.cpp)
         target_compile_options(vela-brightness-tests PRIVATE -Wall -Wextra)
+        target_include_directories(vela-brightness-tests PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
+        target_compile_definitions(vela-brightness-tests PRIVATE
+            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
         target_link_libraries(vela-brightness-tests PRIVATE vela-brightness-core GTest::gtest_main)
         include(GoogleTest)
         gtest_discover_tests(vela-brightness-tests TEST_PREFIX "brightness.")

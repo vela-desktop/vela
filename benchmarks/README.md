@@ -299,8 +299,11 @@ The same fixed options apply to snapshot, control, read-back and recovery.
 After a VT/link transition, brightness reads allow up to four attempts under
 one eight-second deadline for DDC device/communication failures or timeouts.
 The backend, bus and VCP code stay fixed; successful snapshots retain every
-read attempt. Writes are not automatically retried by this readiness loop.
-Syntax errors and signaled processes fail immediately. For a failed host
+read attempt. During restoration, a DDC communication failure or timeout on a
+brightness write triggers a fresh identity and value check. If the same monitor
+still reports a different value, restoration can repeat the absolute write once.
+Restoration requires read-back of the saved value. Syntax errors and signaled
+processes fail immediately. For a failed host
 command in the supervised worker, the pilot retains bounded stdout, stderr, exit code and timeout details
 in `failed-operation.json`, including read attempts, and exports that file.
 This matters because ddcutil reports some failures on stdout, not stderr.
@@ -482,7 +485,8 @@ updates change fingerprints and require a new campaign.
 If a previous run reports `restoration: failed`, update the installed launcher
 and tools, then run `sudo scripts/vela-bench recover` from the TTY before starting
 a new campaign. Do not start a personal desktop during recovery. A native
-KScreen configuration rejection can trigger one recorded greeter restart;
+KScreen configuration rejection or an exhausted active-VT output-announcement
+deadline can trigger one recorded greeter restart;
 the original monitor identities, modes, layout, brightness and power profile
 must still pass verification. Both attempts and full bounded operation errors
 are exported in `conditions-recovery.json`. This is a recovery measure, not a
@@ -516,6 +520,16 @@ The versioned `p2-neutral-client-v3` workload fixes these samples for both modes
   a median of 75–225 ms for the fixed 150 ms request; gaps in production or
   visible updates over two seconds invalidate coverage. The absence of
   contention is never inferred merely from use of a compute-only queue.
+  JSON-mode calibration uses the same GPU timestamps as the audit, excluding
+  host submission and fence-wakeup time. Before exposing the producer surface,
+  it warms the GPU and requires three consecutive jobs within 10% of the
+  requested duration, with a bounded 64-sample/iteration search. The selected
+  iteration count is then fixed throughout measurement. Calibration records
+  retain GPU and wall durations, sample count and the clock domain; failed
+  convergence stops the producer. The 150 ms stimulus, 75–225 ms audit tolerance,
+  measured samples and historical archive formulas are unchanged. Rebuild
+  `vela-slowgpu` and refresh the installed tools before a new campaign; changed
+  executable hashes prevent resuming an old campaign with the new instrument.
 - **CPU contention:** a fresh input/animation control, then the same tests while
   one integer worker runs on each allowed CPU, capped at 32 workers. Each worker
   records its pinned CPU, PID, work counters and kernel CPU time every 500 ms.
@@ -575,6 +589,49 @@ continue with P3. The archived fast acceptance remains the available physical
 evidence; omitting `--fast` would run 18 blocks.
 
 ## P3 native desktop observation
+
+For one command that refreshes the installed launcher, completes any pending
+recovery, then runs every implemented P2/P4 phase and P3, log out and use a local
+TTY:
+
+```sh
+sudo scripts/vela-bench run-all
+```
+
+One START authorizes both campaigns: Vela and Plasma, three complete repetitions,
+30 measurement blocks followed by 18 P3 blocks. Both campaigns retain their own
+reports and immutable evidence. Instruments for both selections are checked
+before measuring. A completed campaign with recovered failed blocks still yields
+to P3; the final command retains a failing exit status. Cancellation, incomplete
+restoration, integrity errors or a changed caller session stop the sequence.
+`run-all --dry-run` previews the schedule from the ordinary desktop. `--fast`
+selects one full repetition (16 blocks), and repeated `--target` options select
+desktops explicitly. `--yes` acknowledges the printed notice for automation.
+This requires the existing owned setup and instruments; measurement never builds
+or updates the target desktops. Each invocation starts fresh campaigns; resume
+their printed IDs individually with the existing `run` or `observe` command.
+
+For a separate diagnostic run with both Vela comparison switches enabled:
+
+```sh
+sudo scripts/vela-bench run-all --vela-sync-test
+```
+
+This still refreshes the launcher and runs all 48 normal blocks, including P3,
+with one START. Only Vela receives `VELA_SCANOUT=0 VELA_READY_WAIT=0`; Plasma
+keeps its normal environment. The first switch disables direct scanout for
+eligible fullscreen clients. The second applies commits before their GPU work
+is ready, so the compositor frame can wait for a slow client. This measures the
+effect of those Vela optimizations; it does not reproduce all KWin policies.
+Windowed workloads may not exercise direct scanout at all.
+
+The fixed profile appears in previews, immutable plans, live session receipts
+and HTML exports. A normal campaign cannot satisfy a sync-test request, and
+resume requires the same profile. Keep the two profiles separate when comparing
+results. `run-all` without this option selects normal Vela. Prefixing the
+command with environment variables does not select this mode: the supervised
+launcher deliberately sanitizes its environment. `--vela-sync-test` is also
+available for `session-test`, `qualify`, `plan`, `run` and `observe`.
 
 P3 has its own fixed observation workload, `p3-desktop-observation-v3`, and
 keeps its results separate from P2 client timings. It reuses the same
@@ -944,16 +1001,41 @@ has no fixed 30-second deadline. The desktop session's runtime limit matches the
 at 30 Hz its probe allows 80 seconds inside the 120-second instrument budget.
 
 Before stopping the display manager, the worker temporarily disables its
-automatic restart, freezes authentication, installs an owned runtime mask and
-checks logind again, including sessions still opening. It queues SIGSTOP before
-thawing systemd, then kills only that verified greeter cgroup and stops its unit.
+automatic restart and adds a required missing-path condition to inhibit fresh
+start jobs. It verifies the typed D-Bus `Conditions` property: `systemctl show`
+can print `Conditions=[unprintable]` even when the condition is loaded. It then
+freezes authentication and checks logind again, including sessions still opening.
+It queues SIGSTOP before thawing systemd, kills only that verified greeter cgroup
+and stops its unit. The owned runtime mask is loaded after the unit is stopped,
+keeping the active unit resolvable throughout thaw and teardown.
+The snapshotted Plasma Login/SDDM account is checked before stopping the login
+manager. Its `systemd-user` sessions of class `manager` or `manager-early` are
+service sessions, and are accepted only with the expected noninteractive
+logind metadata. Other sessions of that UID block takeover. After the manager
+stops, the runner also stops that account's verified greeter session scopes,
+then its user manager/runtime, and checks for surviving processes. Both PAM
+helpers in logind scopes and KWin services can outlive the display-manager cgroup.
+The account identity and released session scopes are recorded in
+`greeter-user-release.json`.
 Recovery removes the owned mask/restart override and resumes authentication if
 takeover was interrupted. A physical-input monitor failure persists its error
 and immediately terminates the worker through PID 1 recovery, even if a client
 subprocess is blocked. Successful block receipts are published after teardown
 and input-guard release.
+If output recovery has stopped the login manager and greeter release then fails,
+it still attempts to start the initially active login manager. Hardware recovery
+remains failed and the campaign stops; a working login service alone never
+qualifies restoration or permits the next block.
 
-New disposable profiles select Do Not Disturb for both Vela and Plasma and use
+Input acquisition is journaled before any evdev node can be opened. Recovery
+writes an explicit no-acquisition receipt when takeover fails before that point,
+so an early setup failure can yield to the next independent block after verified
+restoration. Missing release evidence after possible acquisition still blocks
+continuation. A no-acquisition receipt never qualifies a measured or fault block.
+
+New disposable Vela profiles explicitly select KWallet before login, so the
+first-login password manager chooser does not appear during a benchmark.
+Disposable profiles select Do Not Disturb for both Vela and Plasma and use
 per-user XDG `Hidden=true` overrides for system autostart applications outside
 a fixed core-session allowlist. This excludes updater trays, distro reminders,
 indexers and companion apps while retaining the shell, accessibility, power,
@@ -1062,7 +1144,12 @@ tests verify protocol handling only.
 Static-analysis checks retain the full benchmark sources. Narrow `NOSONAR`
 annotations identify false positives from the agentic-workflow rules S8705 and
 S8707: this is an operator-invoked local CLI, with deliberately chosen input and
-output paths, not an LLM tool or server endpoint. Other annotations identify
+output paths, not an LLM tool or server endpoint. The five reviewed S8707 sinks
+use line-local annotations; the security analyzer does not honor the Python
+rule-specific form for these findings. The namespace-isolation check reconstructs
+the synthetic fixture from the bounded run ID and requires it to match saved
+state before any namespace query. It neither tests personal files nor exposes
+a file-existence API, and needs no S6549 suppression. Other annotations identify
 the password-lock status label and temporary-directory constants used only for
 namespace containment comparisons. The S6350 annotation on the fixed-operation
 executor documents its root-owned state and freshly verified NSS identity
@@ -1073,7 +1160,100 @@ from bounded run IDs, VT numbers and dwell times are bounded, and corpus images
 use reconstructed filenames with symlinks refused. CPU regressions exercise
 those boundaries without accounts, host services, devices or TTY takeover.
 
-The coordinator tests use temporary directories and mocked host inventory:
+### Autonomous development checks
+
+Run development checks directly from the ordinary desktop, unprivileged:
+
+```sh
+scripts/vela-bench-selftest --build build-native-displays
+scripts/vela-bench-selftest --build build-native-displays --suite full
+scripts/vela-bench-selftest --case controls-vela
+```
+
+The default `quick` selection builds the native instruments, runs CPU tests,
+then exercises actual systemd transient completion/cleanup, authentication
+quiescence, interrupted recovery and timeout cleanup using unique disposable user services.
+It also verifies `manager`/`manager-early` handling, refusal of interactive
+sessions before takeover, and release of both a PAM session and a compositor
+service outside the display-manager cgroup. Logind identity is an explicit
+fixture; service liveness and stop results come from actual systemd units.
+It runs both fixed presentation probes and all three input/capture controls
+on private Vela and KWin, followed by P3 motion on both. P0 and P3 use the
+production controllers, native capture workers and real user-manager services;
+their unit-stop and state replies are not simulated. Input uses explicit
+virtual-protocol fixtures. Unit environments are set per service; the operator's
+manager environment and personal display/session are untouched.
+The additional `controls-vela-sync-test` case repeats the five Vela controls
+using the production environment constructor with both fixed switches. It
+checks the actual compositor environment, its native scanout-policy reply and
+the GPU-wait startup log. Run it alone with
+`scripts/vela-bench-selftest --case controls-vela-sync-test`.
+
+The full selection also runs the complete P2 slow-apps controller in that
+diagnostic profile, including both delayed-producer synchronization modes and
+CPU/GPU contention. Run just that regression with:
+
+```sh
+scripts/vela-bench-selftest --suite full --case p2-slow-apps-vela-sync-test
+```
+
+Loaded explicit/implicit motion keeps all 30 warm-up and 600 measured frames
+but allows 170 seconds, equally for both desktops and runtime profiles. At
+150 ms per GPU job, a compositor waiting on the producer can legitimately
+exceed the old 55-second limit; its slow frames remain in the results.
+The producer has a 230-second native watchdog and a 240-second service limit
+covering startup, input, motion and shutdown. Other motion retains its
+55-second deadline, and the overall pilot/campaign watchdogs remain bounded.
+Incomplete feedback or expiry still fails the block; verified restoration
+allows later blocks to continue. The sample specification and metric formulas
+are unchanged, so historical archives remain readable.
+
+This requires the updated native `vela-slowgpu` as well as the Python launcher.
+Build it unprivileged, then refresh the installed instruments before the next
+physical run (substitute your build directory):
+
+```sh
+cmake --build build-native-displays --target vela-slowgpu
+sudo scripts/vela-bench setup --update --tools-dir build-native-displays/tools
+```
+
+The slow-apps preflight rejects an older producer before taking over the
+desktop. `run-all` refreshes launcher code; it does not build native tools.
+
+`full` adds the complete P2 slow-apps controller, the other two P3 phases on
+both desktops, P4 toolkit/corpus checks and native window-resource interactions.
+Older P2/P4 resource-accounting and some service transports remain fixture
+boundaries. The first quick pass before the incremental-build step took about
+110 seconds on the development machine. Timings are development turnaround,
+not benchmark results. `--suite systemd` runs CPU and actual user-manager
+regressions without a build or GPU. `--list` previews the selected cases;
+repeat `--case NAME` to rerun only affected cases. Native cases retain the
+incremental-build step. Full-only cases require `--suite full`.
+
+Each run creates a new `benchmark-results/selftest-*` directory with a
+checkpointed `summary.json`, per-case logs, available original captures and
+source/binary hashes. Independent cases continue after failures. A failure,
+timeout, source change during the run or capability skip makes the final result unsuccessful; no absent
+dependency silently counts as a pass. Deadlines terminate the owned process
+groups and private slices. Each graphical controller runs in its own scope in
+that slice, so descendants using a new process group remain contained along
+with the separate instrument services. Scope stop has a three-second deadline.
+Each graphical case also has a private bus and short runtime path in `/tmp`,
+independent of the operator's bus and the checkout path length.
+No setup refresh, root password or TTY
+switch is required. KWin, a running user manager, a configured native build
+and its normal development dependencies must be available for `quick`/`full`.
+The `Benchmark lifecycle` CI workflow independently repeats the real systemd
+instrument and quiescence regressions on an ephemeral Ubuntu runner.
+
+These checks do not qualify physical evdev grabs/uinput, PAM/logind UID
+isolation, DRM/VT switching, monitor/brightness/power restoration or comparative
+performance. Current physical-candidate acceptance still requires the TTY
+runner. Run `quick` before requesting another physical acceptance run; use
+`full` after changing a workload controller. Evidence from this development
+workflow is never accepted as a successful physical campaign block.
+
+The individual coordinator tests use temporary directories and mocked host inventory:
 
 ```sh
 PYTHONPATH=benchmarks python3 -m unittest discover -s benchmarks/tests -v
@@ -1082,7 +1262,8 @@ ctest --test-dir build -R '^functional-benchmark-probe$' --output-on-failure
 ctest --test-dir build -R '^benchmark-plasma-integration$' --output-on-failure
 ```
 
-The CTest core entry is registered on Python 3.11+. The native CLI suite needs
+The CTest core entry is registered when building with `VELA_BUILD_TOOLS=ON`,
+which requires Python 3.13+. The native CLI suite needs
 the compiled helper but no GPU; it includes a connected, silent socket to
 test startup deadlines without a desktop. The functional suite starts an
 isolated headless Vela with a real Vulkan GPU and checks feedback identity,
@@ -1184,6 +1365,18 @@ PyGObject and a running user manager:
 
 ```sh
 python3 benchmarks/tests/manager_integration.py benchmark-results/manager-recovery-selftest/evidence.json
+```
+
+The quiescence regression runs the production control path against disposable
+user-manager `sleep` services. It verifies actual D-Bus condition data, failed
+activation before masking, thaw/stop ordering, and recovery both for an opening
+login and an interruption after SIGSTOP. Only unit identity, unit-file publication
+and the system/user bus boundary are substituted. It needs a running user manager
+and runs unprivileged, without accessing the real display manager, PAM, a TTY or
+physical input:
+
+```sh
+python3 benchmarks/tests/quiescence_integration.py
 ```
 
 The alias reservation regression uses private randomized user templates running

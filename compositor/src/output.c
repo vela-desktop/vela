@@ -3,6 +3,7 @@
 
 #include "output.h"
 
+#include "alloc/alloc.h"
 #include "brightness.h"
 #include "config.h"
 #include "geometry.h"
@@ -85,21 +86,23 @@ void vela_output_key(const struct wlr_output *output, char *out, size_t size)
 // The initial state: what the user chose last time for this monitor (only in
 // the real session), otherwise the best mode and the scale from DPI. `saved`
 // is NULL when nothing was saved.
-static void initial_state(struct wlr_output *wlr, const struct vela_saved_output *saved,
-    struct wlr_output_state *state)
+static void initial_state(
+    struct vela_output *output, const struct vela_saved_output *saved, struct wlr_output_state *state)
 {
+    struct wlr_output *wlr = output->wlr;
     bool enabled = !saved || saved->enabled;
     wlr_output_state_set_enabled(state, enabled);
     struct wlr_output_mode *saved_mode
         = saved && saved->width > 0 ? find_mode(wlr, saved->width, saved->height, saved->refresh_mhz) : NULL;
-    struct wlr_output_mode *best = NULL;
+    struct wlr_output_mode *mode = saved_mode ? saved_mode : pick_mode(wlr);
     const char *size = getenv("VELA_OUTPUT_SIZE");
     if (!enabled) {
-        // Off, as the user left it.
-    } else if (saved_mode) {
-        wlr_output_state_set_mode(state, saved_mode);
-    } else if ((best = pick_mode(wlr))) {
-        wlr_output_state_set_mode(state, best);
+        // A newly detected connector may have no current CRTC mode. Keep
+        // the mode available to output management without lighting it up.
+        output->startup_mode = mode;
+        output->startup_transform = (enum wl_output_transform)saved->transform;
+    } else if (mode) {
+        wlr_output_state_set_mode(state, mode);
     } else if (size) {
         // An output without modes (nested window, headless): we choose the
         // size, such as VELA_OUTPUT_SIZE=1920x1080, with an optional refresh
@@ -178,7 +181,7 @@ static void handle_present(struct wl_listener *listener, void *data);
 static void handle_request_state(struct wl_listener *listener, void *data);
 static void handle_output_commit(struct wl_listener *listener, void *data);
 static void handle_destroy(struct wl_listener *listener, void *data);
-static void start_virtual_vblank(struct vela_output *output);
+static bool start_virtual_vblank(struct vela_output *output);
 
 // wlroots uses the output allocator for both cursor and primary buffers, and
 // doesn't tell the allocator which it is requesting. Supply a *dedicated*
@@ -223,10 +226,12 @@ static void prepare_cursor_swapchain(struct vela_server *server, struct wlr_outp
 
 void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 {
-    struct vela_output *output = calloc(1, sizeof(*output));
+    struct vela_output *output = VELA_NEW(struct vela_output);
     output->server = server;
     output->wlr = wlr;
     output->powered = true;
+    output->drm_connector = wlr_output_is_drm(wlr);
+    output->internal_panel = output->drm_connector && vela_is_internal_panel(wlr->name);
     output->latch_fd = -1;
     output->vblank_fd = -1;
     wl_list_init(&output->link);
@@ -243,9 +248,17 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     bool enabled = !saved || saved->enabled;
     struct wlr_output_state state;
     wlr_output_state_init(&state);
-    initial_state(wlr, saved, &state);
+    initial_state(output, saved, &state);
     // The frame cycle turns VRR on and off (vrr_state).
-    wlr_output_commit_state(wlr, &state);
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: before initial wlr_output_commit_state output=%s committed=0x%x enabled=%d",
+            wlr->name, state.committed, state.enabled);
+    }
+    bool initial_ok = wlr_output_commit_state(wlr, &state);
+    if (vela_env_one("VELA_DEBUG_DMABUF")) {
+        wlr_log(WLR_INFO, "DMABUF trace: after initial wlr_output_commit_state output=%s ok=%d %dx%d",
+            wlr->name, initial_ok, wlr->width, wlr->height);
+    }
     wlr_output_state_finish(&state);
     // Query the committed DRM/CRTC cursor plane, not an unconfigured output.
     if (enabled) {
@@ -273,14 +286,20 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     if (output->latch_fd >= 0) {
         output->latch_source = wl_event_loop_add_fd(server->loop, output->latch_fd, WL_EVENT_READABLE,
             handle_latch_timer, output);
-    } else {
+    }
+    if (!output->latch_source) {
+        // Drawing then starts at the backend's frame event.
+        if (output->latch_fd >= 0) {
+            close(output->latch_fd);
+            output->latch_fd = -1;
+        }
         output->latching = false;
     }
     wl_list_init(&output->present.link);
     wl_list_init(&output->frame_event.link);
-    if (wlr_output_is_headless(wlr)) {
-        start_virtual_vblank(output);
-    } else {
+    // Without the virtual vblank, a headless output also follows the
+    // backend's frame events.
+    if (!wlr_output_is_headless(wlr) || !start_virtual_vblank(output)) {
         vela_listen(&wlr->events.present, &output->present, handle_present);
         vela_listen(&wlr->events.frame, &output->frame_event, handle_frame_event);
     }
@@ -291,11 +310,18 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
     // In the list before entering the layout: the layout change notifies the
     // output configuration programs, and this output must already be there.
     wl_list_insert(server->outputs.prev, &output->link);
+    if (saved && saved->has_position) {
+        output->has_preferred_position = true;
+        output->preferred_x = saved->x;
+        output->preferred_y = saved->y;
+        output->has_last_position = true;
+        output->last_x = saved->x;
+        output->last_y = saved->y;
+    }
+    vela_output_manager_hotplug(server);
     if (!enabled) {
         // Out of the layout until someone turns it back on.
         vela_output_manager_update(server);
-    } else if (saved && saved->has_position) {
-        wlr_output_layout_add(server->output_layout, wlr, saved->x, saved->y);
     } else {
         wlr_output_layout_add_auto(server->output_layout, wlr);
     }
@@ -312,9 +338,13 @@ void vela_output_create(struct vela_server *server, struct wlr_output *wlr)
 static void handle_output_commit(struct wl_listener *listener, void *data)
 {
     struct vela_output *output = wl_container_of(listener, output, commit);
-    (void)data;
+    const struct wlr_output_event_commit *event = data;
     if (!output->wlr->enabled) {
         output->cursor_setup_attempted = false;
+        if (event->state->committed & WLR_OUTPUT_STATE_ENABLED) {
+            // A blanked output counts as black for an in-flight screen lock.
+            vela_server_output_rendered(output->server, output);
+        }
     } else if (!output->cursor_setup_attempted) {
         output->cursor_setup_attempted = true;
         prepare_cursor_swapchain(output->server, output->wlr);
@@ -329,6 +359,7 @@ static void handle_destroy(struct wl_listener *listener, void *data)
     // for black on this output.
     vela_server_output_destroyed(server, output);
     wl_list_remove(&output->link);
+    vela_output_manager_hotplug(server);
     vela_output_manager_update(server);
     output->wlr->data = NULL;
     wl_list_remove(&output->frame_event.link);
@@ -426,7 +457,7 @@ bool vela_output_commit_mode(struct vela_output *output, struct wlr_output_state
 
 void vela_output_set_powered(struct vela_output *output, bool on)
 {
-    if (on == output->powered) {
+    if (on == output->powered || !wlr_output_layout_get(output->server->output_layout, output->wlr)) {
         return;
     }
     struct wlr_output *wlr = output->wlr;
@@ -500,7 +531,7 @@ static void request_frame(struct vela_output *output)
     // with DRM blocks until the vblank).
     bool waiting = output->vblank_fd >= 0 ? output->awaiting_present : output->wlr->frame_pending;
     if (!waiting && !output->drawing && !output->latch_armed && !output->idle_frame) {
-        output->idle_frame = wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output);
+        output->idle_frame = VELA_MUST(wl_event_loop_add_idle(output->server->loop, handle_idle_frame, output));
     }
 }
 
@@ -659,7 +690,11 @@ static void on_frame(struct vela_output *output)
         request_frame(output); // nothing delivered: no vblank will ask
     }
     if (rendered) {
-        vela_server_output_rendered(output->server, output);
+        // A frame that hit a failed region operation may show stale pixels:
+        // the lock waits for the whole redraw that follows it.
+        if (vela_output_frame_safe(output->frame)) {
+            vela_server_output_rendered(output->server, output);
+        }
         const struct vela_frame_delivered *delivered = &output->frame->delivered;
         struct vela_delivery delivery = {
             output->wlr->commit_seq, plan.start, now, vela_now_ns(), delivered->point, delivered->timing_slot,
@@ -757,18 +792,25 @@ static void collect_costs(struct vela_output *output)
 
 static int handle_virtual_vblank(int fd, uint32_t mask, void *data);
 
-static void start_virtual_vblank(struct vela_output *output)
+static bool start_virtual_vblank(struct vela_output *output)
 {
     output->vblank_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
-    if (output->vblank_fd < 0) {
-        wlr_log_errno(WLR_ERROR, "%s: timerfd for the virtual vblank", output->wlr->name);
-        return;
+    if (output->vblank_fd >= 0) {
+        output->vblank_source = wl_event_loop_add_fd(output->server->loop, output->vblank_fd, WL_EVENT_READABLE,
+            handle_virtual_vblank, output);
     }
-    output->vblank_source = wl_event_loop_add_fd(output->server->loop, output->vblank_fd, WL_EVENT_READABLE,
-        handle_virtual_vblank, output);
+    if (!output->vblank_source) {
+        wlr_log_errno(WLR_ERROR, "%s: no virtual vblank, frames follow the backend", output->wlr->name);
+        if (output->vblank_fd >= 0) {
+            close(output->vblank_fd);
+            output->vblank_fd = -1;
+        }
+        return false;
+    }
     output->last_vblank = vela_now_ns();
     wlr_log(WLR_INFO, "%s: virtual vblank every %.3f ms", output->wlr->name,
         vela_frame_clock_period(&output->clock) / 1e6);
+    return true;
 }
 
 // The next vblank on the exact grid (last vblank + multiples of the period),

@@ -13,10 +13,13 @@ Python standard library only. Needs a GPU with Vulkan 1.4 (Vela's renderer
 has no software fallback): without one, run.py skips the tests."""
 
 import atexit
+import builtins
+from contextlib import contextmanager
 import json
 import math
 import os
 import re
+import select
 import shutil
 import struct
 import signal
@@ -25,7 +28,10 @@ import subprocess
 import tempfile
 import threading
 import time
+from xml.sax.saxutils import escape as xml_escape
 import zlib
+
+from renderer_identity import verify_renderer_vendor
 
 # Opt-in only: keep the functional test harness standard-library-only.
 _PROFILE = os.environ.get("VELA_FUNCTIONAL_PROFILE") == "1"
@@ -54,8 +60,6 @@ def _print_profile():
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BUILD = os.environ.get("VELA_BUILD", os.path.join(ROOT, "build"))
 
-from renderer_identity import verify_renderer_vendor
-
 
 def tool(name):
     return os.path.join(BUILD, "tools", name)
@@ -63,6 +67,154 @@ def tool(name):
 
 class TimeoutError(AssertionError):
     pass
+
+
+# What would connect a process to the session the tests run in (the
+# developer's own Vela, or any desktop), rather than to the one under test.
+HOST_DISPLAY_VARIABLES = ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")
+
+
+def environment_without_display():
+    """os.environ without the host session's display."""
+    return {key: value for key, value in os.environ.items() if key not in HOST_DISPLAY_VARIABLES}
+
+
+def _group_has_live_members(group):
+    """Linux /proc: zombies still have PIDs and a process group, but no fds.
+
+    Services orphaned by a D-Bus daemon may stay zombies until PID 1 reaps
+    them (which some CI containers never do). killpg(group, 0) reports such
+    a zombie-only group as present even though nothing is running.
+    """
+    with os.scandir("/proc") as processes:
+        for entry in processes:
+            if not entry.name.isdecimal():
+                continue
+            try:
+                with open(f"/proc/{entry.name}/stat") as stat:
+                    fields = stat.read().rsplit(")", 1)[1].split()
+                # Fields after (comm): state, ppid, process group, ...
+                if int(fields[2]) == group and fields[0] not in ("Z", "X", "x"):
+                    return True
+            except (OSError, ValueError, IndexError):
+                # The process can exit while /proc is being inspected.
+                continue
+    return False
+
+
+def stop_process_group(process, timeout=3):
+    """Stop a start_new_session process and its group, TERM then KILL.
+
+    The group can outlive its leader. Wait for all *live* group members,
+    not for orphaned zombies whose resources are already released.
+    """
+    group = process.pid
+
+    def signal_group(number):
+        try:
+            os.killpg(group, number)
+            return True
+        except ProcessLookupError:
+            return False
+
+    if not signal_group(signal.SIGTERM):
+        process.wait()
+        return
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        process.poll()  # Reap the leader if it has exited.
+        if not _group_has_live_members(group):
+            process.wait()
+            return
+        time.sleep(0.02)
+    signal_group(signal.SIGKILL)
+    process.wait()
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if not _group_has_live_members(group):
+            return
+        time.sleep(0.02)
+    if _group_has_live_members(group):
+        raise RuntimeError(f"process group {group} still has live members after SIGKILL")
+
+
+_BUS_CONFIG = """<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">
+<busconfig>
+  <type>session</type>
+  <listen>unix:dir={directory}</listen>
+  <auth>EXTERNAL</auth>
+  <policy context="default">
+    <allow send_destination="*" eavesdrop="true"/>
+    <allow eavesdrop="true"/>
+    <allow own="*"/>
+  </policy>
+{services}</busconfig>
+"""
+
+
+class PrivateBus:
+    """A private D-Bus bus for one test, gone with everything it started.
+
+    with PrivateBus() as bus:
+        Session(env={"DBUS_SESSION_BUS_ADDRESS": bus.address})
+
+    By default it activates nothing: no service directories, so a name
+    nobody owns is an immediate error rather than the host's service (the
+    session bus would start the desktop portal or the secret service, with
+    the bus's environment). `services` is a directory of .service files the
+    bus may activate. Activated services get no display of the host session
+    and a private XDG_RUNTIME_DIR, and run in the bus's process group, which
+    stop() terminates whole."""
+
+    def __init__(self, services=None):
+        self.services = services
+        self.process = None
+        self.directory = None
+        self.address = None
+
+    def __enter__(self):
+        self.start()
+        return self
+
+    def __exit__(self, kind, value, traceback):
+        self.stop()
+        return False
+
+    def start(self):
+        try:
+            self._start()
+        except BaseException:
+            self.stop()
+            raise
+        return self.address
+
+    def _start(self):
+        self.directory = tempfile.mkdtemp(prefix="vela-bus-")
+        runtime = os.path.join(self.directory, "runtime")
+        os.mkdir(runtime, 0o700)
+        services = f"  <servicedir>{xml_escape(self.services)}</servicedir>\n" if self.services else ""
+        config = os.path.join(self.directory, "bus.conf")
+        with open(config, "w") as file:
+            file.write(_BUS_CONFIG.format(directory=xml_escape(self.directory), services=services))
+        env = {key: value for key, value in environment_without_display().items() if not key.startswith("DBUS_")}
+        env["XDG_RUNTIME_DIR"] = runtime
+        self.env = env
+        self.process = subprocess.Popen(["dbus-daemon", f"--config-file={config}", "--nofork", "--nopidfile",
+                                         "--print-address=1"], env=env, stdout=subprocess.PIPE,
+                                        stderr=subprocess.DEVNULL, text=True, start_new_session=True)
+        self.address = self.process.stdout.readline().strip()
+        if not self.address:
+            raise AssertionError("the private D-Bus bus failed to start")
+
+    def stop(self):
+        if self.process:
+            stop_process_group(self.process)
+            self.process.stdout.close()
+            self.process = None
+        if self.directory:
+            shutil.rmtree(self.directory, ignore_errors=True)
+            self.directory = None
 
 
 class Session:
@@ -75,8 +227,9 @@ class Session:
     """
 
     def __init__(self, scale=1.0, size="1920x1080@60", supervise=False, lock_hold_ms=None, env=None, startup=None,
-                 nofile=None, expected_exit=0):
+                 nofile=None, expected_exit=0, pass_fds=(), binary="vela-compositor"):
         self.scale = scale
+        self.binary = binary  # in build/compositor: a test build of the compositor
         self.size = size
         self.supervise = supervise
         self.lock_hold_ms = lock_hold_ms
@@ -84,6 +237,7 @@ class Session:
         self.startup = startup # the startup command (-s), like the shell
         self.nofile = nofile
         self.expected_exit = expected_exit
+        self.pass_fds = tuple(pass_fds)  # descriptors the compositor inherits (test shims)
         self.process = None
         self.clients = []
         self.display = None
@@ -118,13 +272,17 @@ class Session:
         """Start the compositor with private persistent paths and a session log."""
         self.directory = tempfile.mkdtemp(prefix="vela-functional-")
         os.mkdir(os.path.join(self.directory, "home"))
-        env = {key: value for key, value in os.environ.items()
-               if key not in ("WAYLAND_DISPLAY", "DISPLAY", "QT_WAYLAND_RECONNECT", "WAYLAND_SOCKET")}
+        env = environment_without_display()
         env.update({
             "VELA_TEST_MARK": "menu",
             "WLR_BACKENDS": "headless",
             "WLR_LIBINPUT_NO_DEVICES": "1",
             "VELA_DEBUG_INPUT": "1",
+            # test-output, test-power, test-shell on the command socket.
+            "VELA_TEST_COMMANDS": "1",
+            # Where install_prompt() puts stand-in system prompts: trusted
+            # like /usr, only with VELA_TEST_COMMANDS on the headless backend.
+            "VELA_TEST_PROMPT_DIR": os.path.join(self.directory, "prompts"),
             "VELA_OUTPUT_SIZE": self.size,
             "VELA_SCALE": str(self.scale),
             "HOME": os.path.join(self.directory, "home"),
@@ -137,7 +295,7 @@ class Session:
             env["VELA_LOCK"] = f"{tool('vela-testlock')} {self.lock_hold_ms}"
         env.update(self.extra_env)
         self.env = env
-        command = [os.path.join(BUILD, "compositor", "vela-compositor")]
+        command = [os.path.join(BUILD, "compositor", self.binary)]
         if self.supervise:
             command.append("--supervise")
         if self.startup:
@@ -149,6 +307,7 @@ class Session:
         self.log_path = os.path.join(self.directory, "vela.log")
         self.log = open(self.log_path, "w")
         self.process = subprocess.Popen(command, env=env, stdout=self.log, stderr=subprocess.STDOUT,
+                                        pass_fds=self.pass_fds,
                                         start_new_session=True)
         self.display = self.wait_for_log(r"WAYLAND_DISPLAY=", lambda line: line.split("WAYLAND_DISPLAY=")[1].split()[0])
         # On hardware CI, prove which DRM render node Vela itself opened.
@@ -237,8 +396,10 @@ class Session:
             connection.connect(self.socket_path)
             connection.sendall((line + "\n").encode())
 
-    def query(self, line):
+    def query(self, line, timeout=None):
         with socket.socket(socket.AF_UNIX) as connection:
+            if timeout is not None:
+                connection.settimeout(timeout)
             connection.connect(self.socket_path)
             connection.sendall((line + "\n").encode())
             data = b""
@@ -249,15 +410,33 @@ class Session:
                 data += chunk
         return json.loads(data)
 
-    def state(self):
-        return State(self.query("state"))
+    def state(self, timeout=None):
+        return State(self.query("state", timeout=timeout))
 
-    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05):
-        """Waits until condition(state) is true; returns the state."""
+    def wait_for(self, condition, timeout=5.0, what="the condition", read_state=True, interval=0.05,
+                 reconnect=False):
+        """Wait for condition(state). Reconnection is opt-in after an expected crash."""
         deadline = time.monotonic() + timeout * TIME_SCALE
         last = None
+        connection_error = None
         while time.monotonic() < deadline:
-            last = self.state() if read_state else None
+            if reconnect and self.process.poll() is not None:
+                raise AssertionError(f"the supervisor exited (code {self.process.returncode}):\n"
+                                     f"{self.log_text()[-3000:]}")
+            try:
+                if not read_state:
+                    last = None
+                elif reconnect:
+                    last = self.state(timeout=max(0.001, deadline - time.monotonic()))
+                else:
+                    last = self.state()
+            except (FileNotFoundError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError,
+                    builtins.TimeoutError) as error:
+                if not reconnect:
+                    raise
+                connection_error = repr(error)
+                time.sleep(interval)
+                continue
             try:
                 if condition(last):
                     return last
@@ -269,6 +448,7 @@ class Session:
         lines = [line for line in self.log_text().splitlines(keepends=True) if not _WAYLAND_TRACE.match(line)]
         errors = "".join(line for line in lines if "[ERROR]" in line)
         raise TimeoutError(f"after {timeout * TIME_SCALE:g} s this still isn't true: {what}\nlast state: {last}\n"
+                           f"last connection error: {connection_error}\n"
                            f"--- Vela's errors ---\n{errors[-2500:]}"
                            f"--- end of the Vela log ---\n{''.join(lines)[-2500:]}")
 
@@ -290,6 +470,54 @@ class Session:
         finally:
             _profile("input-gestures", time.perf_counter() - began)
 
+    @contextmanager
+    def input_session(self):
+        """One vela-input (and so one virtual keyboard) for a whole scene.
+
+        A new vela-input per action brings its keymap to the seat: the
+        notification center loses the keyboard and closes, like Start."""
+        session = subprocess.Popen([tool("vela-input"), "-"], env=self.client_env,
+                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+        pending = bytearray()
+
+        def send(*actions):
+            """Execute a command, allowing its requested sleeps plus I/O overhead."""
+            session.stdin.write("\t".join(map(str, actions)) + "\n")
+            session.stdin.flush()
+            sleep_ms = sum(int(actions[i + 1]) for i, action in enumerate(actions[:-1])
+                           if action == "sleep")
+            deadline = time.monotonic() + 5 * TIME_SCALE + sleep_ms / 1000
+            # select + os.read also bounds partial replies: TextIO.readline()
+            # can block forever after a process writes a non-newline prefix.
+            while b"\n" not in pending:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([session.stdout], [], [], remaining)[0]:
+                    raise TimeoutError(f"vela-input timed out replying to {actions!r}; pid={session.pid}, exit={session.poll()}")
+                chunk = os.read(session.stdout.fileno(), 4096)
+                if not chunk:
+                    raise AssertionError(f"vela-input exited before replying to {actions!r}; exit={session.poll()}")
+                pending.extend(chunk)
+                if len(pending) > 4096:
+                    raise AssertionError("vela-input reply exceeded 4096 bytes")
+            line, _, rest = pending.partition(b"\n")
+            pending[:] = rest
+            if line.decode("utf-8", errors="replace").strip() != "OK":
+                raise AssertionError(f"vela-input refused {actions!r}")
+        try:
+            send("sleep", 0)  # the device and its keymap exist before a panel takes focus
+            yield send
+        finally:
+            try:
+                session.stdin.close()
+            except BrokenPipeError:
+                pass  # The process may have already died after a timeout.
+            try:
+                session.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                session.kill()
+                session.wait()
+            session.stdout.close()
+
     def randr(self, *args):
         """Configures outputs as Settings > Display does (wlr-output-management)."""
         return subprocess.run([tool("vela-randr"), *map(str, args)], env=self.client_env, check=True,
@@ -302,6 +530,15 @@ class Session:
         self.input(*actions)
 
     # -------------------------------------------------------- windows --
+
+    def install_prompt(self, name="pinentry-test"):
+        """A copy of vela-pattern named like a system prompt program, in the
+        directory the test compositor trusts as installed (VELA_TEST_PROMPT_DIR)."""
+        directory = os.path.join(self.directory, "prompts")
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, name)
+        shutil.copy2(tool("vela-pattern"), path)
+        return path
 
     def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
                     env=None, glass=False):

@@ -35,13 +35,17 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `screen-off` | `10` | Minutes of inactivity before the idle action. `0` disables it. |
 | `lock-on-idle` | `yes` | Lock before turning displays off. |
 | `polkit-agent` | `yes` | Start Vela's polkit agent (the User Account Control dialog) in the real session. `no` leaves the job to another agent. |
+| `secret-backend` | `kwallet` | **Temporary until Vela Secrets:** `kwallet` or `gnome` (GNOME Keyring). When absent, the old KWallet behavior is retained but Settings asks for an explicit choice. The chosen provider must be installed and own `org.freedesktop.secrets`; errors appear in Settings and the session log. Changes require a new login and never migrate passwords. |
 | `bluetooth-adapter` | empty | The address of the Bluetooth adapter to use when there are two or more ([Bluetooth](bluetooth.md#62-the-model)), written by Settings > Bluetooth & devices > Advanced. Empty, or an adapter that isn't there: the first one. |
 | `brightness` | `yes` | Drive the monitors' own brightness ([brightness](brightness.md)) in the real session. `no` starts no `vela-brightness` and shows no brightness slider. |
 | `update-check` | `yes` | Check for Vela updates in the background and notify when one is available ([updates](updates.md#62-checking)), never on a metered connection. Written by Settings > System > Updates. |
 | `update-check-interval` | `24` | Hours between automatic checks: `6`, `12`, `24`, `48` or `168` (7 days). Set in Settings > System > Updates; invalid values fall back to 24 hours. |
-| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. |
+| `keyboard-layout` | system/default | Comma-separated XKB layouts, for example `it,us`. Empty: systemd-localed's layout (`localectl`), then `us`; other desktops' settings are not read. Settings > Keyboard > Layouts. |
 | `keyboard-variant` | empty | Comma-separated XKB variants matching `keyboard-layout`. |
-| `keyboard-options` | empty | XKB options. |
+| `keyboard-options` | system | XKB options, comma-separated. When the key is present, even empty, these are the options and systemd-localed's are not used; Settings > Keyboard > Typing writes its Caps Lock, Compose, bottom-left and keypad choices here and keeps the other options. |
+| `numlock` | `off` | Num Lock when Vela starts: `off`, `on`, or `last` (as it was at the end of the last session, kept in `$XDG_STATE_HOME/vela/numlock`). Settings > Keyboard > Typing. |
+| `caps-lock-osd` | `yes` | Shows *Caps Lock on* or *Caps Lock off* at the bottom of the screen for a moment each time Caps Lock changes, on the lock screen too. Settings > Keyboard > Typing. |
+| `super-opens-start` | `yes` | The Win key pressed and released by itself opens Start. With `no` it does nothing; Win shortcuts, the taskbar numbers while Win is held and the Start button are unchanged. Settings > Keyboard > Typing. |
 | `keyboard-repeat-delay` | `400` | Key-repeat delay in milliseconds. |
 | `keyboard-repeat-rate` | `30` | Key repeats per second. |
 | `night-light` | `no` | Enable Night light. |
@@ -55,6 +59,7 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 | `color-filters-shortcut` | `no` | Allow Super+Ctrl+C to toggle color filters. |
 | `magnifier-step` | `100` | Magnifier step in percent. |
 | `sticky-keys` | `no` | Sticky modifier keys. |
+| `super-number-keys` | `apps` | `apps` opens taskbar apps, `desktops` switches desktops, `off` releases the digit shortcuts. Settings > Personalization > Taskbar. |
 | `animation-effects` | `yes` | Windows and the shell's panels move as they open, close and change. `no`: nothing moves (no rise, slide, scale, flight to the taskbar or magnifier zoom) and what fades takes at most 120 ms ([visual coherence](visual-coherence.md#65-animation-effects-one-switch-d11)). Settings > Accessibility > Visual effects. |
 | `animation-duration` | `100` | How long animations take, in percent of Vela's durations: 50–300 (Settings' slider, in steps of 25). With `animation-effects=no` fades stay at 120 ms. |
 | `tearing` | `yes` | Allow fullscreen apps that explicitly request tearing. |
@@ -74,11 +79,15 @@ Vela Settings preserves unrelated lines when it updates a key and asks the compo
 
 The Settings app is the preferred way to edit these values because it applies validation and reloads the compositor at the correct time.
 
+### Custom shortcuts
+
+The user's own keyboard shortcuts live in `$XDG_CONFIG_HOME/vela/shortcuts.conf`, one `combination=kind target` per line: `Ctrl+Alt+t=app org.kde.konsole.desktop`, `Shift+Super+k=command kcalc`, `Super+FK01=open https://example.org/`. Settings > Keyboard > Custom shortcuts writes it; the compositor rereads it on `reload-config` and skips, with a log line, a line that doesn't parse ([keyboard](keyboard.md#94-the-file)).
+
 ### Theme files
 
 A **theme** is a complete look of the shell and of Vela's apps: colors and corner radii, the blur behind the shell's panels, and the shape of any shell surface. A **style** changes one surface of the shell over the theme, like Windhawk's three stylers: the taskbar, the Start menu, or quick settings with the notification center. `theme=mine` loads the first `vela/themes/mine.conf` found in `~/.config` (your own) and then in the data directories (`/usr/share/vela/themes/`, the installed ones); `taskbar-style=aero` loads `vela/themes/taskbar/aero.conf` the same way. A style's values win over the theme's. The shell and the apps reload them when they, or what they inherit, change.
 
-Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are Lowell137's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings; the surfaces of Lowell137's Window Glass styles come with it) and **Vela Floating**, Vela Official with a floating taskbar and glass quick settings. The 22 installed styles are Lowell137's, from Windhawk's stylers, each on its surface's page in Settings: one of each look, for the taskbar (11), the Start menu (5) and quick settings with the notification center (6). Their names say what they look like, never another product's name; each file's comments name the Windhawk theme it comes from.
+Vela's own look is a theme like the others, `vela.conf` (Vela Official): it sets no token, so every one keeps Vela's value, and it is the one used when `theme=` names none. The other installed themes are Lowell137's **Window Glass** (`window-glass.conf`, after Windhawk's WindowGlass: flat gray glass over a light blur, a floating pill taskbar as wide as its apps, round Start and quick settings, and a see-through Settings; the surfaces of Lowell137's Window Glass styles come with it) **Vela Floating**, Vela Official with a floating taskbar and glass quick settings, and **Vela Expressive** (`vela-expressive.conf`), a look inspired by Material 3 Expressive: tonal colors from the wallpaper, round shapes, lively motion and its own quick settings, notification center and Start ([Expressive look](#expressive-look)). The installed styles are each on its surface's page in Settings. 22 are Lowell137's, from Windhawk's stylers: one of each look, for the taskbar (11), the Start menu (5) and quick settings with the notification center (6); their names say what they look like, never another product's name, and each file's comments name the Windhawk theme it comes from. Two more, both named **Expressive**, are Vela Expressive's surfaces on their own over any theme: `startmenu/expressive.conf` and `notifications/expressive.conf` (quick settings and the notification center) ([Expressive look](#expressive-look)).
 
 ```ini
 # Mine: the first line names the theme in Settings
@@ -98,7 +107,7 @@ The first comment line names the file in Settings, and a `# Original author:` li
 
 A line that isn't a token, a value of the wrong type, a layout Vela doesn't have, a style's key for another surface and a broken `inherits=` are skipped with a warning in the log that names the file, the line and what is wrong. A file larger than 64 KiB is not read at all. Settings > Personalization > Themes lists the theme's under it too.
 
-A click on a theme in Settings > Personalization (or > Themes) writes `theme=` at once, and **Undo**, for a few seconds, goes back to the one before. A theme with its own `accent` replaces the accent color chosen in Settings > Colors in the modes it sets it for: when every mode in use takes the theme's, Colors shows the grid disabled and says why, and when only one does it says in which mode the chosen color shows. Each surface's styles are on its page: the Start menu's under Start, after **From the theme**; the taskbar's and quick settings' under Taskbar, after the taskbar's own settings, each in a card that opens its gallery. A click writes the `*-style=` key at once, with Undo too. While the taskbar is a pill that places its apps itself (`taskbar-fit=1`), Taskbar shows the alignment disabled and says whether the theme or the style decides it. **Reset** goes back to Vela Official and no styles. **Open folder**, by your own themes in Themes and under each gallery of styles, opens the folder they go in (`~/.config/vela/themes/` and its `taskbar/`, `startmenu/`, `notifications/`), made first if it isn't there.
+A click on a theme in Settings > Personalization (or > Themes) writes `theme=` at once, and **Undo**, for a few seconds, goes back to the one before. A theme with its own `accent` replaces the accent color chosen in Settings > Colors in the modes it sets it for: when every mode in use takes the theme's, Colors shows the grid disabled and says why, and when only one does it says in which mode the chosen color shows. Above the grid, Colors chooses where the accent comes from (`appearance/accentSource`, [Shell settings](#shell-settings)): **From the theme**, **From the wallpaper** or **My color**, with the wallpaper's color beside the choice; the grid is enabled only while the color chosen in it is the one in use, and the card always says why it isn't. Each surface's styles are on its page: the Start menu's under Start, after **From the theme**; the taskbar's and quick settings' under Taskbar, after the taskbar's own settings, each in a card that opens its gallery. A click writes the `*-style=` key at once, with Undo too. While the taskbar is a pill that places its apps itself (`taskbar-fit=1`), Taskbar shows the alignment disabled and says whether the theme or the style decides it. **Reset** goes back to Vela Official and no styles. **Open folder**, by your own themes in Themes and under each gallery of styles, opens the folder they go in (`~/.config/vela/themes/` and its `taskbar/`, `startmenu/`, `notifications/`), made first if it isn't there.
 
 The pictures are made by `scripts/theme-pictures.py` from the real shell on a headless Vela, with the clock stopped (`VELA_STILL`), in `vela/themes/screenshots/`:
 
@@ -123,7 +132,13 @@ Theme tokens ([`Theme.qml`](../common/controls/Theme.qml)):
 | `card`, `cardHover`, `cardPressed`, `cardStroke`, `flyout`, `dialog`, `dialogFooter`, `field` | color |
 | `text`, `textSecondary`, `textTertiary` | color |
 | `accent` (over the one chosen in Settings > Colors) | color |
-| `radius` (controls), `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–24 |
+| `attention` (the taskbar's highlight for an app asking for attention; the mode's caution color if unset). A theme token only: a taskbar style can't set it | color |
+| `primary`, `onPrimary`, `primaryContainer`, `onPrimaryContainer`, `secondary`, `onSecondary`, `secondaryContainer`, `onSecondaryContainer`, `tertiary`, `onTertiary`, `tertiaryContainer`, `onTertiaryContainer`, `error`, `onError`, `errorContainer`, `onErrorContainer` | color: Material's tonal roles ([Expressive look](#expressive-look)) |
+| `surfaceBase` (Material's `surface`), `surfaceContainerLowest`, `surfaceContainerLow`, `surfaceContainer`, `surfaceContainerHigh`, `surfaceContainerHighest`, `onSurface`, `onSurfaceVariant`, `outline`, `outlineVariant`, `inverseSurface`, `inverseOnSurface`, `inversePrimary` | color: Material's surface roles |
+| `radius` (controls) | pixels, 0–24 |
+| `radiusCard`, `radiusOverlay` (menus, dialogs, panels) | pixels, 0–32 |
+| `shapeExtraSmall` (4), `shapeSmall` (8, 0–24), `shapeMedium` (12, 0–32), `shapeLarge` (24), `shapeExtraLarge` (28) | pixels, 0–48 unless said: corners of the expressive controls |
+| `fontCaption` (12), `fontBody` (14), `fontBodyLarge` (18), `fontSubtitle` (20), `fontTitle` (28) | pixels, clamped to readable sizes |
 
 Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that surface's style; flags are `0` or `1`:
 
@@ -133,18 +148,25 @@ Surface tokens ([`Styles.qml`](../shell/qml/Styles.qml)), for a theme or that su
 | `taskbar-fit`, `taskbar-split-gap`, `taskbar-split-radius`, `taskbar-edge` (1 apps centered, 2 at the left), `taskbar-flush` | A pill that shrinks to the apps and the tray; the tray a pill of its own; the tray at the screen's edge; the apps' pill on the bottom edge. |
 | `taskbar-spacing` | The gap between buttons. |
 | `taskbar-button-width`, `taskbar-button-height`, `taskbar-button-radius`, `taskbar-icon-size` | The buttons. |
-| `taskbar-stroke` | The bar's hairline. |
+| `taskbar-stroke` | The bar's hairline (none under the expressive controls). |
 | `startmenu-width`, `startmenu-height` (with the margins: 660 × 732 is Vela's), `startmenu-radius`, `startmenu-surface`, `startmenu-cell-height` | The Start menu's size, corners, tint and rows. |
 | `quicksettings-radius`, `quicksettings-tile-radius`, `quicksettings-surface` | Quick settings' corners and tint. |
 | `quicksettings-borderless`, `quicksettings-inline-arrow`, `quicksettings-flat-footer`, `quicksettings-thick-slider` | WindowGlass's: no borders, the arrow beside the icon, no footer band, a thick slider. |
 | `notifications-radius`, `notifications-card-radius`, `notifications-surface`, `notifications-today-radius`, `notifications-focus` | The notification center's corners, tint and today's mark; the focus timer. |
+
+What sits in the corner of a rounder shape follows that shape: its radius is at least the outer one less the gap between them, so the two corners are concentric, and its own radius counts only up to that gap ([visual coherence §6.12](visual-coherence.md#612-corners-inside-corners)). `taskbar-button-radius`, `quicksettings-tile-radius` and `notifications-card-radius` are therefore those pieces' own radii, used where the bar does not float, where the panel's radius is no larger than its padding, or where they are rounder than the rule asks and no larger than the padding (16 for quick settings, 12 in the expressive variant; 8 for the notification center's list). A menu's rows, the buttons in a panel's corners, shadows and the pictures in round tiles follow the same rule with nothing to set.
 
 Variants name layouts Vela implements, never code from the file; the numeric tokens above can tune them further:
 
 | Token | Layouts |
 |---|---|
 | `taskbar-variant` | `default`, `floating`, `floating-split`, `dock` |
-| `quicksettings-variant` | `default`, `glass`, `classic` |
+| `quicksettings-variant` | `default`, `glass`, `classic`, `expressive` |
+| `startmenu-variant` | `default`, `expressive` |
+| `notifications-variant` | `default`, `expressive` |
+| `controls-variant` | `default`, `expressive`: the controls of Vela's apps and shell |
+| `motion-variant` | `default`, `expressive`: Material's spatial curves for what moves in Vela's QML |
+| `color-source` | `accent`, `wallpaper`: what the accent comes from when the user leaves it to the theme |
 
 ```ini
 # Vela Floating: floating taskbar and glass quick settings
@@ -155,15 +177,61 @@ taskbar-variant=floating
 quicksettings-variant=glass
 ```
 
+#### Expressive look
+
+`controls-variant=expressive` draws the controls of Vela's apps and shell (Settings, File Explorer, the shell's menus, dialogs, tooltips and OSDs, Vela.Controls' buttons, switches, sliders, lists, text fields and dialogs) in Material 3 Expressive's shapes, sizes and state layers, and recolors every token above from Material's tonal roles: windows on `surfaceBase`, cards on `surfaceContainerLow`, controls and menus on `surfaceContainerHigh`, fields on `surfaceContainerHighest`, text in `onSurface` and `onSurfaceVariant`, strokes in `outlineVariant`, the accent's fills in `primary`. The title bars take the apps' `surfaceBase` too. Labels and titles get heavier weights; the system font stays. It applies only to Vela's own interfaces, never to third-party Qt or GTK apps.
+
+The roles are Material's Tonal Spot scheme (`common/color/`, ported from Material Color Utilities) of one source color in each mode: the theme's `primary` if it sets one, else the accent in use. A theme can set any role; one it leaves out comes from the scheme, so a theme that sets only `primary` still gets matching containers. The `on…` roles are a request, not a guarantee: when one would read below 4.5:1 on its role, Vela uses black or white instead. The shell variants (`quicksettings-`, `startmenu-` and `notifications-variant=expressive`) give quick settings wide tiles that change shape, the notification center an app's notifications as one container, and Start a tonal grid of pins; under them the panels' corners default to 28, the tiles' to 16, the notification cards' to `shapeLarge`.
+
+Each key works on its own, with any combination of the others; only the full look sets them together. The shell variants are also installed as styles, so Settings can pick them without the theme: **Expressive** under Start (`startmenu-style=expressive`) and under Taskbar's quick settings (`notifications-style=expressive`), with Vela Expressive's corners (panels 28, tiles and cards 16). Over a theme without the expressive controls the variants keep their shapes, layout and motion and take the colors of the controls in use: the panels stay the theme's (acrylic in Vela Official), an off tile is the default tile's control fill with its outline and an on tile the accent, toasts keep the theme's look. `controls-variant=expressive` alone keeps the default shell surfaces in the tonal colors; `motion-variant=expressive` alone moves Fluent's controls on the spatial curves; `color-source=wallpaper` alone gives the accent, and the palette, the wallpaper's color. Controls, motion and the color's source are chosen in a theme file (the source also in Settings > Colors), not one by one in Settings.
+
+The accent follows one rule, the same for the shell, the apps and the lock screen: a theme's own `accent` wins in the mode it sets it for; else the wallpaper's color when the user chooses it (`appearance/accentSource=wallpaper`) or leaves it to the theme (`theme`, the default) and the theme asks for it (`color-source=wallpaper`); else the color chosen in Settings > Colors. The shell finds the wallpaper's color when the wallpaper changes (Material's quantizer and score on a picture at most 128 pixels wide) and keeps it in `~/.cache/vela/wallpaper-color`; a wallpaper with no usable color (grays) gives the chosen one.
+
+`motion-variant=expressive` moves positions, sizes and corners in Vela's QML on Material's spatial curves, which overshoot a little; colors and opacity still fade without overshoot, and what leaves doesn't bounce. Windows keep the compositor's one curve ([visual coherence](visual-coherence.md#64-one-duration-scale-written-twice-and-checked-d10)).
+
+```ini
+# Vela Expressive: tonal colors from your wallpaper or accent, round shapes and lively motion, inspired by Material 3 Expressive
+# Original author: Brando Giuffrida
+schema-version=1
+inherits=vela
+controls-variant=expressive
+motion-variant=expressive
+color-source=wallpaper
+taskbar-variant=floating
+quicksettings-variant=expressive
+notifications-variant=expressive
+startmenu-variant=expressive
+shapeLarge=16
+radiusOverlay=16
+```
+
+Vela Expressive (`themes/vela-expressive.conf`) also sets its corners from Material's scale and no color: its palette is the wallpaper's or the accent's. Theme files name variants and values, never code: no QML or script is loaded from them, and keyboard, pointer, accessibility and the animation preferences stay Vela's.
+
 The design and what is still planned are in [theme-system.md](theme-system.md).
 
 ## Shell settings
+
+If Settings cannot save a choice, it shows the affected configuration file and
+keeps the saved value selected. Wallpaper and its recent-image list, and the
+Start icon kind and picture, are saved together. App-mode changes reach GTK and
+KDE only after the shell configuration is saved. Failures in the shell and
+compositor files are reported independently; a successful write clears the
+error for that file.
 
 The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are in `~/.config/Vela/vela-shell.conf`, a Qt `QSettings` INI file that Settings writes and the shell rereads as soon as it changes. Among them, those of Settings → Personalization, except the time format (Settings → Time & language → Date & time), the notification ones (Settings → System → Notifications) and the battery ones (Settings → System → Power, Settings → Bluetooth & devices):
 
 | Key | Default | Meaning |
 |---|---|---|
 | `clock/hours` | `24` | `24` or `12`: how the taskbar, the notification center, the lock screen and Settings' Date & time write the time (`13:45` or `1:45 PM`) |
+| `taskbar/position` | `bottom` | The edge of every display the taskbar sits on: `bottom`, `top`, `left` or `right`. Start, the previews and the tray's panels open from that edge; on the left and the right the bar is a column at least 56 wide. |
+| `taskbar/windowsFrom` | `desktop` | `desktop` shows windows on the current desktop, `all` shows windows on every desktop. |
+| `taskbar/appsOn` | `all` | `window` limits windows to their display's taskbar when taskbars are on all displays. |
+| `taskbar/clickActive` | `previews` | On an active app with several windows, show `previews` or cycle to the `next` window. |
+| `taskbar/attention` | `true` | Highlight apps asking for attention. |
+| `taskbar/trayShown` | empty | The notification area icons on the taskbar, in order, by their StatusNotifierItem `Id` (the title when there is none); the others are in the drawer behind "^". New icons start in the drawer. |
+| `taskbar/badges` | `true` | Count badges on app buttons. |
+| `taskbar/progress` | `true` | Progress indicators on app buttons. |
+| `taskbar/numberHints` | `true` | Show shortcut numbers while holding Super in the `apps` mode. |
 | `taskbar/clockSeconds` | `false` | The seconds in the taskbar's clock |
 | `taskbar/showDate` | `true` | The date under the time in the taskbar's clock |
 | `taskbar/notificationCount` | `true` | The number of notifications next to the clock (Do not disturb's bell shows anyway) |
@@ -174,7 +242,23 @@ The shell's own choices (wallpaper, accent, mode, taskbar, Start, desktop) are i
 | `start/icon` | `vela` | The Start button's icon: `vela` (the sail), `distribution` (os-release's `LOGO=`, from the icon theme or a loose file in `icons/` or `pixmaps/`) or `picture`; one that can't be shown (no logo, a picture gone or not a picture) is the sail |
 | `start/iconPicture` | | The picture's file for `start/icon=picture`; the shell watches it, so an edited or deleted picture shows at once |
 | `start/showPinned` | `true` | The apps pinned to Start above all apps; off, Start opens on all apps and keeps the pins (`start/pinned`) |
+| `appearance/accentSource` | `theme` | Where the accent comes from: `theme` (the theme's wish: its `color-source`), `wallpaper` (the wallpaper's color) or `chosen` (`appearance/accent`, the color chosen in Settings > Colors). A theme's own `accent` wins over all three ([Expressive look](#expressive-look)) |
 | `desktop/showIcons` | `true` | The Desktop folder's icons on the main display (Settings → Background, or the desktop's menu) |
+
+## Window activation
+
+An already-running app cannot raise a background window merely because a
+message arrived. This applies with ordinary windows and fullscreen games.
+Wayland activation requires a single-use token issued with a valid seat input
+serial and the keyboard-focused source surface. A valid grant can be passed
+to another app even after its launcher closes. Legacy X11 activation requests
+carry no such grant, so only the foreground window and its transients may
+request focus while another surface has the keyboard; minimized windows and
+windows on another desktop stay where they are.
+
+Selecting a window by clicking it, the taskbar or Alt+Tab remains explicit
+activation. Initial window mapping keeps the existing new-window behavior.
+This policy does not depend on Do not disturb and has no configuration switch.
 
 ## Display configuration
 
@@ -214,10 +298,19 @@ so the upper-left corner of the enabled display group is always at (0,0).
 For example, a 1920×1080 monitor physically **above** a 2048×1152 primary
 will appear as (0,0) and (0,1080) respectively. This avoids exposing
 negative monitor coordinates to XWayland/Wine while leaving the perceived
-screen arrangement unchanged. Existing saved configurations with negative
-positions are normalized when loaded; new positions are saved normalized.
+screen arrangement unchanged. Saved positions keep their own origin, so a
+save while a monitor is unplugged keeps that monitor in the same arrangement.
 Windows on a translated output move with it, including during Settings
-preview/revert.
+preview and revert. Settings snaps dragged displays to a free edge that keeps
+every monitor reachable. Changing a monitor's scale, resolution, or rotation
+can move its neighbors to make room. The compositor rejects explicitly
+positioned configurations with intersecting active displays.
+
+At startup and when monitors are plugged or unplugged, Vela moves overlapping
+or isolated displays to a shared edge so the pointer can still reach every
+screen. Disabling a monitor in Settings closes gaps within the preview, so
+Revert restores the prior positions. These temporary positions keep the saved
+arrangement available when the original set of monitors returns.
 
 Settings talks directly to `wlr-output-management`; no external display utility
 is required. Changes are previewed for 15 seconds. Vela's compositor keeps the
@@ -228,8 +321,8 @@ to `outputs.conf`.
 
 The preview uses `protocols/vela-output-preview-v1.xml`, bound on the same
 Wayland connection as the output configuration. While a preview is pending,
-competing display changes are rejected. If monitors are unplugged, restoration
-covers the surviving original outputs and leaves newly connected outputs alone.
+competing display changes are rejected. Plugging or unplugging an active
+monitor cancels the preview before Vela rearranges the current outputs.
 If a confirmed change cannot be saved, the active display configuration is
 kept, but Settings warns that it may be lost after a restart. A failed apply
 whose rollback also fails is reported distinctly.
@@ -249,8 +342,8 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 | `VELA_SCALE` | Force output scale. A single value applies to all outputs (`1.25`); per-output values can be supplied as `DP-1=1.5,HDMI-A-1=1`. Without it, Vela chooses a scale from each monitor's DPI. |
 | `VELA_OUTPUT_SIZE` | Resolution/refresh for nested or headless outputs, for example `1920x1080@144`. |
 | `VELA_NATURAL_SCROLL=0` | Force classic touchpad scrolling; this override wins over the stored natural-scrolling setting. |
-| `XKB_DEFAULT_LAYOUT` | Initial keyboard layout, for example `it`. |
-| `VELA_TERMINAL` | Terminal launched by Super+Enter. Default: `konsole`. |
+| `XKB_DEFAULT_LAYOUT` | Keyboard layout, for example `it`; wins over `keyboard-layout`, and Settings > Keyboard > Layouts says so. `XKB_DEFAULT_VARIANT`, `_OPTIONS`, `_MODEL` and `_RULES` work the same, field by field. |
+| `VELA_TERMINAL` | Terminal for Super+Enter and updates, a command with options, unless one is chosen in Settings > Apps > Default apps. The packaged `xdg-terminal-exec` resolves XDG preferences ([keyboard](keyboard.md#11-the-terminal)). |
 
 ### Presentation, VRR and power
 
@@ -283,6 +376,7 @@ These are useful for one-off overrides, nested sessions, experiments and trouble
 |---|---|
 | `VELA_WALLPAPER` | Override the wallpaper image. SVG, PNG, JPEG and other supported formats can be used. |
 | `VELA_ICON_THEME` | Fallback icon theme when Qt cannot resolve one. Default: `breeze-dark`. |
+| `VELA_NESTED=1` | Set by the compositor for its apps when it runs in a window of another desktop (never inherited otherwise): Settings then treats the nested Alt shortcuts (Alt+E...) as taken. |
 
 ## Development and renderer diagnostics
 
@@ -298,6 +392,9 @@ These variables are for diagnosis rather than normal user configuration.
 | `VELA_DEBUG_ANIMATION=1` | Log, per output and frame, the presentation and wall times and each running animation's progress and geometry (position, scale, opacity), and a line when an animation retires (`tests/functional/test_animation.py` reads it). |
 | `VELA_DEBUG_SYNC=1` | Make the CPU wait for the GPU on every renderer submission; useful when isolating synchronization problems. |
 | `VELA_DEBUG_LINEAR=1` | Force linear render buffers instead of normal tiled/modifier allocation; useful for allocator/modifier diagnosis. |
+| `VELA_DEBUG_DMABUF=1` | Trace output commits and DMA-BUF allocation/import, including Vulkan calls and FD identities; see [VM diagnostics](virtual-machines.md). |
+| `VELA_ALLOCATOR=auto\|gbm\|vulkan` | Output buffers: auto selects Vulkan DMA-BUF export for Venus and GBM otherwise. Overrides allow controlled [VM comparisons](virtual-machines.md). |
+| `MESA_LOADER_DRIVER_OVERRIDE` | On Venus, Vela defaults this to `zink` for launched OpenGL clients, so their buffers come from the Vulkan device too. Explicit values are preserved; see [VM diagnostics](virtual-machines.md). |
 | `VELA_DEBUG_INPUT=1` | Enable the virtual keyboard/pointer protocol used by `vela-input`. Off by default for security. |
 | `VELA_FILES_TIMING=1` | Make `vela-files` print startup timing data; used by `scripts/measure.sh`. |
 | `VELA_STILL=<date and time>` | For still pictures that don't change with when they are taken (`scripts/theme-pictures.py`): the shell's clock and calendar show this ISO date and time, such as `2026-01-14T10:30:00`, and text carets don't blink. |

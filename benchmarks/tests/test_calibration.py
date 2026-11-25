@@ -80,12 +80,18 @@ class CommonInputCalibration(unittest.TestCase):
                     for index in range(12)]
         for case in ("good", "missing", "backend", "geometry", "clock", "position", "boolean-id"):
             rows = copy.deepcopy(original)
-            if case == "missing": rows[3]["markers"] = []
-            elif case == "backend": rows[3]["backend"] = "portal-fallback"
-            elif case == "geometry": rows[3]["width"] = 640
-            elif case == "clock": rows[3]["begin_monotonic_ns"] = "1"
-            elif case == "position": rows[3]["markers"][0]["x"] = 700
-            elif case == "boolean-id": rows[3]["markers"][0]["frame"] = True
+            if case == "missing":
+                rows[3]["markers"] = []
+            elif case == "backend":
+                rows[3]["backend"] = "portal-fallback"
+            elif case == "geometry":
+                rows[3]["width"] = 640
+            elif case == "clock":
+                rows[3]["begin_monotonic_ns"] = "1"
+            elif case == "position":
+                rows[3]["markers"][0]["x"] = 700
+            elif case == "boolean-id":
+                rows[3]["markers"][0]["frame"] = True
             host = SimpleNamespace(run=lambda *args, **kwargs: SimpleNamespace(returncode=0, stderr="", stdout="\n".join(json.dumps(row) for row in rows)))
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 arguments = (host, {"uid": 1001, "gid": 1001}, Path(temporary), "plasma",
@@ -93,7 +99,8 @@ class CommonInputCalibration(unittest.TestCase):
                 if case == "good":
                     self.assertEqual(len(collect_capture(*arguments)), 12)
                 else:
-                    with self.assertRaises(BenchError): collect_capture(*arguments)
+                    with self.assertRaises(BenchError):
+                        collect_capture(*arguments)
 
 
 if __name__ == "__main__":

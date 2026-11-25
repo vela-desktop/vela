@@ -7,7 +7,6 @@ import os
 from pathlib import Path
 import signal
 import stat
-import struct
 import tempfile
 from types import SimpleNamespace
 import unittest

@@ -28,8 +28,8 @@ class SessionProfile(unittest.TestCase):
         patch('vela_bench.session_profile.trusted').start()
         patch('vela_bench.session_profile.os.chown').start()
 
-    def prepare(self):
-        return prepare_profile(self.layout, {'uid': 1001, 'gid': 1001}, autostart_inventory(self.layout))
+    def prepare(self, target='vela'):
+        return prepare_profile(self.layout, {'uid': 1001, 'gid': 1001}, autostart_inventory(self.layout), target=target)
 
     def test_core_services_remain_and_accessory_autostarts_are_overridden_only_in_reserved_profile(self):
         before = {path: path.read_bytes() for path in self.entries.iterdir()}
@@ -53,6 +53,20 @@ class SessionProfile(unittest.TestCase):
         self.assertIn('CriticalInDndMode=false', plasma)
         self.assertIn('[DoNotDisturb][$i]', plasma)
 
+    def test_vela_secret_backend_is_an_explicit_kwallet_selection(self):
+        config = self.layout.home / '.config'
+        self.assertNotIn('secret_backend', self.prepare('plasma'))
+        self.assertFalse((config / 'vela/vela.conf').exists())
+
+        self.assertEqual(self.prepare('vela')['secret_backend'], 'kwallet')
+        selector = Path(__file__).resolve().parents[2] / 'session/credential-compat/select-backend'
+        selected = subprocess.run(
+            ['/bin/sh', '-c', '. "$1"; printf "%s %s\\n" "$VELA_SECRET_BACKEND" "$VELA_SECRET_CONFIGURED"',
+             'test', str(selector)], env={'XDG_CONFIG_HOME': str(config)},
+            capture_output=True, text=True, check=True, timeout=5,
+        )
+        self.assertEqual(selected.stdout, 'kwallet 1\n')
+
     def test_inventory_binds_system_entries_and_changes_when_updater_changes(self):
         before = autostart_inventory(self.layout)
         item = next(row for row in before if row['name'] == 'arch-update-tray.desktop')
@@ -69,7 +83,7 @@ class SessionProfile(unittest.TestCase):
             changed = copy.deepcopy(inventory)
             next(row for row in changed if row['name'] == 'arch-update-tray.desktop')[key] = value
             with self.subTest(key=key, value=value), self.assertRaisesRegex(BenchError, 'frozen autostart'):
-                prepare_profile(self.layout, {'uid': 1001, 'gid': 1001}, changed)
+                prepare_profile(self.layout, {'uid': 1001, 'gid': 1001}, changed, target='vela')
         self.assertEqual(list(self.layout.home.iterdir()), [])
 
     def test_real_systemd_generator_suppresses_updater_and_preserves_core_entry(self):
@@ -77,14 +91,16 @@ class SessionProfile(unittest.TestCase):
                         '/lib/systemd/user-generators/systemd-xdg-autostart-generator') if Path(path).is_file()), None)
         if generator is None:
             self.skipTest('systemd XDG autostart generator unavailable')
-        runtime = self.layout.path('runtime'); runtime.mkdir(mode=0o700)
+        runtime = self.layout.path('runtime')
+        runtime.mkdir(mode=0o700)
         env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(self.layout.home),
                'XDG_CONFIG_HOME': str(self.layout.home / '.config'), 'XDG_CONFIG_DIRS': str(self.entries.parent),
                'XDG_RUNTIME_DIR': str(runtime), 'XDG_CURRENT_DESKTOP': 'KDE'}
         def generate(label):
             destination = self.layout.path(label)
             destinations = [destination / name for name in ('normal', 'early', 'late')]
-            for path in destinations: path.mkdir(parents=True)
+            for path in destinations:
+                path.mkdir(parents=True)
             result = subprocess.run([generator, *map(str, destinations)], env=env, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             return {p.name for p in destination.rglob('*.service')}
