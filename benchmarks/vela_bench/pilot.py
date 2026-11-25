@@ -689,7 +689,7 @@ def worker(host, layout=Layout()):
                 update(directory, state, "prepare", target=target)
                 stop_user(host, record, layout)
                 reset_profile(host, record, layout)
-                profile = prepare_profile(layout, record, state['plan'].get('autostart_inventory', []))
+                profile = prepare_profile(layout, record, state['plan'].get('autostart_inventory', []), target=target)
                 atomic_json(directory / f"{target}-desktop-profile.json", profile)
                 cursor_profile = prepare_cursor_profile(layout, record)
                 atomic_json(directory / f"{target}-cursor-profile.json", cursor_profile)

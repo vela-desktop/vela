@@ -75,11 +75,14 @@ def audit_pilot(directory, target, fault=None, *, instruments=True):
             flags = vela_environment(state['plan'].get('vela_sync_test', False))
             checks['vela_runtime_profile'] = (state['plan'].get('vela_runtime_environment', {}) == flags
                 and session.get('vela_runtime_environment') == (flags if target == 'vela' else {}))
-        if state.get('plan', {}).get('desktop_profile_policy'):
-            from .session_profile import POLICY
+        profile_policy = state.get('plan', {}).get('desktop_profile_policy')
+        if profile_policy:
+            from .session_profile import LEGACY_POLICY, POLICY
             profile = read_json(directory / f'{target}-desktop-profile.json')
             inventory = state['plan'].get('autostart_inventory')
-            checks['quiet_desktop_profile'] = (profile.get('policy') == POLICY
+            checks['quiet_desktop_profile'] = (profile_policy in (LEGACY_POLICY, POLICY)
+                and profile.get('policy') == profile_policy
+                and profile.get('secret_backend') == (profile_policy.get('vela_secret_backend') if target == 'vela' else None)
                 and profile.get('autostart_inventory') == inventory
                 and profile.get('disabled_autostarts') == sorted({row['name'] for row in inventory if not row['allowed']}))
         if state.get('plan', {}).get('input_policy'):

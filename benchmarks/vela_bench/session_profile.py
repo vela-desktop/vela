@@ -21,8 +21,9 @@ CORE_AUTOSTART = (
     'pam_kwallet_init.desktop', 'polkit-kde-authentication-agent-1.desktop',
     'powerdevil.desktop', 'xembedsniproxy.desktop', 'xdg-user-dirs.desktop',
 )
-POLICY = {'version': 'core-autostart-quiet-profile-v1', 'allowed_autostarts': list(CORE_AUTOSTART),
-          'notifications': 'do-not-disturb', 'personal_settings': 'disposable-reserved-home-only'}
+LEGACY_POLICY = {'version': 'core-autostart-quiet-profile-v1', 'allowed_autostarts': list(CORE_AUTOSTART),
+                 'notifications': 'do-not-disturb', 'personal_settings': 'disposable-reserved-home-only'}
+POLICY = dict(LEGACY_POLICY, version='core-autostart-quiet-profile-v2', vela_secret_backend='kwallet')
 
 
 def autostart_inventory(layout):
@@ -44,12 +45,17 @@ def autostart_inventory(layout):
     return inventory
 
 
-def prepare_profile(layout, record, inventory):
+def prepare_profile(layout, record, inventory, *, target):
     # These files are created before the reserved user or its manager starts.
     payload = {Path('.config/Vela/vela-shell.conf'): b'[notifications]\ndoNotDisturb=true\n',
         Path('.config/plasmanotifyrc'): (
             b'[DoNotDisturb][$i]\nUntil=2099,12,31,23,59,59,UTC\nNotificationSoundsMuted=true\n'
             b'[Notifications][$i]\nCriticalInDndMode=false\n')}
+    profile = {'policy': POLICY, 'autostart_inventory': inventory}
+    if target == 'vela':
+        backend = POLICY['vela_secret_backend']
+        payload[Path('.config/vela/vela.conf')] = f'secret-backend={backend}\n'.encode()
+        profile['secret_backend'] = backend
     disabled = []
     for entry in inventory:
         name = entry.get('name')
@@ -66,4 +72,4 @@ def prepare_profile(layout, record, inventory):
         path.write_bytes(data)
     for path in layout.home.rglob('*'):
         os.chown(path, record['uid'], record['gid'])
-    return {'policy': POLICY, 'autostart_inventory': inventory, 'disabled_autostarts': sorted(set(disabled))}
+    return dict(profile, disabled_autostarts=sorted(set(disabled)))

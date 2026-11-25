@@ -1033,7 +1033,9 @@ so an early setup failure can yield to the next independent block after verified
 restoration. Missing release evidence after possible acquisition still blocks
 continuation. A no-acquisition receipt never qualifies a measured or fault block.
 
-New disposable profiles select Do Not Disturb for both Vela and Plasma and use
+New disposable Vela profiles explicitly select KWallet before login, so the
+first-login password manager chooser does not appear during a benchmark.
+Disposable profiles select Do Not Disturb for both Vela and Plasma and use
 per-user XDG `Hidden=true` overrides for system autostart applications outside
 a fixed core-session allowlist. This excludes updater trays, distro reminders,
 indexers and companion apps while retaining the shell, accessibility, power,
