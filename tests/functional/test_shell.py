@@ -1980,13 +1980,20 @@ class QtShell(RealShell):
         state = self.vela.wait_for(lambda s: s["focused"] == window and s.window(window)["fullscreen"],
                                    what="a fullscreen window on the second display")
         self.assertEqual(state.window(window)["output"], "HEADLESS-2")
+        def open_and_close(key, namespace):
+            # One virtual keyboard per scene: a new one sends its keymap first
+            # and can lose the Escape, or take the keyboard from the panel.
+            with self.input_session() as send:
+                send("key", key)
+                state = self.vela.wait_for(lambda s: self.layer(s, namespace) and s["focusedLayer"] == namespace,
+                                           what=f"{namespace} open and focused")
+                send("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+            return self.layer(state, namespace)["output"]
+
         for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings")):
             with self.subTest(panel=namespace):
-                self.vela.input("key", key)
-                state = self.vela.wait_for(lambda s: self.layer(s, namespace), what=f"{namespace} open")
-                self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-2")
-                self.vela.input("key", "Escape")
-                self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+                self.assertEqual(open_and_close(key, namespace), "HEADLESS-2")
         # Restart the real receiver with the same focused fullscreen client.
         self.shell.kill()
         self.shell.wait(timeout=5 * TIME_SCALE)
@@ -1996,11 +2003,7 @@ class QtShell(RealShell):
             lambda s: s["focused"] == window and any(layer["namespace"] == "vela-wallpaper"
                 and layer["mapped"] and layer["output"] == "HEADLESS-2" for layer in s["layers"]),
             what="fullscreen still focused and replacement shell mapped on secondary output")
-        self.vela.input("key", "super")
-        state = self.vela.wait_for(lambda s: self.layer(s, "vela-start-menu"), what="Start after shell restart")
-        self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
-        self.vela.input("key", "Escape")
-        self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), what="Start closed")
+        self.assertEqual(open_and_close("super", "vela-start-menu"), "HEADLESS-2")
         self.vela.command("test-output remove HEADLESS-2")
         self.vela.wait_for(lambda s: len(s["outputs"]) == 1, what="secondary display removed")
         self.vela.input("key", "super+a")
