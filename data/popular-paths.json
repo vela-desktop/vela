@@ -1,30 +1,30 @@
 {
-  "collected_at": "2026-11-24T13:41:25+00:00",
+  "collected_at": "2026-11-25T12:52:42+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 494,
+      "count": 437,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 189
+      "uniques": 145
     },
     {
-      "count": 110,
+      "count": 104,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 20
+      "uniques": 14
     },
     {
-      "count": 54,
+      "count": 58,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 5
+      "uniques": 3
     },
     {
-      "count": 33,
+      "count": 32,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 8
+      "uniques": 7
     },
     {
       "count": 21,
@@ -46,15 +46,15 @@
     },
     {
       "count": 11,
-      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
-      "title": "/blob/main/docs/installation.md",
-      "uniques": 8
+      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
+      "title": "/releases/tag/v0.1.2",
+      "uniques": 10
     },
     {
       "count": 11,
-      "path": "/vela-desktop/vela/blob/main/docs/development.md",
-      "title": "/blob/main/docs/development.md",
-      "uniques": 6
+      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
+      "title": "/blob/main/docs/installation.md",
+      "uniques": 8
     },
     {
       "count": 10,
