@@ -283,9 +283,7 @@ class SlowWatcher(BrightnessTest):
         # This stream contains 3001 commands, possibly spanning many event
         # loop reads. A query on ANOTHER socket may leapfrog its queued tail:
         # start the confirmation timer only once the entire originating
-        # stream has been consumed. The first same-socket reply can precede
-        # commands in its own read batch, but a second round trip cannot.
-        commands.query("brightness")
+        # stream has been consumed. Requests on one connection run in order.
         applied = commands.query("brightness")
         current = applied["outputs"][0]
         self.assertEqual(current["seq"], 3001,

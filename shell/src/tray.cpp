@@ -223,6 +223,7 @@ struct TrayModel::Item {
     QString title;
     QString key; // what the user's choice is saved by: Id, or the title
     QString status;
+    QImage pixmap;
     QString icon; // source for Image
     QString menuPath;
     bool itemIsMenu = false;
@@ -372,22 +373,35 @@ void TrayModel::refresh(Item* item)
         const bool attention = item->status == QLatin1String("NeedsAttention");
         const QString themePath = properties.value(QStringLiteral("IconThemePath")).toString();
         QString name = properties.value(QLatin1String(attention ? "AttentionIconName" : "IconName")).toString();
-        QImage image = decodePixmaps(properties.value(QLatin1String(attention ? "AttentionIconPixmap" : "IconPixmap")));
+        QImage image;
+        if (name.isEmpty()) {
+            image = decodePixmaps(properties.value(QLatin1String(attention ? "AttentionIconPixmap" : "IconPixmap")));
+        }
         if (attention && name.isEmpty() && image.isNull()) {
             name = properties.value(QStringLiteral("IconName")).toString();
-            image = decodePixmaps(properties.value(QStringLiteral("IconPixmap")));
+            if (name.isEmpty()) image = decodePixmaps(properties.value(QStringLiteral("IconPixmap")));
         }
         if (!name.isEmpty()) {
+            item->pixmap = {};
             item->icon = iconSource(name, themePath);
         } else if (!image.isNull()) {
             const QString key = QString::number(++m_serial);
-            m_pixmaps.insert(key, image);
+            item->pixmap = std::move(image);
             item->icon = QStringLiteral("image://tray/") + key;
         }
         item->loaded = true;
         const int row = rowOf(item);
         Q_EMIT dataChanged(index(row), index(row));
     });
+}
+
+QImage TrayModel::pixmap(const QString& key) const
+{
+    const QString url = QStringLiteral("image://tray/") + key;
+    for (const auto& item : m_items) {
+        if (item->icon == url) return item->pixmap;
+    }
+    return {};
 }
 
 int TrayModel::rowOf(const Item* item) const

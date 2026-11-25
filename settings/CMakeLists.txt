@@ -215,7 +215,7 @@ install(FILES vela-settings.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applica
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-settings SOURCE_TARGETS vela-settings vela-displays vela-controls vela-bluetooth-client vela-bluetooth-ui vela-updates-client
-    TS_FILES i18n/vela-settings_it.ts
+    TS_FILES i18n/vela-settings_it.ts i18n/vela-settings_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-settings_lupdate
     LRELEASE_TARGET vela-settings_lrelease

@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           docker run --rm --entrypoint /bin/sh vela-nvidia-ci-preflight -ec '
-            for tool in runuser sha256sum cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus; do
+            for tool in runuser sha256sum cmake ninja vulkaninfo Xwayland xrandr xrdb xprop dbus-daemon gdbus xdg-terminal-exec; do
               command -v "$tool" >/dev/null || { echo "missing: $tool"; exit 1; }
             done
             for tool in ffmpeg ffprobe pipewire wireplumber pw-cat pw-dump unshare; do

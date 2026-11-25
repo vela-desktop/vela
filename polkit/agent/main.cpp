@@ -269,6 +269,8 @@ int main(int argc, char* argv[])
         setenv("LANG", "it_IT.UTF-8", true);
     } else if (language == "en") {
         setenv("LANG", "en_US.UTF-8", true);
+    } else if (language == "pt") {
+        setenv("LANG", "pt_BR.UTF-8", true);
     }
     if (!language.empty()) {
         unsetenv("LANGUAGE");

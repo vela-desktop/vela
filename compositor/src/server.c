@@ -473,7 +473,6 @@ bool vela_server_start(struct vela_server *server, const char *startup_command)
     vela_polkit_agent_start(server);
     // Initial state first: a restarted compositor must not allow pairing
     // during the brief interval before the Bluetooth child starts.
-    vela_bluetooth_report_lock(server, server->locked);
     vela_bluetooth_start(server);
     vela_updates_start(server);
     vela_brightness_start(server);

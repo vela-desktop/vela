@@ -15,9 +15,11 @@ import re
 import shutil
 import socket
 import subprocess
+import struct
 import time
 import sys
 import unittest
+import zlib
 
 from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, tool
 
@@ -76,7 +78,7 @@ class RealShell(unittest.TestCase):
             file.write(self.wallpaper)
         env = dict(self.vela.client_env, QT_QPA_PLATFORM="wayland",
                    QT_WAYLAND_SHELL_INTEGRATION="layer-shell", QT_WAYLAND_RECONNECT="0",
-                   QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded", QSG_RHI_BACKEND="opengl",
+                   QT_FORCE_STDERR_LOGGING="1", QSG_RENDER_LOOP="threaded",
                    WAYLAND_DEBUG="client", VELA_WALLPAPER=wallpaper,
                    VELA_DEBUG_SELECTION="1", **self.shell_env)
         # Check with this private HOME/config/bus, not the developer's theme
@@ -103,6 +105,7 @@ class RealShell(unittest.TestCase):
         self.assertTrue(self.mapped(state, "vela-taskbar"))
         self.assertTrue(self.mapped(state, "vela-wallpaper"))
         self.assertNotIn("layer_surface has never been configured", self.vela.log_text())
+        self.assertIn("vela-shell: Qt Quick renders with Vulkan", self.vela.log_text())
 
     def slow_animations(self):
         """animation-duration=300 (Settings' slider), so captures land inside
@@ -135,6 +138,58 @@ class RealShell(unittest.TestCase):
         with socket.socket(socket.AF_UNIX) as connection:
             connection.connect(path)
             connection.sendall(line.encode() + b"\n")
+
+
+@unittest.skipUnless(shutil.which("wl-paste"), "wl-paste needed to read the selected PNG")
+class ClipboardHistory(RealShell):
+    shell_settings = "[clipboard]\nhistory=true\n"
+
+    def prepare_shell(self):
+        directory = os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard")
+        os.makedirs(directory)
+        # The previous shell wrote numbered PNG files. Include ancillary data
+        # so decoding and re-encoding the right pixels would still fail.
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+        width, height = 800, 360
+        self.png = (b"\x89PNG\r\n\x1a\n"
+                    + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                    + chunk(b"tEXt", b"Title\0Original clipboard bytes")
+                    + chunk(b"IDAT", zlib.compress((b"\0" + b"\x20\x60\xe0" * width) * height))
+                    + chunk(b"IEND", b""))
+        with open(os.path.join(directory, "1.png"), "wb") as image:
+            image.write(self.png)
+        with open(os.path.join(directory, "pinned.json"), "w") as manifest:
+            json.dump([{"text": f"Pin {i}"} for i in range(16)] + [{"image": "1.png"}], manifest)
+
+    def test_paste_a_legacy_pin_beyond_the_viewport(self):
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 16 + ["key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+
+    def test_delete_selects_the_next_pin(self):
+        # Del on "Pin 15", at the bottom of the view: the selection moves to
+        # the image after it, which Enter then pastes.
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 15 + ["key", "Delete", "key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+        with open(os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard", "pinned.json")) as manifest:
+            texts = [entry.get("text") for entry in json.load(manifest)]
+        self.assertNotIn("Pin 15", texts)
+        self.assertIn("Pin 14", texts)
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
@@ -517,9 +572,12 @@ class CustomShortcuts(RealShell):
         os.makedirs(bin_dir)
         opener = os.path.join(bin_dir, "xdg-open")
         with open(opener, "w") as file:
-            file.write(f'#!/bin/sh\nprintf "%s" "$1" > {self.marks}/opened\n')
+            file.write(f'#!/bin/sh\nprintf "%s" "$QSG_RHI_BACKEND/$QT_QUICK_BACKEND" > {self.marks}/backend\n'
+                       f'printf "%s" "$1" > {self.marks}/opened\n')
         os.chmod(opener, 0o700)
-        self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin")}
+        # The shell requires Vulkan even when launched apps request a different backend.
+        self.shell_env = {"PATH": bin_dir + ":" + os.environ.get("PATH", "/usr/bin:/bin"),
+                          "QSG_RHI_BACKEND": "opengl", "QT_QUICK_BACKEND": "software"}
         applications = os.path.join(self.vela.env["XDG_DATA_HOME"], "applications")
         os.makedirs(applications, exist_ok=True)
         with open(os.path.join(applications, "vela-test-shortcut.desktop"), "w") as file:
@@ -566,7 +624,9 @@ class CustomShortcuts(RealShell):
             # shortcut, and nothing runs.
             send("key", "ctrl+alt+2")
             time.sleep(0.5 * TIME_SCALE)
-        self.assertEqual(sorted(os.listdir(self.marks)), ["app", "command", "opened"])
+        self.wait_for_text("backend", "opengl/software", "the launched process kept its Qt settings")
+        self.check_desktop()
+        self.assertEqual(sorted(os.listdir(self.marks)), ["app", "backend", "command", "opened"])
         self.assertIn("Custom shortcuts: line 5", self.vela.log_text())
 
     def test_vela_keeps_its_own(self):
@@ -1663,7 +1723,7 @@ class QtShell(RealShell):
             self.assertLess(configure.start(), ack.start())
             self.assertLess(ack.start(), attach.start())
             self.assertRegex(log, rf'wl_surface{surface}\.destroy\(\)',
-                          "hidden Start menu retained its native surface and EGL buffer queue")
+                          "hidden Start menu retained its native surface and buffer queue")
             # Blur must bind to the newly created surface on every reopening,
             # rather than retain hooks to a destroyed Qt platform window.
             effect = re.search(r'get_background_effect\(new id ext_background_effect_surface_v1'

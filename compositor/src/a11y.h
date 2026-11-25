@@ -41,6 +41,9 @@ struct vela_a11y {
     char schedule[16]; // "no", "sunset" (from sunset to sunrise), "hours"
     int night_from; // minutes after midnight
     int night_to;
+    char zone[256]; // refreshed on reload and by the schedule timer
+    bool has_coordinates;
+    double latitude, longitude;
     char schedule_key[64]; // the schedule read last time
     int scheduled; // what the schedule said last time (-1: unknown)
     // The gradual change between off (0) and on (1).

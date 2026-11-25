@@ -318,7 +318,10 @@ class WinEnter(unittest.TestCase):
     def start(self, path=None, variable=""):
         # The system's directories stay: Vulkan finds its drivers there.
         system = os.environ.get("XDG_DATA_DIRS") or "/usr/local/share:/usr/share"
-        self.vela = Session(env={"XDG_DATA_DIRS": f"{self.share}:{system}", "PATH": path or self.bin,
+        # A headless compositor inherits the desktop name. Model the Vela
+        # session so xdg-terminal-exec reads vela-xdg-terminals.list.
+        self.vela = Session(env={"XDG_CURRENT_DESKTOP": "Vela:KDE",
+                                 "XDG_DATA_DIRS": f"{self.share}:{system}", "PATH": path or self.bin,
                                  "VELA_TERMINAL": variable})
         self.vela.start()
         self.addCleanup(self.vela.stop)
