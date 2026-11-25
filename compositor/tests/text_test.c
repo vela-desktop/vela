@@ -864,12 +864,11 @@ static void loads_configured_title_font(void)
 
     // Keep font matching independent of the machine's fonts and settings.
     FcConfig *config = FcConfigCreate();
-    CHECK(config && FcConfigSetCurrent(config));
-    CHECK(vela_text_create() == NULL);
-
+    CHECK(config);
     char path[PATH_MAX];
     font_path(path, sizeof(path), "NotoSans-Regular-subset.ttf");
     CHECK(FcConfigAppFontAddFile(config, (const FcChar8 *)path));
+    CHECK(FcConfigSetCurrent(config));
     struct vela_text *text = vela_text_create();
     CHECK(text && vela_text_pixel_size(text) == 16.0);
     struct vela_text *bundled = vela_text_create_file(path, 0, 12.0);
@@ -887,6 +886,8 @@ static void loads_configured_title_font(void)
     vela_image_finish(&expected);
     vela_text_destroy(bundled);
     vela_text_destroy(text);
+    FcConfigAppFontClear(config);
+    CHECK(vela_text_create() == NULL);
     FcConfigDestroy(config);
     FcFini();
     CHECK(unlink(kdeglobals) == 0);
