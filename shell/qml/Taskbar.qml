@@ -460,12 +460,20 @@ Window {
         return entries
     }
 
+    // Win+X opens from the taskbar of the display in use (Shell.panelScreen),
+    // or from the main one's when that display has no taskbar.
+    Connections {
+        target: Shell
+        function onWinXRequested() {
+            const active = Shell.panelScreen()
+            const target = Config.taskbarAllScreens && Qt.application.screens.some(s => s.name === active)
+                ? active : Shell.primaryScreen
+            if (root.screenName === target) root.openWinX(true)
+        }
+    }
     Connections {
         target: Shell
         enabled: root.primary
-        function onWinXRequested() {
-            root.openWinX(true)
-        }
         function onShowDesktopRequested() {
             Tasks.toggleDesktop()
         }
@@ -759,7 +767,11 @@ Window {
                             wheelRest += delta
                             while (Math.abs(wheelRest) >= 120) {
                                 root.fromHere()
-                                if (!Sound.stepTaskVolume(desktopId, wheelRest > 0 ? 1 : -1)) {
+                                const stepped = Sound.stepTaskVolume(desktopId, wheelRest > 0 ? 1 : -1)
+                                // The indicator took the output if it opened; if not (the
+                                // app plays nothing), the next panel must not get it.
+                                Menus.panelScreen = ""
+                                if (!stepped) {
                                     wheelRest = 0
                                     return
                                 }
@@ -1478,6 +1490,10 @@ Window {
                 while (Math.abs(wheelRest) >= 120) {
                     root.fromHere()
                     Sound.press(wheelRest > 0 ? "up" : "down")
+                    // Unused when no indicator opened (no audio, quick settings
+                    // open): the next panel opened from the keyboard must not
+                    // get this taskbar's output.
+                    Menus.panelScreen = ""
                     wheelRest -= wheelRest > 0 ? 120 : -120
                 }
             }

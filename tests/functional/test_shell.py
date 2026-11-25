@@ -1969,7 +1969,7 @@ class QtShell(RealShell):
 
     def test_panels_opened_from_the_keyboard_follow_the_focused_display(self):
         """The volume indicator, Start and quick settings belong on the display
-        the user is working on, like Windows: with a fullscreen video on the
+        the user is working on: with a fullscreen video on the
         second monitor they would otherwise open on the first one, where nobody
         is looking (the volume keys seem to do nothing)."""
         self.vela.command("test-output add 1920x1080")
@@ -1991,7 +1991,8 @@ class QtShell(RealShell):
                 self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
             return self.layer(state, namespace)["output"]
 
-        for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings")):
+        for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings"),
+                               ("super+x", "vela-context-menu")):
             with self.subTest(panel=namespace):
                 self.assertEqual(open_and_close(key, namespace), "HEADLESS-2")
         # Restart the real receiver with the same focused fullscreen client.
@@ -2010,6 +2011,56 @@ class QtShell(RealShell):
         state = self.vela.wait_for(lambda s: self.layer(s, "vela-quick-settings"),
                                    what="quick settings after hotplug")
         self.assertEqual(self.layer(state, "vela-quick-settings")["output"], "HEADLESS-1")
+        self.check_desktop()
+
+
+class KeyboardPanelsWithoutAudio(RealShell):
+    """Panels opened from the keyboard with no audio service: the wheel on
+    the volume icon shows no indicator. PipeWire points nowhere, so nothing
+    here can change this machine's volume."""
+
+    shell_env = {"PIPEWIRE_RUNTIME_DIR": "/nonexistent/vela-test-pipewire",
+                 "PIPEWIRE_REMOTE": "vela-test-no-pipewire"}
+
+    def test_alt_tab_and_the_taskbar_wheel_leave_the_display_in_use(self):
+        """Alt+Tab opens on the focused window's display too. The wheel on
+        the main taskbar's volume icon, with no indicator to show, must not
+        leave that taskbar's display to the next panel opened from the
+        keyboard."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.input("move", second["x"] + 300, second["y"] + 300)
+        first = self.vela.open_window(400, 300)
+        other = self.vela.open_window(400, 300)
+        self.vela.wait_for(lambda s: s["focused"] == other and s.window(first)["output"] == "HEADLESS-2"
+                           and s.window(other)["output"] == "HEADLESS-2", what="two windows on the second display")
+        def main_bar(s):
+            return next((layer for layer in s["layers"] if layer["namespace"] == "vela-taskbar"
+                         and layer["mapped"] and layer["output"] == "HEADLESS-1"), None)
+        bar = main_bar(self.vela.wait_for(main_bar, what="the main taskbar"))
+        with self.input_session() as send:
+            send("keydown", "alt", "key", "Tab")
+            state = self.vela.wait_for(lambda s: self.layer(s, "vela-switcher"), what="Alt+Tab shown")
+            self.assertEqual(self.layer(state, "vela-switcher")["output"], "HEADLESS-2")
+            send("keyup", "alt")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-switcher"), timeout=5, what="Alt+Tab closed")
+            focused = self.vela.state()["focused"]
+            self.assertIn(focused, (first, other))
+            # The volume icon, just left of the clock on the main taskbar.
+            x, y = bar["x"] + bar["w"] - 110, bar["y"] + bar["h"] // 2
+            send("move", x, y, "sleep", 300, "move", x + 1, y, "sleep", 300, "scroll", 1, "sleep", 300)
+            self.assertFalse(self.mapped(self.vela.state(), "vela-volume-osd"), "an audio service answered")
+            # Back on the second display's window, the keyboard opens Start.
+            send("move", second["x"] + 300, second["y"] + 300, "sleep", 200)
+            self.vela.wait_for(lambda s: s["focused"] == focused, what="focus unchanged")
+            send("key", "super")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-start-menu") and s["focusedLayer"] == "vela-start-menu",
+                what="Start open and focused")
+            self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
         self.check_desktop()
 
 

@@ -31,8 +31,9 @@ Window {
         id: showDelay
         interval: 100
         onTriggered: {
-            // Alt+Tab has no taskbar origin: always use the primary output.
-            Shell.placeOnScreen(root, Shell.primaryScreen)
+            // On the display in use (the focused window's, as the compositor
+            // said with switcher-show), else the main one.
+            Shell.placeOnScreen(root, Shell.panelScreen())
             root.visible = true
             motion.open()
             Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
