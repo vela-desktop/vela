@@ -55,6 +55,7 @@ struct vela_lock {
     struct vela_output **waiting;
     int waiting_count;
     int waiting_capacity;
+    struct wl_list exiting_launchers; // clean unlocks waiting for their clients to finish
     pid_t launcher_pid; // child process group for a pending locker launch
     // The Wayland connection handed to that launch (WAYLAND_SOCKET). While
     // Vela holds the screen locked, only this client may take the lock: any

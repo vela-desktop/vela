@@ -145,6 +145,7 @@ private slots:
     void initTestCase()
     {
         qDBusRegisterMetaType<Picture>();
+        qDBusRegisterMetaType<QList<Picture>>();
         qDBusRegisterMetaType<ToolTip>();
         qDBusRegisterMetaType<MenuNode>();
         m_tray = new TrayModel(this);
@@ -207,6 +208,36 @@ private slots:
         QSignalSpy entries(&tray, &TrayModel::entriesChanged);
         QTRY_COMPARE_WITH_TIMEOUT(tray.entries().size(), 0, 3000);
         QVERIFY(entries.count() > 0);
+    }
+
+    void onlyTheDisplayedPixmapIsRetained()
+    {
+        auto pictures = [](char value) {
+            return QVariant::fromValue(QList<Picture> { { 32, 32, QByteArray(32 * 32 * 4, value) } });
+        };
+        const QString id = QStringLiteral("pixmap-test");
+        auto props = properties(id, id);
+        props.remove(QStringLiteral("IconName"));
+        props.insert(QStringLiteral("IconPixmap"), pictures('a'));
+        auto key = [&] { return entryFor(*m_tray, id).value(QStringLiteral("icon")).toString().section(u'/', -1); };
+        QString lastKey;
+        {
+            FakeItem item(id, props);
+            item.registerWith(QStringLiteral("/StatusNotifierItem"));
+            QTRY_VERIFY(!m_tray->pixmap(key()).isNull());
+            const QString first = key();
+            item.set(QStringLiteral("IconPixmap"), pictures('b'));
+            QTRY_VERIFY(key() != first);
+            QCOMPARE(m_tray->pixmap(key()).pixel(0, 0), QRgb(0x62626262));
+            QVERIFY(m_tray->pixmap(first).isNull());
+            const QString second = key();
+            item.set(QStringLiteral("IconName"), QStringLiteral("dialog-information"));
+            QTRY_VERIFY(m_tray->pixmap(second).isNull());
+            item.set(QStringLiteral("IconName"), QString());
+            QTRY_VERIFY(!m_tray->pixmap(key()).isNull());
+            lastKey = key();
+        }
+        QTRY_VERIFY(m_tray->pixmap(lastKey).isNull());
     }
 
     void theRightClickMenu()

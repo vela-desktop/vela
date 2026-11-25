@@ -39,7 +39,11 @@ void main()
     // The background read already has the output's filter (if any): only the
     // tint takes it here.
     c = c * (1.0 - pc.color.a) + colorFilter(pc.color).rgb; // tint
-    c += (noise(gl_FragCoord.xy) - 0.5) * (2.0 / 255.0);
+    // One encoded 8-bit step, expressed locally in the linear blend space.
+    // The inverse slope of the sRGB transfer function is constant near black.
+    vec3 linearPerStep = mix((2.4 / 1.055) * pow(max(c, 0.0), vec3(1.0 - 1.0 / 2.4)),
+                             vec3(1.0 / 12.92), lessThanEqual(c, vec3(0.0031308)));
+    c += (noise(gl_FragCoord.xy) - 0.5) * (2.0 / 255.0) * linearPerStep;
     c = max(c, 0.0);
     const float opaqueFrom = (pc.flags & 16u) != 0u ? 0.04 : 0.5;
     const float coverage = smoothstep(0.0, opaqueFrom, texture(mask, uv).a) * shapeClip() * pc.alpha;

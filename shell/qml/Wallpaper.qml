@@ -621,12 +621,16 @@ Window {
                             wrapMode: Text.Wrap
                             maximumLineCount: icon.selected ? 6 : 2
                             elide: Text.ElideRight
-                            layer.enabled: true
+                            layer.enabled: visible
                             layer.effect: MultiEffect {
                                 shadowEnabled: true
                                 shadowColor: "black"
                                 shadowOpacity: 0.9
-                                shadowBlur: 0.25
+                                // Keep the eight-pixel shadow and its original sampling grid,
+                                // without allocating the next blur level for each label.
+                                blurMax: 8
+                                paddingRect: Qt.rect(24, 24, 24, 24)
+                                shadowBlur: 1
                                 shadowHorizontalOffset: 0
                                 shadowVerticalOffset: 1
                             }
