@@ -135,8 +135,16 @@ changes as the desktop evolves. For the complete key reference see
   taskbar (position, filters, badges, tray icons), Start (its icon and pinned apps),
   desktop icons, the clock (date, seconds, 12 or 24 hours) and which entries the context
   menus show.
-- **Apps**: installed and default apps. **Time and language**: date and time, keyboard
-  layouts, and the interface language (English or Italian), switched live.
+- **Apps**: installed and default apps, the terminal included. **Time and language**:
+  date and time, and the interface language (English, Italian or Brazilian
+  Portuguese), switched live.
+- **Keyboard**: every layout the system has (extras and the user's own
+  included), named in Vela's language and found by name, language or
+  country, drawn and tried by typing before it is added; where the layout in use comes from when none is chosen; key
+  repeat; what the Caps Lock key does, a Compose key, swapped Ctrl, Alt
+  and Win, a keypad that always types digits; Num Lock at startup, and
+  Caps Lock and Num Lock shared by every keyboard; custom shortcuts
+  ([design](keyboard.md)).
 - **Accessibility**: magnifier, color filters, sticky keys.
 
 ## Graphics and gaming

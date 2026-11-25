@@ -27,6 +27,8 @@ qt_add_executable(vela-shell
     src/clipboard.h
     src/snip.cpp
     src/snip.h
+    src/shortcutrunner.cpp
+    src/shortcutrunner.h
     src/soundkeys.cpp
     src/soundkeys.h
     src/config.cpp
@@ -156,6 +158,7 @@ set(VELA_QML_FILES
     qml/SmallButton.qml
     qml/NotificationList.qml
     qml/TaskView.qml
+    qml/CapsLockOsd.qml
     qml/DesktopOsd.qml
     qml/VolumeOsd.qml
     qml/SnapLayouts.qml
@@ -166,6 +169,7 @@ set(VELA_QML_FILES
     qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
+    qml/ClipboardList.qml
     qml/SnipOverlay.qml
     qml/ShadowRoom.qml)
 
@@ -184,6 +188,7 @@ qt_add_qml_module(vela-shell
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
 target_link_libraries(vela-shell PRIVATE vela-alloc
+    vela-shortcuts # custom shortcuts' file (common/shortcuts/custom.h)
     Qt6::DBus
     Qt6::Gui
     Qt6::Qml
@@ -385,6 +390,21 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-config COMMAND vela-config-test)
     set_tests_properties(shell-config PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Clipboard history in a private home, offscreen: no compositor, so the
+    # list, its images and the pinned files alone.
+    qt_add_executable(vela-clipboard-test tests/clipboard_test.cpp src/clipboard.cpp src/clipboard.h
+        ${PROJECT_SOURCE_DIR}/common/tests/privatehome.h)
+    # The ext-data-control code generated for vela-shell: after it, as above.
+    add_dependencies(vela-clipboard-test vela-shell)
+    target_sources(vela-clipboard-test PRIVATE ${SHELL_GENERATED_DIR}/ext-data-control-v1-protocol.c)
+    target_include_directories(vela-clipboard-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src
+        ${SHELL_GENERATED_DIR})
+    target_compile_options(vela-clipboard-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-clipboard-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test
+        PkgConfig::SHELL_WAYLAND_CLIENT)
+    add_test(NAME shell-clipboard COMMAND vela-clipboard-test)
+    set_tests_properties(shell-clipboard PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-start-icon-test tests/starticon.cpp src/starticon.h)
     target_include_directories(vela-start-icon-test PRIVATE src)
     target_compile_options(vela-start-icon-test PRIVATE -Wall -Wextra)
@@ -476,7 +496,11 @@ if(VELA_BUILD_TOOLS)
     target_include_directories(vela-notification-image-test PRIVATE src)
     target_compile_options(vela-notification-image-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-notification-image-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
-    add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        add_test(NAME shell-notification-image COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-notification-image-test>)
+    else()
+        add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    endif()
     set_tests_properties(shell-notification-image PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).
@@ -510,7 +534,7 @@ endif()
 #   cmake --build build --target update_translations
 find_package(Qt6 6.7 REQUIRED COMPONENTS LinguistTools)
 qt_add_translations(TARGETS vela-shell SOURCE_TARGETS vela-shell vela-bluetooth-client vela-bluetooth-ui
-    TS_FILES i18n/vela-shell_it.ts
+    TS_FILES i18n/vela-shell_it.ts i18n/vela-shell_pt.ts
     RESOURCE_PREFIX /i18n
     LUPDATE_TARGET vela-shell_lupdate
     LRELEASE_TARGET vela-shell_lrelease

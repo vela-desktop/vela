@@ -131,8 +131,12 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [always-on-top #108](https://github.com/vela-desktop/vela/pull/108).
   Both are older draft PRs requiring compatibility work, review and tests;
   do not merge them solely to satisfy the roadmap.
-- Evaluate configurable initial NumLock state requested in
   [community feedback #214](https://github.com/vela-desktop/vela/issues/214).
+- **Keyboard personalization** ([design](keyboard.md)): a Keyboard section
+  in Settings, a layout picker with every layout, translated names and a
+  preview to type with before adding, Caps Lock/Compose/modifier
+  choices, Num Lock at startup (asked in #214), Caps Lock warnings and
+  display, custom shortcuts and a detected default terminal.
 - Finish the desktop configuration fix
   [#235](https://github.com/vela-desktop/vela/pull/235) /
   [#236](https://github.com/vela-desktop/vela/issues/236).
@@ -173,6 +177,15 @@ keyboard.
   with hardware layouts, manual and touch-triggered invocation,
   docked/floating and specialized layouts, variants/emoji/clipboard,
   secure input and touch-only lock/polkit access.
+- **Keyboard, second pass** (deferred from the 0.2
+  [keyboard design](keyboard.md#14-not-in-scope)): an editor for Vela's own
+  shortcuts; a taskbar layout indicator and on-screen layout switcher; a
+  choice of the layout-switch combination; a layout per window or app and
+  one layout for every keyboard; reordering layouts by dragging and custom
+  labels; the full XKB option list; special keys (Calculator, Mail,
+  Search) bound to Vela's actions; accents on a held key and an emoji
+  picker, with the input methods; keyboard backlight; slow, bounce and
+  mouse keys.
 
 **Validation:** real touchscreen, pen and convertible/tablet testing;
 rotation/scaling and gestures, touch-only unlock and password entry,
@@ -268,7 +281,7 @@ provisional targets.
 | Super+P projection menu, mirroring and improved VRR/animation policy | Unscheduled; physical display validation required |
 | External touchscreen-to-output mapping beyond initial #94 scope | Unscheduled |
 | Start file/settings search and taskbar auto-hide | Unscheduled; optional 0.2 candidates |
-| Emoji picker, keyboard backlight, brightness key OSD and shortcut editor | Unscheduled |
+| Brightness key OSD | Unscheduled; emoji picker, keyboard backlight and shortcut editor proposed for 0.3 |
 | Fullscreen-aware DND and broader grouped notifications beyond Expressive | Unscheduled; screen-sharing DND and Expressive grouping already implemented |
 | Screenshot annotations, Files batch rename, post-crash notification leading to vela-report | Unscheduled |
 | Further Ubuntu updater and package integration validation | Continuous |

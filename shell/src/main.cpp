@@ -38,6 +38,7 @@
 #include "notifications.h"
 #include "servicemenus.h"
 #include "shellcontroller.h"
+#include "shortcutrunner.h"
 #include "snip.h"
 #include "soundkeys.h"
 #include "systemactions.h"
@@ -64,15 +65,22 @@
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QQuickWindow>
+#include <QSGRendererInterface>
 #include <QPointer>
 #include <QScreen>
 #include <QStyleHints>
+#include <QSurfaceFormat>
 #include <QTimer>
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
 
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
+
 #include <cstdio>
 #include <memory>
+#include <mutex>
 
 Q_IMPORT_QML_PLUGIN(Vela_ControlsPlugin)
 Q_IMPORT_QML_PLUGIN(Vela_Bluetooth_UiPlugin)
@@ -112,7 +120,7 @@ private:
 
 void releaseHiddenPanel(QQuickWindow* window)
 {
-    // Qt can retain the wl_surface and its EGL buffers after hide(). A new
+    // Qt can retain the wl_surface and its buffers after hide(). A new
     // layer role then shares that native surface with the previous rendering
     // cycle. Use a fresh surface on reopen, including its configure handshake.
     // Keep the QML window, models and LayerShellQt settings intact.
@@ -178,6 +186,16 @@ void setupTaskbar(QQuickWindow* window, QScreen* screen, const Config* config)
     QObject::connect(window, &QWindow::heightChanged, window, place);
     QObject::connect(window, &QWindow::widthChanged, window, place);
     QObject::connect(config, &Config::taskbarChanged, window, place);
+    QObject::connect(
+        window, &QQuickWindow::sceneGraphInitialized, window,
+        [window] {
+            if (window->rendererInterface()->graphicsApi() != QSGRendererInterface::Vulkan) {
+                qFatal("vela-shell requires the Vulkan scene graph");
+            }
+            static std::once_flag logged;
+            std::call_once(logged, [] { qInfo("vela-shell: Qt Quick renders with Vulkan"); });
+        },
+        Qt::DirectConnection);
 }
 
 void setupWallpaper(QQuickWindow* window, QScreen* screen)
@@ -252,6 +270,8 @@ const Panel panels[] = {
     // mouse (drag, mute, wheel). The window touches the taskbar, the pill
     // rests 12 units above it.
     { "VolumeOsd", "vela-volume-osd", layerOverlay, bottom, 0, keysNone },
+    // Caps Lock on or off, where the volume appears; the mouse goes through.
+    { "CapsLockOsd", "vela-caps-lock-osd", layerOverlay, bottom, 0, keysNone, {}, true },
     // The whole output, transparent: a click outside the panel closes it.
     // The keyboard for Win+Z.
     { "SnapLayouts", "vela-snap-layouts", layerOverlay, fill, -1, keysOnDemand },
@@ -318,14 +338,14 @@ void placeStartMenu(
 }
 
 // The panels whose corner follows the bar's edge and stays there: the
-// notifications in the clock's corner, the volume indicator against the bar
-// (or at the bottom, beside a vertical one).
+// notifications in the clock's corner, the volume indicator and the Caps Lock
+// display against the bar (or at the bottom, beside a vertical one).
 void placeForPosition(QQuickWindow* window, const char* qml, const QString& position)
 {
     LayerWindow* layer = LayerWindow::get(window);
     if (qstrcmp(qml, "NotificationPopups") == 0 || qstrcmp(qml, "ClipboardPanel") == 0) {
         layer->setAnchors(trayCorner(position));
-    } else if (qstrcmp(qml, "VolumeOsd") == 0) {
+    } else if (qstrcmp(qml, "VolumeOsd") == 0 || qstrcmp(qml, "CapsLockOsd") == 0) {
         layer->setAnchors(position == QLatin1String("top") ? LayerWindow::AnchorTop : LayerWindow::AnchorBottom);
     }
 }
@@ -348,8 +368,25 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+#ifdef __GLIBC__
+    // Keep startup allocations from spreading across arenas on large machines.
+    // mallopt is local to the shell and preserves the environment of launched apps.
+    if (!qEnvironmentVariableIsSet("MALLOC_ARENA_MAX")
+        && !qgetenv("GLIBC_TUNABLES").contains("glibc.malloc.arena_max=")) {
+        mallopt(M_ARENA_MAX, 2);
+    }
+#endif
     vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
+    // Select the shell renderer locally so launched applications keep their own Qt settings.
+    QQuickWindow::setSceneGraphBackend(QStringLiteral("rhi"));
+    QQuickWindow::setGraphicsApi(QSGRendererInterface::Vulkan);
+    // A covered layer surface can stop receiving Wayland frame callbacks.
+    // Prefer mailbox so a FIFO present on that surface cannot stall the other
+    // windows during Qt Quick's GUI/render thread synchronization.
+    QSurfaceFormat format = QSurfaceFormat::defaultFormat();
+    format.setSwapInterval(0);
+    QSurfaceFormat::setDefaultFormat(format);
     QGuiApplication::setApplicationName(QStringLiteral("vela-shell"));
     QGuiApplication::setOrganizationName(QStringLiteral("Vela"));
     QGuiApplication::setQuitOnLastWindowClosed(false);
@@ -553,6 +590,9 @@ int main(int argc, char* argv[])
     // The mix follows what plays, unless someone chose otherwise (§8.1).
     audio.applyDefaultSampleRate();
     SoundKeys sound(&audio);
+    // The user's custom shortcuts, matched by the compositor.
+    ShortcutRunner shortcuts(&apps);
+    QObject::connect(&shell, &ShellController::shortcutRequested, &shortcuts, &ShortcutRunner::run);
     QObject::connect(&shell, &ShellController::volumeKeyPressed, &sound, &SoundKeys::press);
     MediaKeys media;
     QObject::connect(&shell, &ShellController::mediaKeyPressed, &media, &MediaKeys::press);
@@ -746,5 +786,22 @@ int main(int argc, char* argv[])
     QObject::connect(&app, &QGuiApplication::primaryScreenChanged, notificationPopups, resyncNotifications);
     refreshNotifications();
 
+#ifdef __GLIBC__
+    // The QML and renderer workers have finished startup once each initial
+    // desktop surface has submitted its first frame. Trim on the GUI thread.
+    int pendingFrames = 0;
+    QObject startupFrames;
+    for (QWindow* surface : QGuiApplication::allWindows()) {
+        auto* window = qobject_cast<QQuickWindow*>(surface);
+        if (!window || !window->isVisible()) continue;
+        ++pendingFrames;
+        QObject::connect(
+            window, &QQuickWindow::frameSwapped, &startupFrames,
+            [&pendingFrames] {
+                if (--pendingFrames == 0) malloc_trim(0);
+            },
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::SingleShotConnection));
+    }
+#endif
     return app.exec();
 }

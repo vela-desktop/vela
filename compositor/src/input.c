@@ -19,6 +19,7 @@
 #include "scene/surface.h"
 #include "server.h"
 #include "shell.h"
+#include "custom.h"
 #include "super_numbers.h"
 #include "util.h"
 
@@ -195,6 +196,83 @@ static void load_super_numbers(struct vela_input *input, const struct vela_confi
     vela_input_hide_super_hints(input);
 }
 
+// shortcuts.conf's combinations; a line that doesn't parse is skipped, with
+// a warning (docs/keyboard.md §9.4). Without the file, or one that can't be
+// opened (the shell couldn't read it either), there are none; a read that
+// fails halfway keeps the ones loaded before.
+static void load_custom_shortcuts(struct vela_input *input)
+{
+    char path[4096];
+    bool missing = !vela_custom_path(path, sizeof(path));
+    FILE *file = missing ? NULL : vela_config_open(path, &missing);
+    if (!file) {
+        if (!missing) {
+            wlr_log(WLR_ERROR, "Custom shortcuts: %s can't be read", path);
+        }
+        free(input->custom);
+        input->custom = NULL;
+        input->custom_count = 0;
+        input->custom_capacity = 0;
+        return;
+    }
+    struct vela_custom_shortcut *custom = NULL;
+    size_t count = 0;
+    size_t capacity_items = 0;
+    char *line = NULL;
+    size_t capacity = 0;
+    ssize_t length = 0;
+    int number = 0;
+    int read = 0;
+    while ((read = vela_read_line(file, &line, &capacity, &length)) > 0) {
+        ++number;
+        while (length > 0 && line[length - 1] == '\n') {
+            line[--length] = '\0';
+        }
+        if (length == 0 || line[0] == '#') {
+            continue;
+        }
+        struct vela_custom_line parsed;
+        struct vela_custom_shortcut shortcut;
+        if (!vela_custom_line_parse(line, (size_t)length, &parsed)
+            || !vela_combo_format(&parsed.combo, shortcut.text, sizeof(shortcut.text))) {
+            wlr_log(WLR_ERROR, "Custom shortcuts: line %d of %s skipped", number, path);
+            continue;
+        }
+        if (count >= VELA_CUSTOM_MAX) {
+            wlr_log(WLR_ERROR, "Custom shortcuts: more than %d, the others are ignored", VELA_CUSTOM_MAX);
+            break;
+        }
+        shortcut.combo = parsed.combo;
+        custom = vela_grow(custom, &capacity_items, count + 1, sizeof(*custom));
+        custom[count++] = shortcut;
+    }
+    free(line);
+    fclose(file);
+    if (read < 0) {
+        wlr_log(WLR_ERROR, "Custom shortcuts: reading %s failed, the previous ones stay", path);
+        free(custom);
+        return;
+    }
+    free(input->custom);
+    input->custom = custom;
+    input->custom_count = count;
+    input->custom_capacity = capacity_items;
+}
+
+// Num Lock at startup, the Caps Lock display and Win alone (docs/keyboard.md
+// §7, §8.3, §10).
+static void load_keyboard_choices(struct vela_input *input, const struct vela_config *settings)
+{
+    const enum vela_numlock mode = vela_numlock_parse(vela_config_get(settings, "numlock", "off"));
+    if (input->numlock != mode) {
+        input->numlock = mode;
+        input->numlock_unsaved = mode == VELA_NUMLOCK_LAST && input->locks_known;
+        vela_keyboard_save_numlock(input);
+    }
+    input->caps_lock_osd = vela_config_flag(settings, "caps-lock-osd", true);
+    input->super_opens_start = vela_config_flag(settings, "super-opens-start", true);
+}
+
 void vela_input_hide_super_hints(struct vela_input *input)
 {
     if (input->super_timer) {
@@ -215,6 +293,8 @@ void vela_input_reload(struct vela_input *input)
         vela_keyboard_apply_settings(keyboard, &settings);
     }
     load_super_numbers(input, &settings);
+    load_keyboard_choices(input, &settings);
+    load_custom_shortcuts(input);
     vela_config_finish(&settings);
     struct wlr_seat *seat = input->server->seat;
     if (seat->keyboard_state.keyboard) {
@@ -933,6 +1013,10 @@ struct vela_input *vela_input_create(struct vela_server *server)
     vela_listen(&server->backend->events.new_input, &input->new_input, handle_new_input);
     struct wlr_seat *seat = VELA_MUST(wlr_seat_create(display, "seat0"));
     server->seat = seat;
+    // The cursor is always there, so the seat has a pointer from the start,
+    // as add_device keeps it: a client that binds wl_pointer only when the
+    // first device appears can miss that device's first button press.
+    wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_POINTER);
     vela_listen(&seat->events.request_set_cursor, &input->request_set_cursor, handle_request_set_cursor);
     vela_listen(&seat->events.request_set_selection, &input->request_set_selection, handle_request_set_selection);
     vela_listen(&seat->events.request_set_primary_selection, &input->request_set_primary_selection,
@@ -954,6 +1038,8 @@ struct vela_input *vela_input_create(struct vela_server *server)
     struct vela_config settings;
     vela_config_read(&settings);
     load_super_numbers(input, &settings);
+    load_keyboard_choices(input, &settings);
+    load_custom_shortcuts(input);
     vela_config_finish(&settings);
     return input;
 }
@@ -963,6 +1049,9 @@ void vela_input_destroy(struct vela_input *input)
     if (!input) {
         return;
     }
+    free(input->custom);
+    input->custom = NULL;
+    input->custom_count = 0;
     // wlroots checks that no listener stays attached to the objects it
     // destroys: keyboards and mice are detached here, before the backend.
     struct vela_keyboard *keyboard, *next_keyboard;
@@ -988,6 +1077,12 @@ void vela_input_destroy(struct vela_input *input)
     }
     if (input->paste_timer) {
         wl_event_source_remove(input->paste_timer);
+    }
+    // A Num Lock change still waiting to be kept: kept now (logout,
+    // Alt+Shift+Esc, SIGTERM).
+    vela_keyboard_save_numlock(input);
+    if (input->numlock_timer) {
+        wl_event_source_remove(input->numlock_timer);
     }
     struct wl_listener *listeners[] = {
         &input->new_input,

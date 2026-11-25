@@ -268,3 +268,11 @@ void Request::close()
     m_buffer.wipe();
     emit closingChanged();
 }
+
+void Request::setCapsLock(bool on)
+{
+    if (on != m_capsLock) {
+        m_capsLock = on;
+        emit capsLockChanged();
+    }
+}

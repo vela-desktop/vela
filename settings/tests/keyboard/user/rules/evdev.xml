@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-FileCopyrightText: 2026 Brando Giuffrida -->
+<!-- SPDX-License-Identifier: GPL-3.0-or-later -->
+<!-- A layout of the user's own, as in $XDG_CONFIG_HOME/xkb/rules/evdev.xml. -->
+<xkbConfigRegistry version="1.1">
+  <layoutList>
+    <layout>
+      <configItem>
+        <name>vela</name>
+        <description>Vela test layout</description>
+      </configItem>
+    </layout>
+  </layoutList>
+</xkbConfigRegistry>

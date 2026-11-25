@@ -4,8 +4,7 @@
 find_package(PkgConfig REQUIRED)
 
 # wlroots changes API at every minor version and installs a pkg-config file
-# with the version in its name. Vela is written for 0.20 (sway 1.12's); with
-# -DVELA_WLROOTS=wlroots-0.19 it should also build against 0.19.
+# with the version in its name. Vela supports the 0.20 API.
 set(VELA_WLROOTS "wlroots-0.20" CACHE STRING "pkg-config name of wlroots")
 
 pkg_check_modules(WLROOTS REQUIRED IMPORTED_TARGET ${VELA_WLROOTS})
@@ -29,8 +28,7 @@ pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
 find_program(WAYLAND_SCANNER NAMES wayland-scanner REQUIRED)
 
 # Some wlroots headers include the protocols' "server" headers. With wlroots
-# 0.19 every compositor must generate them itself; 0.20 installs some, but
-# generating them here (as sway does) works with both.
+# 0.20 only some are installed, so generate the headers we use.
 set(VELA_GENERATED_DIR ${CMAKE_CURRENT_BINARY_DIR}/protocols)
 file(MAKE_DIRECTORY ${VELA_GENERATED_DIR})
 set(VELA_PROTOCOL_HEADERS)
@@ -114,7 +112,7 @@ foreach(shader quad.vert texture.frag rect.frag shadow.frag blur_down.frag blur_
         COMMAND ${GLSLC} --target-env=vulkan1.4 -O -mfmt=num -o ${output} ${source}
         DEPENDS ${source} ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/push.glsl
             ${CMAKE_CURRENT_SOURCE_DIR}/src/render/shaders/shape.glsl
-        COMMENT "Compilo lo shader ${shader}")
+        COMMENT "Compiling shader ${shader}")
     list(APPEND VELA_SHADERS ${output})
 endforeach()
 
@@ -131,7 +129,9 @@ add_library(vela-pure STATIC
     src/frame_clock.c
     src/geometry.c
     src/icon_cache.c
+    src/keymap_options.c
     src/legacy_names.c
+    src/lock_keys.c
     src/lock_state.c
     src/motion.c
     src/output_arrangement.c
@@ -140,7 +140,6 @@ add_library(vela-pure STATIC
     src/path_security.c
     src/security_policy.c
     src/sun.c
-    src/super_numbers.c
     src/supervisor_child.c
     src/sync.c
     src/util.c
@@ -149,7 +148,7 @@ target_include_directories(vela-pure PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_definitions(vela-pure PUBLIC _GNU_SOURCE)
 target_compile_options(vela-pure PRIVATE -Wall -Wextra -Wno-unused-parameter)
 set_target_properties(vela-pure PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON C_EXTENSIONS OFF)
-target_link_libraries(vela-pure PUBLIC vela-alloc)
+target_link_libraries(vela-pure PUBLIC vela-alloc vela-shortcuts PkgConfig::XKBCOMMON)
 find_library(MATH_LIBRARY m)
 if(MATH_LIBRARY)
     target_link_libraries(vela-pure PUBLIC ${MATH_LIBRARY})
@@ -640,6 +639,28 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-capture-watch-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.capture-watch COMMAND vela-capture-watch-test)
 
+    # Pull the production objects used by this fixture, leaving the compositor's
+    # main entry point in the archive. No graphics device is initialized.
+    add_library(vela-compositor-test-core STATIC)
+    target_link_libraries(vela-compositor-test-core PRIVATE vela-compositor-objects)
+    add_executable(vela-command-socket-test tests/command_socket_test.c)
+    target_include_directories(vela-command-socket-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-command-socket-test PRIVATE WLR_USE_UNSTABLE)
+    target_compile_options(vela-command-socket-test PRIVATE -Wall -Wextra -Werror)
+    target_link_libraries(vela-command-socket-test PRIVATE vela-compositor-test-core vela-pure
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    target_link_options(vela-command-socket-test PRIVATE -Wl,--wrap=fopen -Wl,--wrap=accept4)
+    add_test(NAME compositor.command-socket COMMAND vela-command-socket-test)
+    set_tests_properties(compositor.command-socket PROPERTIES TIMEOUT 30)
+
+    add_executable(vela-lock-launcher-test tests/lock_launcher_test.c)
+    target_include_directories(vela-lock-launcher-test PRIVATE src ${VELA_GENERATED_DIR})
+    target_compile_definitions(vela-lock-launcher-test PRIVATE WLR_USE_UNSTABLE)
+    target_link_libraries(vela-lock-launcher-test PRIVATE vela-compositor-test-core vela-pure
+        PkgConfig::WLROOTS PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN)
+    add_test(NAME compositor.lock-launcher COMMAND vela-lock-launcher-test)
+    set_tests_properties(compositor.lock-launcher PROPERTIES TIMEOUT 15)
+
     # The compositor's children on a real event loop, no GPU: an exit reaches
     # its callback, and a child that can't be watched is reaped.
     add_executable(vela-process-test tests/process_test.c src/process.c)
@@ -650,6 +671,23 @@ if(VELA_BUILD_TOOLS)
     set_target_properties(vela-process-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
     add_test(NAME compositor.process COMMAND vela-process-test)
     set_tests_properties(compositor.process PROPERTIES TIMEOUT 30)
+
+    if(VELA_COMPOSITOR_SYSTEMD_FOUND)
+        add_executable(vela-bluetooth-hint-test tests/bluetooth_hint_test.c src/bluetooth.c)
+        target_include_directories(vela-bluetooth-hint-test PRIVATE src ${VELA_GENERATED_DIR})
+        target_compile_definitions(vela-bluetooth-hint-test PRIVATE WLR_USE_UNSTABLE VELA_HAVE_LOGIND=1)
+        target_link_libraries(vela-bluetooth-hint-test PRIVATE vela-pure PkgConfig::WLROOTS
+            PkgConfig::WAYLAND_SERVER PkgConfig::PIXMAN PkgConfig::VELA_COMPOSITOR_SYSTEMD)
+        target_link_options(vela-bluetooth-hint-test PRIVATE -Wl,--wrap=sd_bus_process)
+        add_test(NAME compositor.bluetooth-hint
+            COMMAND ${Python3_EXECUTABLE} -c
+                "import subprocess, sys
+from harness import PrivateBus
+with PrivateBus() as bus: subprocess.run([sys.argv[1], bus.address], check=True, timeout=10)"
+                $<TARGET_FILE:vela-bluetooth-hint-test>
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}/tests/functional)
+        set_tests_properties(compositor.bluetooth-hint PROPERTIES TIMEOUT 20)
+    endif()
 
     # Which vela-update-daemon the compositor starts, if any.
     add_executable(vela-updates-start-test tests/updates_start_test.c src/updates.c)
@@ -680,13 +718,17 @@ if(VELA_BUILD_TOOLS)
             tests/supervisor_child_test.cpp
             tests/diagnostics_test.cpp
             tests/super_numbers_test.cpp
+            tests/shortcuts_test.cpp
+            tests/keymap_options_test.cpp
+            tests/lock_keys_test.cpp
             tests/sync_test.cpp
             tests/buffer_test.cpp
             tests/x11_space_test.cpp)
         target_compile_options(vela-compositor-tests PRIVATE -Wall -Wextra)
         target_include_directories(vela-compositor-tests PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
         target_compile_definitions(vela-compositor-tests PRIVATE
-            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures")
+            VELA_TEST_PRIVATE_DIR="${CMAKE_CURRENT_BINARY_DIR}/test-fixtures"
+            VELA_DOCS_DIR="${PROJECT_SOURCE_DIR}/docs")
         target_link_libraries(vela-compositor-tests PRIVATE vela-pure GTest::gtest_main)
         include(GoogleTest)
         gtest_discover_tests(vela-compositor-tests TEST_PREFIX "compositor.")

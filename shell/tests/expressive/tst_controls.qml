@@ -43,6 +43,7 @@ Item {
     TaskbarButton { id: taskButton; x: 450; y: 20; running: true }
     DesktopOsd { id: desktopOsd }
     VolumeOsd { id: volumeOsd }
+    CapsLockOsd { id: capsLockOsd }
     NotificationPopups { id: popups }
     TaskbarTooltip { id: tooltip }
     ConfirmDialog { id: confirm; title: "Empty the Recycle Bin?"; text: "The files go for good." }
@@ -160,7 +161,7 @@ Item {
         }
 
         function test_osds_are_pills() {
-            for (const [osd, name] of [[desktopOsd, "desktopPill"], [volumeOsd, "volumePill"]]) {
+            for (const [osd, name] of [[desktopOsd, "desktopPill"], [volumeOsd, "volumePill"], [capsLockOsd, "capsLockPill"]]) {
                 const pill = findChild(osd.contentItem, name)
                 compare(pill.radius, pill.height / 2, name)
                 compare(pill.border.width, 0, name)

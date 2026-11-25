@@ -261,6 +261,24 @@
     </message>
 </context>
 <context>
+    <name>CapsLockOsd</name>
+    <message>
+        <source>Caps Lock on</source>
+        <translation>Bloc Maiusc attivo</translation>
+    </message>
+    <message>
+        <source>Caps Lock off</source>
+        <translation>Bloc Maiusc disattivato</translation>
+    </message>
+</context>
+<context>
+    <name>ClipboardList</name>
+    <message>
+        <source>See more</source>
+        <translation>Visualizza altro</translation>
+    </message>
+</context>
+<context>
     <name>ClipboardPanel</name>
     <message>
         <source>Clipboard</source>
@@ -285,10 +303,6 @@
     <message>
         <source>There&apos;s nothing here. When you copy something, you&apos;ll find it here to paste it again.</source>
         <translation>Non c&apos;è niente qui. Quando copi qualcosa, lo ritrovi qui per incollarlo di nuovo.</translation>
-    </message>
-    <message>
-        <source>See more</source>
-        <translation>Visualizza altro</translation>
     </message>
     <message>
         <source>&amp;Unpin</source>

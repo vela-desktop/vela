@@ -9,44 +9,12 @@
 #include "mica.h"
 #include "scheme.h"
 #include "themefile.h"
+#include "velaconf.h"
 
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
-
-namespace {
-
-// animation-effects and animation-duration in vela.conf (the compositor
-// reads them too): on, at Vela's durations, unless it says otherwise.
-struct Motion {
-    bool effects = true;
-    qreal duration = 1.0;
-};
-
-Motion configuredMotion()
-{
-    Motion motion;
-    QFile file(vela::language::configPath());
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        return motion;
-    }
-    while (!file.atEnd()) {
-        const QString line = QString::fromUtf8(file.readLine()).trimmed();
-        if (line.startsWith(QLatin1String("animation-effects="))) {
-            const QString value = line.mid(18).trimmed();
-            motion.effects
-                = value != QLatin1String("no") && value != QLatin1String("0") && value != QLatin1String("false");
-        } else if (line.startsWith(QLatin1String("animation-duration="))) {
-            bool ok = false;
-            const int percent = line.mid(19).trimmed().toInt(&ok);
-            motion.duration = ok ? qBound(50, percent, 300) / 100.0 : 1.0;
-        }
-    }
-    return motion;
-}
-
-} // namespace
 
 Appearance::Appearance(QObject* parent, Mode mode)
     : QObject(parent)
@@ -160,7 +128,7 @@ void Appearance::reload()
     const QColor tint = cachedWallpaperTint();
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
-    const Motion motion = configuredMotion();
+    const vela::conf::Motion motion = vela::conf::motion(vela::conf::read(vela::language::configPath()));
     vela::themes::Loaded loaded = vela::themes::loadConfigured(vela::language::configPath());
     const QStringList files = loaded.files();
     const bool filesChanged = files != m_loaded.files();
