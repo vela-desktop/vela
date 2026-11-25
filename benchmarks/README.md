@@ -299,8 +299,11 @@ The same fixed options apply to snapshot, control, read-back and recovery.
 After a VT/link transition, brightness reads allow up to four attempts under
 one eight-second deadline for DDC device/communication failures or timeouts.
 The backend, bus and VCP code stay fixed; successful snapshots retain every
-read attempt. Writes are not automatically retried by this readiness loop.
-Syntax errors and signaled processes fail immediately. For a failed host
+read attempt. During restoration, a DDC communication failure or timeout on a
+brightness write triggers a fresh identity and value check. If the same monitor
+still reports a different value, restoration can repeat the absolute write once.
+Restoration requires read-back of the saved value. Syntax errors and signaled
+processes fail immediately. For a failed host
 command in the supervised worker, the pilot retains bounded stdout, stderr, exit code and timeout details
 in `failed-operation.json`, including read attempts, and exports that file.
 This matters because ddcutil reports some failures on stdout, not stderr.

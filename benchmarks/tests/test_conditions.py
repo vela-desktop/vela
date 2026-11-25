@@ -389,7 +389,7 @@ class ControlledConditions(unittest.TestCase):
                                         "power_profile": "balanced"}, lambda: [])
             self.assertEqual(result["status"], "failed")
             self.assertEqual(result["components"], {"outputs": "failed", "brightness": "passed", "power_profile": "passed"})
-            brightness.assert_called_once()
+            brightness.assert_called_once_with(unittest.mock.ANY, {"value": 25}, 25, retry_ddc_write=True)
             power.assert_called_once()
 
     def test_personal_session_cannot_supply_the_greeter_environment(self):
