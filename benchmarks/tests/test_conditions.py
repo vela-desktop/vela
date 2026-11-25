@@ -114,10 +114,14 @@ class ControlledConditions(unittest.TestCase):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temporary:
                 user, session, runtime, run, proc = self.greeter_fixture(Path(temporary))
                 result = {"schema": 1, "method": "kwin-socket-peer-v1", "uid": user.pw_uid, "pid": 777, "wayland_display": "wayland-0"}
-                if case == "foreign-uid": result["uid"] += 1
-                elif case == "missing-name": result["wayland_display"] = None
-                elif case == "boolean-pid": result["pid"] = True
-                elif case == "wrong-method": result["method"] = "unverified-guess"
+                if case == "foreign-uid":
+                    result["uid"] += 1
+                elif case == "missing-name":
+                    result["wayland_display"] = None
+                elif case == "boolean-pid":
+                    result["pid"] = True
+                elif case == "wrong-method":
+                    result["method"] = "unverified-guess"
                 helper = Path("/fixed/vela-bench-desktop")
                 host = SimpleNamespace(run=Mock(side_effect=[SimpleNamespace(returncode=0, stdout="", stderr=""),
                     SimpleNamespace(returncode=0, stdout=json.dumps(result), stderr="")]))
@@ -126,7 +130,8 @@ class ControlledConditions(unittest.TestCase):
                         resolved = greeter_environment([session], proc, host=host, run=run, desktop=helper)
                         self.assertEqual(resolved["environment"]["WAYLAND_DISPLAY"], "wayland-0")
                     else:
-                        with self.assertRaises(BenchError): greeter_environment([session], proc, host=host, run=run, desktop=helper)
+                        with self.assertRaises(BenchError):
+                            greeter_environment([session], proc, host=host, run=run, desktop=helper)
                 argv = host.run.call_args.args[0]
                 self.assertEqual(argv[:4], ["setpriv", f"--reuid={user.pw_uid}", f"--regid={user.pw_gid}", "--clear-groups"])
                 self.assertEqual(argv[-2:], [str(helper), "--resolve-wayland"])
@@ -164,8 +169,10 @@ class ControlledConditions(unittest.TestCase):
                 else:
                     endpoint = runtime / ("bus" if case == "bus-file" else "wayland-0")
                     endpoint.unlink()
-                    if case == "wayland-symlink": endpoint.symlink_to(runtime / "bus")
-                    else: endpoint.write_text("not a socket")
+                    if case == "wayland-symlink":
+                        endpoint.symlink_to(runtime / "bus")
+                    else:
+                        endpoint.write_text("not a socket")
                 host = SimpleNamespace(run=lambda *args, **kwargs: SimpleNamespace(returncode=0, stdout="WAYLAND_DISPLAY=wayland-0\n"))
                 with patch("vela_bench.conditions.pwd.getpwuid", return_value=user), self.assertRaises(BenchError):
                     greeter_environment([session], proc, host=host, run=run)
@@ -285,7 +292,6 @@ class ControlledConditions(unittest.TestCase):
         self.assertFalse(any("--apply" in call.args[0] for call in host.run.call_args_list))
 
     def test_inactive_greeter_is_activated_before_query_and_empty_announcements_are_retried(self):
-        from unittest.mock import Mock
         # Real DRM greeters may publish no heads while another VT is active.
         calls, active, reads = [], 3, 0
         def run(argv, **kwargs):

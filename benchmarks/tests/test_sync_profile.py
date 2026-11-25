@@ -10,10 +10,10 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
-from vela_bench import BenchError, campaign, cli
+from vela_bench import BenchError, campaign
 from vela_bench.archive import atomic_json
 from vela_bench.discovery import file_hash
-from vela_bench.host import ACCOUNT, Layout
+from vela_bench.host import ACCOUNT
 from vela_bench.model import load_campaign, make_plan, vela_environment
 from vela_bench.pilot import desktop_environment, runtime_environment, session_command
 from test_core import host
@@ -80,7 +80,8 @@ class SyncProfile(unittest.TestCase):
         active = enabled and target == 'vela'
         block = {'id':'motion-' + target + '-r1', 'target':target, 'status':'complete',
                  'audit':{'status':'passed', 'checks':{'vela_runtime_profile':True} if active else {}, 'calibration':None}}
-        directory = root / block['id']; directory.mkdir()
+        directory = root / block['id']
+        directory.mkdir()
         state = {'plan':{'vela_sync_test':True, 'vela_runtime_environment':flags} if active else {},
                  'campaign_block':{'vela_runtime_environment':flags} if active else {}}
         session = {'vela_runtime_environment':flags if active else {}}
@@ -108,18 +109,25 @@ class SyncProfile(unittest.TestCase):
     def test_resigned_exports_cannot_hide_profile_or_lose_or_leak_flags(self):
         for case in ('summary-label', 'both-labels', 'pilot-label', 'live-flags', 'block-request', 'plasma-leak'):
             with self.subTest(case=case), tempfile.TemporaryDirectory() as temp:
-                root = Path(temp); target = 'plasma' if case=='plasma-leak' else 'vela'
+                root = Path(temp)
+                target = 'plasma' if case=='plasma-leak' else 'vela'
                 block = self.export(root,target)
                 if case in ('summary-label','both-labels'):
-                    path = root / 'summary.json'; data=json.loads(path.read_text());data['plan'].pop('vela_sync_test')
+                    path = root / 'summary.json'
+                    data=json.loads(path.read_text())
+                    data['plan'].pop('vela_sync_test')
                     atomic_json(path,data)
-                    if case=='both-labels':atomic_json(root/'campaign-plan.json',data['plan'])
+                    if case=='both-labels':
+                        atomic_json(root/'campaign-plan.json',data['plan'])
                 elif case in ('pilot-label','block-request'):
-                    path=root/block['id']/'state.json';data=json.loads(path.read_text())
+                    path=root/block['id']/'state.json'
+                    data=json.loads(path.read_text())
                     data['plan' if case=='pilot-label' else 'campaign_block']={}
                     atomic_json(path,data)
                 else:
-                    path=root/block['id']/(target+'-session.json');data=json.loads(path.read_text())
+                    path=root/block['id']/(target+'-session.json')
+                    data=json.loads(path.read_text())
                     data['vela_runtime_environment']=vela_environment(True) if case=='plasma-leak' else {}
                     atomic_json(path,data)
-                with self.assertRaises(BenchError):self.reopen(root,block)
+                with self.assertRaises(BenchError):
+                    self.reopen(root,block)

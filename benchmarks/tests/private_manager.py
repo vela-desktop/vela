@@ -13,8 +13,7 @@ import sys
 import time
 import uuid
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(ROOT / 'benchmarks'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from vela_bench.host import HostOperationError
 
 OPERATIONS = ('probe', 'display', 'capture', 'calibration', 'measurement', 'producer', 'scene', 'observation')

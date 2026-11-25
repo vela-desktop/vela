@@ -6,9 +6,7 @@ import base64
 from concurrent.futures import ThreadPoolExecutor
 import copy
 import hashlib
-import json
 import math
-import os
 from pathlib import Path
 import re
 import select
@@ -60,7 +58,8 @@ def apply_outputs(host,record,layout,target,outputs):
 
 
 def scaling_actions(target,state):
-    if target not in ('vela','plasma'): raise BenchError('Unknown scaling desktop')
+    if target not in ('vela','plasma'):
+        raise BenchError('Unknown scaling desktop')
     maximize,restore=(interactions.command(target,'maximize'),interactions.command(target,'restore'))
     return {'opened':[],'snap-left':['snap-left'],'snap-right':['snap-right'],
             'maximized':[maximize],'restored':[maximize,restore]}[state]
@@ -84,7 +83,8 @@ def scaling_metrics(row,directory,profile,target):
     outputs=row['outputs']
     wanted=copy.deepcopy(profile['outputs'])
     for output in wanted:
-        if output['enabled']: output['scale']=scale
+        if output['enabled']:
+            output['scale']=scale
     compare_outputs(outputs,wanted)
     meta=row['pattern']
     if type(meta.get('monotonic_ns')) is not int or not 0 <= meta['monotonic_ns'] <= capture['begin_monotonic_ns']:
@@ -134,16 +134,19 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
             for scale in SCALES:
                 wanted=copy.deepcopy(profile['outputs'])
                 for output in wanted:
-                    if output['enabled']: output['scale']=scale
+                    if output['enabled']:
+                        output['scale']=scale
                 health()
                 observed=apply_outputs(host,record,layout,target,wanted)
-                keyboard.stdin.write((PARK_COMMAND+'\n').encode());keyboard.stdin.flush()
+                keyboard.stdin.write((PARK_COMMAND+'\n').encode())
+                keyboard.stdin.flush()
                 parked=lines.next(time.monotonic()+5)
                 parked['command']=PARK_COMMAND
                 for state in STATES:
                     health()
                     label=f'{round(scale*100)}-{state}'
-                    if progress: progress('pattern/'+label)
+                    if progress:
+                        progress('pattern/'+label)
                     scene=host.spawn(user_command(record,layout,'scene',
                         [str(layout.helper.parent/'vela-pattern'),'--benchmark','401','301'],runtime_seconds=60),errors)
                     scene_lines=Lines(scene)
@@ -153,9 +156,11 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
                     actions=scaling_actions(target,state)
                     for action in actions:
                         health()
-                        keyboard.stdin.write((action+'\n').encode()); keyboard.stdin.flush()
+                        keyboard.stdin.write((action+'\n').encode())
+                        keyboard.stdin.flush()
                         injection=lines.next(time.monotonic()+5)
-                        injection['command']=action; injections.append(injection)
+                        injection['command']=action
+                        injections.append(injection)
                         time.sleep(.7)
                     # Drain already delivered configure/scale events, retaining
                     # all source records. A read barrier is not a timing metric.
@@ -169,19 +174,23 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
                     captured=host.run(command,timeout=30)
                     row=decode_json(captured.stdout)
                     png=base64.b64decode(row.pop('png_base64'),validate=True)
-                    if len(png)>12*1024*1024: raise BenchError('Scaling image exceeds evidence limit')
-                    for k in ('begin_monotonic_ns','end_monotonic_ns'): row[k]=int(row[k])
+                    if len(png)>12*1024*1024:
+                        raise BenchError('Scaling image exceeds evidence limit')
+                    for k in ('begin_monotonic_ns','end_monotonic_ns'):
+                        row[k]=int(row[k])
                     name=f'{target}-scale-{label}.png'
                     (directory/name).write_bytes(png)
                     observation={'scale':scale,'state':state,'outputs':observed,'pattern':meta,
                         'pattern_events':scene_lines.records,'injections':injections,'pointer_parking':parked,'capture':row,
                         'image_file':name,'image_sha256':hashlib.sha256(png).hexdigest()}
                     result['scenarios'][label]=observation
-                    try: observation['metrics']=scaling_metrics(observation,directory,profile,target)
+                    try:
+                        observation['metrics']=scaling_metrics(observation,directory,profile,target)
                     except (BenchError,ValueError,KeyError) as exc:
                         observation['error']=str(exc)
                         raise BenchError(f'Scaling {label}: {exc}') from exc
-                    stop_process(scene); scene=None
+                    stop_process(scene)
+                    scene=None
                     stop_instrument(host,record,layout,'scene')
             corpus.run(host,record,directory,target,layout,profile,health,progress,result,keyboard,lines,errors)
     finally:
@@ -190,8 +199,10 @@ def run_scaling(host,record,directory,target,layout,profile,health,progress,resu
         stop_process(keyboard)
         if sysfs and Path(sysfs).exists():
             deadline=time.monotonic()+2
-            while Path(sysfs).exists() and time.monotonic()<deadline: time.sleep(.05)
-            if Path(sysfs).exists(): raise BenchError('Scaling input device was not removed')
+            while Path(sysfs).exists() and time.monotonic()<deadline:
+                time.sleep(.05)
+            if Path(sysfs).exists():
+                raise BenchError('Scaling input device was not removed')
         apply_outputs(host,record,layout,target,profile['outputs'])
         result['scale1_restored']=True
 
@@ -207,23 +218,31 @@ def resource_animation_timeout(profile):
 
 
 def resource_condition(host,record,directory,target,layout,label,health,progress,profile=None):
-    if label not in RESOURCE_CONDITIONS:raise BenchError('Unknown fixed resource condition')
-    if progress: progress('resources/'+label)
+    if label not in RESOURCE_CONDITIONS:
+        raise BenchError('Unknown fixed resource condition')
+    if progress:
+        progress('resources/'+label)
     animation_timeout = resource_animation_timeout(profile) if label == 'active-animation' else None
     rows=[]
     cpu_before=time.monotonic_ns()
-    process=keyboard=None;transport=None;sysfs=None;input_cleanup='not-started'
+    process=keyboard=None
+    transport=None
+    sysfs=None
+    input_cleanup='not-started'
     with (directory/f'{target}-resources-{label}.stderr').open('wb') as errors, ThreadPoolExecutor(max_workers=1) as pool:
         try:
-            health(); rows.append(resources.snapshot(record['uid']))
-            if label=='idle': future=None
+            health()
+            rows.append(resources.snapshot(record['uid']))
+            if label=='idle':
+                future=None
             else:
                 command=([str(layout.probe),'--frames',str(SPEC['active_animation_frames']),'--timeout',str(animation_timeout)] if label=='active-animation'
                          else [str(layout.helper.parent/'vela-pattern'),'--benchmark','401','301'] if label=='window-interaction'
                          else ['/usr/bin/python3','-I',str(layout.helper),'_resource-workload'])
                 if label=='window-interaction':
                     keyboard=host.spawn([str(layout.helper.parent/'vela-bench-input'),'--desktop'],errors)
-                    key_lines=Lines(keyboard);ready=key_lines.next(time.monotonic()+5)
+                    key_lines=Lines(keyboard)
+                    ready=key_lines.next(time.monotonic()+5)
                     candidate=ready.get('sysfs','')
                     if (ready.get('event')!='uinput-ready' or ready.get('method')!='linux-uinput-fixed-desktop-v1'
                             or ready.get('clock')!='CLOCK_MONOTONIC'
@@ -240,9 +259,11 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
             end=time.monotonic()+SPEC['resource_idle_seconds']
             deadline=time.monotonic()+125
             while (time.monotonic()<end if future is None else not future.done()):
-                if time.monotonic()>deadline: raise BenchError('Resource workload deadline')
+                if time.monotonic()>deadline:
+                    raise BenchError('Resource workload deadline')
                 time.sleep(1)
-                health(); rows.append(resources.snapshot(record['uid'],transport=transport))
+                health()
+                rows.append(resources.snapshot(record['uid'],transport=transport))
             if future is not None:
                 output,_=future.result(timeout=2)
                 if (process.returncode or len(output)>8*1024*1024
@@ -250,15 +271,19 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
                     raise BenchError('Resource workload failed or output limit exceeded')
                 raw=output.decode()
                 (directory/f'{target}-resources-{label}.work.jsonl').write_text(raw)
-            else: raw=''
-            health(); rows.append(resources.snapshot(record['uid'],transport=transport))
+            else:
+                raw=''
+            health()
+            rows.append(resources.snapshot(record['uid'],transport=transport))
         finally:
             stop_process(keyboard)
             if sysfs:
                 deadline=time.monotonic()+2
-                while Path(sysfs).exists() and time.monotonic()<deadline:time.sleep(.05)
+                while Path(sysfs).exists() and time.monotonic()<deadline:
+                    time.sleep(.05)
                 input_cleanup='passed' if not Path(sysfs).exists() else 'failed'
-            elif keyboard is not None:input_cleanup='unverified'
+            elif keyboard is not None:
+                input_cleanup='unverified'
             stop_process(process)
             stop_instrument(host,record,layout,'measurement')
             atomic_json(directory/f'{target}-resources-{label}.json',{'uid':record['uid'],'samples':rows,
@@ -272,7 +297,8 @@ def resource_condition(host,record,directory,target,layout,label,health,progress
 def resource_metrics(rows,uid,label,raw,transport=None,*,target=None,profile=None):
     metrics=resources.metrics(rows,uid,transport)
     if label=='idle':
-        if raw or metrics['elapsed_seconds']<SPEC['resource_idle_seconds']: raise BenchError('Resource idle window incomplete')
+        if raw or metrics['elapsed_seconds']<SPEC['resource_idle_seconds']:
+            raise BenchError('Resource idle window incomplete')
     elif label=='active-animation':
         work=parse_probe(raw,frames=SPEC['active_animation_frames'],delay=0)
         metrics['workload']={'method':'native-client-fixed-animation','submitted':work['frames'],'presented':work['presented'],
@@ -286,7 +312,8 @@ def resource_metrics(rows,uid,label,raw,transport=None,*,target=None,profile=Non
         metrics['workload']=work
     elif label=='window-interaction':
         metrics['workload']=interactions.audit(raw,target,profile)
-    else: raise BenchError('Unknown resource condition')
+    else:
+        raise BenchError('Unknown resource condition')
     if label!='idle':
         stamps=[decode_json(line) for line in raw.splitlines()]
         begin=(stamps[0].get('begin_monotonic_ns') if label in ('local-hash','window-interaction') else
@@ -294,7 +321,8 @@ def resource_metrics(rows,uid,label,raw,transport=None,*,target=None,profile=Non
         end=(stamps[0].get('end_monotonic_ns') if label in ('local-hash','window-interaction') else stamps[-1].get('monotonic_ns',0))
         # Presentation summaries do not carry a monotonic stamp; their last
         # feedback does. Keep this bound independent of process exit timing.
-        if label=='active-animation': end=max(r.get('received_monotonic_ns',0) for r in stamps)
+        if label=='active-animation':
+            end=max(r.get('received_monotonic_ns',0) for r in stamps)
         if (type(begin) is not int or type(end) is not int or not rows[0]['cpu_end_monotonic_ns']<=begin<=end<=rows[-1]['cpu_begin_monotonic_ns']):
             raise BenchError('Resource samples do not cover the completed workload')
     return metrics
@@ -303,7 +331,8 @@ def resource_metrics(rows,uid,label,raw,transport=None,*,target=None,profile=Non
 def run_workload(host,record,directory,target,layout,profile,phase,health,progress=None):
     result={'schema':1,'method':VERSION,'spec':SPEC,'phase':phase,'status':'failed','scenarios':{},'failures':[],'family_complete':False}
     try:
-        if phase=='scaling': run_scaling(host,record,directory,target,layout,profile,health,progress,result)
+        if phase=='scaling':
+            run_scaling(host,record,directory,target,layout,profile,health,progress,result)
         elif phase=='overhead':
             health()
             result['settling_begin_monotonic_ns']=time.monotonic_ns()
@@ -312,11 +341,13 @@ def run_workload(host,record,directory,target,layout,profile,phase,health,progre
             result['settling_end_monotonic_ns']=time.monotonic_ns()
             for label in RESOURCE_CONDITIONS:
                 result['scenarios'][label]={'resources':resource_condition(host,record,directory,target,layout,label,health,progress,profile)}
-        else: raise BenchError('Unknown P4 phase')
+        else:
+            raise BenchError('Unknown P4 phase')
         result['status']='passed'
     except (BenchError,OSError,ValueError,KeyError,TypeError,subprocess.TimeoutExpired) as exc:
         result['failures'].append(str(exc))
-    finally: atomic_json(directory/f'{target}-measurements.json',result)
+    finally:
+        atomic_json(directory/f'{target}-measurements.json',result)
     return result
 
 
@@ -338,7 +369,8 @@ def audit_measurements(directory,target,profile,phase):
         previous_end=-1
         for name in expected:
             row=saved['scenarios'][name]
-            if row['capture']['begin_monotonic_ns']<previous_end: raise BenchError('Scaling evidence order changed')
+            if row['capture']['begin_monotonic_ns']<previous_end:
+                raise BenchError('Scaling evidence order changed')
             previous_end=row['capture']['end_monotonic_ns']
             if name!=f"{round(row['scale']*100)}-{row['state']}" or row.get('metrics')!=scaling_metrics(row,directory,profile,target):
                 raise BenchError('Scaling summary differs from original pixels')
@@ -359,13 +391,15 @@ def audit_measurements(directory,target,profile,phase):
             raise BenchError('Corpus evidence precedes native pattern completion')
     elif phase=='overhead':
         labels=('idle','active-animation','local-hash') if legacy else RESOURCE_CONDITIONS
-        if set(saved['scenarios'])!=set(labels): raise BenchError('Incomplete resource matrix')
+        if set(saved['scenarios'])!=set(labels):
+            raise BenchError('Incomplete resource matrix')
         began,ended=saved.get('settling_begin_monotonic_ns'),saved.get('settling_end_monotonic_ns')
         if type(began) is not int or type(ended) is not int or not 0<=began<=ended-SPEC['resource_settle_seconds']*1_000_000_000:
             raise BenchError('Resource startup settling interval unavailable')
         session=read_json(directory/f'{target}-session.json')
         uid=session.get('session',{}).get('User','')
-        if not isinstance(uid,str) or not uid.isdigit() or int(uid)<=0: raise BenchError('Missing reserved session UID')
+        if not isinstance(uid,str) or not uid.isdigit() or int(uid)<=0:
+            raise BenchError('Missing reserved session UID')
         previous_end=ended
         for label in labels:
             sample=saved['scenarios'][label]
@@ -379,5 +413,6 @@ def audit_measurements(directory,target,profile,phase):
             if sample!={'resources':resource_metrics(source['samples'],source['uid'],label,raw,
                                                     source.get('controller_transport'),target=target,profile=profile)}:
                 raise BenchError('Resource summary differs from raw process/cgroup evidence')
-    else: raise BenchError('Unknown P4 phase')
+    else:
+        raise BenchError('Unknown P4 phase')
     return saved

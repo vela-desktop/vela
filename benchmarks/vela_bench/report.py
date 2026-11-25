@@ -14,7 +14,10 @@ def render_report(directory):
     directory = Path(directory)
     manifest, plan, summary = inspect_archive(directory)
     atomic_json(directory / "summary.json", summary)
-    escaped = lambda value: html.escape(str(value), quote=True)
+
+    def escaped(value):
+        return html.escape(str(value), quote=True)
+
     document = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">

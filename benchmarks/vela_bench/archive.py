@@ -3,7 +3,7 @@
 
 """Durable preflight archives. Performance evidence has a separate future schema."""
 
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import json
 import math
 import os
@@ -67,7 +67,7 @@ def read_json(path):
 
 
 def append_event(path, event):
-    record = {"monotonic_ns": time.monotonic_ns(), "wall_time": datetime.now(timezone.utc).isoformat(), **event}
+    record = {"monotonic_ns": time.monotonic_ns(), "wall_time": datetime.now(UTC).isoformat(), **event}
     with Path(path).open("a", encoding="utf-8") as stream:  # NOSONAR S8707: local operator archive or reconstructed root-owned journal, no agent/server.
         stream.write(json.dumps(record, allow_nan=False, sort_keys=True) + "\n")
         stream.flush()
@@ -102,13 +102,13 @@ def create_check_archive(output, plan, discovery):
         raise BenchError("Only host-side check archives can currently be executed")
     parent = Path(output)
     parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local output parent, no agent/server.
-    run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
+    run_id = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
     directory = parent / run_id
     directory.mkdir(mode=0o700)  # NOSONAR S8707: exclusive generated run name beneath the operator-selected output.
     for name in ("blocks", "samples", "calibration", "captures", "logs"):
         (directory / name).mkdir(mode=0o700)
     manifest = {"schema": SCHEMA, "kind": "preflight", "run_id": run_id,
-                "created_at": datetime.now(timezone.utc).isoformat(), "plan_fingerprint": plan["fingerprint"],
+                "created_at": datetime.now(UTC).isoformat(), "plan_fingerprint": plan["fingerprint"],
                 "environment": discovery["environment"], "suite": discovery["suite"]}
     atomic_json(directory / "manifest.json", manifest)
     atomic_json(directory / "plan.json", plan)

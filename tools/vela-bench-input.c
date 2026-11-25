@@ -21,8 +21,8 @@ static unsigned long long now(void)
 }
 static int key(struct libevdev_uinput *input, unsigned code, int value)
 {
-    return libevdev_uinput_write_event(input, EV_KEY, code, value) |
-           libevdev_uinput_write_event(input, EV_SYN, SYN_REPORT, 0);
+    return libevdev_uinput_write_event(input, EV_KEY, code, value)
+        | libevdev_uinput_write_event(input, EV_SYN, SYN_REPORT, 0);
 }
 static int pulse(struct libevdev_uinput *input, unsigned code)
 {
@@ -51,7 +51,9 @@ static int point(const char *command, unsigned coordinates[2])
 int main(int argc, char **argv)
 {
     if (argc == 2 && !strcmp(argv[1], "--help")) {
-        puts("Usage: vela-bench-input [--desktop]\nPrivate stdin: pulse or quit for F24 calibration; desktop mode adds fixed shortcuts, search and bounded absolute points. P3 v2: held Alt+Tab, window menus and workspace shortcuts. No shell commands.");
+        puts("Usage: vela-bench-input [--desktop]\nPrivate stdin: pulse or quit for F24 calibration; desktop mode adds "
+             "fixed shortcuts, search and bounded absolute points. P3 v2: held Alt+Tab, window menus and workspace "
+             "shortcuts. No shell commands.");
         return 0;
     }
     int desktop = argc == 2 && !strcmp(argv[1], "--desktop");
@@ -90,55 +92,78 @@ int main(int argc, char **argv)
         // capabilities. Coordinates cover the controlled primary-only output.
         setup |= libevdev_enable_property(device, INPUT_PROP_DIRECT);
     }
-    if (setup || libevdev_enable_event_code(device, EV_KEY, KEY_F24, NULL) ||
-        libevdev_uinput_create_from_device(device, LIBEVDEV_UINPUT_OPEN_MANAGED, &input)) {
+    if (setup || libevdev_enable_event_code(device, EV_KEY, KEY_F24, NULL)
+        || libevdev_uinput_create_from_device(device, LIBEVDEV_UINPUT_OPEN_MANAGED, &input)) {
         fputs("vela-bench-input: cannot create uinput instrument\n", stderr);
         libevdev_free(device);
         return 1;
     }
     setvbuf(stdout, NULL, _IOLBF, 0);
     const char *syspath = libevdev_uinput_get_syspath(input);
-    if (!syspath) { libevdev_uinput_destroy(input); libevdev_free(device); return 1; }
+    if (!syspath) {
+        libevdev_uinput_destroy(input);
+        libevdev_free(device);
+        return 1;
+    }
     printf("{\"event\":\"uinput-ready\",\"method\":\"%s\",\"clock\":\"CLOCK_MONOTONIC\",\"sysfs\":\"%s\"}\n",
-           desktop ? "linux-uinput-fixed-desktop-v1" : "linux-uinput-f24-v1", syspath);
+        desktop ? "linux-uinput-fixed-desktop-v1" : "linux-uinput-f24-v1", syspath);
     char command[80];
     unsigned count = 0;
     int failed = 0;
     while (fgets(command, sizeof(command), stdin)) {
         if (!strcmp(command, "quit\n")) break;
-        if (++count > 1000) { failed = 1; break; }
+        if (++count > 1000) {
+            failed = 1;
+            break;
+        }
         unsigned long long before = now();
         int result = 0;
-        if (!strcmp(command, "pulse\n")) result = pulse(input, KEY_F24);
-        else if (desktop && !strcmp(command, "launcher\n")) result = pulse(input, KEY_LEFTMETA);
-        else if (desktop && !strcmp(command,"alt-tab-begin\n")) {
-            result=key(input,KEY_LEFTALT,1);result|=pulse(input,KEY_TAB);
-        } else if (desktop && !strcmp(command,"alt-tab-end\n"))result=key(input,KEY_LEFTALT,0);
-        else if (desktop && (!strcmp(command,"window-menu\n") || !strcmp(command,"window-menu-plasma\n"))) {
-            result=key(input,KEY_LEFTALT,1);result|=pulse(input,!strcmp(command,"window-menu\n")?KEY_SPACE:KEY_F3);result|=key(input,KEY_LEFTALT,0);
-        } else if (desktop && (!strcmp(command,"workspace-next\n") || !strcmp(command,"workspace-previous\n"))) {
-            result=key(input,KEY_LEFTMETA,1);result|=key(input,KEY_LEFTCTRL,1);
-            result|=pulse(input,!strcmp(command,"workspace-next\n")?KEY_RIGHT:KEY_LEFT);
-            result|=key(input,KEY_LEFTCTRL,0);result|=key(input,KEY_LEFTMETA,0);
-        } else if (desktop && (!strcmp(command,"workspace-first-plasma\n") || !strcmp(command,"workspace-second-plasma\n"))) {
-            result=key(input,KEY_LEFTCTRL,1);result|=pulse(input,!strcmp(command,"workspace-first-plasma\n")?KEY_F1:KEY_F2);result|=key(input,KEY_LEFTCTRL,0);
-        }
-        else if (desktop && !strcmp(command, "escape\n")) result = pulse(input, KEY_ESC);
-        else if (desktop && !strcmp(command, "enter\n")) result = pulse(input, KEY_ENTER);
-        else if (desktop && !strcmp(command, "down\n")) result = key(input, BTN_LEFT, 1);
-        else if (desktop && !strcmp(command, "up\n")) result = key(input, BTN_LEFT, 0);
-        else if (desktop && (!strcmp(command, "snap-left\n") || !strcmp(command, "snap-right\n")
-                            || !strcmp(command, "maximize\n") || !strcmp(command, "restore\n")
-                            || !strcmp(command, "maximize-toggle\n"))) {
+        if (!strcmp(command, "pulse\n"))
+            result = pulse(input, KEY_F24);
+        else if (desktop && !strcmp(command, "launcher\n"))
+            result = pulse(input, KEY_LEFTMETA);
+        else if (desktop && !strcmp(command, "alt-tab-begin\n")) {
+            result = key(input, KEY_LEFTALT, 1);
+            result |= pulse(input, KEY_TAB);
+        } else if (desktop && !strcmp(command, "alt-tab-end\n"))
+            result = key(input, KEY_LEFTALT, 0);
+        else if (desktop && (!strcmp(command, "window-menu\n") || !strcmp(command, "window-menu-plasma\n"))) {
+            result = key(input, KEY_LEFTALT, 1);
+            result |= pulse(input, !strcmp(command, "window-menu\n") ? KEY_SPACE : KEY_F3);
+            result |= key(input, KEY_LEFTALT, 0);
+        } else if (desktop && (!strcmp(command, "workspace-next\n") || !strcmp(command, "workspace-previous\n"))) {
+            result = key(input, KEY_LEFTMETA, 1);
+            result |= key(input, KEY_LEFTCTRL, 1);
+            result |= pulse(input, !strcmp(command, "workspace-next\n") ? KEY_RIGHT : KEY_LEFT);
+            result |= key(input, KEY_LEFTCTRL, 0);
+            result |= key(input, KEY_LEFTMETA, 0);
+        } else if (desktop
+            && (!strcmp(command, "workspace-first-plasma\n") || !strcmp(command, "workspace-second-plasma\n"))) {
+            result = key(input, KEY_LEFTCTRL, 1);
+            result |= pulse(input, !strcmp(command, "workspace-first-plasma\n") ? KEY_F1 : KEY_F2);
+            result |= key(input, KEY_LEFTCTRL, 0);
+        } else if (desktop && !strcmp(command, "escape\n"))
+            result = pulse(input, KEY_ESC);
+        else if (desktop && !strcmp(command, "enter\n"))
+            result = pulse(input, KEY_ENTER);
+        else if (desktop && !strcmp(command, "down\n"))
+            result = key(input, BTN_LEFT, 1);
+        else if (desktop && !strcmp(command, "up\n"))
+            result = key(input, BTN_LEFT, 0);
+        else if (desktop
+            && (!strcmp(command, "snap-left\n") || !strcmp(command, "snap-right\n") || !strcmp(command, "maximize\n")
+                || !strcmp(command, "restore\n") || !strcmp(command, "maximize-toggle\n"))) {
             // Vela uses Up/Down; Plasma's default maximize action toggles
             // with PageUp. PageDown minimizes rather than restoring there.
-            unsigned code = !strcmp(command,"snap-left\n") ? KEY_LEFT : !strcmp(command,"snap-right\n") ? KEY_RIGHT
-                : !strcmp(command,"maximize\n") ? KEY_UP : !strcmp(command,"restore\n") ? KEY_DOWN : KEY_PAGEUP;
+            unsigned code = !strcmp(command, "snap-left\n") ? KEY_LEFT
+                : !strcmp(command, "snap-right\n")          ? KEY_RIGHT
+                : !strcmp(command, "maximize\n")            ? KEY_UP
+                : !strcmp(command, "restore\n")             ? KEY_DOWN
+                                                            : KEY_PAGEUP;
             result = key(input, KEY_LEFTMETA, 1);
             result |= pulse(input, code);
             result |= key(input, KEY_LEFTMETA, 0);
-        }
-        else if (desktop && !strcmp(command, "desktop\n")) {
+        } else if (desktop && !strcmp(command, "desktop\n")) {
             result = key(input, KEY_LEFTMETA, 1);
             result |= pulse(input, KEY_D);
             result |= key(input, KEY_LEFTMETA, 0);
@@ -149,21 +174,35 @@ int main(int argc, char **argv)
         } else if (desktop && !strcmp(command, "search\n")) {
             // Unique fixture search token, fixed US physical keys. Sessions
             // with another effective layout must fail launch verification.
-            const unsigned codes[] = {KEY_V,KEY_E,KEY_L,KEY_A,KEY_B,KEY_E,KEY_N,KEY_C,KEY_H,KEY_S,KEY_C,KEY_E,KEY_N,KEY_E};
-            for (unsigned i = 0; i < sizeof(codes)/sizeof(codes[0]); ++i) result |= pulse(input, codes[i]);
+            const unsigned codes[] = { KEY_V, KEY_E, KEY_L, KEY_A, KEY_B, KEY_E, KEY_N, KEY_C, KEY_H, KEY_S, KEY_C,
+                KEY_E, KEY_N, KEY_E };
+            for (unsigned i = 0; i < sizeof(codes) / sizeof(codes[0]); ++i) result |= pulse(input, codes[i]);
         } else if (desktop) {
             unsigned coordinates[2];
-            if (!point(command, coordinates)) { failed = 1; break; }
+            if (!point(command, coordinates)) {
+                failed = 1;
+                break;
+            }
             result = libevdev_uinput_write_event(input, EV_ABS, ABS_X, coordinates[0]);
             result |= libevdev_uinput_write_event(input, EV_ABS, ABS_Y, coordinates[1]);
             result |= libevdev_uinput_write_event(input, EV_SYN, SYN_REPORT, 0);
-        } else { failed = 1; break; }
+        } else {
+            failed = 1;
+            break;
+        }
         unsigned long long after = now();
-        if (result) { failed = 1; break; }
-        printf("{\"event\":\"injected\",\"action_id\":%u,\"before_monotonic_ns\":%llu,\"after_monotonic_ns\":%llu}\n", count, before, after);
+        if (result) {
+            failed = 1;
+            break;
+        }
+        printf("{\"event\":\"injected\",\"action_id\":%u,\"before_monotonic_ns\":%llu,\"after_monotonic_ns\":%llu}\n",
+            count, before, after);
     }
     if (desktop) {
-        key(input, BTN_LEFT, 0); key(input, KEY_LEFTMETA, 0); key(input, KEY_LEFTALT, 0); key(input,KEY_LEFTCTRL,0);
+        key(input, BTN_LEFT, 0);
+        key(input, KEY_LEFTMETA, 0);
+        key(input, KEY_LEFTALT, 0);
+        key(input, KEY_LEFTCTRL, 0);
     }
     libevdev_uinput_destroy(input);
     libevdev_free(device);

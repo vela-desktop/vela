@@ -35,16 +35,21 @@ def png_rgb(path):
         if offset + size + 12 > len(raw) or zlib.crc32(kind + data) & 0xffffffff != struct.unpack_from('!I', raw, offset+8+size)[0]:
             raise BenchError('Truncated PNG or invalid CRC')
         if kind == b'IHDR':
-            if header is not None or offset != 8 or size != 13: raise BenchError('Invalid PNG header')
+            if header is not None or offset != 8 or size != 13:
+                raise BenchError('Invalid PNG header')
             header = struct.unpack('!IIBBBBB', data)
-        elif kind == b'IDAT': compressed.extend(data)
+        elif kind == b'IDAT':
+            compressed.extend(data)
         elif kind == b'IEND':
             ended = True
-            if size or offset + 12 != len(raw): raise BenchError('Trailing PNG data')
+            if size or offset + 12 != len(raw):
+                raise BenchError('Trailing PNG data')
             break
-        elif kind[0] & 32 == 0: raise BenchError('Unsupported critical PNG chunk')
+        elif kind[0] & 32 == 0:
+            raise BenchError('Unsupported critical PNG chunk')
         offset += size + 12
-    if not ended or not header: raise BenchError('Incomplete PNG')
+    if not ended or not header:
+        raise BenchError('Incomplete PNG')
     width, height, depth, color, compression, filtering, interlace = header
     if (not 0 < width <= 8192 or not 0 < height <= 8192 or width*height > 16777216
             or depth != 8 or color not in (2, 6) or compression or filtering or interlace):
@@ -59,23 +64,28 @@ def png_rgb(path):
     for y in range(height):
         begin = y * (stride+1)
         mode = decoded[begin]
-        if mode > 4: raise BenchError('Unknown PNG filter')
+        if mode > 4:
+            raise BenchError('Unknown PNG filter')
         row = bytearray(decoded[begin+1:begin+1+stride])
         if mode:
             for x in range(stride):
                 left = row[x-channels] if x >= channels else 0
                 up = previous[x]
                 corner = previous[x-channels] if x >= channels else 0
-                if mode == 1: value = left
-                elif mode == 2: value = up
-                elif mode == 3: value = (left+up)//2
+                if mode == 1:
+                    value = left
+                elif mode == 2:
+                    value = up
+                elif mode == 3:
+                    value = (left+up)//2
                 else:
                     p = left+up-corner
                     distances = (abs(p-left), abs(p-up), abs(p-corner))
                     value = (left,up,corner)[distances.index(min(distances))]
                 row[x] = (row[x]+value) & 255
         destination = y*width*3
-        if channels == 3: rgb[destination:destination+width*3] = row
+        if channels == 3:
+            rgb[destination:destination+width*3] = row
         else:
             for component in range(3):
                 rgb[destination+component:destination+width*3:3]=row[component::4]
@@ -96,7 +106,8 @@ def png_bytes(width,height,rgb):
 
 def pattern_metrics(path, metadata, output_size, scale):
     width, height, rgb = png_rgb(path)
-    if [width,height] != list(output_size): raise BenchError('Pattern capture is not physical output size')
+    if [width,height] != list(output_size):
+        raise BenchError('Pattern capture is not physical output size')
     keys = ('logical_width','logical_height','buffer_width','buffer_height','scale120','sequence')
     if any(type(metadata.get(k)) is not int or metadata[k] <= 0 for k in keys):
         raise BenchError('Invalid native pattern geometry')
@@ -120,18 +131,22 @@ def pattern_metrics(path, metadata, output_size, scale):
             ox,oy=x-px,y-py
             if px < bw and py < bh and -2 <= ox <= width-bw+2 and -2 <= oy <= height-bh+2:
                 votes[(ox,oy)]+=1
-    if not votes: raise BenchError('No complete identified coordinate pattern')
+    if not votes:
+        raise BenchError('No complete identified coordinate pattern')
     origin,count=votes.most_common(1)[0]
-    if count < max(8,bw*bh//64): raise BenchError('Ambiguous or resampled coordinate pattern')
+    if count < max(8,bw*bh//64):
+        raise BenchError('Ambiguous or resampled coordinate pattern')
     corner = int(8*scale+1.999999)
     bad, checked, offscreen = 0, 0, 0
     bounds=[bw,bh,-1,-1]
     ox,oy=origin
     for y in range(bh):
         for x in range(bw):
-            if (x < corner or x >= bw-corner) and (y < corner or y >= bh-corner): continue
+            if (x < corner or x >= bw-corner) and (y < corner or y >= bh-corner):
+                continue
             if not (0<=ox+x<width and 0<=oy+y<height):
-                offscreen+=1;checked+=1
+                offscreen+=1
+                checked+=1
                 continue
             i=((oy+y)*width+ox+x)*3
             expected=(x&255,y&255,((x>>8)&15)*16+((y>>8)&15))

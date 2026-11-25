@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Run autonomous benchmark regressions; never start the physical TTY runner."""
 import argparse
-from datetime import datetime, timezone
+from datetime import datetime, UTC
 import hashlib
 import json
 import os
@@ -15,10 +15,11 @@ import tempfile
 import time
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from vela_bench.archive import atomic_json
+
 ROOT = Path(__file__).resolve().parents[2]
 TESTS = ROOT / 'benchmarks/tests'
-sys.path.insert(0, str(ROOT / 'benchmarks'))
-from vela_bench.archive import atomic_json
 
 
 def cases(suite, build):
@@ -147,7 +148,7 @@ def main(argv=None):
     if os.geteuid() == 0:
         parser.error('run unprivileged; this command never takes over the physical desktop')
     output = (args.output or ROOT / 'benchmark-results' / ('selftest-' +
-              datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8])).resolve()
+              datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8])).resolve()
     output.mkdir(parents=True, mode=0o700, exist_ok=False)
     env = dict(os.environ, PYTHONPATH=str(ROOT / 'benchmarks'), VELA_BUILD=str(build),
                XDG_RUNTIME_DIR=f'/run/user/{os.getuid()}',

@@ -50,11 +50,14 @@ class CalibrationCampaign(unittest.TestCase):
         directory=export_campaign(self.layout.path('review-export'),data,self.layout)
         self.assertEqual(read_export(directory),data)
         with patch('vela_bench.campaign.audit_pilot',return_value={'status':'failed','checks':{'successful_run':False}}):
-            with self.assertRaisesRegex(BenchError,'lifecycle acceptance'):read_export(directory)
+            with self.assertRaisesRegex(BenchError,'lifecycle acceptance'):
+                read_export(directory)
         for field,value in (('selection_complete',False),('qualification',dict(data['qualification'],status='passed'))):
-            changed=copy.deepcopy(data);changed[field]=value
+            changed=copy.deepcopy(data)
+            changed[field]=value
             atomic_json(directory/'summary.json',changed)
-            manifest=read_json(directory/'manifest.json');manifest['files']['summary.json']=file_hash(directory/'summary.json')
+            manifest=read_json(directory/'manifest.json')
+            manifest['files']['summary.json']=file_hash(directory/'summary.json')
             atomic_json(directory/'manifest.json',manifest)
             with self.subTest(field=field),self.assertRaisesRegex(BenchError,'selection acceptance|P0 qualification'):
                 read_export(directory)

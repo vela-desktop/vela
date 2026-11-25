@@ -258,7 +258,8 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
     resource_interaction=bool(request and request['measurement_executed'] and request['block']['phase']=='overhead')
     if calibrate or fault or resource_interaction:
         needed=list(("vela-bench-input", "vela-screen-dump") if calibrate else ("vela-bench-input",))
-        if resource_interaction:needed+=['vela-pattern','vela-bench-probe']
+        if resource_interaction:
+            needed+=['vela-pattern','vela-bench-probe']
         for name in needed:
             path = layout.helper.parent / name
             if str(path) not in record["files"]:
@@ -418,7 +419,8 @@ def launch_session(host, target, vt, record, layout, directory, *, vela_sync_tes
             try:
                 result=host.run(command,check=False,timeout=5)
                 evidence[name]=properties(result.stdout) if name=='properties' else result.stdout[-8192:]
-                if result.returncode: evidence[name+'_error']=getattr(result,'stderr','')[-1000:]
+                if result.returncode:
+                    evidence[name+'_error']=getattr(result,'stderr','')[-1000:]
             except (BenchError,OSError) as diagnostic:
                 evidence[name+'_error']=str(diagnostic)
         atomic_json(directory/f'{target}-launch-failure.json',evidence)

@@ -43,27 +43,42 @@ class WindowInteractions(unittest.TestCase):
         for target in ('vela','plasma'):
             result=interactions.audit(json.dumps(transcript(target)),target,self.profile)
             self.assertEqual(result['verified_actions'],24)
-            self.assertFalse(result['capture_enabled']);self.assertFalse(result['latency_measurement'])
+            self.assertFalse(result['capture_enabled'])
+            self.assertFalse(result['latency_measurement'])
 
     def test_incomplete_wrong_backend_scale_state_receipt_or_cadence_is_rejected(self):
         for case in ('count','order','backend','scale','state','receipt','source','cadence','clock','input','geometry',
                      'shape','device','start'):
             row=copy.deepcopy(transcript('plasma'))
             action=row['actions'][0]
-            if case=='count':row['actions'].pop()
-            if case=='order':row['actions'].reverse()
-            if case=='backend':action['pattern']['protocol']='x11'
-            if case=='scale':action['pattern']['scale120']=150
-            if case=='state':action['pattern']['maximized']=False
-            if case=='receipt':action['injection']['command']='maximize'
-            if case=='source':row['pattern_events'].pop(1)
-            if case=='cadence':row['actions'][1]['injection']['before_monotonic_ns']=action['injection']['before_monotonic_ns']+100
-            if case=='clock':action['pattern']['monotonic_ns']=1
-            if case=='input':row['keyboard_ready']['method']='unsupported'
-            if case=='geometry':action['pattern']['buffer_width']=200
-            if case=='shape':row['actions'][0]=None
-            if case=='device':row['keyboard_ready']['sysfs']='unknown'
-            if case=='start':row['begin_monotonic_ns']-=100
+            if case=='count':
+                row['actions'].pop()
+            if case=='order':
+                row['actions'].reverse()
+            if case=='backend':
+                action['pattern']['protocol']='x11'
+            if case=='scale':
+                action['pattern']['scale120']=150
+            if case=='state':
+                action['pattern']['maximized']=False
+            if case=='receipt':
+                action['injection']['command']='maximize'
+            if case=='source':
+                row['pattern_events'].pop(1)
+            if case=='cadence':
+                row['actions'][1]['injection']['before_monotonic_ns']=action['injection']['before_monotonic_ns']+100
+            if case=='clock':
+                action['pattern']['monotonic_ns']=1
+            if case=='input':
+                row['keyboard_ready']['method']='unsupported'
+            if case=='geometry':
+                action['pattern']['buffer_width']=200
+            if case=='shape':
+                row['actions'][0]=None
+            if case=='device':
+                row['keyboard_ready']['sysfs']='unknown'
+            if case=='start':
+                row['begin_monotonic_ns']-=100
             with self.subTest(case=case),self.assertRaises(BenchError):
                 interactions.audit(json.dumps(row),'plasma',self.profile)
 
@@ -75,7 +90,8 @@ class WindowInteractions(unittest.TestCase):
         raw=json.dumps(transcript())
         result=resource_metrics(rows,1001,'window-interaction',raw,target='vela',profile=self.profile)
         self.assertEqual(result['workload']['cycles'],12)
-        row=transcript();row['end_monotonic_ns']=39_000_000_000
+        row=transcript()
+        row['end_monotonic_ns']=39_000_000_000
         with self.assertRaisesRegex(BenchError,'cover the completed workload'):
             resource_metrics(rows,1001,'window-interaction',json.dumps(row),target='vela',profile=self.profile)
 
@@ -102,7 +118,8 @@ class WindowInteractions(unittest.TestCase):
         from vela_bench.platform_workloads import resource_condition
         from test_platform_workloads import sample
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);host=Mock()
+            root=Path(temporary)
+            host=Mock()
             host.run.return_value=SimpleNamespace(returncode=0,stdout='inactive\n',stderr='')
             with patch('vela_bench.resources.snapshot',return_value=sample()), \
                  patch('vela_bench.platform_workloads.stop_process'), \

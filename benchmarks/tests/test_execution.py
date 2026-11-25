@@ -6,9 +6,7 @@
 import contextlib
 import copy
 import io
-import json
 from pathlib import Path
-import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
@@ -64,7 +62,8 @@ class Execution(unittest.TestCase):
         if options.get('campaign_block_id') != 'motion-vela-r1':
             return self.fake_begin(host, targets, **options)
         from vela_bench.campaign import freeze_conditions
-        self.calls.append(targets[0]); self.options.append(copy.deepcopy(options))
+        self.calls.append(targets[0])
+        self.options.append(copy.deepcopy(options))
         source = self.layout.base / 'pilots' / options['run_id']
         source.mkdir()
         freeze_conditions(self.layout, options['campaign_run_id'], self.snapshot)
@@ -106,7 +105,8 @@ class Execution(unittest.TestCase):
         self.assertEqual((output / 'motion-vela-r1/failed-capture.png').read_bytes(), b'original diagnostic fixture')
         self.assertIn('synthetic covered corpus marker', (output / 'report.html').read_text())
         from vela_bench.discovery import file_hash
-        changed = copy.deepcopy(data); changed['failed_blocks'] = 0
+        changed = copy.deepcopy(data)
+        changed['failed_blocks'] = 0
         atomic_json(output / 'summary.json', changed)
         manifest = read_json(output / 'manifest.json')
         manifest['files']['summary.json'] = file_hash(output / 'summary.json')
@@ -167,13 +167,19 @@ class Execution(unittest.TestCase):
     def test_unverified_restoration_or_live_account_stops_before_another_block(self):
         self.use_recovered_failure()
         for case in ('cleanup-error', 'hardware-restore', 'changed-hardware', 'reboot', 'live-pid', 'input-release'):
-            self.calls.clear(); self.live_pids = []
+            self.calls.clear()
+            self.live_pids = []
             def alter(state, source):
-                if case == 'cleanup-error': state['cleanup_errors'] = ['restore failed']
-                elif case == 'hardware-restore': state['conditions_restore']['status'] = 'failed'
-                elif case == 'changed-hardware': state['conditions_snapshot']['profile']['mode']['refresh_mhz'] = 144000
-                elif case == 'reboot': state['boot_id'] = 'previous boot'
-                elif case == 'live-pid': self.live_pids = [42]
+                if case == 'cleanup-error':
+                    state['cleanup_errors'] = ['restore failed']
+                elif case == 'hardware-restore':
+                    state['conditions_restore']['status'] = 'failed'
+                elif case == 'changed-hardware':
+                    state['conditions_snapshot']['profile']['mode']['refresh_mhz'] = 144000
+                elif case == 'reboot':
+                    state['boot_id'] = 'previous boot'
+                elif case == 'live-pid':
+                    self.live_pids = [42]
                 elif case == 'input-release':
                     state['plan'] = {'input_policy': {'version': 'fixture'}}
                     atomic_json(source / 'input-isolation.json', {'release_verified_after_worker_exit': False})

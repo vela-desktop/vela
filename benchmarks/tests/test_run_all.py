@@ -55,7 +55,8 @@ class RunAll(unittest.TestCase):
 
     def call(self, command, **options):
         self.commands.append(command)
-        if command[-1] == 'recover':return self.recovery_status
+        if command[-1] == 'recover':
+            return self.recovery_status
         status=self.statuses.pop(0)
         if status in (0,1) and self.results and isinstance(self.results[0],dict):
             (self.layout.base / 'campaign-active.json').write_text(json.dumps({'run_id':self.results[0]['run_id']}))
@@ -143,7 +144,8 @@ class RunAll(unittest.TestCase):
         self.commands.clear()
         self.recovery_status = 0
         def inspect(*args):
-            if args[-1]['case'] == 'observe':raise BenchError('missing P3 scene')
+            if args[-1]['case'] == 'observe':
+                raise BenchError('missing P3 scene')
         self.preflight.side_effect = inspect
         self.assertEqual(self.invoke('--yes'), 2)
         self.assertEqual(len(self.commands), 1)

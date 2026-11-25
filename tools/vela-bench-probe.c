@@ -24,13 +24,13 @@
 #include "xdg-shell-client-protocol.h"
 
 enum { WIDTH = 640, HEIGHT = 360, BUFFERS = 3 };
-static struct wl_display* display;
-static struct wl_compositor* compositor;
-static struct wl_shm* shm;
-static struct xdg_wm_base* wm;
-static struct wp_presentation* presentation;
-static struct wl_surface* surface;
-static struct wl_callback* frameCallback;
+static struct wl_display *display;
+static struct wl_compositor *compositor;
+static struct wl_shm *shm;
+static struct xdg_wm_base *wm;
+static struct wp_presentation *presentation;
+static struct wl_surface *surface;
+static struct wl_callback *frameCallback;
 static uint32_t requested = 120, delayMs, timeoutSeconds = 30;
 static uint32_t committed, presented, discarded, outstanding;
 static clockid_t presentationClock;
@@ -42,8 +42,8 @@ static bool holdAfterSummary;
 static volatile sig_atomic_t running = 1;
 
 struct Buffer {
-    struct wl_buffer* object;
-    uint32_t* pixels;
+    struct wl_buffer *object;
+    uint32_t *pixels;
     bool busy;
 };
 static struct Buffer buffers[BUFFERS];
@@ -53,7 +53,7 @@ struct Feedback {
     uint64_t commitClockNs;
 };
 
-static void fail(const char* message)
+static void fail(const char *message)
 {
     fprintf(stderr, "vela-bench-probe: %s\n", message);
     exit(1);
@@ -92,15 +92,15 @@ static void announceInputReady(void)
     }
 }
 
-static void releaseBuffer(void* data, struct wl_buffer* object)
+static void releaseBuffer(void *data, struct wl_buffer *object)
 {
-    struct Buffer* buffer = data;
+    struct Buffer *buffer = data;
     buffer->busy = false;
     submit();
 }
 static const struct wl_buffer_listener bufferListener = { releaseBuffer };
 
-static void frameDone(void* data, struct wl_callback* callback, uint32_t time)
+static void frameDone(void *data, struct wl_callback *callback, uint32_t time)
 {
     wl_callback_destroy(callback);
     frameCallback = NULL;
@@ -109,23 +109,23 @@ static void frameDone(void* data, struct wl_callback* callback, uint32_t time)
 }
 static const struct wl_callback_listener frameListener = { frameDone };
 
-static void syncOutput(void* data, struct wp_presentation_feedback* feedback, struct wl_output* output) { }
-
-static void didPresent(void* data, struct wp_presentation_feedback* feedback,
-    uint32_t secHi, uint32_t secLo, uint32_t nsec, uint32_t refresh,
-    uint32_t seqHi, uint32_t seqLo, uint32_t flags)
+static void syncOutput(void *data, struct wp_presentation_feedback *feedback, struct wl_output *output)
 {
-    struct Feedback* record = data;
+}
+
+static void didPresent(void *data, struct wp_presentation_feedback *feedback, uint32_t secHi, uint32_t secLo,
+    uint32_t nsec, uint32_t refresh, uint32_t seqHi, uint32_t seqLo, uint32_t flags)
+{
+    struct Feedback *record = data;
     const uint64_t seconds = (uint64_t)secHi << 32 | secLo;
     if (nsec >= 1000000000u || seconds > (UINT64_MAX - nsec) / 1000000000ull) {
         fail("invalid presentation timestamp");
     }
     const uint64_t timestamp = seconds * 1000000000ull + nsec;
-    printf("{\"event\":\"presented\",\"frame\":%u,\"presentation_ns\":%" PRIu64
-           ",\"commit_clock_ns\":%" PRIu64 ",\"received_monotonic_ns\":%" PRIu64
-           ",\"refresh_ns\":%u,\"sequence\":%" PRIu64 ",\"flags\":%u}\n",
-        record->frame, timestamp, record->commitClockNs, now(CLOCK_MONOTONIC),
-        refresh, (uint64_t)seqHi << 32 | seqLo, flags);
+    printf("{\"event\":\"presented\",\"frame\":%u,\"presentation_ns\":%" PRIu64 ",\"commit_clock_ns\":%" PRIu64
+           ",\"received_monotonic_ns\":%" PRIu64 ",\"refresh_ns\":%u,\"sequence\":%" PRIu64 ",\"flags\":%u}\n",
+        record->frame, timestamp, record->commitClockNs, now(CLOCK_MONOTONIC), refresh, (uint64_t)seqHi << 32 | seqLo,
+        flags);
     ++presented;
     announceInputReady();
     --outstanding;
@@ -133,11 +133,11 @@ static void didPresent(void* data, struct wp_presentation_feedback* feedback,
     free(record);
 }
 
-static void didDiscard(void* data, struct wp_presentation_feedback* feedback)
+static void didDiscard(void *data, struct wp_presentation_feedback *feedback)
 {
-    struct Feedback* record = data;
-    printf("{\"event\":\"discarded\",\"frame\":%u,\"received_monotonic_ns\":%" PRIu64 "}\n",
-        record->frame, now(CLOCK_MONOTONIC));
+    struct Feedback *record = data;
+    printf("{\"event\":\"discarded\",\"frame\":%u,\"received_monotonic_ns\":%" PRIu64 "}\n", record->frame,
+        now(CLOCK_MONOTONIC));
     ++discarded;
     --outstanding;
     wp_presentation_feedback_destroy(feedback);
@@ -147,11 +147,11 @@ static const struct wp_presentation_feedback_listener feedbackListener = { syncO
 
 static void submit(void)
 {
-    if (!configured || !haveClock || !frameReady || !running || committed == requested ||
-        (inputRequested && committed > inputReceived)) {
+    if (!configured || !haveClock || !frameReady || !running || committed == requested
+        || (inputRequested && committed > inputReceived)) {
         return;
     }
-    struct Buffer* buffer = NULL;
+    struct Buffer *buffer = NULL;
     for (int i = 0; i < BUFFERS; ++i) {
         if (!buffers[i].busy) {
             buffer = &buffers[i];
@@ -180,19 +180,23 @@ static void submit(void)
             const bool bar = y >= 48 && (x + WIDTH - (int)(id * 7 % WIDTH)) % WIDTH < 20;
             buffer->pixels[y * WIDTH + x] = bit ? 0xffffffffu : bar ? 0xff20b8d0u : 0xff202830u;
             if (marker) {
-                if (x >= 16 && x < 32) buffer->pixels[y * WIDTH + x] = 0xffd020d0u;
-                else if (x >= 32 && x < 48) buffer->pixels[y * WIDTH + x] = 0xff20d020u;
-                else if (x >= 592 && x < 608) buffer->pixels[y * WIDTH + x] = 0xff2040e0u;
-                else if (x >= 608 && x < 624) buffer->pixels[y * WIDTH + x] = 0xffe08020u;
+                if (x >= 16 && x < 32)
+                    buffer->pixels[y * WIDTH + x] = 0xffd020d0u;
+                else if (x >= 32 && x < 48)
+                    buffer->pixels[y * WIDTH + x] = 0xff20d020u;
+                else if (x >= 592 && x < 608)
+                    buffer->pixels[y * WIDTH + x] = 0xff2040e0u;
+                else if (x >= 608 && x < 624)
+                    buffer->pixels[y * WIDTH + x] = 0xffe08020u;
             }
         }
     }
-    struct Feedback* record = calloc(1, sizeof(*record));
+    struct Feedback *record = calloc(1, sizeof(*record));
     if (!record) {
         fail("out of memory");
     }
     record->frame = id;
-    struct wp_presentation_feedback* feedback = wp_presentation_feedback(presentation, surface);
+    struct wp_presentation_feedback *feedback = wp_presentation_feedback(presentation, surface);
     wp_presentation_feedback_add_listener(feedback, &feedbackListener, record);
     frameCallback = wl_surface_frame(surface);
     wl_callback_add_listener(frameCallback, &frameListener, NULL);
@@ -200,9 +204,9 @@ static void submit(void)
     wl_surface_damage_buffer(surface, 0, 0, WIDTH, HEIGHT);
     record->commitClockNs = now(presentationClock);
     inputSubmitted = inputReceived;
-    printf("{\"event\":\"commit\",\"frame\":%u,\"commit_clock_ns\":%" PRIu64
-           ",\"monotonic_ns\":%" PRIu64 ",\"delay_elapsed_ns\":%" PRIu64
-           ",\"input_id\":%u,\"input_received_monotonic_ns\":%" PRIu64 ",\"input_delivered_ms\":%u}\n",
+    printf("{\"event\":\"commit\",\"frame\":%u,\"commit_clock_ns\":%" PRIu64 ",\"monotonic_ns\":%" PRIu64
+           ",\"delay_elapsed_ns\":%" PRIu64 ",\"input_id\":%u,\"input_received_monotonic_ns\":%" PRIu64
+           ",\"input_delivered_ms\":%u}\n",
         id, record->commitClockNs, now(CLOCK_MONOTONIC), actualDelay, inputReceived, inputReceiptNs, inputDeliveredMs);
     wl_surface_commit(surface);
     buffer->busy = true;
@@ -211,7 +215,7 @@ static void submit(void)
     ++outstanding;
 }
 
-static void clockId(void* data, struct wp_presentation* object, uint32_t id)
+static void clockId(void *data, struct wp_presentation *object, uint32_t id)
 {
     presentationClock = (clockid_t)id;
     (void)now(presentationClock);
@@ -220,17 +224,22 @@ static void clockId(void* data, struct wp_presentation* object, uint32_t id)
 }
 static const struct wp_presentation_listener presentationListener = { clockId };
 
-static void keymap(void* data, struct wl_keyboard* keyboard, uint32_t format, int fd, uint32_t size) { close(fd); }
-static void keyboardEnter(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* entered, struct wl_array* keys)
+static void keymap(void *data, struct wl_keyboard *keyboard, uint32_t format, int fd, uint32_t size)
+{
+    close(fd);
+}
+static void keyboardEnter(
+    void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *entered, struct wl_array *keys)
 {
     keyboardFocused = entered == surface;
     announceInputReady();
 }
-static void keyboardLeave(void* data, struct wl_keyboard* keyboard, uint32_t serial, struct wl_surface* left)
+static void keyboardLeave(void *data, struct wl_keyboard *keyboard, uint32_t serial, struct wl_surface *left)
 {
     keyboardFocused = false;
 }
-static void keyboardKey(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
+static void keyboardKey(
+    void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
 {
     if (!inputRequested || key != KEY_F24 || state != WL_KEYBOARD_KEY_STATE_PRESSED) return;
     if (!inputReady || !keyboardFocused || inputReceived == inputRequested || inputReceived != inputSubmitted)
@@ -242,12 +251,19 @@ static void keyboardKey(void* data, struct wl_keyboard* keyboard, uint32_t seria
         inputReceived, inputReceiptNs, time);
     submit();
 }
-static void modifiers(void* data, struct wl_keyboard* keyboard, uint32_t serial, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) { }
+static void modifiers(void *data, struct wl_keyboard *keyboard, uint32_t serial, uint32_t depressed, uint32_t latched,
+    uint32_t locked, uint32_t group)
+{
+}
 static const struct wl_keyboard_listener keyboardListener = {
-    .keymap = keymap, .enter = keyboardEnter, .leave = keyboardLeave, .key = keyboardKey, .modifiers = modifiers,
+    .keymap = keymap,
+    .enter = keyboardEnter,
+    .leave = keyboardLeave,
+    .key = keyboardKey,
+    .modifiers = modifiers,
 };
-static struct wl_keyboard* keyboard;
-static void capabilities(void* data, struct wl_seat* seat, uint32_t caps)
+static struct wl_keyboard *keyboard;
+static void capabilities(void *data, struct wl_seat *seat, uint32_t caps)
 {
     if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard) {
         keyboard = wl_seat_get_keyboard(seat);
@@ -256,13 +272,13 @@ static void capabilities(void* data, struct wl_seat* seat, uint32_t caps)
 }
 static const struct wl_seat_listener seatListener = { .capabilities = capabilities };
 
-static void ping(void* data, struct xdg_wm_base* base, uint32_t serial)
+static void ping(void *data, struct xdg_wm_base *base, uint32_t serial)
 {
     xdg_wm_base_pong(base, serial);
 }
 static const struct xdg_wm_base_listener wmListener = { ping };
 
-static void global(void* data, struct wl_registry* registry, uint32_t id, const char* interface, uint32_t version)
+static void global(void *data, struct wl_registry *registry, uint32_t id, const char *interface, uint32_t version)
 {
     if (!strcmp(interface, "wl_compositor") && version >= 4) {
         compositor = wl_registry_bind(registry, id, &wl_compositor_interface, 4);
@@ -275,30 +291,38 @@ static void global(void* data, struct wl_registry* registry, uint32_t id, const 
         presentation = wl_registry_bind(registry, id, &wp_presentation_interface, 1);
         wp_presentation_add_listener(presentation, &presentationListener, NULL);
     } else if (inputRequested && !strcmp(interface, "wl_seat")) {
-        struct wl_seat* seat = wl_registry_bind(registry, id, &wl_seat_interface, 1);
+        struct wl_seat *seat = wl_registry_bind(registry, id, &wl_seat_interface, 1);
         wl_seat_add_listener(seat, &seatListener, NULL);
     }
 }
-static void globalRemove(void* data, struct wl_registry* registry, uint32_t id) { }
+static void globalRemove(void *data, struct wl_registry *registry, uint32_t id)
+{
+}
 static const struct wl_registry_listener registryListener = { global, globalRemove };
 
-static void configure(void* data, struct xdg_surface* xdg, uint32_t serial)
+static void configure(void *data, struct xdg_surface *xdg, uint32_t serial)
 {
     xdg_surface_ack_configure(xdg, serial);
     configured = true;
     submit();
 }
 static const struct xdg_surface_listener surfaceListener = { configure };
-static void toplevelConfigure(void* data, struct xdg_toplevel* top, int32_t width, int32_t height, struct wl_array* states) { }
-static void toplevelClose(void* data, struct xdg_toplevel* top) { running = 0; }
+static void toplevelConfigure(
+    void *data, struct xdg_toplevel *top, int32_t width, int32_t height, struct wl_array *states)
+{
+}
+static void toplevelClose(void *data, struct xdg_toplevel *top)
+{
+    running = 0;
+}
 static const struct xdg_toplevel_listener toplevelListener = {
     .configure = toplevelConfigure,
     .close = toplevelClose,
 };
 
-static uint32_t argument(const char* value, uint32_t minimum, uint32_t maximum)
+static uint32_t argument(const char *value, uint32_t minimum, uint32_t maximum)
 {
-    char* end;
+    char *end;
     errno = 0;
     unsigned long number = strtoul(value, &end, 10);
     if (errno || !*value || *end || number < minimum || number > maximum) {
@@ -307,7 +331,7 @@ static uint32_t argument(const char* value, uint32_t minimum, uint32_t maximum)
     return (uint32_t)number;
 }
 
-int main(int argc, char** argv)
+int main(int argc, char **argv)
 {
     for (int i = 1; i < argc; ++i) {
         if (!strcmp(argv[i], "--hold")) {
@@ -315,7 +339,8 @@ int main(int argc, char** argv)
             continue;
         }
         if (!strcmp(argv[i], "--help")) {
-            puts("Usage: vela-bench-probe [--frames 1..10000] [--inputs 1..1000 [--hold]] [--delay-ms 0..1000] [--timeout 1..3600]\n"
+            puts("Usage: vela-bench-probe [--frames 1..10000] [--inputs 1..1000 [--hold]] [--delay-ms 0..1000] "
+                 "[--timeout 1..3600]\n"
                  "JSONL presentation diagnostic; --inputs observes F24 press to client submission/feedback.\n"
                  "--hold keeps the last input frame until stdin closes. No optical or whole-desktop latency claim.");
             return 0;
@@ -323,8 +348,8 @@ int main(int argc, char** argv)
         if (i + 1 >= argc) {
             fail("option requires a value; see --help");
         }
-        const char* option = argv[i];
-        const char* value = argv[++i];
+        const char *option = argv[i];
+        const char *value = argv[++i];
         if (!strcmp(option, "--frames")) {
             requested = argument(value, 1, 10000);
         } else if (!strcmp(option, "--inputs")) {
@@ -351,7 +376,7 @@ int main(int argc, char** argv)
     if (!display) {
         fail("cannot connect to Wayland");
     }
-    struct wl_registry* registry = wl_display_get_registry(display);
+    struct wl_registry *registry = wl_display_get_registry(display);
     wl_registry_add_listener(registry, &registryListener, NULL);
     if (wl_display_roundtrip(display) < 0 || wl_display_roundtrip(display) < 0) {
         fail("Wayland registry exchange failed");
@@ -361,9 +386,11 @@ int main(int argc, char** argv)
     }
     printf("{\"event\":\"probe\",\"schema\":1,\"method\":\"%s\","
            "\"scope\":\"%s\",\"display_protocol\":\"wayland\",\"window_protocol\":\"xdg-shell\","
-           "\"buffer_backend\":\"wl_shm\",\"buffer_width\":%u,\"buffer_height\":%u,\"frames\":%u,\"delay_requested_ms\":%u}\n",
-           inputRequested ? "wayland-input-presentation-v1" : "wayland-presentation-v1",
-           inputRequested ? "software-input-to-reported-presentation" : "diagnostic-client-only", WIDTH, HEIGHT, requested, delayMs);
+           "\"buffer_backend\":\"wl_shm\",\"buffer_width\":%u,\"buffer_height\":%u,\"frames\":%u,\"delay_requested_"
+           "ms\":%u}\n",
+        inputRequested ? "wayland-input-presentation-v1" : "wayland-presentation-v1",
+        inputRequested ? "software-input-to-reported-presentation" : "diagnostic-client-only", WIDTH, HEIGHT, requested,
+        delayMs);
     for (int i = 0; i < BUFFERS; ++i) {
         int fd = memfd_create("vela-bench-probe", MFD_CLOEXEC);
         const size_t length = WIDTH * HEIGHT * 4;
@@ -374,16 +401,16 @@ int main(int argc, char** argv)
         if (buffers[i].pixels == MAP_FAILED) {
             fail("cannot map SHM buffer");
         }
-        struct wl_shm_pool* pool = wl_shm_create_pool(shm, fd, (int32_t)length);
+        struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)length);
         buffers[i].object = wl_shm_pool_create_buffer(pool, 0, WIDTH, HEIGHT, WIDTH * 4, WL_SHM_FORMAT_XRGB8888);
         wl_buffer_add_listener(buffers[i].object, &bufferListener, &buffers[i]);
         wl_shm_pool_destroy(pool);
         close(fd);
     }
     surface = wl_compositor_create_surface(compositor);
-    struct xdg_surface* xdg = xdg_wm_base_get_xdg_surface(wm, surface);
+    struct xdg_surface *xdg = xdg_wm_base_get_xdg_surface(wm, surface);
     xdg_surface_add_listener(xdg, &surfaceListener, NULL);
-    struct xdg_toplevel* toplevel = xdg_surface_get_toplevel(xdg);
+    struct xdg_toplevel *toplevel = xdg_surface_get_toplevel(xdg);
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
     xdg_toplevel_set_title(toplevel, "Vela benchmark - native Wayland diagnostic");
     xdg_toplevel_set_app_id(toplevel, "org.vela.benchmark.probe");
@@ -430,14 +457,15 @@ int main(int argc, char** argv)
     printf("{\"event\":\"summary\",\"complete\":%s,\"committed\":%u,\"presented\":%u,\"discarded\":%u}\n",
         complete ? "true" : "false", committed, presented, discarded);
     if (!complete) {
-        fprintf(stderr, "vela-bench-probe: incomplete feedback (timeout, interruption, closure or connection failure)\n");
+        fprintf(
+            stderr, "vela-bench-probe: incomplete feedback (timeout, interruption, closure or connection failure)\n");
     }
     // Keep the last fixture visible while capture finishes. Continue to
     // answer compositor pings; EOF on the private stdin pipe releases it.
     while (complete && holdAfterSummary && running) {
         if (wl_display_dispatch_pending(display) < 0) break;
-        struct pollfd fds[] = {{.fd = STDIN_FILENO, .events = POLLIN},
-                               {.fd = wl_display_get_fd(display), .events = POLLIN}};
+        struct pollfd fds[] = { { .fd = STDIN_FILENO, .events = POLLIN },
+            { .fd = wl_display_get_fd(display), .events = POLLIN } };
         if (wl_display_flush(display) < 0 && errno != EAGAIN) break;
         int result = poll(fds, 2, 100);
         if (result < 0 && errno != EINTR) break;

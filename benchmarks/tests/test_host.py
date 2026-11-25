@@ -30,7 +30,7 @@ from vela_bench.host import (ACCOUNT, Layout, PILOT_UNIT, SESSION_UNIT, check_ac
                             unit_quote, uninstall, useradd_command, update_launcher, require_current_launcher, MODULES, HostOperationError,
                             release_session_unit)
 from vela_bench.pilot import (check_profile_environment, desktop_environment, recover, reserve_vt,
-                             select_login_session, session_command, tty_preconditions, worker,
+                             select_login_session, session_command, worker,
                              preserve_session_log, wait_session, restore_display_manager, restore_hardware_conditions)
 
 
@@ -853,7 +853,10 @@ class HostOperations(unittest.TestCase):
         record = self.setup_account()
         owned = ("LoadState=loaded\nUser=vela-benchmark\nTransient=yes\nDescription=Vela benchmark P0 session "
                  + record["account_tag"] + "\n")
-        reply = lambda raw: SimpleNamespace(stdout=raw)
+
+        def reply(raw):
+            return SimpleNamespace(stdout=raw)
+
         with patch.object(self.host, "run", side_effect=[reply(owned + "ActiveState=failed\nResult=timeout\n"),
                 reply(""), reply(owned + "ActiveState=inactive\nResult=success\n"), reply("LoadState=not-found\n")]) as run, \
                 patch("vela_bench.host.time.sleep"):
@@ -917,7 +920,7 @@ class HostOperations(unittest.TestCase):
         self.assertEqual(self.host.calls, before)
 
     def test_reserved_session_log_is_preserved_before_profile_reset(self):
-        record = self.setup_account()
+        self.setup_account()
         directory = self.pilot_state(result="failed")
         state = read_json(directory / "state.json")
         state["target"] = "vela"
@@ -1003,7 +1006,10 @@ class HostOperations(unittest.TestCase):
         self.setup_account()
         directory = self.pilot_state()
         state = read_json(directory / "state.json")
-        reply = lambda raw="": SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
+        def reply(raw=""):
+            return SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
         responses = [reply("ActiveState=inactive\nResult=success\n"), BenchError("start rejected"),
                      reply("ActiveState=failed\nResult=start-limit-hit\n"), reply(), reply()]
         with patch.object(self.host, "run", side_effect=responses) as run:
@@ -1100,7 +1106,10 @@ class HostOperations(unittest.TestCase):
                                               ("inactive", "start-limit-hit", True)):
             state = read_json(directory / "state.json")
             state["display_manager_rate_limit_reset"] = already_reset
-            reply = lambda raw: SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
+            def reply(raw):
+                return SimpleNamespace(stdout=raw, returncode=0, stderr="")
+
             responses = [reply(f"ActiveState={before}\nResult=success\n"), BenchError("start failed"),
                          reply(f"ActiveState=failed\nResult={result}\n")]
             with self.subTest(before=before, result=result, already_reset=already_reset), \
@@ -1134,7 +1143,8 @@ class HostOperations(unittest.TestCase):
                 order = []
                 def release(host, folder, current, layout):
                     order.append('release')
-                    if fails:raise BenchError('Greeter release incomplete')
+                    if fails:
+                        raise BenchError('Greeter release incomplete')
                     current['greeter_user_release']['status'] = 'released'
                 def start(*args):
                     order.append('start')
@@ -1414,14 +1424,16 @@ class HostOperations(unittest.TestCase):
         directory = self.pilot_state()
         state = read_json(directory / "state.json")
         state["masked_units"] = []
-        parent=self.layout.path('etc/systemd/system');parent.mkdir(parents=True,exist_ok=True)
+        parent=self.layout.path('etc/systemd/system')
+        parent.mkdir(parents=True,exist_ok=True)
         (parent/'getty@tty8.service').symlink_to('/dev/null')
         calls=[]
         def invoke(argv,**kwargs):
             calls.append(argv)
             if argv[1]=='mask':
                 path=self.layout.path('run/systemd/system')/argv[-1]
-                path.parent.mkdir(parents=True,exist_ok=True);path.symlink_to('/dev/null')
+                path.parent.mkdir(parents=True,exist_ok=True)
+                path.symlink_to('/dev/null')
             return SimpleNamespace(stdout='ActiveState=inactive\nLoadState=masked\nUnitFileState=masked\n')
         with patch.object(self.host, "run", side_effect=invoke):
             reserve_vt(self.host, directory, state,self.layout)

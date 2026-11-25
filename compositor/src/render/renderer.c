@@ -1276,8 +1276,8 @@ static int collect_retired_buffers(void *data)
     return 0;
 }
 
-void vela_renderer_retire_buffer(struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory,
-    struct wlr_buffer *buffer)
+void vela_renderer_retire_buffer(
+    struct vela_renderer *r, VkImage image, VkImageView view, VkDeviceMemory memory, struct wlr_buffer *buffer)
 {
     // Uploads recorded but not yet submitted count too: they will end up in
     // the next submission.
@@ -1306,11 +1306,13 @@ void vela_renderer_retire_buffer(struct vela_renderer *r, VkImage image, VkImage
     // even on an idle desktop, without waiting for another output frame.
     if (buffer && !r->destroying && r->vk->loss_display && !vela_vulkan_unusable(r->vk)) {
         if (!r->retire_timer) {
-            r->retire_timer = wl_event_loop_add_timer(wl_display_get_event_loop(r->vk->loss_display),
-                collect_retired_buffers, r);
+            r->retire_timer =
+                wl_event_loop_add_timer(wl_display_get_event_loop(r->vk->loss_display), collect_retired_buffers, r);
         }
-        if (r->retire_timer) wl_event_source_timer_update(r->retire_timer, 1);
-        else vela_vulkan_abort(r->vk, "wl_event_loop_add_timer(buffer retirement)");
+        if (r->retire_timer)
+            wl_event_source_timer_update(r->retire_timer, 1);
+        else
+            vela_vulkan_abort(r->vk, "wl_event_loop_add_timer(buffer retirement)");
     }
 }
 

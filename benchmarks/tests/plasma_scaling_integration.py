@@ -5,6 +5,7 @@
 """P4 controller on private KWin, with D-Bus action fixtures, not kernel input."""
 import json
 import hashlib
+from importlib import import_module
 import os
 from pathlib import Path
 import select
@@ -39,8 +40,10 @@ def keyboard():
     print(json.dumps({'event':'uinput-ready','method':'linux-uinput-fixed-desktop-v1',
         'clock':'CLOCK_MONOTONIC','sysfs':'/sys/devices/virtual/input/input999999999'}),flush=True)
     for index,line in enumerate(sys.stdin,1):
-        command=line.strip();began=time.monotonic_ns()
-        if command=='quit':break
+        command=line.strip()
+        began=time.monotonic_ns()
+        if command=='quit':
+            break
         if command!='point 0 32768':
             invoke(bus,{'snap-left':'Window Quick Tile Left','snap-right':'Window Quick Tile Right',
                         'maximize-toggle':'Window Maximize'}[command])
@@ -90,13 +93,17 @@ def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=
     process=subprocess.Popen([str(adapter.parent/'vela-pattern'),'--benchmark','401','301'],
         env=env,stdout=subprocess.PIPE,stderr=subprocess.PIPE,bufsize=0)
     try:
-        lines=Lines(process);meta=lines.next(time.monotonic()+8);time.sleep(.6)
-        invoke(bus,'Window Quick Tile Top');time.sleep(.7)
+        lines=Lines(process)
+        meta=lines.next(time.monotonic()+8)
+        time.sleep(.6)
+        invoke(bus,'Window Quick Tile Top')
+        time.sleep(.7)
         while lines.pending or select.select([process.stdout],[],[],.15)[0]:
             meta=lines.next(time.monotonic()+3)
         assert meta['maximized'] is False and meta['buffer_height']<.65*profile['mode']['height'],meta
         original_failure_reproduced=True
-    finally:stop_process(process)
+    finally:
+        stop_process(process)
     layout=Layout(directory)
     class Host:
         def spawn(self,command,errors):
@@ -107,11 +114,14 @@ def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=
                 argv=[str(adapter.parent/Path(command[at]).name),*command[at+1:]]
             return subprocess.Popen(argv,env=env,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=errors,bufsize=0)
         def run(self,command,**options):
-            if '--property=ActiveState' in command:return SimpleNamespace(stdout='inactive\n',returncode=0)
+            if '--property=ActiveState' in command:
+                return SimpleNamespace(stdout='inactive\n',returncode=0)
             if '_capture' in command:
                 return native('--capture',profile['primary'],'1')
-            if '--outputs' in command:return native('--outputs')
-            if '--apply' in command:return native('--apply',command[command.index('--apply')+1])
+            if '--outputs' in command:
+                return native('--outputs')
+            if '--apply' in command:
+                return native('--apply',command[command.index('--apply')+1])
             return SimpleNamespace(stdout='',returncode=0)
     from vela_bench import corpus
     inventory={case:{'tool':binary,'status':'unsupported','reason':'not-installed'} for case,binary in corpus.CASES.items()}
@@ -127,19 +137,24 @@ def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=
         with (directory/'corpus-errors').open('wb') as errors:
             keys_process=Host().spawn([str(layout.helper.parent/'vela-bench-input')],errors)
             try:
-                keys=Lines(keys_process);keys.next(time.monotonic()+5);time.sleep(.5)
+                keys=Lines(keys_process)
+                keys.next(time.monotonic()+5)
+                time.sleep(.5)
                 corpus.run(Host(),record,directory,'plasma',layout,profile,lambda:None,
                     lambda label:print(label,flush=True),result,keys_process,keys,errors)
                 assert len(corpus.audit(result,directory,profile,'plasma'))==sum(v.get('cases',0) for v in result['corpus_availability'].values())
                 assert all(result['corpus_availability'][case]['status']=='supported' for case in ('qt-wayland','gtk-wayland','qt-xwayland'))
             finally:
-                stop_process(keys_process);apply_outputs(Host(),record,layout,'plasma',profile['outputs'])
+                stop_process(keys_process)
+                apply_outputs(Host(),record,layout,'plasma',profile['outputs'])
                 atomic_json(directory/'corpus-result.json',result)
                 if os.environ.get('VELA_P4_EVIDENCE'):
                     import shutil
-                    output=Path(os.environ['VELA_P4_EVIDENCE']);output.mkdir()
+                    output=Path(os.environ['VELA_P4_EVIDENCE'])
+                    output.mkdir()
                     for path in directory.iterdir():
-                        if path.is_file():shutil.copyfile(path,output/path.name)
+                        if path.is_file():
+                            shutil.copyfile(path,output/path.name)
         print('PLASMA_SCALING_EVIDENCE '+json.dumps({'corpus':result['corpus_availability'],'cases':len(result['scenarios']),
             'scope':'private-kwin; fixture-input; not physical acceptance','raw_audit':True}),flush=True)
         return
@@ -158,14 +173,21 @@ def child(adapter,directory,interaction=False,corpus_mode=False,contention_mode=
 
 def main(adapter,interaction=False,corpus_mode=False,contention_mode=False):
     if contention_mode and (os.getuid()==0 or not any(Path('/dev/dri').glob('renderD*'))):
-        print('SKIP: private contention needs an unprivileged user and render node');return 77
-    try:import gi
+        print('SKIP: private contention needs an unprivileged user and render node')
+        return 77
+    try:
+        import_module("gi")
     except ImportError:
-        print('SKIP: private KWin shortcut check needs PyGObject');return 77
-    if os.getuid()==0:raise RuntimeError('Run the private KWin check unprivileged')
+        print('SKIP: private KWin shortcut check needs PyGObject')
+        return 77
+    if os.getuid()==0:
+        raise RuntimeError('Run the private KWin check unprivileged')
     with tempfile.TemporaryDirectory(prefix='vela-plasma-scaling-') as temporary:
-        base=Path(temporary);runtime=base/'runtime';runtime.mkdir(mode=0o700)
-        home=base/'home';home.mkdir(mode=0o700)
+        base=Path(temporary)
+        runtime=base/'runtime'
+        runtime.mkdir(mode=0o700)
+        home=base/'home'
+        home.mkdir(mode=0o700)
         env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','HOME':str(home),'XDG_RUNTIME_DIR':str(runtime),
              'XDG_CONFIG_HOME':str(home/'config'),'XDG_DATA_HOME':str(home/'data'),
              'XDG_STATE_HOME':str(home/'state'),'XDG_CACHE_HOME':str(home/'cache'),
@@ -182,18 +204,26 @@ def main(adapter,interaction=False,corpus_mode=False,contention_mode=False):
                 raise RuntimeError(f'Private KWin exited with {process.returncode}: ' + log[-4000:])
             records=[line.removeprefix('PLASMA_SCALING_EVIDENCE ') for line in log.splitlines()
                      if line.startswith('PLASMA_SCALING_EVIDENCE ')]
-            if len(records)!=1:raise RuntimeError('Private KWin scaling failed: '+log[-8000:])
+            if len(records)!=1:
+                raise RuntimeError('Private KWin scaling failed: '+log[-8000:])
             print(json.dumps(json.loads(records[0]),indent=2))
         finally:
-            try:os.killpg(process.pid,signal.SIGTERM)
-            except ProcessLookupError:pass
-            try:process.wait(timeout=3)
+            try:
+                os.killpg(process.pid,signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=3)
             except subprocess.TimeoutExpired:
-                os.killpg(process.pid,signal.SIGKILL);process.wait(timeout=3)
+                os.killpg(process.pid,signal.SIGKILL)
+                process.wait(timeout=3)
     return 0
 
 
 if __name__=='__main__':
-    if sys.argv[1]=='--keyboard':keyboard()
-    elif sys.argv[1]=='--child':child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:],'--corpus' in sys.argv[4:],'--contention' in sys.argv[4:])
-    else:sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:],'--corpus' in sys.argv[2:],'--contention' in sys.argv[2:]))
+    if sys.argv[1]=='--keyboard':
+        keyboard()
+    elif sys.argv[1]=='--child':
+        child(Path(sys.argv[2]),Path(sys.argv[3]),'--interactions' in sys.argv[4:],'--corpus' in sys.argv[4:],'--contention' in sys.argv[4:])
+    else:
+        sys.exit(main(sys.argv[1],'--interactions' in sys.argv[2:],'--corpus' in sys.argv[2:],'--contention' in sys.argv[2:]))

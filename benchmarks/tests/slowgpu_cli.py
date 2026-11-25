@@ -42,4 +42,5 @@ class Failures(unittest.TestCase):
                 self.assertIn(b'deadline expired',result.stderr)
                 self.assertNotIn(b'"complete":true',result.stdout)
 
-if __name__=='__main__':unittest.main()
+if __name__=='__main__':
+    unittest.main()

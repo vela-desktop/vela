@@ -481,8 +481,8 @@ void vela_renderer_collect(struct vela_renderer *renderer);
 void vela_renderer_retire_image(struct vela_renderer *renderer, VkImage image, VkImageView view,
     VkDeviceMemory memory);
 // Takes the texture's buffer lock; releases it only after freeing its import.
-void vela_renderer_retire_buffer(struct vela_renderer *renderer, VkImage image, VkImageView view,
-    VkDeviceMemory memory, struct wlr_buffer *buffer);
+void vela_renderer_retire_buffer(
+    struct vela_renderer *renderer, VkImage image, VkImageView view, VkDeviceMemory memory, struct wlr_buffer *buffer);
 // Signals the next point of the syncobj timeline with `sync_file` (not closed;
 // -1: the work is already done). Returns the point, 0 without a timeline.
 uint64_t vela_renderer_signal_sync_point(struct vela_renderer *renderer, int sync_file);

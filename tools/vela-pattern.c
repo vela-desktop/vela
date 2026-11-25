@@ -331,9 +331,9 @@ static void draw(void)
         printf("{\"event\":\"pattern\",\"method\":\"coordinate-pattern-v1\",\"protocol\":\"wayland\","
                "\"viewport\":true,\"sequence\":%u,\"logical_width\":%d,\"logical_height\":%d,"
                "\"scale120\":%u,\"buffer_width\":%d,\"buffer_height\":%d,\"maximized\":%s,"
-               "\"monotonic_ns\":%llu}\n", ++benchmarkSequence, logicalWidth, logicalHeight,
-               scale120, width, height, maximized ? "true" : "false",
-               (unsigned long long)now.tv_sec*1000000000ull+(unsigned long long)now.tv_nsec);
+               "\"monotonic_ns\":%llu}\n",
+            ++benchmarkSequence, logicalWidth, logicalHeight, scale120, width, height, maximized ? "true" : "false",
+            (unsigned long long)now.tv_sec * 1000000000ull + (unsigned long long)now.tv_nsec);
         fflush(stdout);
     }
 }
@@ -522,7 +522,7 @@ static void onToplevelConfigure(void* data, struct xdg_toplevel* t, int32_t widt
     pendingWidth = width;
     pendingHeight = height;
     maximized = 0;
-    uint32_t* state = NULL;
+    uint32_t *state = NULL;
     wl_array_for_each(state, states) if (*state == XDG_TOPLEVEL_STATE_MAXIMIZED) maximized = 1;
 }
 

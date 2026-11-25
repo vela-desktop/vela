@@ -66,7 +66,8 @@ class ReviewCLI(unittest.TestCase):
 
     def test_eof_rejects_authorization_before_creating_a_new_pilot(self):
         with tempfile.TemporaryDirectory() as temporary:
-            layout=host.Layout(Path(temporary));transport=Mock()
+            layout=host.Layout(Path(temporary))
+            transport=Mock()
             transport.pids.return_value=[]
             with patch.object(pilot,'load_setup',return_value={'uid':1001,'private_homes':[]}), \
                     patch.object(pilot,'resolve_targets',return_value={'vela':{}}), \
@@ -89,8 +90,10 @@ class ReviewCLI(unittest.TestCase):
 
     def test_shell_entry_can_hash_a_readable_nonexecutable_script_argument(self):
         with tempfile.TemporaryDirectory() as temporary:
-            directory=Path(temporary);script=directory/'session script.sh'
-            script.write_text('exec /bin/true\n');script.chmod(0o644)
+            directory=Path(temporary)
+            script=directory/'session script.sh'
+            script.write_text('exec /bin/true\n')
+            script.chmod(0o644)
             (directory/'vela.desktop').write_text('[Desktop Entry]\nExec=/bin/sh "'+str(script)+'"\n')
             found,rejected=sessions(directory)
             self.assertEqual(rejected,[])
@@ -117,11 +120,13 @@ class ReviewEvidence(unittest.TestCase):
             root=Path(temporary)
             for name,count,delay in (('input',20,0),('input-capture',20,0),('input-delay',5,40)):
                 rows,injections=samples(count=count,delay=delay)
-                prefix=root/('vela-'+name);metrics=parse_input(rows,injections,count=count,delay=delay)
+                prefix=root/('vela-'+name)
+                metrics=parse_input(rows,injections,count=count,delay=delay)
                 if name=='input-capture':
                     frames=[]
                     for i in range(12):
-                        path=root/f'vela-capture-{i:02d}.png';path.write_bytes(picture([80,80,640,360],identity=i%3+1))
+                        path=root/f'vela-capture-{i:02d}.png'
+                        path.write_bytes(picture([80,80,640,360],identity=i%3+1))
                         frames.append(dict(evidence(path),image_file=path.name,image_sha256=image_hash(path)))
                     metrics['capture']={'status':'passed','scope':'coarse-output-state-observation','frames':frames}
                 atomic_json(prefix.with_suffix('.json'),{'status':'passed','uinput_cleanup':'passed',
@@ -129,17 +134,20 @@ class ReviewEvidence(unittest.TestCase):
                 atomic_json(prefix.with_suffix('.injections.json'),injections)
                 prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in rows))
             calibration_evidence(root,'vela')
-            path=root/'vela-input-capture.json';saved=read_json(path)
+            path=root/'vela-input-capture.json'
+            saved=read_json(path)
             saved['metrics']['capture']['frames'][0]['markers'][0]['frame']=20
             atomic_json(path,saved)
-            with self.assertRaisesRegex(BenchError,'original PNG'):calibration_evidence(root,'vela')
+            with self.assertRaisesRegex(BenchError,'original PNG'):
+                calibration_evidence(root,'vela')
 
     def test_monitor_failure_persists_evidence_before_requesting_supervised_recovery(self):
         from vela_bench import input_isolation
         events=[]
         guard=input_isolation.InputIsolation(host.Layout(),on_failure=lambda row:events.append(row))
         def killed(pid,signum):
-            self.assertEqual(pid,os.getpid());self.assertEqual(signum,signal.SIGUSR2)
+            self.assertEqual(pid,os.getpid())
+            self.assertEqual(signum,signal.SIGUSR2)
             self.assertEqual(events[0]['status'],'failed')
             self.assertIn('device failed',events[0]['error'])
         with patch.object(input_isolation.select,'select',side_effect=OSError('device failed')), \
@@ -149,21 +157,26 @@ class ReviewEvidence(unittest.TestCase):
 
     def test_same_clock_presentation_lead_is_bounded_by_reported_vblank_refresh(self):
         from test_diagnostics import stream,encode
-        rows=stream();last=rows[-2]
+        rows=stream()
+        last=rows[-2]
         for lead in (300_000,last['refresh_ns']):
             last['presentation_ns']=last['received_monotonic_ns']+lead
             parse_probe(encode(rows),frames=3)
         last['presentation_ns']=last['received_monotonic_ns']+last['refresh_ns']+1
-        with self.assertRaisesRegex(BenchError,'refresh bound'):parse_probe(encode(rows),frames=3)
+        with self.assertRaisesRegex(BenchError,'refresh bound'):
+            parse_probe(encode(rows),frames=3)
         last.update(flags=0,presentation_ns=last['received_monotonic_ns']+1)
-        with self.assertRaisesRegex(BenchError,'refresh bound'):parse_probe(encode(rows),frames=3)
+        with self.assertRaisesRegex(BenchError,'refresh bound'):
+            parse_probe(encode(rows),frames=3)
 
     def test_trailing_discard_extends_new_motion_window_and_preserves_v2(self):
         from test_measurements import motion_rows
-        _,rows=motion_rows();last=next(r for r in reversed(rows) if r['event']=='presented')
+        _,rows=motion_rows()
+        last=next(r for r in reversed(rows) if r['event']=='presented')
         last.update(event='discarded',received_monotonic_ns=last['received_monotonic_ns']+3_000_000_000)
         rows[-1].update(presented=629,discarded=1)
-        raw=''.join(json.dumps(r)+'\n' for r in rows);profile={'mode':{'refresh_mhz':60000}}
+        raw=''.join(json.dumps(r)+'\n' for r in rows)
+        profile={'mode':{'refresh_mhz':60000}}
         current=measurements.motion_metrics(raw,rows,profile)
         historical=measurements.motion_metrics(raw,rows,profile,method=measurements.SPEC_V2['version'])
         self.assertEqual(current['window_monotonic_ns'][1],last['received_monotonic_ns'])
@@ -171,7 +184,8 @@ class ReviewEvidence(unittest.TestCase):
 
     def test_producer_receipt_cannot_precede_its_commit_or_use_another_uid(self):
         from test_measurements import gpu_rows
-        rows=gpu_rows();window=[400_000_000,1_400_000_000]
+        rows=gpu_rows()
+        window=[400_000_000,1_400_000_000]
         measurements.producer_metrics(rows,'explicit',window,uid=1001)
         with self.assertRaisesRegex(BenchError,'UID'):
             measurements.producer_metrics(rows,'explicit',window,uid=1002)
@@ -181,7 +195,8 @@ class ReviewEvidence(unittest.TestCase):
 
     def test_paired_metrics_reject_each_reversed_or_overlapping_window(self):
         from test_measurements import input_rows,motion_rows
-        rows,injections=input_rows();raw,motion=motion_rows()
+        rows,injections=input_rows()
+        raw,motion=motion_rows()
         control={'input':measurements.input_metrics(rows,injections),
                  'motion':measurements.motion_metrics(raw,motion,{'mode':{'refresh_mhz':60000}})}
         loaded=copy.deepcopy(control)
@@ -199,21 +214,30 @@ class ReviewEvidence(unittest.TestCase):
     def test_rgb_marker_scan_survives_an_unaligned_preceding_candidate(self):
         from test_desktop_v2 import picture
         with tempfile.TemporaryDirectory() as temporary:
-            path=Path(temporary)/'capture.png';path.write_bytes(picture([80,80,640,360]))
-            width,height,rgb=png_rgb(path);at=(96*width+95)*3;rgb[at:at+3]=bytes((0,208,32))
+            path=Path(temporary)/'capture.png'
+            path.write_bytes(picture([80,80,640,360]))
+            width,height,rgb=png_rgb(path)
+            at=(96*width+95)*3
+            rgb[at:at+3]=bytes((0,208,32))
             path.write_bytes(png_bytes(width,height,rgb))
             self.assertEqual(len(evidence(path)['markers']),1)
 
     def test_compact_marker_keeps_all_32_identity_bits_in_a_half_width_scene(self):
         from vela_bench.desktop import SCENE
-        width,height=512,360;rgb=bytearray(bytes((32,40,48))*width*height)
+        width,height=512,360
+        rgb=bytearray(bytes((32,40,48))*width*height)
         def fill(x,y,w,h,color):
-            for line in range(y,y+h):rgb[(line*width+x)*3:(line*width+x+w)*3]=bytes(color)*w
-        for x,color in ((16,(208,32,208)),(32,(32,208,32)),(304,(32,64,224)),(320,(224,128,32))):fill(x,16,16,32,color)
-        for bit in range(32):fill(48+bit*8,16,8,32,(255,255,255) if SCENE>>bit&1 else (32,40,48))
+            for line in range(y,y+h):
+                rgb[(line*width+x)*3:(line*width+x+w)*3]=bytes(color)*w
+        for x,color in ((16,(208,32,208)),(32,(32,208,32)),(304,(32,64,224)),(320,(224,128,32))):
+            fill(x,16,16,32,color)
+        for bit in range(32):
+            fill(48+bit*8,16,8,32,(255,255,255) if SCENE>>bit&1 else (32,40,48))
         fill(width-24,height-24,16,16,(200,80,120))
         with tempfile.TemporaryDirectory() as temporary:
-            path=Path(temporary)/'capture.png';path.write_bytes(png_bytes(width,height,rgb));result=evidence(path)
+            path=Path(temporary)/'capture.png'
+            path.write_bytes(png_bytes(width,height,rgb))
+            result=evidence(path)
         self.assertEqual(result['rectangles'],{str(SCENE):[0,0,512,360]})
 
     def test_pattern_cannot_pass_when_exclusions_remove_all_pixels(self):
@@ -221,16 +245,19 @@ class ReviewEvidence(unittest.TestCase):
         meta={'event':'pattern','method':'coordinate-pattern-v1','protocol':'wayland','viewport':True,
               'logical_width':16,'logical_height':16,'buffer_width':16,'buffer_height':16,'scale120':120,'sequence':1}
         with tempfile.TemporaryDirectory() as temporary:
-            path=Path(temporary)/'image.png';path.write_bytes(png_bytes(16,16,pattern(16,16)))
+            path=Path(temporary)/'image.png'
+            path.write_bytes(png_bytes(16,16,pattern(16,16)))
             with self.assertRaisesRegex(BenchError,'pixels'):
                 pattern_metrics(path,meta,[16,16],1.)
 
     def test_png_hash_and_decode_bound_the_read_before_allocation(self):
-        stream=Mock();stream.read.return_value=b'x'*(64*1024*1024+1)
+        stream=Mock()
+        stream.read.return_value=b'x'*(64*1024*1024+1)
         with patch('pathlib.Path.open') as opened:
             opened.return_value.__enter__.return_value=stream
             for operation in (image_hash,png_rgb):
-                with self.assertRaisesRegex(BenchError,'size limit'):operation(Path('/fixture.png'))
+                with self.assertRaisesRegex(BenchError,'size limit'):
+                    operation(Path('/fixture.png'))
         self.assertTrue(all(call.args==(64*1024*1024+1,) for call in stream.read.call_args_list))
 
     def test_resource_classification_must_match_the_cgroup(self):
@@ -238,14 +265,16 @@ class ReviewEvidence(unittest.TestCase):
         rows=[sample(),sample(2_000_000_000,200_000)]
         resources.metrics(rows,1001)
         rows[0]['processes'][0]['classification']='benchmark-workload'
-        with self.assertRaisesRegex(BenchError,'classification'):resources.metrics(rows,1001)
+        with self.assertRaisesRegex(BenchError,'classification'):
+            resources.metrics(rows,1001)
 
     def test_instrument_stop_requires_success_and_inactive_readback(self):
         for result,active in ((1,'inactive'),(0,'active'),(0,'activating')):
             transport=Mock()
             def run(command,**kwargs):
                 if 'stop' in command:
-                    if result:raise BenchError('stop failed')
+                    if result:
+                        raise BenchError('stop failed')
                     return SimpleNamespace(returncode=0,stdout='')
                 return SimpleNamespace(returncode=0,stdout=active)
             transport.run.side_effect=run
@@ -261,50 +290,74 @@ class ReviewTrust(unittest.TestCase):
         scope={'importlib':importlib,'Path':Path}
         exec(compile(ast.Module(body=selected,type_ignores=[]),str(launcher),'exec'),scope)
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);package=root/'vela_bench';package.mkdir()
-            source=package/'__init__.py';source.write_text('VALUE="source"\n')
-            cache=Path(importlib.util.cache_from_source(str(source)));cache.parent.mkdir()
+            root=Path(temporary)
+            package=root/'vela_bench'
+            package.mkdir()
+            source=package/'__init__.py'
+            source.write_text('VALUE="source"\n')
+            cache=Path(importlib.util.cache_from_source(str(source)))
+            cache.parent.mkdir()
             header=importlib.util.MAGIC_NUMBER+struct.pack('<III',0,int(source.stat().st_mtime),source.stat().st_size)
-            cache.write_bytes(header+marshal.dumps(compile('VALUE="cache"',str(source),'exec')));cache.chmod(0o666)
+            cache.write_bytes(header+marshal.dumps(compile('VALUE="cache"',str(source),'exec')))
+            cache.chmod(0o666)
             control=SimpleNamespace()
             exec(importlib.machinery.SourceFileLoader('control',str(source)).get_code('control'),control.__dict__)
             self.assertEqual(control.VALUE,'cache')
             scope.update(directory=root,MODULES=host.MODULES)
-            spec=scope['InstalledModules']().find_spec('vela_bench');module=importlib.util.module_from_spec(spec)
+            spec=scope['InstalledModules']().find_spec('vela_bench')
+            module=importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
             self.assertEqual(module.VALUE,'source')
-            with self.assertRaises(ImportError):scope['InstalledModules']().find_spec('vela_bench.untracked')
+            with self.assertRaises(ImportError):
+                scope['InstalledModules']().find_spec('vela_bench.untracked')
         inventory=next(node.value for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='MODULES' for t in node.targets))
         self.assertEqual(ast.literal_eval(inventory),host.MODULES)
 
     def test_bootstrap_lock_serializes_install_before_ownership_reads(self):
         with tempfile.TemporaryDirectory() as temporary:
-            layout=host.Layout(Path(temporary));first_entered=threading.Event();release_first=threading.Event();second_entered=threading.Event()
+            layout=host.Layout(Path(temporary))
+            first_entered=threading.Event()
+            release_first=threading.Event()
+            second_entered=threading.Event()
             def install_body(transport,*args):
                 if transport=='first':
                     first_entered.set()
-                    if not release_first.wait(5):raise RuntimeError('test release deadline')
-                else:second_entered.set()
+                    if not release_first.wait(5):
+                        raise RuntimeError('test release deadline')
+                else:
+                    second_entered.set()
             with patch.object(host,'trusted'),patch.object(host,'_install',side_effect=install_body):
-                first=threading.Thread(target=host.install,args=('first',layout));first.start()
+                first=threading.Thread(target=host.install,args=('first',layout))
+                first.start()
                 try:
                     self.assertTrue(first_entered.wait(3))
-                    second=threading.Thread(target=host.install,args=('second',layout));second.start()
+                    second=threading.Thread(target=host.install,args=('second',layout))
+                    second.start()
                     self.assertFalse(second_entered.wait(.1))
                 finally:
-                    release_first.set();first.join(3)
-                    if 'second' in locals():second.join(3)
+                    release_first.set()
+                    first.join(3)
+                    if 'second' in locals():
+                        second.join(3)
                 self.assertTrue(second_entered.is_set())
 
     def test_edp_backlight_takes_precedence_over_a_non_vcp_ddc_link(self):
         from vela_bench.conditions import brightness_snapshot,set_brightness
         with tempfile.TemporaryDirectory() as temporary:
-            root=Path(temporary);drm=root/'class/drm/card0-eDP-1';drm.mkdir(parents=True)
-            (drm/'status').write_text('connected\n');(drm/'edid').write_bytes(b'A'*128)
-            bus=root/'devices/i2c-7';bus.mkdir(parents=True);(drm/'ddc').symlink_to(bus)
-            light=root/'class/backlight/intel_backlight';light.mkdir(parents=True)
-            (light/'brightness').write_text('25');(light/'max_brightness').write_text('100')
-            transport=Mock();transport.run.side_effect=AssertionError('internal panel must not use DDC')
+            root=Path(temporary)
+            drm=root/'class/drm/card0-eDP-1'
+            drm.mkdir(parents=True)
+            (drm/'status').write_text('connected\n')
+            (drm/'edid').write_bytes(b'A'*128)
+            bus=root/'devices/i2c-7'
+            bus.mkdir(parents=True)
+            (drm/'ddc').symlink_to(bus)
+            light=root/'class/backlight/intel_backlight'
+            light.mkdir(parents=True)
+            (light/'brightness').write_text('25')
+            (light/'max_brightness').write_text('100')
+            transport=Mock()
+            transport.run.side_effect=AssertionError('internal panel must not use DDC')
             snapshot=brightness_snapshot(transport,'eDP-1',root)
             self.assertEqual(snapshot['backend'],'sysfs-backlight')
             self.assertEqual(set_brightness(transport,snapshot,100,root)['value'],100)
@@ -318,19 +371,32 @@ class ReviewAuthentication(unittest.TestCase):
 
     def test_login_during_quiescence_never_reaches_kill_and_recovery_thaws(self):
         with tempfile.TemporaryDirectory() as temporary:
-            layout=host.Layout(Path(temporary));directory=layout.path('evidence');directory.mkdir()
-            state={'stage':'takeover'};calls=[];frozen=False
+            layout=host.Layout(Path(temporary))
+            directory=layout.path('evidence')
+            directory.mkdir()
+            state={'stage':'takeover'}
+            calls=[]
+            frozen=False
             def run(command,**kwargs):
                 nonlocal frozen
-                calls.append(command);output=''
-                if command[0]=='busctl':output=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(directory/'display-manager-start-blocked'),0]]})
-                elif '--property=Id' in command:output='sddm.service'
-                elif '--property=Restart' in command:output='no'
-                elif '--property=Conditions' in command:raise AssertionError('systemctl prints Conditions=[unprintable]')
-                elif '--property=FreezerState' in command:output='frozen' if frozen else 'running'
-                elif '--property=ActiveState' in command:output='active'
-                elif command[1]=='freeze':frozen=True
-                elif command[1]=='thaw':frozen=False
+                calls.append(command)
+                output=''
+                if command[0]=='busctl':
+                    output=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(directory/'display-manager-start-blocked'),0]]})
+                elif '--property=Id' in command:
+                    output='sddm.service'
+                elif '--property=Restart' in command:
+                    output='no'
+                elif '--property=Conditions' in command:
+                    raise AssertionError('systemctl prints Conditions=[unprintable]')
+                elif '--property=FreezerState' in command:
+                    output='frozen' if frozen else 'running'
+                elif '--property=ActiveState' in command:
+                    output='active'
+                elif command[1]=='freeze':
+                    frozen=True
+                elif command[1]=='thaw':
+                    frozen=False
                 return SimpleNamespace(returncode=0,stdout=output)
             transport=SimpleNamespace(run=run)
             with patch.object(pilot,'trusted'),patch.object(pilot,'logind_sessions',return_value=[{'State':'opening','Class':'user'}]):
@@ -348,27 +414,42 @@ class ReviewAuthentication(unittest.TestCase):
 
     def test_plasmalogin_thaws_and_stops_before_runtime_mask_is_loaded(self):
         with tempfile.TemporaryDirectory() as temporary:
-            layout=host.Layout(Path(temporary));directory=layout.path('evidence');directory.mkdir()
-            state={'stage':'takeover'};calls=[];frozen=False;active=True
+            layout=host.Layout(Path(temporary))
+            directory=layout.path('evidence')
+            directory.mkdir()
+            state={'stage':'takeover'}
+            calls=[]
+            frozen=False
+            active=True
             mask=layout.path('run/systemd/system/plasmalogin.service')
             override=mask.parent/'plasmalogin.service.d/99-vela-benchmark-quiescence.conf'
             def run(command,**kwargs):
                 nonlocal frozen,active
-                calls.append(command);output=''
-                if command[0]=='busctl':output=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(directory/'display-manager-start-blocked'),0]]})
-                elif '--property=Id' in command:output='plasmalogin.service'
-                elif '--property=Restart' in command:output='no'
-                elif '--property=Conditions' in command:raise AssertionError('systemctl prints Conditions=[unprintable]')
-                elif '--property=FreezerState' in command:output='frozen' if frozen else 'running'
-                elif '--property=ActiveState' in command:output='active' if active else 'inactive'
-                elif '--property=LoadState' in command:output='masked' if mask.is_symlink() else 'loaded'
-                elif command[1]=='freeze':frozen=True
+                calls.append(command)
+                output=''
+                if command[0]=='busctl':
+                    output=json.dumps({'type':'a(sbbsi)','data':[['ConditionPathExists',False,False,str(directory/'display-manager-start-blocked'),0]]})
+                elif '--property=Id' in command:
+                    output='plasmalogin.service'
+                elif '--property=Restart' in command:
+                    output='no'
+                elif '--property=Conditions' in command:
+                    raise AssertionError('systemctl prints Conditions=[unprintable]')
+                elif '--property=FreezerState' in command:
+                    output='frozen' if frozen else 'running'
+                elif '--property=ActiveState' in command:
+                    output='active' if active else 'inactive'
+                elif '--property=LoadState' in command:
+                    output='masked' if mask.is_symlink() else 'loaded'
+                elif command[1]=='freeze':
+                    frozen=True
                 elif command[1]=='thaw':
                     self.assertFalse(mask.is_symlink(), 'thaw must not resolve a masked unit')
                     frozen=False
                 elif command[1] in ('kill','stop'):
                     self.assertFalse(mask.is_symlink(), 'teardown must not resolve a masked unit')
-                    if command[1]=='stop':active=False
+                    if command[1]=='stop':
+                        active=False
                 return SimpleNamespace(returncode=0,stdout=output)
             transport=SimpleNamespace(run=run)
             with patch.object(pilot,'trusted'),patch.object(pilot,'logind_sessions',return_value=[]):
@@ -388,7 +469,9 @@ class ReviewAuthentication(unittest.TestCase):
 
     def test_quiescence_rejects_an_existing_start_marker_before_mutating_systemd(self):
         with tempfile.TemporaryDirectory() as temporary:
-            layout=host.Layout(Path(temporary));directory=layout.path('evidence');directory.mkdir()
+            layout=host.Layout(Path(temporary))
+            directory=layout.path('evidence')
+            directory.mkdir()
             (directory/'display-manager-start-blocked').touch()
             commands=[]
             def run(command,**kwargs):
@@ -410,12 +493,18 @@ class ReviewAuthentication(unittest.TestCase):
             'org.freedesktop.systemd1.Unit','Conditions'])
         for case in ('unprintable','signature','path','trigger','negated','result-type','empty'):
             value=copy.deepcopy(valid)
-            if case=='signature':value['type']='s'
-            elif case=='path':value['data'][0][3]='/other'
-            elif case=='trigger':value['data'][0][1]=True
-            elif case=='negated':value['data'][0][2]=True
-            elif case=='result-type':value['data'][0][4]=False
-            elif case=='empty':value['data']=[]
+            if case=='signature':
+                value['type']='s'
+            elif case=='path':
+                value['data'][0][3]='/other'
+            elif case=='trigger':
+                value['data'][0][1]=True
+            elif case=='negated':
+                value['data'][0][2]=True
+            elif case=='result-type':
+                value['data'][0][4]=False
+            elif case=='empty':
+                value['data']=[]
             transport.run.return_value.stdout='Conditions=[unprintable]\n' if case=='unprintable' else json.dumps(value)
             with self.subTest(case=case),self.assertRaises(BenchError):
                 pilot.display_manager_start_condition(transport,'plasmalogin.service',path)

@@ -52,7 +52,8 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise,
         phases = phases or list(AVAILABLE)
         if exercise or any(phase not in AVAILABLE for phase in phases):
             raise BenchError("Desktop observation supports responsiveness, motion and slow-apps")
-        config = load_campaign(); config["seed"] = seed
+        config = load_campaign()
+        config["seed"] = seed
         schedule = make_plan(config, {"targets": current["targets"], "environment": current.get("environment", {}),
             "suite": {"installed_files": current.get("launcher_files", {})}},
             phases=phases, targets=targets, fast=fast, exercise=True, vela_sync_test=vela_sync_test)
@@ -63,7 +64,8 @@ def execution_selection(current, targets, *, case, fast, seed, phases, exercise,
         schedule["estimate"]["basis"] = "provisional desktop action/capture allowances; physical acceptance pending"
         schedule["estimate"]["minimum_seconds"] = 10 + sum(b["measurement_budget_seconds"] + b["preparation_budget_seconds"] for b in schedule["blocks"])
         schedule["estimate"]["includes"] = ["fresh profile", "session launch", "instrument controls", "desktop actions and captures", "cleanup", "report"]
-        schedule.pop("fingerprint", None); schedule["fingerprint"] = fingerprint(schedule)
+        schedule.pop("fingerprint", None)
+        schedule["fingerprint"] = fingerprint(schedule)
         return {"kind":"execution-campaign", "case":"observe", "fast":fast, "seed":seed,
                 "blocks":[dict(block, fault=None) for block in schedule["blocks"]],
                 "execution":schedule, "scenario_revision":VERSION, **profile}
@@ -377,21 +379,27 @@ def require_selection_instruments(host, layout, setup, current, selection):
         if '--observe' not in help or '--peer' not in help:
             raise BenchError('Installed scene lacks P3 v2; rebuild instruments and refresh setup')
         adapter=layout.helper.parent/'vela-bench-desktop'
-        if str(adapter) not in setup['files']:raise BenchError('Desktop observation requires the installed vela-bench-desktop')
+        if str(adapter) not in setup['files']:
+            raise BenchError('Desktop observation requires the installed vela-bench-desktop')
         trusted(adapter)
-        if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:raise BenchError('Installed adapter lacks P3 workspace support')
+        if '--workspace' not in host.run([str(adapter),'--help'],timeout=10).stdout:
+            raise BenchError('Installed adapter lacks P3 workspace support')
         input_tool=layout.helper.parent/'vela-bench-input'
-        if str(input_tool) not in setup['files']:raise BenchError('Desktop observation requires installed vela-bench-input')
+        if str(input_tool) not in setup['files']:
+            raise BenchError('Desktop observation requires installed vela-bench-input')
         trusted(input_tool)
-        if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
+        if 'P3 v2' not in host.run([str(input_tool),'--help'],timeout=10).stdout:
+            raise BenchError('Installed input helper lacks P3 v2 fixed shortcuts')
         require_uinput()
         if 'slow-apps' in selection['execution']['phases']:
             for name in ('vela-slowgpu','vela-bench-cpuload'):
                 tool=layout.helper.parent/name
-                if str(tool) not in setup['files']:raise BenchError('Observed slow-apps requires installed '+name)
+                if str(tool) not in setup['files']:
+                    raise BenchError('Observed slow-apps requires installed '+name)
                 trusted(tool)
             help=host.run([str(layout.helper.parent/'vela-slowgpu'),'--help'],timeout=10).stdout
-            if '--contention' not in help or '--desktop-load' not in help:raise BenchError('Installed GPU helper lacks P3 observed load support')
+            if '--contention' not in help or '--desktop-load' not in help:
+                raise BenchError('Installed GPU helper lacks P3 observed load support')
             if 'gpu-timestamp-calibration-v1' not in help:
                 raise BenchError('Installed GPU producer lacks GPU timestamp calibration; rebuild vela-slowgpu and refresh setup --tools-dir BUILD/tools before takeover')
     if selection["case"] == "measure" and "scaling" in selection["execution"]["phases"]:
@@ -640,7 +648,9 @@ def latest(layout=Layout()):
 
 
 def render_export(directory, data):
-    escape = lambda value: html.escape(str(value), quote=True)
+    def escape(value):
+        return html.escape(str(value), quote=True)
+
     exercise = data.get("execution_mode") == "exercise"
     measured = data.get("execution_mode") == "measure"
     observed = data.get("execution_mode") == "observe"
@@ -897,8 +907,10 @@ def read_export(directory):
             if actual.get('method')!=block.get('workload') or actual.get('spec')!=block.get('measurement_spec'):
                 raise BenchError('Exported desktop method differs from planned block')
             if actual.get('method') in ('p3-desktop-observation-v2','p3-desktop-observation-v3'):
-                if 'campaign-plan.json' not in manifest['files']:raise BenchError('Exported desktop has no hashed immutable plan')
-                if actual.get('uid')!=read_json(directory/'campaign-plan.json')['context']['uid']:raise BenchError('Exported desktop UID differs from planned benchmark account')
+                if 'campaign-plan.json' not in manifest['files']:
+                    raise BenchError('Exported desktop has no hashed immutable plan')
+                if actual.get('uid')!=read_json(directory/'campaign-plan.json')['context']['uid']:
+                    raise BenchError('Exported desktop UID differs from planned benchmark account')
             if actual != block.get("audit", {}).get("desktop_observation"):
                 raise BenchError("Exported desktop audit differs from captured evidence")
             observations.append({"id":block["id"],"target":block["target"],"phase":block["phase"],"result":actual})

@@ -20,8 +20,8 @@ import tempfile
 import time
 from types import SimpleNamespace
 
-ROOT = Path(__file__).resolve().parents[2]
-sys.path[:0] = [str(ROOT / 'benchmarks'), str(ROOT / 'tests/functional')]
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tests/functional"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from harness import BUILD, Session, tool
 from vela_bench.archive import atomic_json, read_json
 from vela_bench.calibration import parse_input, run_input

@@ -69,15 +69,33 @@ class PresentationDiagnostics(unittest.TestCase):
 
     def test_truncated_duplicate_missing_or_forged_feedback_never_produces_statistics(self):
         mutations = []
-        rows = stream(); rows[-1]["complete"] = False; mutations.append(rows)
-        rows = stream(); rows[-1]["presented"] = 2; mutations.append(rows)
-        rows = stream(); del rows[3]; mutations.append(rows)
-        rows = stream(); rows.insert(4, copy.deepcopy(rows[3])); mutations.append(rows)
-        rows = stream(); rows[3]["commit_clock_ns"] += 1; mutations.append(rows)
-        rows = stream(); rows[3]["presentation_ns"] = 0; mutations.append(rows)
-        rows = stream(); rows[2]["frame"] = True; mutations.append(rows)
-        rows = stream(); rows[1]["scope"] = "desktop-latency"; mutations.append(rows)
-        rows = stream(); rows[0]["presentation_clock_id"] = -1; mutations.append(rows)
+        rows = stream()
+        rows[-1]["complete"] = False
+        mutations.append(rows)
+        rows = stream()
+        rows[-1]["presented"] = 2
+        mutations.append(rows)
+        rows = stream()
+        del rows[3]
+        mutations.append(rows)
+        rows = stream()
+        rows.insert(4, copy.deepcopy(rows[3]))
+        mutations.append(rows)
+        rows = stream()
+        rows[3]["commit_clock_ns"] += 1
+        mutations.append(rows)
+        rows = stream()
+        rows[3]["presentation_ns"] = 0
+        mutations.append(rows)
+        rows = stream()
+        rows[2]["frame"] = True
+        mutations.append(rows)
+        rows = stream()
+        rows[1]["scope"] = "desktop-latency"
+        mutations.append(rows)
+        rows = stream()
+        rows[0]["presentation_clock_id"] = -1
+        mutations.append(rows)
         for rows in mutations:
             with self.subTest(rows=rows), self.assertRaises(BenchError):
                 parse_probe(encode(rows), frames=3)

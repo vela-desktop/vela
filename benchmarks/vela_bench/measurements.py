@@ -227,32 +227,41 @@ def run_contention(host,record,directory,target,layout,kind,measure,control,heal
     prefix=directory/f'{target}-contention-{kind}'
     command=([str(layout.helper.parent/'vela-bench-cpuload'),'--json','--until-stdin-eof'] if kind=='cpu' else
              [str(layout.helper.parent/'vela-slowgpu'),'--contention','--json','--until-stdin-eof'])
-    process=None;lines=None
+    process=None
+    lines=None
     with prefix.with_suffix('.stderr').open('wb') as errors,ThreadPoolExecutor(max_workers=1) as pool:
         try:
-            if progress:progress(kind+'-contention-start')
+            if progress:
+                progress(kind+'-contention-start')
             health()
             process=host.spawn(user_command(record,layout,'producer',command,runtime_seconds=120),errors)
-            lines=Lines(process);deadline=time.monotonic()+105
+            lines=Lines(process)
+            deadline=time.monotonic()+105
             lines.next(deadline)
-            while not contention.ready(lines.records,kind,record['uid']):lines.next(deadline)
+            while not contention.ready(lines.records,kind,record['uid']):
+                lines.next(deadline)
             def drain():
-                while lines.next(deadline).get('event')!=kind+'-load-summary':pass
+                while lines.next(deadline).get('event')!=kind+'-load-summary':
+                    pass
             future=pool.submit(drain)
             try:
                 sample=measure(kind+'-')
             finally:
-                process.stdin.close();process.stdin=None
+                process.stdin.close()
+                process.stdin=None
             future.result(timeout=8)
-            if process.wait(timeout=5):raise BenchError('Contention helper failed')
+            if process.wait(timeout=5):
+                raise BenchError('Contention helper failed')
             window=[sample['input']['window_monotonic_ns'][0],sample['motion']['window_monotonic_ns'][1]]
             sample['contention']=contention.metrics(lines.records,kind,window,record['uid'])
             sample['degradation']=paired_metrics(control,sample)
             health()
             return sample
         finally:
-            stop_instrument(host,record,layout,'producer');stop_process(process)
-            if lines:prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in lines.records))
+            stop_instrument(host,record,layout,'producer')
+            stop_process(process)
+            if lines:
+                prefix.with_suffix('.jsonl').write_text(''.join(json.dumps(row)+'\n' for row in lines.records))
 
 
 def run_workload(host, record, directory, target, layout, profile, phase, health, progress=None):
@@ -337,7 +346,8 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
                 sample=run_contention(host,record,directory,target,layout,kind,measure,
                     result['scenarios'][control_name],health,progress)
                 if kind=='gpu':
-                    gpu=sample['contention']['source'];producer=result['scenarios']['explicit']['producer']['device']
+                    gpu=sample['contention']['source']
+                    producer=result['scenarios']['explicit']['producer']['device']
                     if any(gpu[key]!=producer[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
                         raise BenchError('GPU contention changed device from the acquire-fence producer')
                 result['scenarios'][kind]=sample
@@ -355,11 +365,13 @@ def run_workload(host, record, directory, target, layout, profile, phase, health
 
 def audit_measurements(directory, target, profile, phase):
     saved = read_json(directory / f'{target}-measurements.json')
-    method=saved.get('method');spec={SPEC_V1['version']:SPEC_V1,SPEC_V2['version']:SPEC_V2,VERSION:SPEC}.get(method)
+    method=saved.get('method')
+    spec={SPEC_V1['version']:SPEC_V1,SPEC_V2['version']:SPEC_V2,VERSION:SPEC}.get(method)
     if not spec or saved.get('status') != 'passed' or saved.get('spec') != spec or saved.get('phase') != phase or saved.get('failures') != []:
         raise BenchError('Measurement workload failed or its specification changed')
     names = ['neutral'] if phase != 'slow-apps' else ['explicit-control', 'explicit', 'implicit-control', 'implicit']
-    if phase=='slow-apps' and method!=SPEC_V1['version']:names+=['cpu-control','cpu','gpu-control','gpu']
+    if phase=='slow-apps' and method!=SPEC_V1['version']:
+        names+=['cpu-control','cpu','gpu-control','gpu']
     actual = {}
     for name in names:
         label = '' if name == 'neutral' else name + '-'
@@ -396,7 +408,8 @@ def audit_measurements(directory, target, profile, phase):
             row['contention']=contention.metrics(load,name,window,int(uid))
             row['degradation']=paired_metrics(actual[name+'-control'],row)
             if name=='gpu':
-                gpu=row['contention']['source'];producer=actual['explicit']['producer']['device']
+                gpu=row['contention']['source']
+                producer=actual['explicit']['producer']['device']
                 if any(gpu[key]!=producer[key] for key in ('vendor_id','device_id','drm_major','drm_minor')):
                     raise BenchError('GPU contention device differs from acquire-fence producer')
         actual[name] = row

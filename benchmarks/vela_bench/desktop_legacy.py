@@ -74,8 +74,10 @@ def validate_frames(rows, target, profile, directory, stem, *, partial=False, of
             raise BenchError('Desktop capture route/geometry/sample changed')
         for key in ('begin_monotonic_ns', 'end_monotonic_ns'):
             value = row.get(key)
-            if isinstance(value, str) and value.isdigit(): value = int(value)
-            if type(value) is not int or value < 0: raise BenchError('Invalid desktop capture clock')
+            if isinstance(value, str) and value.isdigit():
+                value = int(value)
+            if type(value) is not int or value < 0:
+                raise BenchError('Invalid desktop capture clock')
             row[key] = value
         if not end <= row['begin_monotonic_ns'] <= row['end_monotonic_ns']:
             raise BenchError('Reversed or overlapping desktop capture intervals')
@@ -91,8 +93,10 @@ def validate_frames(rows, target, profile, directory, stem, *, partial=False, of
                 raise BenchError('Invalid desktop scene marker')
         name = f'{target}-desktop-{stem}-{index:02d}.png'
         if 'png_base64' in row:
-            try: png = base64.b64decode(row.pop('png_base64'), validate=True)
-            except (ValueError, TypeError) as exc: raise BenchError('Invalid desktop PNG encoding') from exc
+            try:
+                png = base64.b64decode(row.pop('png_base64'), validate=True)
+            except (ValueError, TypeError) as exc:
+                raise BenchError('Invalid desktop PNG encoding') from exc
             if not 24 <= len(png) <= 12 * 1024 * 1024 or png[:8] != b'\x89PNG\r\n\x1a\n' or struct.unpack('!II',png[16:24]) != (row['width'],row['height']):
                 raise BenchError('Desktop PNG geometry differs from capture')
             (directory / name).write_bytes(png)
@@ -109,8 +113,10 @@ def action_metrics(rows, actions, kind):
         raise BenchError('Invalid desktop input intervals')
     commands = [a.get('command') for a in actions]
     expected = {'launcher-open':['launcher'], 'desktop-hide':['desktop'], 'desktop-restore':['desktop']}
-    if kind in expected and commands != expected[kind]: raise BenchError('Desktop action differs from the fixed scenario')
-    if kind == 'baseline' and commands not in (['escape'], ['pulse']): raise BenchError('Invalid baseline action')
+    if kind in expected and commands != expected[kind]:
+        raise BenchError('Desktop action differs from the fixed scenario')
+    if kind == 'baseline' and commands not in (['escape'], ['pulse']):
+        raise BenchError('Invalid baseline action')
     if kind == 'drag':
         if (len(commands)!=12 or commands[1]!='down' or commands[-1]!='up'
                 or any(not isinstance(c,str) or not re.fullmatch(r'point [0-9]{1,5} [0-9]{1,5}',c)
@@ -125,7 +131,8 @@ def action_metrics(rows, actions, kind):
     if changed(rows[0]['tiles'], baseline) > 8:
         raise BenchError('Desktop baseline is not settled')
     post = [r for r in rows[2:] if r['begin_monotonic_ns'] >= injection['after_monotonic_ns']]
-    if len(post) < 2: raise BenchError('Insufficient post-action observations')
+    if len(post) < 2:
+        raise BenchError('Insufficient post-action observations')
     result = {'scope':'coarse-output-state-only', 'optical_latency':False, 'fine_grained_motion':False,
               'capture_count':len(rows), 'maximum_capture_gap_ms':max(b['end_monotonic_ns']-a['begin_monotonic_ns'] for a,b in zip(rows,rows[1:]))/1e6}
     if kind == 'launcher-open':
@@ -140,7 +147,8 @@ def action_metrics(rows, actions, kind):
         if any(v['frame']==SCENE for r in post[-2:] for v in r['markers']):
             raise BenchError('Show-desktop did not hide the scene')
     elif kind == 'desktop-restore':
-        if any(v['frame']==SCENE for v in rows[1]['markers']): raise BenchError('Desktop was not hidden before restore')
+        if any(v['frame']==SCENE for v in rows[1]['markers']):
+            raise BenchError('Desktop was not hidden before restore')
         marker(post[-1])
     elif kind == 'drag':
         origin, final = marker(rows[1]), marker(rows[-1])
@@ -151,7 +159,8 @@ def action_metrics(rows, actions, kind):
         result.update(start=origin, final=final, distance_pixels=distance,
                       observed_positions=[{'x':p['x'],'y':p['y']} for p in positions],
                       missed_refreshes=None, frame_by_frame_regularity=None)
-    elif kind != 'baseline': raise BenchError('Unknown desktop observation case')
+    elif kind != 'baseline':
+        raise BenchError('Unknown desktop observation case')
     return result
 
 
@@ -163,13 +172,15 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
     scene_log = directory / f'{target}-desktop-scene.stderr'
     def pulse(command):
         health()
-        keyboard.stdin.write((command+'\n').encode()); keyboard.stdin.flush()
+        keyboard.stdin.write((command+'\n').encode())
+        keyboard.stdin.flush()
         row = input_lines.next(time.monotonic()+5)
         row['command'] = command
         return row
     def capture(stem, kind, action):
         health()
-        if progress: progress(stem)
+        if progress:
+            progress(stem)
         command = user_command(record,layout,'capture',['/usr/bin/python3','-I',str(layout.helper),'_capture',target,profile['primary']],runtime_seconds=60)
         process = None
         rows, injected = [], []
@@ -185,11 +196,14 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
                     rows.append(row)
                     if i >= 1:
                         injected.extend(action(i,rows) or [])
-                if process.wait(timeout=5): raise BenchError('Desktop capture failed')
+                if process.wait(timeout=5):
+                    raise BenchError('Desktop capture failed')
             except BaseException as exc:
-                try: validate_frames(rows,target,profile,directory,stem,partial=True)
+                try:
+                    validate_frames(rows,target,profile,directory,stem,partial=True)
                 except (BenchError,OSError,ValueError,KeyError,TypeError):
-                    for row in rows: row.pop('png_base64',None)
+                    for row in rows:
+                        row.pop('png_base64',None)
                 result['actions'].append({'id':stem,'kind':kind,'injections':injected,'captures':rows,'error':str(exc)})
                 raise
             finally:
@@ -206,12 +220,14 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
         return rows
     def one(command): return lambda i,rows: [pulse(command)] if i==1 else []
     try:
-        if phase not in PHASES: raise BenchError('Unsupported desktop observation phase')
+        if phase not in PHASES:
+            raise BenchError('Unsupported desktop observation phase')
         with scene_log.open('wb') as errors:
             scene = host.spawn(user_command(record,layout,'scene',[str(layout.helper.parent/'vela-bench-scene'),'--scene'],runtime_seconds=180),errors)
             scene_lines = Lines(scene)
             ready = scene_lines.next(time.monotonic()+10)
-            if ready != {'event':'scene-ready','protocol':'wayland','width':640,'height':360}: raise BenchError('Invalid native scene')
+            if ready != {'event':'scene-ready','protocol':'wayland','width':640,'height':360}:
+                raise BenchError('Invalid native scene')
             keyboard = host.spawn([str(layout.helper.parent/'vela-bench-input'),'--desktop'],errors)
             input_lines = Lines(keyboard)
             ready = input_lines.next(time.monotonic()+5)
@@ -226,13 +242,17 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
                     opened = capture(f'launcher-{index}', 'launcher-open', one('launcher'))
                     baseline = opened[1]['tiles']
                     closed = capture(f'close-{index}', 'baseline', one('escape'))
-                    if changed(closed[-1]['tiles'],baseline)>8: raise BenchError('Launcher did not return to its closed baseline')
+                    if changed(closed[-1]['tiles'],baseline)>8:
+                        raise BenchError('Launcher did not return to its closed baseline')
                     marker(closed[-1])
                 # Content verification: search the installed unique fixture
                 # through the native launcher and require its distinct surface.
-                result['launch_actions']=[pulse('launcher')]; time.sleep(.3)
-                result['launch_actions'].append(pulse('search')); time.sleep(1)
-                result['launch_actions'].append(pulse('enter')); time.sleep(1)
+                result['launch_actions']=[pulse('launcher')]
+                time.sleep(.3)
+                result['launch_actions'].append(pulse('search'))
+                time.sleep(1)
+                result['launch_actions'].append(pulse('enter'))
+                time.sleep(1)
                 receipt = host.run(user_command(record,layout,'observation',[str(layout.helper.parent/'vela-bench-scene'),'--receipt']),timeout=30)
                 receipt = decode_json(receipt.stdout)
                 if (receipt.get('event')!='launcher-app-started' or receipt.get('uid')!=record['uid']
@@ -241,7 +261,8 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
                 launched = capture('launched','baseline',one('pulse'))
                 marker(launched[1], LAUNCHED)
                 result.update(launcher_launch_verified=True,launch_receipt=receipt)
-                result['launch_actions'].append(pulse('close')); time.sleep(.3)
+                result['launch_actions'].append(pulse('close'))
+                time.sleep(.3)
                 capture('desktop-hide','desktop-hide',one('desktop'))
                 capture('desktop-restore','desktop-restore',one('desktop'))
             else:
@@ -256,18 +277,22 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
                         room,dx,dy=max(((x0,-1,0),(profile['mode']['width']-x0-640,1,0),
                                        (y0,0,-1),(profile['mode']['height']-y0-360,0,1)))
                         distance=min(162,room-2)
-                        if distance<80: raise BenchError('Output has insufficient room for the fixed window-drag observation')
+                        if distance<80:
+                            raise BenchError('Output has insufficient room for the fixed window-drag observation')
                         initial=dict(initial,dx=dx*distance,dy=dy*distance)
                         x,y=initial['x']+DRAG_GRIP[0],initial['y']+DRAG_GRIP[1]
                         events.append(pulse(f"point {round(x*65535/(profile['mode']['width']-1))} {round(y*65535/(profile['mode']['height']-1))}"))
-                        time.sleep(.1); events.append(pulse('down'))
+                        time.sleep(.1)
+                        events.append(pulse('down'))
                         moved=scene_lines.next(time.monotonic()+5)
-                        if moved != {'event':'move-request','accepted':True}: raise BenchError('Scene move request was not accepted')
+                        if moved != {'event':'move-request','accepted':True}:
+                            raise BenchError('Scene move request was not accepted')
                     elif i<11:
                         x=initial['x']+DRAG_GRIP[0]+initial['dx']*(i-1)/9
                         y=initial['y']+DRAG_GRIP[1]+initial['dy']*(i-1)/9
                         events.append(pulse(f"point {round(x*65535/(profile['mode']['width']-1))} {round(y*65535/(profile['mode']['height']-1))}"))
-                    elif i==11: events.append(pulse('up'))
+                    elif i==11:
+                        events.append(pulse('up'))
                     return events
                 initial=None
                 capture('window-drag','drag',drag)
@@ -277,23 +302,31 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
     finally:
         if keyboard and keyboard.poll() is None:
             try:
-                keyboard.stdin.write(b'quit\n'); keyboard.stdin.flush(); keyboard.wait(timeout=2)
-            except (OSError,subprocess.TimeoutExpired): pass
-        stop_process(keyboard); stop_process(scene)
+                keyboard.stdin.write(b'quit\n')
+                keyboard.stdin.flush()
+                keyboard.wait(timeout=2)
+            except (OSError,subprocess.TimeoutExpired):
+                pass
+        stop_process(keyboard)
+        stop_process(scene)
         stop_instrument(host,record,layout,'scene')
         if sysfs:
             deadline=time.monotonic()+2
-            while Path(sysfs).exists() and time.monotonic()<deadline: time.sleep(.05)
+            while Path(sysfs).exists() and time.monotonic()<deadline:
+                time.sleep(.05)
             result['uinput_cleanup']='failed' if Path(sysfs).exists() else 'passed'
         if result['uinput_cleanup']!='passed':
-            result['status']='failed'; result['failures'].append('Desktop input device cleanup not verified')
+            result['status']='failed'
+            result['failures'].append('Desktop input device cleanup not verified')
         atomic_json(directory/f'{target}-desktop.json',result)
     return result
 
 
 def audit_observation(directory, target, profile, phase, *, saved=None):
-    if phase not in PHASES: raise BenchError('Unsupported desktop observation phase')
-    if saved is None:saved = read_json(directory/f'{target}-desktop.json')
+    if phase not in PHASES:
+        raise BenchError('Unsupported desktop observation phase')
+    if saved is None:
+        saved = read_json(directory/f'{target}-desktop.json')
     if (saved.get('status')!='passed' or saved.get('method')!=VERSION or saved.get('spec')!=SPEC
             or saved.get('phase')!=phase or saved.get('failures')!=[] or saved.get('uinput_cleanup')!='passed'
             or saved.get('family_complete') is not False):
@@ -317,7 +350,8 @@ def audit_observation(directory, target, profile, phase, *, saved=None):
         if action['metrics'] != action_metrics(action['captures'],action['injections'],action['kind']):
             raise BenchError('Desktop metrics differ from captured evidence')
     if phase=='responsiveness':
-        if saved.get('launcher_launch_verified') is not True: raise BenchError('Unverified launcher content')
+        if saved.get('launcher_launch_verified') is not True:
+            raise BenchError('Unverified launcher content')
         receipt=saved.get('launch_receipt',{})
         if (receipt.get('schema')!=1 or receipt.get('event')!='launcher-app-started'
                 or type(receipt.get('uid')) is not int or type(receipt.get('pid')) is not int

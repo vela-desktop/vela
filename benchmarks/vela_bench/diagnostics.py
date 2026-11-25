@@ -250,7 +250,10 @@ def export_report(parent, result):
     directory.mkdir(mode=0o755)  # NOSONAR S8707: exclusive validated run name beneath the operator-selected export parent.
     atomic_json(directory / "summary.json", result)
     (directory / "summary.json").chmod(0o644)
-    escape = lambda value: html.escape(str(value), quote=True)
+
+    def escape(value):
+        return html.escape(str(value), quote=True)
+
     document = """<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'">

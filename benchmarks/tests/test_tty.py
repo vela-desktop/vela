@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from vela_bench import BenchError
-from vela_bench.pilot import require_no_graphical_sessions, tty_preconditions, VT_GETSTATE, VT_OPENQRY
+from vela_bench.pilot import require_no_graphical_sessions, tty_preconditions, VT_GETSTATE
 
 
 class TTYTransport(unittest.TestCase):

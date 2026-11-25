@@ -96,16 +96,20 @@ class GreeterRelease(unittest.TestCase):
                 directory = Path(temporary)
                 layout = Layout(directory)
                 identity = dict(good)
-                if case == 'personal-name': identity['account'] = 'personal'
-                if case == 'root': identity['uid'] = 0
-                if case == 'boolean': identity['uid'] = True
+                if case == 'personal-name':
+                    identity['account'] = 'personal'
+                if case == 'root':
+                    identity['uid'] = 0
+                if case == 'boolean':
+                    identity['uid'] = True
                 user = SimpleNamespace(pw_name='personal' if case == 'changed-name' else 'plasmalogin',
                                        pw_uid=957, pw_gid=958 if case == 'changed-gid' else 957)
                 state = {'stage': 'takeover', 'conditions_snapshot': {'greeter': identity}}
                 sessions = ([{'Type':'wayland', 'Class':'user', 'State':'online', 'User':'1000'}] if case == 'personal-session'
                             else [{'Type':'tty', 'Class':'user', 'User':'957'}] if case == 'same-uid-tty' else [])
                 runtime = layout.path('run/user/957')
-                if case == 'runtime': runtime.mkdir(parents=True)
+                if case == 'runtime':
+                    runtime.mkdir(parents=True)
                 host = SimpleNamespace(run=Mock(return_value=SimpleNamespace(stdout='active' if case == 'active-dm' else 'inactive')),
                                        pids=Mock(return_value=[55] if case == 'live-pid' else []))
                 with patch('vela_bench.pilot.pwd.getpwnam', return_value=user), \

@@ -3,7 +3,6 @@
 
 """Explicit P0 acceptance checks over archived evidence, never a ranking."""
 
-import json
 from pathlib import Path
 
 from . import BenchError

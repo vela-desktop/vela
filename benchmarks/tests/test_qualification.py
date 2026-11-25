@@ -30,7 +30,8 @@ class QualificationAcceptance(unittest.TestCase):
             good = {'policy': POLICY, 'autostart_inventory': inventory, 'disabled_autostarts': ['arch-update-tray.desktop']}
             for key, value in ((None, None), ('policy', {}), ('autostart_inventory', []), ('disabled_autostarts', ['kaccess.desktop'])):
                 profile = copy.deepcopy(good)
-                if key: profile[key] = value
+                if key:
+                    profile[key] = value
                 atomic_json(directory / 'vela-desktop-profile.json', profile)
                 with self.subTest(field=key):
                     self.assertEqual(audit_pilot(directory, 'vela', 'crash')['status'], 'passed' if key is None else 'failed')
@@ -48,9 +49,12 @@ class QualificationAcceptance(unittest.TestCase):
             guard = {'policy': POLICY, 'status': 'released', 'error': None, 'release_verified_after_worker_exit': True}
             for case in ('good', 'no-release', 'guard-error', 'wrong-cursor', 'never-acquired'):
                 changed = copy.deepcopy(guard)
-                if case == 'no-release': changed['release_verified_after_worker_exit'] = False
-                if case == 'guard-error': changed['error'] = 'hotplug'
-                if case == 'never-acquired': changed['acquisition_attempted'] = False
+                if case == 'no-release':
+                    changed['release_verified_after_worker_exit'] = False
+                if case == 'guard-error':
+                    changed['error'] = 'hotplug'
+                if case == 'never-acquired':
+                    changed['acquisition_attempted'] = False
                 atomic_json(directory / 'input-isolation.json', changed)
                 atomic_json(directory / 'vela-cursor-profile.json', {} if case == 'wrong-cursor' else POLICY)
                 with self.subTest(case=case):
@@ -65,10 +69,14 @@ class QualificationAcceptance(unittest.TestCase):
                     "fault_injected": "crash", "unit": FAULT_UNIT, "supervision": {"SERVICE_RESULT": "signal"}, "fault_uinput_cleanup": "passed"}
             for case in ("good", "wrong-exit", "leaked-input", "restore-failed", "wrong-fault"):
                 state = copy.deepcopy(good)
-                if case == "wrong-exit": state["supervision"]["SERVICE_RESULT"] = "success"
-                elif case == "leaked-input": state["fault_uinput_cleanup"] = "failed"
-                elif case == "restore-failed": state["conditions_restore"]["status"] = "failed"
-                elif case == "wrong-fault": state["fault_injected"] = "hang"
+                if case == "wrong-exit":
+                    state["supervision"]["SERVICE_RESULT"] = "success"
+                elif case == "leaked-input":
+                    state["fault_uinput_cleanup"] = "failed"
+                elif case == "restore-failed":
+                    state["conditions_restore"]["status"] = "failed"
+                elif case == "wrong-fault":
+                    state["fault_injected"] = "hang"
                 atomic_json(directory / "state.json", state)
                 with self.subTest(case=case):
                     self.assertEqual(audit_pilot(directory, "vela", "crash")["status"], "passed" if case == "good" else "failed")

@@ -368,7 +368,7 @@ static int runActions(int count, char** words)
             ok = pressCombo(arg1);
             ++i;
         } else if (!strcmp(action, "keycode") && arg1) {
-            char* end;
+            char *end;
             long code = strtol(arg1, &end, 10);
             if (!*arg1 || *end || code < 1 || code > KEY_MAX) {
                 fprintf(stderr, "vela-input: invalid evdev keycode\n");

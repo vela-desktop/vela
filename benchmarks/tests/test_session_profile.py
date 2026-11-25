@@ -77,14 +77,16 @@ class SessionProfile(unittest.TestCase):
                         '/lib/systemd/user-generators/systemd-xdg-autostart-generator') if Path(path).is_file()), None)
         if generator is None:
             self.skipTest('systemd XDG autostart generator unavailable')
-        runtime = self.layout.path('runtime'); runtime.mkdir(mode=0o700)
+        runtime = self.layout.path('runtime')
+        runtime.mkdir(mode=0o700)
         env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'HOME': str(self.layout.home),
                'XDG_CONFIG_HOME': str(self.layout.home / '.config'), 'XDG_CONFIG_DIRS': str(self.entries.parent),
                'XDG_RUNTIME_DIR': str(runtime), 'XDG_CURRENT_DESKTOP': 'KDE'}
         def generate(label):
             destination = self.layout.path(label)
             destinations = [destination / name for name in ('normal', 'early', 'late')]
-            for path in destinations: path.mkdir(parents=True)
+            for path in destinations:
+                path.mkdir(parents=True)
             result = subprocess.run([generator, *map(str, destinations)], env=env, capture_output=True, text=True, timeout=10)
             self.assertEqual(result.returncode, 0, result.stderr)
             return {p.name for p in destination.rglob('*.service')}
