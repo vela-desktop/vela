@@ -45,17 +45,22 @@ bool vela_shell_send(struct vela_server *server, const char *line)
         // the shell cannot dispatch the command with another frame's output.
         struct vela_output *output = vela_active_output(server);
         const char *name = output ? output->wlr->name : "";
-        const char prefix[] = "active-output ";
+        // "active-output <name>\t<line>\n"
+        static const char prefix[] = "active-output ";
+        const size_t prefix_length = strlen(prefix);
         size_t name_length = strlen(name);
         size_t line_length = strlen(line);
-        size_t offset = vela_size_add(sizeof(prefix), name_length);
-        size_t length = vela_size_add(offset, vela_size_add(line_length, 1));
+        size_t length = vela_size_add(vela_size_add(prefix_length, name_length), vela_size_add(line_length, 2));
         char *message = VELA_NEW_N(char, length);
-        memcpy(message, prefix, sizeof(prefix) - 1);
-        memcpy(message + sizeof(prefix) - 1, name, name_length);
-        message[offset - 1] = '\t';
-        memcpy(message + offset, line, line_length);
-        message[length - 1] = '\n';
+        char *at = message;
+        memcpy(at, prefix, prefix_length);
+        at += prefix_length;
+        memcpy(at, name, name_length);
+        at += name_length;
+        *at++ = '\t';
+        memcpy(at, line, line_length);
+        at += line_length;
+        *at = '\n';
         sent = send(fd, message, length, MSG_NOSIGNAL) == (ssize_t)length;
         free(message);
     } else {
