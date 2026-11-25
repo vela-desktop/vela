@@ -1,6 +1,6 @@
 # Performance claims and reproduction
 
-Vela measures *observable* behavior rather than treating low memory use or high frame rate as substitutes for visual quality. This page explains the scope of the numbers quoted in the [README](../README.md#why-vela).
+This page records Vela's published measurements and explains how to measure memory use, frame timing and visual quality.
 
 ## Existing published observations
 
@@ -12,6 +12,8 @@ The README previously reported, from the primary development machine (Ryzen 9 99
 - A deliberately slow GPU client: **47 missed vblanks before** ready-commit handling and **0 in one measured run after** it, with a 60 Hz headless output and roughly 150 ms delayed GPU work ([renderer method](renderer.md#73-client-buffers-and-synchronization))
 
 Those are *historical reported measurements*, not new measurements made for this documentation update. The raw measurement JSON, exact original commit, Mesa version and full environment metadata are not currently archived with the observations: do not treat them as independently reproduced benchmarks.
+
+The shell figure has a reproducible successor: [shell memory](shell-memory.md) archives the script, the raw samples and the environment of 13 alternating starts on the headless test desktop, with Qt Quick on Vulkan, where idle PSS was **97.3 MiB** on 24 November 2026. It is not a like-for-like update of the 143 MiB above, which was measured in a different session, before the shell moved from OpenGL to Vulkan.
 
 ## Run a comparable idle sample
 

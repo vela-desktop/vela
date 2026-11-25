@@ -499,7 +499,10 @@ compositor/src/     compositor core, in C (see c-core.md)
   command.c         command socket and the JSON state it answers with
   session.c         session environment (systemd, D-Bus) and hooks
   output.c          outputs, frame scheduling, refresh rate, VRR and power
+  frame_clock.c     when a frame will be shown and when to start drawing it
   output_config.c   outputs.conf: what the user chose for each monitor
+  output_arrangement.c  monitors that never overlap and stay reachable after unplugging
+  output_preview.c  "Keep these settings?": protected changes and their revert
   output_manager.c  wlr-output-management: monitor changes from tools
   nested.c          Vela in a window of another session (scale, shortcuts)
   view.c            windows (xdg-shell), taskbar handles, open animation;
@@ -517,9 +520,18 @@ compositor/src/     compositor core, in C (see c-core.md)
   a11y.c            night light, color filters, magnifier and sticky keys
   input.c           seat, pointer, touchpad, gestures, pointer constraints
   keyboard.c        keyboards, layouts and key handling
-  super_numbers.c   Super+number: which taskbar app or desktop, kept keys
+  keymap_options.c  the XKB options each keyboard gets (docs/keyboard.md)
+  lock_keys.c       Caps Lock and Num Lock shared by every keyboard
   shell.c           the supervised Qt shell and messages to it
   lock.c            session lock and idle handling
+  lock_state.c      the lock state shared with the supervisor across crashes
+  security_policy.c, client_policy.c  which clients may use privileged protocols
+                    (docs/security-model.md)
+  capture_watch.c   who is capturing the screen (docs/screen-sharing.md)
+  x11_space.c, x11_root.c  X11 apps at the outputs' native pixels
+  polkit.c, brightness.c, bluetooth.c, updates.c  the supervised
+                    vela-polkit-agent, vela-brightness, vela-bluetooth and
+                    vela-update-daemon children
 
 compositor/tests/   compositor unit tests
 shell/              Qt Quick shell: taskbar, launcher, panels and desktop
@@ -528,30 +540,42 @@ settings/           vela-settings
 lock/               vela-lock
 polkit/             vela-polkit-agent and vela-polkit-prompt (docs/polkit-agent.md)
 common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps;
-                    audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md)
+                    audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md);
+                    alloc/: allocation helpers (docs/memory-allocation-policy.md);
+                    color/: wallpaper colors and tonal palettes;
+                    shortcuts/: Vela's shortcut table, custom shortcuts and
+                    Super+number, shared by the compositor and Settings
+themes/             built-in theme files and their surface styles (docs/theme-system.md)
+bluetooth/          vela-bluetooth, its pairing agent and client library (docs/bluetooth.md)
+brightness/         vela-brightness: DDC/CI and backlights (docs/brightness.md)
+capture/            the screen capture engine shared by tools and recorders
+updates/            vela-update-daemon (docs/updates.md)
 session/            login entry, systemd target and portal integration
 packaging/          cross-distro vela-update and shared updater tests
 packaging/arch/     Arch Linux PKGBUILD
 packaging/fedora/   Fedora RPM spec and RPM-specific tests
+packaging/ubuntu/   Ubuntu build dependencies (the DEB is built by CPack)
 report/             vela-report: shared Python core/CLI and standalone Qt Widgets GUI
 tools/              development and test clients
 tests/functional/   headless functional scenarios
 tests/audio/        private PipeWire and WirePlumber for the audio tests (docs/audio.md)
+fuzz/               libFuzzer targets and their corpora (docs/testing.md)
+protocols/          Vela's own and wlroots Wayland protocol XML files
 scripts/            nested/headless launchers, sharpness and measurements
 docs/               design and developer documentation
 ```
 
 ## Translations
 
-The interface is in English and Italian. Strings in the code are written in English and wrapped for translation: `qsTr()` in QML, `QCoreApplication::translate()` (or `QT_TRANSLATE_NOOP` for tables) in C++. Italian lives in one Qt Linguist file per app:
+The interface is in English, Italian and Brazilian Portuguese. Strings in the code are written in English and wrapped for translation: `qsTr()` in QML, `QCoreApplication::translate()` (or `QT_TRANSLATE_NOOP` for tables) in C++. Each language lives in one Qt Linguist file per app; Vela's language code `pt` means Brazilian Portuguese (`pt_BR` for the system locale and for keyboard layout names):
 
-| App | Translation |
-|---|---|
-| Shell | `shell/i18n/vela-shell_it.ts` |
-| Files | `explorer/i18n/vela-files_it.ts` |
-| Settings | `settings/i18n/vela-settings_it.ts` |
-| Lock screen | `lock/i18n/vela-lock_it.ts` |
-| User Account Control (polkit) | `polkit/i18n/vela-polkit-prompt_it.ts` |
+| App | Italian | Brazilian Portuguese |
+|---|---|---|
+| Shell | `shell/i18n/vela-shell_it.ts` | `shell/i18n/vela-shell_pt.ts` |
+| Files | `explorer/i18n/vela-files_it.ts` | `explorer/i18n/vela-files_pt.ts` |
+| Settings | `settings/i18n/vela-settings_it.ts` | `settings/i18n/vela-settings_pt.ts` |
+| Lock screen | `lock/i18n/vela-lock_it.ts` | `lock/i18n/vela-lock_pt.ts` |
+| User Account Control (polkit) | `polkit/i18n/vela-polkit-prompt_it.ts` | `polkit/i18n/vela-polkit-prompt_pt.ts` |
 
 The build compiles them and embeds them in each executable. After adding or changing text, refresh the files and translate the new entries (they are marked unfinished), for example with Qt Linguist:
 

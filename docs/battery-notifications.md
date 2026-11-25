@@ -5,7 +5,7 @@ own and the peripherals' (mice, keyboards, headsets, game controllers),
 whatever way they connect (a Logitech receiver, Bluetooth, USB). Only
 UPower is read; there is no backend for any one vendor.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** a check in a real session, with a real mouse running low and a laptop. The tests are in §9.
 

@@ -1,10 +1,11 @@
 # Vela themes: declarative Level 2.5 design
 
-> **Status:** Accepted. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Accepted. **Checked:** 20 November 2026, `215337ef`.
 >
-> **Remaining:** what "Supported today" does not list: items marked **planned** are not implemented, and the merge gate has open items.
+> **Remaining:** what "Supported today" does not list: items marked **planned** are not implemented, and the [gate before schema 1 is public](#before-schema-1-is-public) has open items.
 
-PR #205 and #206 are superseded, not discarded.
+Themes and styles reached `main` with #207 and #212 (5 November 2026); #205 and
+#206 are superseded, not discarded.
 
 ## Product contract
 
@@ -198,18 +199,20 @@ Never use an untrusted author's screenshot as proof of the resulting theme.
   before reading it; 16 files a chain; values clamped where they are used),
   no arbitrary imports, code, installation hooks or untrusted process
   execution.
-- Theme pictures, if they come back, must resolve inside allowed package
-  roots, with symlinks and packaged image limits handled explicitly
-  (**planned hardening**).
+- Theme pictures are looked up by the theme's or style's name under each
+  themes directory's `screenshots/`; symlinks and image size limits are not
+  handled explicitly yet (**planned hardening**).
 - Theme IDs, schema and variant IDs are stable interfaces; implementation
   details remain private.
 - A compatibility matrix separates Vela-owned controls, third-party Qt, GTK,
   and portal-exposed appearance preferences. Do not promise universal theming.
 - Community themes need clear provenance, author/license metadata and a safe
-  update path. Reused Windhawk material requires a provenance review before
-  the draft can be merged.
+  update path. Reused Windhawk material needs a provenance review (see the
+  gate below).
 
-## Merge gate
+## Before schema 1 is public
+
+The themes are on `main`; these items decide when schema 1 can be promised.
 
 - [x] Reuse the working theme/renderer integration from #205.
 - [x] Versioned keys, type validation, guarded inheritance and official IDs.

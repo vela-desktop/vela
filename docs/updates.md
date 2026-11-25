@@ -1,16 +1,17 @@
 # Updates
 
 Design of Vela's updates in the desktop: Settings > System > Updates, the
-background check and the notification. It is the 0.1 release blocker in the
-[roadmap](roadmap.md), on top of the release channels of
-[release-channels.md](release-channels.md). This document comes before the
-code: decisions are made here, and the code follows them.
+background check and the notification, on top of the release channels of
+[release-channels.md](release-channels.md). It was a 0.1 release blocker in
+the [roadmap](roadmap.md). This document came before the code: the decisions
+were made here, and the code follows them. Configurable check intervals
+(#190) and recipe previews (#247) came after 0.1.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** nothing. Stages U0–U7, including real updates on real systems, are in §11.
 
-## 1. What there is today
+## 1. What there was before (October 2026)
 
 - **`vela-update`** (`packaging/vela-update`) updates Vela from the command
   line. The installed package picks the channel: `vela` is Beta, `vela-git`

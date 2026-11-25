@@ -2,11 +2,12 @@
 
 How Vela becomes one desktop that looks and moves the same way everywhere:
 the compositor and its renderer, the Qt shell, and Vela's apps. This document
-comes before the code. It lists what is wrong today, what is different on
-purpose, the invariants the code must keep, and the changes, in the order
-they are made and with how each is verified.
+came before the code. It lists what was wrong before the plan ("today" in
+§4 means October 2026), what is different on purpose, the invariants the
+code must keep, and the changes, in the order they were made and with how
+each is verified.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** nothing from the plan: PRs 1–11 of §8 are merged. §10 lists what may come later.
 
@@ -1208,8 +1209,8 @@ are independent of each other and of the QML work. 8–11, the largest part, las
 - **Theme switch (§6.8).** All visible fills fade at once: to measure on
   Settings' longest page and Files' biggest view.
 - **The namespace rule (§6.7).** Every Vela surface that wants acrylic must be a
-  `vela-` layer surface. True today; a future Vela app window with blur would
-  get the plain one.
+  `vela-` layer surface or a window whose app id starts with `vela-`. Resolved
+  for Vela's apps' windows with Window Glass, which made them see-through.
 - **Shadow room (§6.9).** Larger transparent windows cost Qt more pixels during
   a panel's animation. PR 10's benchmark: 25 openings and closings (Start,
   Quick Settings, Notification Center, clipboard, Run), five runs each,

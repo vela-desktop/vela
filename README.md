@@ -14,8 +14,8 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 [![License: GPL v3+](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
 [Website](https://velade.org) · [Get Vela](#get-vela) · [Features](docs/features.md) ·
-[How it works](#how-it-works) · [Documentation](#documentation) ·
-[Community](#community) · [Roadmap](docs/roadmap.md)
+[What's new](CHANGELOG.md) · [How it works](#how-it-works) ·
+[Documentation](#documentation) · [Community](#community) · [Roadmap](docs/roadmap.md)
 
 <br>
 
@@ -25,50 +25,54 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 
 > [!NOTE]
 > **Vela is beta software.** You can pick it at the login screen and use it every day,
-> but keep a working desktop or TTY available. It is tested on AMD and NVIDIA GPUs;
-> read the [hardware coverage and known limitations](docs/hardware.md) before
-> installing. The interface is available in English and Italian.
+> but keep a working desktop or TTY available. Packages are available for Arch Linux
+> (and CachyOS, EndeavourOS), Fedora 44 and 45, and Ubuntu 26.10. It is tested on AMD
+> and NVIDIA GPUs, and on Intel in experimental CI; read the
+> [hardware coverage and known limitations](docs/hardware.md) before installing. The
+> interface is in English and Italian, plus Brazilian Portuguese on the Experimental
+> channel.
 
 ## Why Vela
 
-Vela uses modern hardware where that improves the experience and avoids overhead where
-it does not. Efficiency comes from doing less unnecessary work, not from making the
-desktop feel less modern.
-
-- **Modern.** Shell, window management, file manager and settings are designed as one
-  desktop rather than a collection of unrelated utilities.
-- **Fluid.** Animations advance on the monitor's real frames, never on arbitrary timers,
-  and each frame is drawn as late as safely possible. Fullscreen games can go straight
-  to the display, with VRR and tearing support.
-- **Sharp.** Fractional scaling is designed around physical pixels: at 125% or 175% an
-  app rendering at the screen's scale is shown 1:1 with no filtering, and an automated
-  test checks this bit for bit.
-- **Efficient.** Damage tracking, direct scanout and native components keep overhead
-  low: the compositor idles at about 17 MiB and 0.1% of one CPU core on the development
-  system ([methodology](docs/performance.md)).
+- **Small text stays clear in motion.** The shell, Files and Settings use scalable
+  glyphs and grayscale antialiasing. A [scrolling test](common/tests/text_rendering.cpp)
+  moves text through one physical pixel in 64 steps and checks for colored fringes.
+- **A 125% desktop, a native 1440p game.** Windows drawn at the monitor's scale map
+  1:1 to its pixels, checked bit for bit. Even an [X11 game](docs/renderer.md#39-x11-apps)
+  can use all 2560×1440 pixels and direct scanout.
+- **Each monitor sets the pace.** Switch desktops across 75 Hz and 180 Hz screens.
+  Each draws the animation for its own next refresh. Recent frame times tell
+  Vela how late it can start drawing.
+- **A slow window can wait.** While an app's GPU work finishes, its previous frame
+  stays visible. The cursor keeps moving, even in a [test](tests/functional/test_ready.py)
+  that delays the app by 150 ms.
 
 ## What's inside
 
 - **Compositor:** stacking window management with window snapping, virtual desktops, live
-  window previews, blur, rounded corners and shadows, and Xwayland for X11 apps and games.
+  window previews, blur, rounded corners and shadows. Xwayland runs X11 apps and games.
+  Fullscreen games can use variable refresh rate and tearing.
 - **Shell:** taskbar, app launcher, quick settings, notifications, clipboard history,
   screenshots and desktop icons, in light and dark modes.
-- **Themes:** complete looks in one click, Vela Expressive among them, with an accent
-  that can follow your wallpaper's colors.
+- **Themes** (in 0.2, on the Experimental channel today): complete looks in one click,
+  Vela Expressive among them, with an accent that can follow your wallpaper's colors.
 - **Files:** tabs, search, previews, archives, removable drives and safe background copies.
-- **Settings:** displays, sound, network, Bluetooth, input, personalization,
+- **Settings:** displays, sound, network, Bluetooth, input, power, personalization,
   accessibility and updates.
 - **Session:** a secure lock screen, an authorization prompt for administrator actions,
-  and recovery from compositor, shell and GPU crashes without losing your windows.
+  and recovery from compositor, shell and GPU crashes. Windows stay open after a shell
+  crash; after a compositor or GPU restart, Qt and KDE apps reconnect.
 
-The [feature list](docs/features.md) has the details and more screenshots.
+See the [feature gallery](docs/features.md#screenshots) for a closer look at the
+desktop, from the corners of Quick Settings to the lock-screen clock.
 
 ## Get Vela
 
-Vela needs an **x86-64-v3 CPU** (roughly 2017-generation hardware; the ISA,
-not the manufacturing date, is the actual requirement), a GPU with **Vulkan 1.4**
-(AMD or Intel with Mesa ≥ 25.0, NVIDIA with the proprietary driver ≥ 570 or NVK),
-and **PipeWire with WirePlumber** for sound. CPU and GPU requirements are independent.
+Vela needs a GPU with **Vulkan 1.4** (AMD or Intel with Mesa ≥ 25.0, NVIDIA with the
+proprietary driver ≥ 570 or NVK) and **PipeWire with WirePlumber** for sound. From 0.2
+(on the Experimental channel today) it also needs an **x86-64-v3 CPU**: roughly
+2017-generation hardware, though the instruction set, not the date, is what counts.
+CPU and GPU requirements are independent.
 
 Install the prerequisites for your distribution:
 
@@ -91,7 +95,10 @@ rollback and [other distributions](docs/installation.md#other-distributions).
 
 **Just want a look?** [Build from source](docs/development.md#build) and run
 `sh scripts/run-nested.sh`: Vela opens in a window inside your current Wayland desktop.
-Nested mode is good for exploring, but cannot validate every hardware path.
+Nested mode is good for exploring, but cannot validate every hardware path. For a full
+session without touching your system, run Vela in a
+[QEMU/KVM virtual machine with Venus](docs/virtual-machines.md) (experimental; it needs
+the Experimental channel).
 
 ## How it works
 
@@ -99,12 +106,13 @@ Nested mode is good for exploring, but cannot validate every hardware path.
 flowchart TB
     DM["Login screen"] --> S["vela-session"]
     S --> SUP["Supervisor<br/><i>holds the Wayland socket,<br/>restarts the compositor</i>"]
-    SUP --> C["vela-compositor<br/>C17 · wlroots 0.20<br/>own scene graph · Vulkan 1.4 renderer"]
+    SUP --> C["vela-compositor<br/>C17 · wlroots 0.20<br/>own scene graph<br/>Vulkan 1.4 renderer"]
     C -- "standard Wayland protocols" --> SH["vela-shell<br/>Qt Quick"]
-    C --> APPS["Apps<br/>Wayland and Xwayland"]
-    C --> F["vela-files"]
-    C --> SET["vela-settings"]
+    C --> APPS["Apps<br/>Wayland and Xwayland<br/>vela-files, vela-settings..."]
+    APPS -- "screen sharing,<br/>file choosers" --> P["xdg-desktop-portal<br/>wlr · GTK"]
+    C -- "capture protocols" --> P
     C -- "ext-session-lock" --> L["vela-lock"]
+    C -- "starts and restarts" --> HELP["Helpers<br/>vela-polkit-agent<br/>vela-bluetooth<br/>vela-brightness<br/>(one per display)<br/>vela-update-daemon"]
     C --> HW["DRM/KMS · libinput · GBM"]
 ```
 
@@ -113,9 +121,14 @@ flowchart TB
   frame scheduling, damage tracking and direct scanout ([renderer design](docs/renderer.md)).
 - **The shell** is a separate Qt Quick process that talks to the compositor through
   standard Wayland protocols, so a shell crash never takes your windows down.
-- **Vela reuses** standard Linux services and selected KDE components (themes, icons and
-  the wallet) rather than reinventing them. It does not run on KDE's compositor or Plasma
-  shell ([integration services](docs/hardware.md#integration-services)).
+- **Small helpers** do the work that touches hardware or system services: the
+  authorization prompt's agent, Bluetooth, monitor brightness over DDC/CI and the
+  update checks. Each is its own process, started and restarted by the compositor, so
+  a slow monitor or a stuck D-Bus call never delays a frame.
+- **Vela reuses** standard Linux services and selected KDE components (themes and
+  icons), and keeps app passwords in KWallet or GNOME Keyring, rather than reinventing
+  them. It does not run on KDE's compositor or Plasma shell
+  ([integration services](docs/hardware.md#integration-services)).
 
 ## Get involved
 
@@ -138,22 +151,12 @@ Matrix homeserver works; no `velade.org` account is required.
 
 ## Documentation
 
-- **Using Vela:** [features](docs/features.md) · [installation and updates](docs/installation.md) ·
-  [keyboard shortcuts](docs/shortcuts.md) · [configuration](docs/configuration.md) ·
-  [hardware coverage](docs/hardware.md) · [release channels](docs/release-channels.md) ·
-  [VM setup](docs/vm-fedora44-venus.md) ·
-  [roadmap](docs/roadmap.md)
-- **Design:** [renderer](docs/renderer.md) · [audio](docs/audio.md) ·
-  [Bluetooth](docs/bluetooth.md) · [brightness](docs/brightness.md) ·
-  [screen sharing](docs/screen-sharing.md) · [theme system](docs/theme-system.md) ·
-  [authorization prompt](docs/polkit-agent.md) · [updates](docs/updates.md) ·
-  [compositor security model](docs/security-model.md)
-- **Developing:** [development guide](docs/development.md) · [testing](docs/testing.md) ·
-  [performance methodology](docs/performance.md) · [CI and quality](docs/ci-quality.md) ·
-  [contributors](CONTRIBUTORS.md)
+[Features](docs/features.md) · [Installation and updates](docs/installation.md) ·
+[Keyboard shortcuts](docs/shortcuts.md) · [Hardware coverage](docs/hardware.md) ·
+[Development guide](docs/development.md) · [Renderer design](docs/renderer.md)
 
-The [documentation index](docs/README.md) lists every document, design
-documents and change notes included.
+Everything else, from configuration to the design documents, is in the
+[documentation index](docs/README.md).
 
 ## AI disclosure
 

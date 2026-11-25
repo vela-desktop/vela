@@ -10,6 +10,18 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Brazilian Portuguese: the shell, Files, Settings, the lock screen and the
+  authorization prompt, chosen in Settings > Time and language or from the
+  system's language. Thanks to @arthurlozano.
+
+- The shell renders with Vulkan, like the compositor, instead of OpenGL.
+  Apps started from the shell keep the graphics settings they inherit.
+
+- The shell uses less memory: clipboard images keep a preview sized for the
+  screen, large notification images are scaled down, and tray icons and
+  hidden panels hold less. Clipboard history keeps its scroll position and
+  selection when the history changes.
+
 - Large compositor state replies now reach slower IPC clients in full. The
   lock screen can finish a clean unlock and works from build paths containing
   an apostrophe. Dark blurred panels use finer dithering.
@@ -75,9 +87,9 @@ under "Unreleased" in the pull request that makes a user-visible change.
   the built-in panel. Reopening the lid restores its display settings.
   System suspend on lid close follows the system's logind policy.
 
-- The Ubuntu package recommends the GTK and wlr portal backends, so file
-  choosers in sandboxed apps, screenshots and screen sharing work after a
-  normal installation.
+- The Fedora and Ubuntu packages require the wlr portal backend, and the
+  Ubuntu package recommends the GTK one, so file choosers in sandboxed apps,
+  screenshots and screen sharing work after a normal installation.
 
 - Display layouts keep monitors from overlapping. Unplugging a monitor closes
   gaps that would otherwise trap the pointer on one screen.
@@ -91,10 +103,52 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 - Context menus: the entries apps add (KDE service menus) are in the menu
   itself, with no "Show more options"; Settings > Personalization > Context
-  menu hides the entries it lists, menu by menu. Start shows one menu for every app, the window menu
-  can move a window to another desktop, and commands have monochrome icons.
+  menu hides the entries it lists, menu by menu. Start shows one menu for
+  every app, the window menu can move a window to another desktop, and
+  commands have monochrome icons.
+
 - Run (Win+R) is gone, with three Win+X entries that opened often-missing KDE
   tools and the network icon's always-disabled troubleshooter.
+
+- Themes: Settings > Personalization applies a theme in one click, with Undo.
+  Vela Official, Vela Floating, Window Glass and Vela Expressive are
+  installed, and the taskbar, Start, and quick settings with the notification
+  center each have their own styles. Your own themes and styles go in
+  `~/.config/vela/themes/` ([theme files](docs/configuration.md#theme-files)).
+
+- Vela Expressive, inspired by Material 3 Expressive: tonal colors from the
+  wallpaper or the accent, round shapes and lively motion in Vela's apps and
+  shell, notifications grouped by app, and a matching lock screen.
+
+- Personalization: an accent from the wallpaper or any HEX color; the taskbar
+  clock with or without the date and seconds, in 12 or 24 hours, and the
+  notification count; the Start button shows the sail, the distribution's logo
+  or a picture; Start's pinned apps and the desktop icons can be hidden.
+
+- Battery alerts when the PC or a peripheral (mouse, keyboard, headset) runs
+  low or critical, with the PC's low level set in Settings > System > Power.
+
+- While an app shares or records the screen, the taskbar shows which app is
+  capturing what. By default, Do Not Disturb silences ordinary popups while
+  sharing. Critical notifications can still appear on the shared screen.
+  Settings > System > Notifications turns the automatic Do Not Disturb off.
+
+- Right-click a notification to dismiss it.
+
+- Settings > System > Updates chooses how often Vela checks (6 hours to 7 days)
+  and shows the next check; the updater shows the packaging recipe before it
+  installs.
+
+- Experimental virtual machines: QEMU/KVM guests with virtio-gpu and Vulkan
+  Venus ([virtual machines](docs/virtual-machines.md)).
+
+- Notifications keep only safe body markup and refuse malformed images, and
+  only the real credential programs get the system prompt's place above
+  full-screen windows.
+
+- Official packages need an x86-64-v3 CPU (AVX2, FMA, BMI1/2); the session
+  checks it before starting the desktop
+  ([hardware](docs/hardware.md#cpu-baseline-x86-64-v3)).
 
 ## 0.1.2 — 16 November 2026
 

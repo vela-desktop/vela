@@ -4,10 +4,10 @@ Design of display brightness in Vela: a slider per monitor, in quick settings
 and in Settings → Display, that changes the monitor's own backlight. External
 monitors are driven over DDC/CI, spoken by Vela itself; the built-in screen
 of a laptop through its kernel backlight. The compositor owns the state of
-every output. This document comes before the code: decisions are made here,
-and the code follows them.
+every output. This document came before the code: the decisions were made
+here, and the code follows them.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** the tests on real hardware of §12 ([hardware](hardware.md#brightness)). Stages B0–B4 are in §15.
 

@@ -6,12 +6,11 @@ remains available to the host desktop. The verified setup uses an
 Arch/CachyOS host with AMD RADV; the host package commands below target
 those distributions. The guest uses traditional, DNF-based Fedora 44 KDE.
 
-The Vela/Venus support described here is **experimental**, on the
-[`feat/vm-venus`](https://github.com/vela-desktop/vela/tree/feat/vm-venus)
-branch, in [draft PR 251](https://github.com/vela-desktop/vela/pull/251).
-A regular Vela release may not include these changes. The tested
-configuration and measured results are recorded in
-[virtual-machines.md](virtual-machines.md#verified-guest).
+The Vela/Venus support described here is **experimental**. It reached
+`main` with [#251](https://github.com/vela-desktop/vela/pull/251) on
+14 November 2026, so the Experimental channel has it; no Beta has it yet
+(the [roadmap](roadmap.md) targets 0.2). The tested configuration and measured
+results are recorded in [virtual-machines.md](virtual-machines.md#verified-guest).
 
 Run blocks marked **HOST** on the physical computer and blocks marked
 **GUEST** in a Fedora terminal inside the VM. Run commands as a normal user,
@@ -39,7 +38,7 @@ The remaining sections cover [SSH](#9-optional-ssh-for-diagnostics),
 | Host | libvirt and virt-manager | Configure and start the VM. |
 | Guest | Kernel `virtio_gpu` driver and Mesa Venus | Expose Vulkan through the virtual GPU. |
 | Guest | Mesa Zink | Runs OpenGL through Vulkan for Vela's clients. |
-| Guest | Vela from the specified branch | Uses the Vulkan allocator and selects Zink automatically on Venus. |
+| Guest | Vela from the Experimental channel (`main`) | Uses the Vulkan allocator and selects Zink automatically on Venus. |
 
 **The host does not need the Mesa Venus driver.** It uses its physical GPU's
 driver; Venus is the guest's Vulkan driver. On Arch, for example,
@@ -436,19 +435,17 @@ before installing Vela.
 
 ## 7. Install Vela with VM support
 
-**GUEST:** this procedure builds the branch and installs a native RPM using
-the project's updater. It does not require a GitHub account or an old CI
+**GUEST:** this procedure builds `main` and installs a native `vela-git` RPM
+using the project's updater. It does not require a GitHub account or an old CI
 artifact that may have expired.
 
 ```sh
 sudo dnf install git curl rpm-build dnf5-plugins
 mkdir -p "$HOME/src"
 cd "$HOME/src"
-git clone --branch feat/vm-venus https://github.com/vela-desktop/vela.git vela-vm
+git clone https://github.com/vela-desktop/vela.git vela-vm
 cd vela-vm
-sh packaging/vela-update --channel experimental \
-    --source https://github.com/vela-desktop/vela.git \
-    --branch feat/vm-venus --build --jobs 4
+sh packaging/vela-update --channel experimental --build --jobs 4
 ```
 
 Run the updater in an interactive terminal. It requests `sudo` to install
@@ -461,23 +458,23 @@ rpm -q vela-git
 test -f /usr/share/wayland-sessions/vela.desktop
 ```
 
-To reproduce the exact code used in the recorded test, pass
-`--commit 416bd23b17fbe98d707ad1c72fdc112f50851723` to the updater **instead
-of** `--branch feat/vm-venus`; never combine the two. The branch may include
-later fixes.
+The recorded test used the pull request's commit `416bd23`, which reached
+`main` squashed into `8cfcd72a`. The updater fetches only branches and tags, so
+`416bd23` itself can no longer be selected. To build the code as it was merged,
+add `--commit 8cfcd72ab7335551ef7276171bc59862b01b4413`; `main` has later
+fixes, so prefer it unless you are reproducing the recorded test.
 
-`--branch` and `--commit` select code **for that invocation only**. While
-VM support remains on this branch, update explicitly with:
+Later updates follow `main` like any Experimental installation:
 
 ```sh
-vela-update --channel experimental --branch feat/vm-venus --build --jobs 4
+vela-update --channel experimental --build --jobs 4
 ```
 
-An update without a selector uses the repository's default branch. A
-rebuild after a Qt update must also retain the selector:
+`--commit` selects code **for that invocation only**. After a Qt update,
+rebuild against the guest's new Qt:
 
 ```sh
-vela-update --channel experimental --branch feat/vm-venus --force --build --jobs 4
+vela-update --channel experimental --force --build --jobs 4
 ```
 
 The general installation procedure, channels, and package policies are
@@ -487,7 +484,7 @@ documented in [installation.md](installation.md#fedora-44-and-45).
 
 To test inside a KDE window, also build a normal development tree using
 the [Fedora build dependencies](development.md#distribution-dependencies).
-Then, from the branch checkout:
+Then, from the checkout:
 
 ```sh
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -505,7 +502,7 @@ rendering, rather than the full session's DRM/KMS path.
 **GUEST:** log out of KDE. Select the **Vela** session in the login manager
 and log in with the same user. Keep KDE available as a recovery session.
 
-On Venus, this branch automatically selects:
+On Venus, Vela automatically selects:
 
 - the **Vulkan DMA-BUF export** allocator for compositor outputs;
 - `MESA_LOADER_DRIVER_OVERRIDE=zink` for OpenGL clients, such as Files (the
@@ -609,9 +606,9 @@ for installation and configuration, keeping SELinux enabled.
 | QEMU cannot open the render node | Check the selected GPU, node existence, QEMU process permissions, and libvirt/SELinux logs. Specify the node in EGL-headless; avoid `chmod 666`, running QEMU as root, or disabling system protections. |
 | Video does not change after rebooting Fedora | Shut down the VM, wait until libvirt reports it shut off, and start it again. |
 | Vela fails the x86-64-v3 CPU check | Expose the host CPU and verify that the physical CPU has the required instructions. |
-| Vela exits when the shell starts, with Venus error `invalid res_id` / `vn_GetMemoryFdPropertiesKHR` | Check the updated branch, Vulkan allocator, and automatic Zink selection. In testing, the allocator alone did not fix imports of client EGL/VirGL buffers. |
+| Vela exits when the shell starts, with Venus error `invalid res_id` / `vn_GetMemoryFdPropertiesKHR` | Update to the latest `main`, and check the Vulkan allocator and automatic Zink selection. In testing, the allocator alone did not fix imports of client EGL/VirGL buffers. |
 | Automatic Zink selection does not occur | Look for an existing `MESA_LOADER_DRIVER_OVERRIDE` in environment/profile files; Vela respects even an explicitly empty value. Also check for a forced `VELA_ALLOCATOR=gbm`. |
-| The shell fails after a Qt update | Rebuild Vela against the guest's Qt, keeping `--branch feat/vm-venus` in the update command. |
+| The shell fails after a Qt update | Rebuild Vela against the guest's Qt: `vela-update --channel experimental --force --build`. |
 | A black rectangle appears with KDE installed | Check `xwaylandvideobridge`: its autostart window was visible below other windows in the tested guest. See below. |
 
 For the last case, **GUEST, in the affected session**:

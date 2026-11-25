@@ -8,7 +8,7 @@
 
 ## Root cause addressed
 
-In `lock/main.cpp`, the Clock mode draws `screen.background`, while Login and Checking draw the cached `screen.backgroundBlurred`. The original `blurred()` downscaled the image five times (to **1/32 per dimension**, e.g. 2560x1440 → 80x45), then upscaled through all the intermediate sizes. It generated heavy deliberate defocus, but the extremely small intermediate image could give the wallpaper a coarse, low-resolution appearance. The implementation also applies a darker overlay in Login (alpha 110 versus 60 in Clock); that difference is unchanged.
+In `lock/main.cpp`, the Clock mode draws `screen.background`, while Login and Checking draw the cached `screen.backgroundBlurred`. The original `blurred()` downscaled the image five times (to **1/32 per dimension**, e.g. 2560x1440 → 80x45), then upscaled through all the intermediate sizes. It generated heavy deliberate defocus, but the extremely small intermediate image could give the wallpaper a coarse, low-resolution appearance. The implementation also applies a darker overlay in Login (alpha 110 versus 60 in Clock); that difference is unchanged. The drawing has since moved to `lock/drawing.h`, with the same overlay and the same blurred image.
 
 The previously suspected clock-screen SVG antialiasing problem is **not implicated by the corrected reproduction**. Physical Wayland scaling and wallpaper selection remain separate possible improvements, not this fix's scope.
 

@@ -2,16 +2,16 @@
 
 Design of Vela's Bluetooth, rewritten from scratch: devices, pairing, quick
 settings, and how Vela shares Bluetooth with other desktop sessions. This
-document comes before the code: decisions are made here, and the code
+document came before the code: the decisions were made here, and the code
 follows them.
 
-> **Status:** Implemented. **Checked:** 17 November 2026, `d784004`.
+> **Status:** Implemented. **Checked:** 20 November 2026, `215337ef`.
 >
 > **Remaining:** nothing. Stages B0–B7 (PR #146 and #157), including the tests on real devices, are in §12.
 
 ## 1. Why from scratch
 
-Bluetooth today is four pieces that don't talk to each other:
+Before this design (October 2026), Bluetooth was four pieces that didn't talk to each other:
 
 - **Settings** (`settings/src/bluetooth.cpp`) has its own model.
   - It pairs without an `org.bluez.Agent1`. A device that needs a
