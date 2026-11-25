@@ -208,7 +208,8 @@ else:
     def test_complete_launcher_audit_requires_launch_receipt_content_and_return_to_baseline(self):
         import hashlib
         from vela_bench.desktop_legacy import LAUNCHED, VERSION
-        with tempfile.TemporaryDirectory() as tmp, patch('vela_bench.desktop_pixels.evidence') as decoded:
+        with tempfile.TemporaryDirectory() as tmp, patch('vela_bench.desktop_pixels.decode_rgb', side_effect=lambda raw: (raw,)), \
+                patch('vela_bench.desktop_pixels.detect') as decoded:
             directory=Path(tmp)
             sample={'schema':1,'method':VERSION,'spec':SPEC,'phase':'responsiveness','status':'passed','failures':[],
                     'uinput_cleanup':'passed','family_complete':False,'launcher_launch_verified':True,
@@ -233,7 +234,7 @@ else:
                 for i,row in enumerate(rows):
                     for key in ('begin_monotonic_ns','end_monotonic_ns'):
                         row[key]+=sequence*2_000_000_000
-                    image=b'fixture png '+bytes([i])
+                    image=b'fixture png '+bytes([sequence,i])
                     filename=f'vela-desktop-{name}-{i:02d}.png'
                     (directory/filename).write_bytes(image)
                     row.update(image_file=filename,image_sha256=hashlib.sha256(image).hexdigest())
@@ -243,8 +244,9 @@ else:
                                       'after_monotonic_ns':stamp+1_000_000} for command,stamp in
                                      zip(('launcher','search','enter','close'),(23_500_000_000,23_600_000_000,23_700_000_000,25_400_000_000))]
             profile={'mode':{'width':1280,'height':720}}
-            originals={row['image_file']:copy.deepcopy(row) for action in sample['actions'] for row in action['captures']}
-            decoded.side_effect=lambda path:originals[path.name]
+            originals={(directory/row['image_file']).read_bytes():copy.deepcopy(row)
+                       for action in sample['actions'] for row in action['captures']}
+            decoded.side_effect=originals.__getitem__
             path=directory/'vela-desktop.json'
             atomic_json(path,sample)
             self.assertEqual(audit_observation(directory,'vela',profile,'responsiveness'),sample)

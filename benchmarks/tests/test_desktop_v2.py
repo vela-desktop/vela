@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from vela_bench import BenchError,desktop
+from vela_bench import BenchError, desktop, desktop_pixels
 from vela_bench.desktop_pixels import evidence
 from vela_bench.pixels import png_bytes
 
@@ -93,6 +93,26 @@ class DesktopV2(unittest.TestCase):
             self.assertEqual(len(value['tiles']),576)
             path.write_bytes(picture([80,80,640,360],duplicate=True))
             self.assertEqual(evidence(path)['rectangles'],{})
+
+    def test_pixel_cache_verifies_every_file_and_decodes_identical_bytes_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            first = Path(temporary) / 'first.png'
+            second = Path(temporary) / 'second.png'
+            raw = picture([80, 80, 640, 360])
+            first.write_bytes(raw)
+            second.write_bytes(raw)
+            capture = dict(evidence(first), image_sha256=hashlib.sha256(raw).hexdigest())
+            cache = {}
+            with patch.object(desktop_pixels, 'decode_rgb', wraps=desktop_pixels.decode_rgb) as decode:
+                desktop_pixels.audit_capture(first, capture, cache, rectangles=True)
+                desktop_pixels.audit_capture(second, capture, cache, rectangles=True)
+                decode.assert_called_once_with(raw)
+                second.write_bytes(raw[:-1])
+                with self.assertRaisesRegex(BenchError, 'image changed'):
+                    desktop_pixels.audit_capture(second, capture, cache, rectangles=True)
+            capture['image_sha256'] = hashlib.sha256(raw[:-1]).hexdigest()
+            with self.assertRaisesRegex(BenchError, 'Truncated PNG|Incomplete PNG'):
+                desktop_pixels.audit_capture(second, capture, cache, rectangles=True)
 
     def test_real_png_resize_rejects_rehashed_forged_metadata_and_wrong_sources_or_input(self):
         with tempfile.TemporaryDirectory() as temporary:

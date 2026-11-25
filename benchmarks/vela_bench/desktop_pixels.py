@@ -1,9 +1,10 @@
 # SPDX-FileCopyrightText: 2026 Brando Giuffrida
 # SPDX-License-Identifier: GPL-3.0-or-later
 """Recompute the declared native marker/grid detector from original PNGs."""
+import hashlib
 import re
 from . import BenchError
-from .pixels import png_rgb
+from .pixels import decode_rgb, image_bytes, png_rgb
 
 # These are binary RGB samples, including control-byte values in the green
 # channel. List each accepted byte explicitly rather than using text ranges.
@@ -13,7 +14,23 @@ _MAGENTA_CANDIDATE = re.compile(b'(?=' + b''.join(
 
 
 def evidence(path):
-    width,height,rgb=png_rgb(path)
+    return detect(*png_rgb(path))
+
+
+def audit_capture(path, capture, cache, *, rectangles=False):
+    raw = image_bytes(path)
+    digest = hashlib.sha256(raw).hexdigest()
+    if digest != capture.get('image_sha256'):
+        raise BenchError('Desktop capture image changed')
+    if digest not in cache:
+        cache[digest] = detect(*decode_rgb(raw))
+    pixels = cache[digest]
+    keys = ('width', 'height', 'tiles', 'markers', 'rectangles') if rectangles else ('width', 'height', 'tiles', 'markers')
+    if any(capture.get(key) != pixels[key] for key in keys):
+        raise BenchError('Desktop metadata differs from original pixels')
+
+
+def detect(width, height, rgb):
     def pixel(x,y):
         if not 0<=x<width or not 0<=y<height:
             return (-999,)*3
