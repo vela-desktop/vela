@@ -24,6 +24,8 @@ jobs:
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       QT_QPA_PLATFORM: offscreen
+      # Non-login CI shells do not load Arch's debuginfod profile script.
+      DEBUGINFOD_URLS: https://debuginfod.archlinux.org
     steps:
       - name: Dependencies
         run: >-
@@ -33,7 +35,14 @@ jobs:
           libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
           fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
           qt6-svg qt6-wayland qt6-tools layer-shell-qt hicolor-icon-theme
-          pipewire wireplumber systemd-libs valgrind
+          pipewire wireplumber systemd-libs valgrind debuginfod
+      - name: Verify Valgrind startup
+        timeout-minutes: 5
+        run: |
+          # The stripped glibc loader requires matching debug symbols for Memcheck.
+          # Fail before building Vela if the runner cannot initialize Valgrind.
+          command -v debuginfod-find
+          valgrind --tool=memcheck --error-exitcode=99 /usr/bin/true
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
