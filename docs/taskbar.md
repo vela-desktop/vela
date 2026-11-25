@@ -449,7 +449,8 @@ What opens from the **keyboard** (Start with Win, quick settings with
 Win+A, the notification center with Win+N, Task View, the clipboard, Alt+Tab,
 the Win+X menu, and the volume, Caps Lock and desktop indicators) opens on
 the display the user is working on: the focused window's, else the
-pointer's. With a window fullscreen on a second monitor, they would
+focused panel's (Start open, for instance), else the pointer's
+(`vela_active_output()` in `focus.c`). With a window fullscreen on a second monitor, they would
 otherwise appear on the first one, where nobody is looking. Win+X opens
 from that display's taskbar, or from the main one's when the taskbar is
 only on the main display. The compositor sends that display's name

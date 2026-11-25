@@ -354,10 +354,10 @@ Window {
         openFromBar(entries, item, centered && !vertical ? item.width / 2 : 0, 0,
             Object.assign({ centered: centered }, options || {}))
     }
-    // Taskbar menus open on its output; the panels it opens (Start, quick
-    // settings...) go there too.
+    // Taskbar menus open on its output (options.screen). An entry that opens
+    // a panel (Search, the volume mixer) says fromHere() itself: a menu
+    // dismissed without one must not send the next keyboard panel here.
     function openMenu(entries, x, y, options) {
-        Menus.panelScreen = root.screenName
         Menus.open(entries, x, y, Object.assign({ screen: root.screenName }, options || {}))
     }
     function fromHere() { Menus.panelScreen = root.screenName }

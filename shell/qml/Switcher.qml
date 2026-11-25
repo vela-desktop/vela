@@ -30,10 +30,12 @@ Window {
     Timer {
         id: showDelay
         interval: 100
+        // The display in use when switcher-show arrived (the focused
+        // window's, else the main one): a later command in the delay may
+        // carry another.
+        property string screenName: ""
         onTriggered: {
-            // On the display in use (the focused window's, as the compositor
-            // said with switcher-show), else the main one.
-            Shell.placeOnScreen(root, Shell.panelScreen())
+            Shell.placeOnScreen(root, screenName)
             root.visible = true
             motion.open()
             Effects.setBlur(root, [motion.visibleArea], Theme.expressive ? Theme.radiusOverlay : 0)
@@ -54,6 +56,7 @@ Window {
             }
             root.selected = selected
             Capture.capture(identifiers)
+            showDelay.screenName = Shell.panelScreen()
             showDelay.restart()
         }
         function onSwitcherSelected(selected) {

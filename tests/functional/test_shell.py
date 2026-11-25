@@ -2047,6 +2047,21 @@ class KeyboardPanelsWithoutAudio(RealShell):
             self.vela.wait_for(lambda s: not self.mapped(s, "vela-switcher"), timeout=5, what="Alt+Tab closed")
             focused = self.vela.state()["focused"]
             self.assertIn(focused, (first, other))
+            # A taskbar menu dismissed with nothing chosen leaves no output
+            # behind either (CodeRabbit on #320).
+            send("move", bar["x"] + 300, bar["y"] + bar["h"] // 2, "sleep", 300, "click", "right")
+            state = self.vela.wait_for(lambda s: self.layer(s, "vela-context-menu"), what="the taskbar menu")
+            self.assertEqual(self.layer(state, "vela-context-menu")["output"], "HEADLESS-1")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-context-menu"), timeout=5, what="menu closed")
+            self.vela.wait_for(lambda s: s["focused"] == focused, what="focus unchanged after the menu")
+            send("key", "super")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-start-menu") and s["focusedLayer"] == "vela-start-menu",
+                what="Start open after the menu")
+            self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
             # The volume icon, just left of the clock on the main taskbar.
             x, y = bar["x"] + bar["w"] - 110, bar["y"] + bar["h"] // 2
             send("move", x, y, "sleep", 300, "move", x + 1, y, "sleep", 300, "scroll", 1, "sleep", 300)
