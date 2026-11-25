@@ -13,7 +13,9 @@
 #include "foldermodel.h"
 #include "iconprovider.h"
 
+#include <QCoreApplication>
 #include <QDir>
+#include <QEvent>
 #include <QVariantList>
 #include <QStandardItemModel>
 #include <QFile>
@@ -151,6 +153,14 @@ public slots:
         fake->setParent(engine);
         engine->rootContext()->setContextProperty(QStringLiteral("Places"), fake);
     }
+    // Every test file's view is gone, the application is still here. Since Qt
+    // 6.12.1 the delegates a destroyed view kept for reuse (reuseItems) are
+    // left to a deferred delete; no event loop runs after the last file, so
+    // delete them now or LeakSanitizer reports them with the types and
+    // contexts they hold. Files destroys its views while its event loop runs,
+    // so only this test's teardown is affected.
+    void cleanupTestCase() { QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete); }
+
 private:
     TestTransferOps m_ops;
 };
