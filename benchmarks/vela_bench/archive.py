@@ -15,6 +15,7 @@ import uuid
 from . import BenchError, SCHEMA
 from .discovery import file_hash
 from .model import fingerprint, MEASUREMENTS
+from .timing import boot_id
 
 
 def atomic_json(path, value):
@@ -67,7 +68,7 @@ def read_json(path):
 
 
 def append_event(path, event):
-    record = {"monotonic_ns": time.monotonic_ns(), "wall_time": datetime.now(UTC).isoformat(), **event}
+    record = {"monotonic_ns": time.monotonic_ns(), "wall_time": datetime.now(UTC).isoformat(), **event, "boot_id": boot_id()}
     with Path(path).open("a", encoding="utf-8") as stream:  # NOSONAR S8707: local operator archive or reconstructed root-owned journal, no agent/server.
         stream.write(json.dumps(record, allow_nan=False, sort_keys=True) + "\n")
         stream.flush()
@@ -83,14 +84,20 @@ def read_events(path):
     if raw and not raw.endswith(b"\n"):
         raise BenchError("Truncated event journal")
     events = []
+    clocks = {}
     for number, line in enumerate(raw.splitlines(), 1):
         try:
             event = decode_json(line)
             if (not isinstance(event, dict) or type(event.get("monotonic_ns")) is not int
                     or event["monotonic_ns"] < 0 or not isinstance(event.get("event"), str)):
                 raise ValueError("invalid event record")
-            if events and event["monotonic_ns"] < events[-1]["monotonic_ns"]:
-                raise ValueError("non-monotonic event journal")
+            boot = event.get("boot_id")
+            if "boot_id" in event and (not isinstance(boot, str) or str(uuid.UUID(boot)) != boot):
+                raise ValueError("invalid event boot ID")
+            stamp = event["monotonic_ns"]
+            if stamp < clocks.get(boot, 0):
+                raise ValueError("non-monotonic event journal within one boot")
+            clocks[boot] = stamp
             events.append(event)
         except (ValueError, UnicodeError) as exc:
             raise BenchError(f"Invalid journal line {number}: {exc}") from exc

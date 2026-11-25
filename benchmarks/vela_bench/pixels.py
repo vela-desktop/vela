@@ -24,7 +24,10 @@ def image_hash(path):
 
 
 def png_rgb(path):
-    raw = image_bytes(path)
+    return decode_rgb(image_bytes(path))
+
+
+def decode_rgb(raw):
     if raw[:8] != b'\x89PNG\r\n\x1a\n':
         raise BenchError('Invalid pattern PNG')
     offset, compressed, header, ended = 8, bytearray(), None, False

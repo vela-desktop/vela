@@ -236,6 +236,20 @@ class Archives(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(BenchError):
                 read_events(path)
 
+    def test_journal_scopes_monotonic_order_to_boot_id(self):
+        path = self.root / 'resumed-events.jsonl'
+        first = '11111111-1111-4111-8111-111111111111'
+        second = '22222222-2222-4222-8222-222222222222'
+        events = [{'event': 'legacy', 'monotonic_ns': 900},
+                  {'event': 'start', 'monotonic_ns': 600, 'boot_id': first},
+                  {'event': 'resume', 'monotonic_ns': 20, 'boot_id': second}]
+        path.write_text(''.join(json.dumps(event) + '\n' for event in events))
+        self.assertEqual(read_events(path), events)
+        with path.open('a') as journal:
+            journal.write(json.dumps({'event': 'end', 'monotonic_ns': 19, 'boot_id': second}) + '\n')
+        with self.assertRaisesRegex(BenchError, 'non-monotonic'):
+            read_events(path)
+
     def test_report_escapes_observed_text_and_has_no_external_assets(self):
         observed = host()
         observed["environment"]["kernel"] = '<script src="https://bad.test/x"></script>'

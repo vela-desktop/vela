@@ -351,6 +351,7 @@ class ResourceCampaign(unittest.TestCase):
         from vela_bench.platform_workloads import SPEC_V3
         test_measurements.MeasurementCampaign.run_campaign(self,phases=['overhead'])
         data=latest(self.layout)
+        output=export_campaign(self.layout.path('downgrade-export'),data,self.layout)
         block=data['blocks'][0]
         target=block['target']
         source=self.layout.base/'pilots'/block['pilot_run_id']
@@ -369,7 +370,14 @@ class ResourceCampaign(unittest.TestCase):
         self.assertEqual(audit['status'],'failed')
         self.assertFalse(audit['checks']['measurement_method_binding'])
         data['blocks'][0]['audit']['measurements']=saved
-        output=export_campaign(self.layout.path('downgrade-export'),data,self.layout)
+        from vela_bench.discovery import file_hash
+        relative=Path(block['id'])/path.name
+        atomic_json(output/relative,saved)
+        atomic_json(output/'summary.json',data)
+        manifest=read_json(output/'manifest.json')
+        for changed in (str(relative),'summary.json'):
+            manifest['files'][changed]=file_hash(output/changed)
+        atomic_json(output/'manifest.json',manifest)
         with self.assertRaisesRegex(BenchError,'lifecycle acceptance|method differs from its planned block'):
             read_export(output)
 

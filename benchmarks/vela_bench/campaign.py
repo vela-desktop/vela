@@ -3,7 +3,9 @@
 
 """Common durable block executor for qualification, calibration and P1 exercises."""
 
+from contextlib import nullcontext
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -20,6 +22,7 @@ from .host import Layout, load_setup, require_workers_stopped, trusted
 from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS, vela_environment
 from .qualification import audit_pilot, qualification_summary
 from .calibration import require_uinput
+from .timing import Timeline
 
 
 def identity(value):
@@ -282,7 +285,7 @@ def freeze_conditions(layout, run_id, snapshot):
     return value
 
 
-def completion(directory, block):
+def completion_record(directory, block):
     path = directory / "blocks" / block_identity(block["id"]) / "complete.json"
     if not path.exists():
         return None
@@ -290,15 +293,27 @@ def completion(directory, block):
     record = read_json(path)
     if record.get("block") != block or record.get("status") != "complete":
         raise BenchError("Campaign completion identity changed")
-    source = directory.parent.parent / "pilots" / identity(record.get("pilot_run_id"))
-    for name, digest in record.get("evidence", {}).items():
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+    evidence = record.get("evidence")
+    if not isinstance(evidence, dict) or not evidence or record.get("audit", {}).get("status") != "passed":
+        raise BenchError("Completed block has no accepted evidence")
+    for name, digest in evidence.items():
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", ".."}:
             raise BenchError("Unsafe completed-block evidence path")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise BenchError("Invalid completed-block evidence digest")
+    identity(record.get("pilot_run_id"))
+    return record
+
+
+def completion(directory, block):
+    record = completion_record(directory, block)
+    if record is None:
+        return None
+    source = directory.parent.parent / "pilots" / record["pilot_run_id"]
+    for name, digest in record["evidence"].items():
         trusted(source / name)
         if file_hash(source / name) != digest:
             raise BenchError("Completed-block evidence changed; refusing resume")
-    if not record.get("evidence") or record.get("audit", {}).get("status") != "passed":
-        raise BenchError("Completed block has no accepted evidence")
     return record
 
 
@@ -511,7 +526,9 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             block_dir = directory / "blocks" / block["id"]
             block_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             attempts = max((int(path.stem.split("-")[-1]) for path in block_dir.glob("attempt-*.json")), default=0) + 1
-            attempt = {"attempt": attempts, "block": block, "pilot_run_id": uuid.uuid4().hex, "status": "running"}
+            timing = Timeline()
+            attempt = {"attempt": attempts, "block": block, "pilot_run_id": uuid.uuid4().hex, "status": "running",
+                       "runner_timing": timing.result(finished=False)}
             attempt_path = block_dir / f"attempt-{attempts:04d}.json"
             atomic_json(attempt_path, attempt)
             phase = block.get("phase", "qualify" if block["fault"] else "calibrate")
@@ -523,42 +540,48 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             print(f"[{block['id']}] fresh profile/session/calibration; attempt {attempts}", flush=True)
             source = layout.base / "pilots" / attempt["pilot_run_id"]
             try:
-                refreshed=context(host, layout, selected)
-                if 'corpus_inventory' in plan['context']:
-                    from .corpus import describe_inventory
-                    refreshed['corpus_inventory']=describe_inventory(host,layout,load_setup(host,layout))
-                if refreshed != plan["context"]:
-                    raise BenchError("Installed versions or environment changed during campaign")
+                with timing.stage("context-refresh"):
+                    refreshed=context(host, layout, selected)
+                    if 'corpus_inventory' in plan['context']:
+                        from .corpus import describe_inventory
+                        refreshed['corpus_inventory']=describe_inventory(host,layout,load_setup(host,layout))
+                    if refreshed != plan["context"]:
+                        raise BenchError("Installed versions or environment changed during campaign")
                 options = {"campaign_block_id": block["id"]} if exercise or measured or observed else {}
                 if vela_sync_test and block['target'] == 'vela':
                     options['vela_sync_test'] = True
-                outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
-                      presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
-                      calibrate=not block["fault"] and not (measured and phase=="overhead"),
-                      countdown=False, run_id=attempt["pilot_run_id"], fault=block["fault"], campaign_run_id=plan["run_id"], **options)
-                if outcome == 130:
-                    raise KeyboardInterrupt
+                with timing.stage("supervised-pilot") as pilot_timing:
+                    outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
+                          presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
+                          calibrate=not block["fault"] and not (measured and phase=="overhead"),
+                          countdown=False, run_id=attempt["pilot_run_id"], fault=block["fault"], campaign_run_id=plan["run_id"], **options)
+                    pilot_timing["exit_status"] = outcome
+                    if outcome == 130:
+                        raise KeyboardInterrupt
                 source = layout.base / "pilots" / attempt["pilot_run_id"]
-                audit = audit_block(source, block, plan, layout)
-                attempt["audit"] = audit
-                if audit["status"] != "passed":
-                    raise BenchError(audit.get('error') or "Selected block did not pass its acceptance checks")
-                state = read_json(source / "state.json")
-                if condition_identity(state["conditions_snapshot"]) != resolved_conditions(directory, plan):
-                    raise BenchError("Executed hardware condition differs from the immutable campaign condition")
-                evidence = {}
-                for path in source.iterdir():
-                    if path.is_file() and not path.is_symlink():
-                        trusted(path)
-                        with path.open("rb") as stream:
-                            os.fsync(stream.fileno())
-                        evidence[path.name] = file_hash(path)
-                source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(source_fd)
-                finally:
-                    os.close(source_fd)
+                with timing.stage("acceptance-audit"):
+                    audit = audit_block(source, block, plan, layout)
+                    attempt["audit"] = audit
+                    if audit["status"] != "passed":
+                        raise BenchError(audit.get('error') or "Selected block did not pass its acceptance checks")
+                    state = read_json(source / "state.json")
+                    if condition_identity(state["conditions_snapshot"]) != resolved_conditions(directory, plan):
+                        raise BenchError("Executed hardware condition differs from the immutable campaign condition")
+                with timing.stage("evidence-checkpoint"):
+                    evidence = {}
+                    for path in source.iterdir():
+                        if path.is_file() and not path.is_symlink():
+                            trusted(path)
+                            with path.open("rb") as stream:
+                                os.fsync(stream.fileno())
+                                evidence[path.name] = hashlib.file_digest(stream, "sha256").hexdigest()
+                    source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(source_fd)
+                    finally:
+                        os.close(source_fd)
                 attempt.update(status="complete", evidence=evidence, profile=state["conditions_snapshot"]["profile"])
+                attempt["runner_timing"] = timing.result()
                 atomic_json(block_dir / "complete.json", attempt)
                 atomic_json(attempt_path, attempt)
                 append_event(directory / "events.jsonl", {"event": "block-complete", "block_id": block["id"], "attempt": attempts})
@@ -604,7 +627,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 continuation = None
                 if not cancelled:
                     try:
-                        continuation = verify_failed_block_restoration(host, layout, source, plan)
+                        with timing.stage("restoration-check"):
+                            continuation = verify_failed_block_restoration(host, layout, source, plan)
                     except KeyboardInterrupt:
                         cancelled = True
                     except (BenchError, OSError, ValueError, KeyError, TypeError) as recovery_error:
@@ -612,10 +636,11 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 attempt.update(status="interrupted" if cancelled else "failed", error="Operator interrupted the campaign" if cancelled else str(exc))
                 if continuation:
                     attempt['continuation'] = continuation
+                attempt['runner_timing'] = timing.result()
                 atomic_json(attempt_path, attempt)
                 manifest.update(stage="running" if continuation else "interrupted", error=attempt["error"])
                 atomic_json(directory / "manifest.json", manifest)
-                append_event(directory / "events.jsonl", {"event": "block-interrupted" if cancelled else "block-failed", "block_id": block["id"], "error": attempt["error"]})
+                append_event(directory / "events.jsonl", {"event": "block-interrupted" if cancelled else "block-failed", "block_id": block["id"], "attempt": attempts, "error": attempt["error"]})
                 print(f"Block {attempt['status']}: {attempt['error']}. Resume ID: {plan['run_id']}", flush=True)
                 if continuation:
                     append_event(directory / 'events.jsonl', {'event': 'continue-after-failure', 'block_id': block['id'], **continuation})
@@ -748,21 +773,33 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
     (directory / "report.html").write_text(document, encoding="utf-8")
 
 
-def export_campaign(parent, data, layout=Layout()):
+def _file_version(info):
+    # Exclude atime, which our own reads may update.
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
+def export_campaign(parent, data, layout=Layout(), *, timing=None):
     parent = Path(parent)
     parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local export parent, no agent/server.
     directory = parent / ("campaign-" + identity(data["run_id"]))
     directory.mkdir(mode=0o755)  # NOSONAR S8707: exclusive validated run name beneath the operator-selected export parent.
     hashes = {}
 
-    def copy_evidence(path, output):
+    def copy_evidence(path, output, expected=None):
         trusted(path)
-        before = file_hash(path)
-        shutil.copyfile(path, output)
-        output.chmod(0o644)
-        if file_hash(output) != before or file_hash(path) != before:
+        source_identity = _file_version(path.lstat())
+        digest = file_hash(path) if expected is None else expected
+        with path.open("rb") as source:
+            if _file_version(os.fstat(source.fileno())) != source_identity:
+                raise BenchError("Source evidence changed during export")
+            with output.open("xb") as destination:
+                shutil.copyfileobj(source, destination, length=1024 * 1024)
+                os.fchmod(destination.fileno(), 0o644)
+        if (digest is None or file_hash(output) != digest
+                or (expected is None and file_hash(path) != digest)
+                or _file_version(path.lstat()) != source_identity):
             raise BenchError("Source evidence changed during export")
-        hashes[str(output.relative_to(directory))] = before
+        hashes[str(output.relative_to(directory))] = digest
 
     campaign = layout.base / "campaigns" / data["run_id"]
     if campaign.exists():
@@ -780,29 +817,41 @@ def export_campaign(parent, data, layout=Layout()):
             for path in source.iterdir():
                 if re.fullmatch(r"(?:attempt-[0-9]+|complete)\.json", path.name):
                     copy_evidence(path, journal / (block["id"] + "-" + path.name))
+    # Bind each accepted export to its checkpoint, including changes between inspection and copying.
+    planned = {block["id"]: block for block in data["plan"]["blocks"]}
     for block in data["blocks"]:
-        block_identity(block["id"])
-        if not block.get("pilot_run_id"):
+        block_id = block_identity(block["id"])
+        accepted = block["status"] == "complete"
+        pilot_id = block.get("pilot_run_id")
+        expected = {}
+        if accepted:
+            record = completion_record(campaign, planned[block_id])
+            if (record is None or record["pilot_run_id"] != pilot_id or record["audit"] != block["audit"]
+                    or record["profile"] != block["profile"]):
+                raise BenchError("Exported block differs from its accepted checkpoint")
+            expected = record["evidence"]
+        if not pilot_id:
             continue
-        source = layout.base / "pilots" / identity(block["pilot_run_id"])
-        if not source.exists():
+        source = layout.base / "pilots" / identity(pilot_id)
+        if not accepted and not source.exists():
             continue
         trusted(source, directory=True)
-        target = directory / block["id"]
+        target = directory / block_id
         target.mkdir(mode=0o755)
-        for path in source.iterdir():
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+", path.name) or path.suffix not in (".json", ".jsonl", ".png", ".stderr"):
+        names = expected if accepted else sorted(path.name for path in source.iterdir())
+        for name in names:
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or Path(name).suffix not in (".json", ".jsonl", ".png", ".stderr"):
                 continue
-            output = target / path.name
-            copy_evidence(path, output)
+            copy_evidence(source / name, target / name, expected.get(name))
     atomic_json(directory / "summary.json", data)
     (directory / "summary.json").chmod(0o644)
     hashes["summary.json"] = file_hash(directory / "summary.json")
     kind = "execution-campaign-export" if data["kind"] == "execution-campaign" else "calibration-campaign-export"
+    with timing.stage("render-report") if timing else nullcontext():
+        render_export(directory, data)
+        (directory / "report.html").chmod(0o644)
     atomic_json(directory / "manifest.json", {"schema": 1, "kind": kind, "run_id": data["run_id"], "files": hashes})
     (directory / "manifest.json").chmod(0o644)
-    render_export(directory, data)
-    (directory / "report.html").chmod(0o644)
     return directory
 
 

@@ -25,6 +25,7 @@ import uuid
 
 from . import BenchError
 from .archive import append_event, atomic_json, read_json
+from .timing import boot_id
 from .discovery import sessions, file_hash
 from .host import require_current_home_isolation
 from .diagnostics import SCENARIOS, pilot_results, run_probe
@@ -321,7 +322,7 @@ def begin(host, targets=None, seconds=30, assume_yes=False, layout=Layout(), pre
                  "fault": fault, "unit": unit,
                  "display_manager_was_active": manager_state == "active", "restore_required": False,
                  "cleanup_errors": [], "result": "pending", "fixture": f"/home/.vela-benchmark-{run_id}",
-                 "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip(), "masked_units": []}
+                 "boot_id": boot_id(), "masked_units": []}
         update(directory, state, "queued")
         atomic_json(active, {"run_id": run_id})
         # --no-block lets the worker obtain the same control lock after this
@@ -1149,7 +1150,7 @@ def recover(host, layout=Layout()):
                 state['operator_cancelled'] = True
         if state.get("result") == "pending":
             state.update(result="failed", error="Pilot interrupted before completing its declared work")
-        if state.get("boot_id") and state["boot_id"] != Path("/proc/sys/kernel/random/boot_id").read_text().strip():
+        if state.get("boot_id") and state["boot_id"] != boot_id():
             # Runtime units/masks vanished at boot. Do not apply an old VT or
             # display-manager snapshot to the new login environment.
             state.update(restore_required=False, masked_units=[], result="failed", error="Host rebooted during pilot")

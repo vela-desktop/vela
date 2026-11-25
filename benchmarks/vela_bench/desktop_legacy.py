@@ -15,6 +15,7 @@ from . import BenchError
 from .archive import atomic_json, decode_json, read_json
 from .calibration import Lines, stop_process
 from .diagnostics import user_command, stop_instrument
+from .desktop_pixels import audit_capture
 from .pixels import image_hash
 
 VERSION = 'p3-desktop-observation-v1'
@@ -63,7 +64,8 @@ def marker(row, identity=SCENE):
     return found[0]
 
 
-def validate_frames(rows, target, profile, directory, stem, *, partial=False, offset=0, previous_end=-1):
+def validate_frames(rows, target, profile, directory, stem, *, partial=False, offset=0, previous_end=-1,
+                    pixel_cache=None, rectangles=False):
     if (not partial and len(rows) != 12) or not 1 <= len(rows) <= 12:
         raise BenchError('Incomplete desktop capture sequence')
     backend = 'ext-image-copy-capture-v1' if target == 'vela' else 'kwin-screenshot2-v1'
@@ -101,7 +103,11 @@ def validate_frames(rows, target, profile, directory, stem, *, partial=False, of
                 raise BenchError('Desktop PNG geometry differs from capture')
             (directory / name).write_bytes(png)
             row.update(image_file=name, image_sha256=hashlib.sha256(png).hexdigest())
-        if row.get('image_file') != name or image_hash(directory/name) != row.get('image_sha256'):
+        if row.get('image_file') != name:
+            raise BenchError('Desktop capture image changed')
+        if pixel_cache is not None:
+            audit_capture(directory / name, row, pixel_cache, rectangles=rectangles)
+        elif image_hash(directory / name) != row.get('image_sha256'):
             raise BenchError('Desktop capture image changed')
     return rows
 
@@ -322,7 +328,7 @@ def run_observation(host, record, directory, target, layout, profile, phase, hea
     return result
 
 
-def audit_observation(directory, target, profile, phase, *, saved=None):
+def audit_observation(directory, target, profile, phase, *, saved=None, pixel_cache=None):
     if phase not in PHASES:
         raise BenchError('Unsupported desktop observation phase')
     if saved is None:
@@ -337,13 +343,10 @@ def audit_observation(directory, target, profile, phase, *, saved=None):
     if [(a.get('id'),a.get('kind')) for a in saved.get('actions',[])] != expected:
         raise BenchError('Missing or unexpected desktop actions')
     previous_end=-1
+    if pixel_cache is None:
+        pixel_cache = {}
     for action in saved['actions']:
-        validate_frames(action['captures'],target,profile,directory,action['id'])
-        from .desktop_pixels import evidence
-        for capture in action['captures']:
-            pixels = evidence(directory/capture['image_file'])
-            if any(capture.get(key) != pixels[key] for key in ('width', 'height', 'tiles', 'markers')):
-                raise BenchError('Legacy desktop metadata differs from original pixels')
+        validate_frames(action['captures'],target,profile,directory,action['id'],pixel_cache=pixel_cache)
         if action['captures'][0]['begin_monotonic_ns'] < previous_end:
             raise BenchError('Desktop observation sequences overlap or reverse their clock')
         previous_end=action['captures'][-1]['end_monotonic_ns']

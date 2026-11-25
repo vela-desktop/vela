@@ -6,7 +6,9 @@
 import contextlib
 import copy
 import io
+import os
 from pathlib import Path
+import shutil
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -61,6 +63,36 @@ class CalibrationCampaign(unittest.TestCase):
             atomic_json(directory/'manifest.json',manifest)
             with self.subTest(field=field),self.assertRaisesRegex(BenchError,'selection acceptance|P0 qualification'):
                 read_export(directory)
+
+    def test_export_rejects_evidence_changed_after_campaign_inspection(self):
+        self.fail_plasma = False
+        self.assertEqual(self.campaign(), 0)
+        data = latest(self.layout)
+        source = self.layout.base / 'pilots' / data['blocks'][0]['pilot_run_id']
+        (source / 'sample.jsonl').write_text('{"sample":2}\n')
+        output = self.layout.path('changed-export')
+        with self.assertRaisesRegex(BenchError, 'Source evidence changed'):
+            export_campaign(output, data, self.layout)
+        self.assertEqual(list(output.glob('*/manifest.json')), [])
+
+    def test_export_detects_source_change_during_copy_with_identical_bytes(self):
+        self.fail_plasma = False
+        self.assertEqual(self.campaign(), 0)
+        data = latest(self.layout)
+        sample = self.layout.base / 'pilots' / data['blocks'][0]['pilot_run_id'] / 'sample.jsonl'
+        original_copy = shutil.copyfileobj
+
+        def touch_after_read(source, destination, length):
+            original_copy(source, destination, length)
+            if Path(source.name) == sample:
+                metadata = sample.stat()
+                os.utime(sample, ns=(metadata.st_atime_ns, metadata.st_mtime_ns - 1_000_000))
+
+        output = self.layout.path('changed-copy-export')
+        with patch('vela_bench.campaign.shutil.copyfileobj', side_effect=touch_after_read):
+            with self.assertRaisesRegex(BenchError, 'Source evidence changed'):
+                export_campaign(output, data, self.layout)
+        self.assertEqual(list(output.glob('*/manifest.json')), [])
 
     def fake_begin(self, host, targets, **options):
         self.calls.append(targets[0])

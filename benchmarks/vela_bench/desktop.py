@@ -13,7 +13,6 @@ from . import BenchError,desktop_legacy as legacy,contention
 from .archive import atomic_json,read_json,decode_json
 from .calibration import Lines,stop_process
 from .diagnostics import user_command,stop_instrument
-from .desktop_pixels import evidence
 from .measurements import producer_metrics
 from .platform_workloads import scaling_actions
 
@@ -123,12 +122,11 @@ def visual_timing(rows,receipts,minimum=12):
     return result
 
 
-def metrics(action,directory,target,profile,streams,uid,*,check_pixels=True,pixel_reader=evidence):
-    rows=validate_frames(action['captures'],target,profile,directory,action['id'])
-    for row in rows if check_pixels else []:
-        pixels=pixel_reader(directory/row['image_file'])
-        if any(row.get(k)!=pixels[k] for k in ('width','height','tiles','markers')) or row.get('rectangles')!=pixels['rectangles']:
-            raise BenchError('Desktop derived metadata differs from original pixels')
+def metrics(action,directory,target,profile,streams,uid,*,check_pixels=True,pixel_cache=None):
+    options = {}
+    if check_pixels:
+        options = {'pixel_cache': {} if pixel_cache is None else pixel_cache, 'rectangles': True}
+    rows=validate_frames(action['captures'],target,profile,directory,action['id'],**options)
     kind=action['kind']
     receipts=action['injections']
     commands=[r.get('command') for r in receipts]
@@ -523,17 +521,11 @@ def audit_observation(directory,target,profile,phase):
     # Decode byte-identical captures once per audit, after checking each file's
     # digest. The cache stores only derived detector data, never skips raw hashes.
     pixel_cache={}
-    def read_pixels(path):
-        from .pixels import image_hash
-        digest=image_hash(path)
-        if digest not in pixel_cache:
-            pixel_cache[digest]=evidence(path)
-        return pixel_cache[digest]
     previous=-1
     for action in saved['actions']:
         if action['captures'][0]['begin_monotonic_ns']<previous:
             raise BenchError('P3 action order changed')
-        if action.get('metrics')!=metrics(action,directory,target,profile,action['source_streams'],uid,pixel_reader=read_pixels):
+        if action.get('metrics')!=metrics(action,directory,target,profile,action['source_streams'],uid,pixel_cache=pixel_cache):
             raise BenchError('P3 metrics differ from raw pixels/sources')
         previous=action['captures'][-1]['end_monotonic_ns']
     if phase in ('responsiveness','motion'):
@@ -542,12 +534,7 @@ def audit_observation(directory,target,profile,phase):
         base=read_json(basefile)
         if saved.get('base')!=base or base.get('method')!=legacy.VERSION:
             raise BenchError('P3 base evidence changed')
-        legacy.audit_observation(directory,target,profile,phase,saved=base)
-        for action in base['actions']:
-            for row in action['captures']:
-                pixels=read_pixels(directory/row['image_file'])
-                if any(row.get(k)!=pixels[k] for k in ('width','height','tiles','markers')):
-                    raise BenchError('P3 base metadata differs from original PNG')
+        legacy.audit_observation(directory,target,profile,phase,saved=base,pixel_cache=pixel_cache)
         if base['actions'][-1]['captures'][-1]['end_monotonic_ns']>saved['actions'][0]['captures'][0]['begin_monotonic_ns']:
             raise BenchError('P3 base/extension clocks overlap')
     if phase=='motion':

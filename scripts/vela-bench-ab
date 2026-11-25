@@ -1,0 +1,174 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+"""Run and audit an A/B comparison from one local TTY."""
+
+import argparse
+from datetime import datetime
+import json
+from pathlib import Path
+from statistics import median
+import subprocess
+import sys
+from tempfile import mkdtemp
+
+CANDIDATE = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(CANDIDATE / 'benchmarks'))
+from vela_bench import BenchError  # noqa: E402
+from vela_bench.archive import atomic_json, read_json  # noqa: E402
+from vela_bench.campaign import identity, read_export  # noqa: E402
+from vela_bench.host import Host, INSTRUMENTS, require_root  # noqa: E402
+from vela_bench.pilot import tty_preconditions  # noqa: E402
+
+
+def launch(command):
+    return subprocess.run(command, check=False).returncode
+
+
+def output_directory(requested):
+    if requested is not None:
+        output = requested.resolve()
+        output.mkdir(parents=True, mode=0o755)
+        return output
+    parent = Path.cwd() / 'benchmark-results'
+    parent.mkdir(exist_ok=True)
+    output = Path(mkdtemp(prefix=datetime.now().strftime('pr228-ab-%Y%m%d-%H%M%S-'), dir=parent))
+    output.chmod(0o755)
+    return output
+
+
+def timing_for(run_directory, mode, seed):
+    receipts = list(run_directory.glob('run-all-timing-*.json'))
+    if len(receipts) != 1:
+        raise BenchError(f'Expected one timing receipt in {run_directory}')
+    path = receipts[0]
+    timing = read_json(path)
+    elapsed = timing['elapsed_ns']
+    if (timing['clock'] != 'CLOCK_MONOTONIC' or timing['exit_status'] != 0
+            or timing['mode'] != mode or timing['seed'] != seed or timing['targets'] != ['vela', 'plasma']
+            or type(elapsed) is not int or elapsed <= 0):
+        raise BenchError(f'Unexpected timing result in {path}')
+    campaigns = [span for span in timing['stages'] if span['stage'] == 'campaign']
+    if ([span.get('selection') for span in campaigns] != ['calibrate', 'observe']
+            or any(span.get('outcome') != 'done' for span in campaigns)):
+        raise BenchError(f'Expected two completed campaigns in {path}')
+    return {'elapsed_ns': elapsed, 'timing_file': path.name, 'boot_id': timing['boot_id'],
+            'campaign_ids': [identity(span.get('campaign_id')) for span in campaigns]}
+
+
+def audit_campaign(directory, run_id, mode):
+    print(f'Audit: {directory}', flush=True)
+    summary = read_export(directory)
+    if (summary['run_id'] != run_id or summary['execution_complete'] is not True
+            or summary['selection_complete'] is not True or summary['stage'] != 'done'
+            or summary['failed_blocks'] != 0 or summary['plan']['fast'] is not (mode == 'fast')):
+        raise BenchError(f'Campaign was not fully accepted: {directory}')
+    plan = summary['plan']
+    context = dict(plan['context'])
+    installed = context.pop('launcher_files')
+    context['native_instruments'] = {path: digest for path, digest in installed.items()
+                                     if Path(path).name in INSTRUMENTS}
+    return {'plan': {key: value for key, value in plan.items() if key not in ('run_id', 'context')},
+            'context': context, 'resolved_conditions': summary['resolved_conditions']}
+
+
+def compare(launchers, order, args, mode, output, result):
+    runs = result['runs']
+    for label in order:
+        arm = label[0]
+        directory = output / label
+        entry = {'label': label, 'checkout': str(launchers[arm].parents[1])}
+        runs.append(entry)
+        print(f'\n{label}: {entry["checkout"]}', flush=True)
+        status = launch([str(launchers[arm]), 'run-all', '--yes', '--seed', str(args.seed),
+                         '--output', str(directory), *([] if args.normal else ['--fast'])])
+        entry['exit_status'] = status
+        if status == 130:
+            raise KeyboardInterrupt
+        if status != 0:
+            raise BenchError(f'{label} exited with status {status}. See {directory}')
+        entry.update(timing_for(directory, mode, args.seed))
+
+    # Auditing warms filesystem caches. Keep it outside the timed sequence.
+    baseline = []
+    for entry in runs:
+        audited = []
+        for run_id in entry['campaign_ids']:
+            directory = output / entry['label'] / f'campaign-{run_id}'
+            audited.append(audit_campaign(directory, run_id, mode))
+        entry['audit'] = 'passed'
+        if not baseline:
+            baseline = audited
+        elif audited != baseline:
+            raise BenchError(f'{entry["label"]}: workload plan, installed instruments/desktops or host conditions changed')
+
+    times = {arm: median(entry['elapsed_ns'] for entry in runs if entry['label'][0] == arm) / 1e9 for arm in 'AB'}
+    savings = 100 * (1 - times['B'] / times['A'])
+    result.update(status='passed', median_seconds=times, elapsed_reduction_percent=savings)
+    for entry in runs:
+        print(f'{entry["label"]}: {entry["elapsed_ns"] / 1e9:.1f} s')
+    print(f'A median: {times["A"]:.1f} s | B median: {times["B"]:.1f} s | elapsed reduction: {savings:+.2f}%')
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Run the Vela/Plasma benchmark before and after the runner optimizations.')
+    parser.add_argument('--baseline', type=Path, default=CANDIDATE.parent / 'pr-228-baseline',
+                        help='path to the instrumented baseline checkout')
+    parser.add_argument('--confirm', action='store_true', help='repeat in reverse order (A1, B1, B2, A2)')
+    parser.add_argument('--normal', action='store_true', help='three full repetitions per run (default: one full repetition)')
+    parser.add_argument('--seed', type=int, default=0)
+    parser.add_argument('--output', type=Path, help='new output directory (default: under benchmark-results)')
+    parser.add_argument('--yes', action='store_true', help='acknowledge the takeover notice for all runs')
+    parser.add_argument('--dry-run', action='store_true', help='preview both schedules without root or host changes')
+    args = parser.parse_args(argv)
+    order = ('A1', 'B1', 'B2', 'A2') if args.confirm else ('A1', 'B1')
+    mode = 'normal' if args.normal else 'fast'
+    launchers = {arm: checkout / 'scripts/vela-bench'
+                 for arm, checkout in (('A', args.baseline.resolve()), ('B', CANDIDATE))}
+    output = None
+    exit_status = 0
+    result = {'schema': 1, 'mode': mode, 'seed': args.seed, 'order': order, 'status': 'running', 'runs': []}
+    try:
+        if not 0 <= args.seed <= 0xffffffff:
+            raise BenchError('Seed is outside the uint32 range')
+        if launchers['A'] == launchers['B'] or not all(path.is_file() for path in launchers.values()):
+            raise BenchError('Use two distinct benchmark checkouts. Specify the baseline with --baseline.')
+        blocks = 48 if args.normal else 16
+        print(f'{" -> ".join(order)} | {blocks} blocks per run | Vela and Plasma', flush=True)
+        if args.dry_run:
+            for arm, launcher in launchers.items():
+                print(f'{arm}: {launcher.parents[1]}', flush=True)
+                preview = subprocess.check_output([str(launcher), 'run-all', '--dry-run', '--seed', str(args.seed),
+                                                   *([] if args.normal else ['--fast'])], text=True)
+                if json.loads(preview)['total_blocks'] != blocks:
+                    raise BenchError(f'{arm} preview has a different block count')
+            return 0
+        require_root()
+        tty_preconditions(Host())
+        print('The benchmark takes over the display and temporarily blocks physical input. Ctrl+Alt+Esc cancels.', flush=True)
+        if not args.yes and input('Type START to authorize the comparison: ') != 'START':
+            raise BenchError('Comparison was not authorized')
+        output = output_directory(args.output)
+        compare(launchers, order, args, mode, output, result)
+    except KeyboardInterrupt:
+        result['status'] = 'interrupted'
+        exit_status = 130
+    except (BenchError, OSError, subprocess.CalledProcessError, EOFError, KeyError, TypeError, ValueError) as exc:
+        result.update(status='failed', error=str(exc))
+        print(f'vela-bench-ab: {exc}', file=sys.stderr)
+        exit_status = 1
+    if output is not None:
+        path = output / 'comparison.json'
+        try:
+            atomic_json(path, result)
+            path.chmod(0o644)
+        except OSError as exc:
+            print(f'vela-bench-ab: could not save {path}: {exc}', file=sys.stderr)
+            return exit_status or 1
+        print(f'Comparison: {path}', flush=True)
+    return exit_status
+
+
+if __name__ == '__main__':
+    sys.exit(main())

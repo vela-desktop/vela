@@ -312,6 +312,7 @@ class ReviewTrust(unittest.TestCase):
                 scope['InstalledModules']().find_spec('vela_bench.untracked')
         inventory=next(node.value for node in tree.body if isinstance(node,ast.Assign) and any(isinstance(t,ast.Name) and t.id=='MODULES' for t in node.targets))
         self.assertEqual(ast.literal_eval(inventory),host.MODULES)
+        self.assertIn('timing.py', host.MODULES)
 
     def test_bootstrap_lock_serializes_install_before_ownership_reads(self):
         with tempfile.TemporaryDirectory() as temporary:

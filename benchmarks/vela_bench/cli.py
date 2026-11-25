@@ -2,15 +2,17 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import argparse
+from contextlib import nullcontext
 import json
 import os
 import subprocess
 from pathlib import Path
 import sys
 import tomllib
+import uuid
 
 from . import BenchError, VERSION
-from .archive import create_check_archive, decode_json, inspect_archive, read_json
+from .archive import atomic_json, create_check_archive, decode_json, inspect_archive, read_json
 from .diagnostics import export_report
 from .campaign import blocks_for, export_campaign, identity, read_export, render_export
 from .discovery import discover
@@ -18,6 +20,7 @@ from .model import load_campaign, make_plan, MEASUREMENTS, PHASES, TARGETS, vela
 from .report import compare_archives, render_report
 from .host import Host, Layout, SAFE_ENV, install, load_setup, personal_homes, require_current_launcher, require_root, setup_preview, trusted, uninstall, update_launcher
 from .pilot import preview, tty_preconditions
+from .timing import Timeline
 
 
 def parser():
@@ -142,13 +145,15 @@ def export_latest_pilot(helper, output):
     print(f"Report: {directory / 'report.html'}")
 
 
-def export_latest_campaign(helper, output, *, as_json=False):
-    result = subprocess.run(["/usr/bin/python3", "-I", str(helper), "campaign-results"], env=SAFE_ENV,
-                            text=True, capture_output=True)
-    if result.returncode:
-        raise BenchError(result.stderr.strip() or "Cannot inspect calibration campaign")
-    data = decode_json(result.stdout)
-    directory = export_campaign(output, data)
+def export_latest_campaign(helper, output, *, as_json=False, timing=None):
+    with timing.stage('inspect-campaign') if timing else nullcontext():
+        result = subprocess.run(["/usr/bin/python3", "-I", str(helper), "campaign-results"], env=SAFE_ENV,
+                                text=True, capture_output=True)
+        if result.returncode:
+            raise BenchError(result.stderr.strip() or "Cannot inspect calibration campaign")
+        data = decode_json(result.stdout)
+    with timing.stage('export-campaign') if timing else nullcontext():
+        directory = export_campaign(output, data, timing=timing)
     uid, gid = os.environ.get("SUDO_UID", ""), os.environ.get("SUDO_GID", "")
     if uid.isdigit() and gid.isdigit() and int(uid) > 0:
         for path in (directory, *directory.rglob("*")):
@@ -161,7 +166,7 @@ def export_latest_campaign(helper, output, *, as_json=False):
     return data
 
 
-def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exercise=False, with_result=False):
+def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exercise=False, with_result=False, timing=None):
     require_root()
     helper = Layout().helper
     trusted(helper)
@@ -185,10 +190,13 @@ def run_calibration_campaign(args, targets, case, seed=0, *, phases=None, exerci
         command += ["--phase", phase]
     # The installed parser revalidates fixed selections; no shell or agent RPC.
     as_json = getattr(args, 'json', False)
-    status = subprocess.call(command, env=SAFE_ENV, stdout=sys.stderr if as_json else None)  # NOSONAR S8705: explicit local administrator invocation.
+    with timing.stage('execute-campaign') if timing else nullcontext() as execution:
+        status = subprocess.call(command, env=SAFE_ENV, stdout=sys.stderr if as_json else None)  # NOSONAR S8705: explicit local administrator invocation.
+        if execution is not None:
+            execution['exit_status'] = status
     result = None
     if status in (0, 1):
-        result = export_latest_campaign(helper, args.output, as_json=as_json)
+        result = export_latest_campaign(helper, args.output, as_json=as_json, timing=timing)
     return (status, result) if with_result else status
 
 
@@ -198,7 +206,7 @@ def run_all(args):
     config = load_campaign()
     config['seed'] = args.seed
     measured = make_plan(config, current, targets=targets, fast=args.fast, vela_sync_test=args.vela_sync_test)
-    from .campaign import execution_selection, context, require_selection_instruments
+    from .campaign import execution_selection
     observed = execution_selection(current, targets, case='observe', fast=args.fast,
                                    seed=args.seed, phases=None, exercise=False, vela_sync_test=args.vela_sync_test)['execution']
     preview_data = {'command': 'run-all', 'mode': measured['mode'], 'targets': targets,
@@ -229,30 +237,58 @@ def run_all(args):
             authorized = False
         if not authorized:
             raise BenchError('Complete run not authorized')
-    update_launcher(host)
+    timing = Timeline()
+    status = 2
+    try:
+        status = run_all_authorized(args, host, origin, targets, observed['phases'], timing)
+        return status
+    except KeyboardInterrupt:
+        status = 130
+        raise
+    finally:
+        record = dict(timing.result(), exit_status=status, mode=measured['mode'], targets=targets,
+                      seed=args.seed, vela_runtime_environment=vela_environment(args.vela_sync_test))
+        try:
+            path = args.output / f'run-all-timing-{uuid.uuid4().hex}.json'
+            args.output.mkdir(parents=True, exist_ok=True)
+            atomic_json(path, record)
+            path.chmod(0o644)
+            print(f"Timing: {path}", flush=True)
+        except OSError as exc:
+            print(f'Could not save run-all timing: {exc}', file=sys.stderr)
+
+
+def run_all_authorized(args, host, origin, targets, observed_phases, timing):
+    from .campaign import execution_selection, context, require_selection_instruments
+
+    with timing.stage('refresh-launcher'):
+        update_launcher(host)
     helper = Layout().helper
     trusted(helper)
     require_current_launcher()
     layout = Layout()
     if (layout.base / 'active.json').exists():
-        status = subprocess.call(['/usr/bin/python3', '-I', str(helper), 'recover'], env=SAFE_ENV)
-        if status:
-            return status
-    # Recovery can return to the previous pilot's VT. Re-activate only the
-    # caller's already verified local VT before the ordinary live preflight.
-    if host.run(['fgconsole']).stdout.strip() != str(origin['origin_vt']):
-        host.run(['chvt', str(origin['origin_vt'])], timeout=5)
-    setup = load_setup(host, layout)
-    inventory = context(host, layout, targets)
-    for case, phases in (('calibrate', list(MEASUREMENTS)), ('observe', observed['phases'])):
-        selection = execution_selection(inventory, targets, case=case, fast=args.fast,
-                                        seed=args.seed, phases=phases, exercise=False, vela_sync_test=args.vela_sync_test)
-        require_selection_instruments(host, layout, setup, inventory, selection)
+        with timing.stage('pending-recovery') as recovery_timing:
+            status = subprocess.call(['/usr/bin/python3', '-I', str(helper), 'recover'], env=SAFE_ENV)
+            recovery_timing['exit_status'] = status
+            if status:
+                return status
+    with timing.stage('instrument-preflight'):
+        # Recovery can return to the previous pilot's VT. Re-activate only the
+        # caller's already verified local VT before the ordinary live preflight.
+        if host.run(['fgconsole']).stdout.strip() != str(origin['origin_vt']):
+            host.run(['chvt', str(origin['origin_vt'])], timeout=5)
+        setup = load_setup(host, layout)
+        inventory = context(host, layout, targets)
+        for case, phases in (('calibrate', list(MEASUREMENTS)), ('observe', observed_phases)):
+            selection = execution_selection(inventory, targets, case=case, fast=args.fast,
+                                            seed=args.seed, phases=phases, exercise=False, vela_sync_test=args.vela_sync_test)
+            require_selection_instruments(host, layout, setup, inventory, selection)
     child_options = dict(vars(args), yes=True)
     child = argparse.Namespace(**child_options)
     failed = False
     for label, case, phases in (('P2/P4', 'calibrate', list(MEASUREMENTS)),
-                                 ('P3', 'observe', observed['phases'])):
+                                 ('P3', 'observe', observed_phases)):
         active = tty_preconditions(host)
         if any(active[key] != origin[key] for key in ('origin_vt', 'origin_session')):
             raise BenchError('Complete run requires the same active local TTY session')
@@ -265,27 +301,31 @@ def run_all(args):
                 raise BenchError('Invalid previous campaign identity')
             previous_id = identity(previous.get('run_id'))
         print('[run-all] ' + label, flush=True)
-        status, result = run_calibration_campaign(child, targets, case, args.seed,
-                                                   phases=phases, with_result=True)
-        if status not in (0, 1):
-            return status
-        # This is the helper's root-evidence result returned in memory by the
-        # exporter, not a reread of the operator-owned exported summary.
-        if (not isinstance(result, dict) or result.get('execution_complete') is not True
-                or result.get('stage') not in ('done', 'completed-with-failures')):
-            print('[run-all] Stopped: campaign interrupted or restoration/integrity not verified.', flush=True)
-            return status or 1
-        plan = result.get('plan')
-        if (identity(result.get('run_id')) == previous_id or not isinstance(plan, dict)
-                or plan.get('case') != ('observe' if case == 'observe' else 'measure')):
-            raise BenchError('Complete run requires evidence from its new campaign')
-        if plan.get('vela_sync_test', False) is not args.vela_sync_test:
-            raise BenchError('Complete run campaign used a different Vela runtime profile')
-        if ((status == 0 and (result['stage'] != 'done' or result.get('selection_complete') is not True))
-                or (status == 1 and result['stage'] != 'completed-with-failures')):
-            raise BenchError('Complete run campaign status differs from verified evidence')
-        failed |= status != 0
-        del result
+        with timing.stage('campaign', selection=case) as span:
+            status, result = run_calibration_campaign(child, targets, case, args.seed,
+                                                       phases=phases, with_result=True, timing=timing)
+            span['exit_status'] = status
+            if status not in (0, 1):
+                return status
+            # This is the helper's root-evidence result returned in memory by the
+            # exporter, not a reread of the operator-owned exported summary.
+            if (not isinstance(result, dict) or result.get('execution_complete') is not True
+                    or result.get('stage') not in ('done', 'completed-with-failures')):
+                print('[run-all] Stopped: campaign interrupted or restoration/integrity not verified.', flush=True)
+                return status or 1
+            plan = result.get('plan')
+            if (identity(result.get('run_id')) == previous_id or not isinstance(plan, dict)
+                    or plan.get('case') != ('observe' if case == 'observe' else 'measure')):
+                raise BenchError('Complete run requires evidence from its new campaign')
+            if plan.get('vela_sync_test', False) is not args.vela_sync_test:
+                raise BenchError('Complete run campaign used a different Vela runtime profile')
+            if ((status == 0 and (result['stage'] != 'done' or result.get('selection_complete') is not True))
+                    or (status == 1 and result['stage'] != 'completed-with-failures')):
+                raise BenchError('Complete run campaign status differs from verified evidence')
+            span['campaign_id'] = result['run_id']
+            span['outcome'] = result['stage']
+            failed |= status != 0
+            del result
     print('[run-all] Both campaigns finished' + (' with failed blocks.' if failed else ' successfully.'), flush=True)
     return int(failed)
 

@@ -611,6 +611,24 @@ This requires the existing owned setup and instruments; measurement never builds
 or updates the target desktops. Each invocation starts fresh campaigns; resume
 their printed IDs individually with the existing `run` or `observe` command.
 
+After authorization, `run-all` records a timing receipt named
+`run-all-timing-*.json` in the report output directory. Its elapsed time covers
+launcher refresh, any pending recovery, preflight, both campaigns and their
+reports. Use the child campaign IDs to join it with the exported
+`attempts/*-attempt-*.json` and the campaign and pilot event journals. Attempts
+include context refresh, supervised pilot, acceptance audit, evidence checkpoint
+and any continuation restoration checks. The pilot journal covers takeover,
+readiness, controls, workload and restoration. Time from its first `takeover`
+to verified terminal recovery gives the host-occupancy interval for that attempt.
+Keep incomplete intervals visible when recovery is unverified or on another boot.
+
+Timestamps are monotonic nanoseconds within the recorded boot ID. The timing
+receipt includes total elapsed time and time outside all recorded spans. Some
+spans contain other spans. CPU time covers the process recording each span and
+excludes subprocess and desktop CPU time. Use the existing instrument receipts
+for timing within a measurement window. Historical archives may lack these
+runner timings and remain readable.
+
 For a separate diagnostic run with both Vela comparison switches enabled:
 
 ```sh

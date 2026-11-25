@@ -20,7 +20,7 @@ MODULES = ("__init__.py", "archive.py", "model.py", "discovery.py", "host.py", "
            "diagnostics.py", "conditions.py", "calibration.py", "qualification.py", "campaign.py",
            "measurements.py", "desktop.py", "workloads.py", "platform_workloads.py", "pixels.py",
            "resources.py", "interactions.py", "corpus.py", "contention.py", "desktop_legacy.py",
-           "desktop_pixels.py", "input_isolation.py", "session_profile.py")
+           "desktop_pixels.py", "input_isolation.py", "session_profile.py", "timing.py")
 # Check before importing privileged implementation code. A permissions change
 # on an installed module must not allow it to run before load_setup can reject
 # the installation. Python -I excludes operator PYTHONPATH/site packages.
