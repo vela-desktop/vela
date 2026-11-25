@@ -47,6 +47,17 @@ Item {
             mouseMove(root, 690, 490)
         }
 
+        function cleanupTestCase() {
+            // Release active and pooled delegates while the test window and
+            // its QML engine can still process deferred deletions.
+            for (const view of [details, icons]) {
+                const items = flickable(view)
+                items.reuseItems = false
+                items.model = null
+            }
+            wait(0)
+        }
+
         // The delegates on screen, with their Fill.
         function shown(view, flickable, name) {
             const out = []

@@ -30,6 +30,7 @@
 #include "text.h"
 
 #include <errno.h>
+#include <fontconfig/fontconfig.h>
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include <hb-ft.h>
@@ -836,13 +837,60 @@ static void bitmap_glyphs_are_exact(void)
     CHECK(rmdir(directory) == 0);
 }
 
-// ---- Fonts that can't be used ----
+// ---- Loading the title font ----
 
 static void missing_font(void)
 {
     char path[PATH_MAX];
     font_path(path, sizeof(path), "missing.ttf");
     CHECK(vela_text_create_file(path, 0, 10.0) == NULL);
+}
+
+static void loads_configured_title_font(void)
+{
+    char cwd[PATH_MAX - 64];
+    CHECK(getcwd(cwd, sizeof(cwd)));
+    char directory[PATH_MAX];
+    CHECK(snprintf(directory, sizeof(directory), "%s/vela-font-config-XXXXXX", cwd) < (int)sizeof(directory));
+    CHECK(mkdtemp(directory));
+    CHECK(setenv("XDG_CONFIG_HOME", directory, 1) == 0);
+
+    char kdeglobals[PATH_MAX];
+    CHECK(snprintf(kdeglobals, sizeof(kdeglobals), "%s/kdeglobals", directory) < (int)sizeof(kdeglobals));
+    FILE *file = fopen(kdeglobals, "w");
+    CHECK(file);
+    CHECK(fputs("[General]\nfont=Noto Sans,18\n[WM]\nactiveFont=Noto Sans,12\n", file) >= 0);
+    CHECK(fclose(file) == 0);
+
+    // Keep font matching independent of the machine's fonts and settings.
+    FcConfig *config = FcConfigCreate();
+    CHECK(config && FcConfigSetCurrent(config));
+    CHECK(vela_text_create() == NULL);
+
+    char path[PATH_MAX];
+    font_path(path, sizeof(path), "NotoSans-Regular-subset.ttf");
+    CHECK(FcConfigAppFontAddFile(config, (const FcChar8 *)path));
+    struct vela_text *text = vela_text_create();
+    CHECK(text && vela_text_pixel_size(text) == 16.0);
+    struct vela_text *bundled = vela_text_create_file(path, 0, 12.0);
+    CHECK(bundled);
+
+    struct vela_image actual = { 0 };
+    struct vela_image expected = { 0 };
+    struct vela_text_layout actual_layout;
+    struct vela_text_layout expected_layout;
+    vela_text_render(text, "jupyter", vela_text_pixel_size(text), WHITE, 0, 1, &actual, &actual_layout);
+    vela_text_render(bundled, "jupyter", 16.0, WHITE, 0, 1, &expected, &expected_layout);
+    CHECK(ink(&actual) > 0 && same_image(&actual, &expected) && same_layout(&actual_layout, &expected_layout));
+
+    vela_image_finish(&actual);
+    vela_image_finish(&expected);
+    vela_text_destroy(bundled);
+    vela_text_destroy(text);
+    FcConfigDestroy(config);
+    FcFini();
+    CHECK(unlink(kdeglobals) == 0);
+    CHECK(rmdir(directory) == 0);
 }
 
 int main(int argc, char **argv)
@@ -866,6 +914,7 @@ int main(int argc, char **argv)
     resizing_keeps_the_image();
     bitmap_glyphs_are_exact();
     missing_font();
+    loads_configured_title_font();
     FT_Done_FreeType(library);
     puts("PASS");
     return EXIT_SUCCESS;
