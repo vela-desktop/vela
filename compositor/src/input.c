@@ -1013,6 +1013,10 @@ struct vela_input *vela_input_create(struct vela_server *server)
     vela_listen(&server->backend->events.new_input, &input->new_input, handle_new_input);
     struct wlr_seat *seat = VELA_MUST(wlr_seat_create(display, "seat0"));
     server->seat = seat;
+    // The cursor is always there, so the seat has a pointer from the start,
+    // as add_device keeps it: a client that binds wl_pointer only when the
+    // first device appears can miss that device's first button press.
+    wlr_seat_set_capabilities(seat, WL_SEAT_CAPABILITY_POINTER);
     vela_listen(&seat->events.request_set_cursor, &input->request_set_cursor, handle_request_set_cursor);
     vela_listen(&seat->events.request_set_selection, &input->request_set_selection, handle_request_set_selection);
     vela_listen(&seat->events.request_set_primary_selection, &input->request_set_primary_selection,

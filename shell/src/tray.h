@@ -90,7 +90,7 @@ public:
     // An entry of the shown menu was chosen.
     Q_INVOKABLE void activateMenuEntry(int row, int entryId);
 
-    QImage pixmap(const QString& key) const { return m_pixmaps.value(key); }
+    QImage pixmap(const QString& key) const;
 
 Q_SIGNALS:
     void entriesChanged();
@@ -107,7 +107,6 @@ private:
     Item* itemAt(int row) const;
 
     std::vector<std::unique_ptr<Item>> m_items;
-    QHash<QString, QImage> m_pixmaps; // key: address/serial
     StatusNotifierWatcher* m_watcher = nullptr; // if the registry is ours
     uint m_serial = 0;
 

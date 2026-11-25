@@ -15,9 +15,11 @@ import re
 import shutil
 import socket
 import subprocess
+import struct
 import time
 import sys
 import unittest
+import zlib
 
 from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, tool
 
@@ -141,6 +143,58 @@ class RealShell(unittest.TestCase):
         with socket.socket(socket.AF_UNIX) as connection:
             connection.connect(path)
             connection.sendall(line.encode() + b"\n")
+
+
+@unittest.skipUnless(shutil.which("wl-paste"), "wl-paste needed to read the selected PNG")
+class ClipboardHistory(RealShell):
+    shell_settings = "[clipboard]\nhistory=true\n"
+
+    def prepare_shell(self):
+        directory = os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard")
+        os.makedirs(directory)
+        # The previous shell wrote numbered PNG files. Include ancillary data
+        # so decoding and re-encoding the right pixels would still fail.
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+        width, height = 800, 360
+        self.png = (b"\x89PNG\r\n\x1a\n"
+                    + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                    + chunk(b"tEXt", b"Title\0Original clipboard bytes")
+                    + chunk(b"IDAT", zlib.compress((b"\0" + b"\x20\x60\xe0" * width) * height))
+                    + chunk(b"IEND", b""))
+        with open(os.path.join(directory, "1.png"), "wb") as image:
+            image.write(self.png)
+        with open(os.path.join(directory, "pinned.json"), "w") as manifest:
+            json.dump([{"text": f"Pin {i}"} for i in range(16)] + [{"image": "1.png"}], manifest)
+
+    def test_paste_a_legacy_pin_beyond_the_viewport(self):
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 16 + ["key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+
+    def test_delete_selects_the_next_pin(self):
+        # Del on "Pin 15", at the bottom of the view: the selection moves to
+        # the image after it, which Enter then pastes.
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 15 + ["key", "Delete", "key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+        with open(os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard", "pinned.json")) as manifest:
+            texts = [entry.get("text") for entry in json.load(manifest)]
+        self.assertNotIn("Pin 15", texts)
+        self.assertIn("Pin 14", texts)
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")

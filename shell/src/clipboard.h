@@ -59,7 +59,7 @@ public:
     void copyText(const QString& text);
     void copyImage(const QImage& image);
 
-    QImage image(int id) const;
+    QImage image(int id, const QSize& requested) const;
 
 signals:
     void itemsChanged();
@@ -69,7 +69,10 @@ private:
     struct Item {
         int id = 0;
         QString text;
-        QImage image;
+        QImage preview;
+        QSize originalSize;
+        bool setImage(const QImage& image, QByteArray originalPng = {});
+        bool sameImage(const Item& other) const;
         QByteArray png; // the image as it arrived (or encoded), to put it back
         bool pinned = false;
         QDateTime time;
@@ -97,6 +100,7 @@ private:
     QByteArray m_sourcePng;
     QHash<ext_data_control_offer_v1*, Offer*> m_offers; // only in the thread
     std::atomic<bool> m_ignoreNext { false }; // the selection we set ourselves
+    mutable QMutex m_itemsMutex; // asynchronous image-provider reads vs. history edits
     QList<Item> m_items;
     int m_nextId = 1;
     std::atomic<bool> m_enabled { false };
@@ -112,10 +116,7 @@ public:
     }
     QImage requestImage(const QString& id, QSize* size, const QSize& requested) override
     {
-        QImage image = m_clipboard->image(id.section(u'/', 0, 0).toInt());
-        if (requested.isValid() && !image.isNull()) {
-            image = image.scaled(requested, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        }
+        const QImage image = m_clipboard->image(id.section(u'/', 0, 0).toInt(), requested);
         if (size) {
             *size = image.size();
         }

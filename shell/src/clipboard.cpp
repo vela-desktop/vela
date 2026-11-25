@@ -4,14 +4,17 @@
 #include "clipboard.h"
 
 #include "shellcontroller.h"
+#include "../../common/privatefile.h"
 
 #include <QBuffer>
+#include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QSet>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QThread>
@@ -259,7 +262,7 @@ QVariantList Clipboard::items() const
             }
             out.append(QVariantMap {
                 { QStringLiteral("id"), item.id },
-                { QStringLiteral("kind"), item.image.isNull() ? QStringLiteral("text") : QStringLiteral("image") },
+                { QStringLiteral("kind"), item.png.isEmpty() ? QStringLiteral("text") : QStringLiteral("image") },
                 { QStringLiteral("text"), item.text.left(2000) },
                 { QStringLiteral("pinned"), item.pinned },
                 { QStringLiteral("time"), item.time },
@@ -269,14 +272,55 @@ QVariantList Clipboard::items() const
     return out;
 }
 
-QImage Clipboard::image(int id) const
+bool Clipboard::Item::setImage(const QImage& image, QByteArray originalPng)
 {
-    for (const Item& item : m_items) {
-        if (item.id == id) {
-            return item.image;
+    if (image.isNull()) return false;
+    if (originalPng.isEmpty()) {
+        QBuffer buffer(&originalPng);
+        if (!buffer.open(QIODevice::WriteOnly) || !image.save(&buffer, "PNG")) return false;
+    }
+    png = std::move(originalPng);
+    originalSize = image.size();
+    // The 272 × 96 logical-pixel card at 2×. Larger requests use the PNG.
+    const QSize bounds(544, 192);
+    preview = originalSize.boundedTo(bounds) == originalSize
+        ? image
+        : image.scaled(bounds, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return true;
+}
+
+bool Clipboard::Item::sameImage(const Item& other) const
+{
+    if (png.isEmpty() || originalSize != other.originalSize) return false;
+    if (png == other.png) return true;
+    if (preview != other.preview) return false;
+    // Different encodings can represent the same pixels. A thumbnail match
+    // alone would merge distinct screenshots.
+    const QImage full = QImage::fromData(png, "PNG");
+    return !full.isNull() && full == QImage::fromData(other.png, "PNG");
+}
+
+QImage Clipboard::image(int id, const QSize& requested) const
+{
+    Item snapshot;
+    {
+        QMutexLocker lock(&m_itemsMutex);
+        for (const Item& item : m_items) {
+            if (item.id == id) {
+                snapshot = item;
+                break;
+            }
         }
     }
-    return {};
+    if (snapshot.png.isEmpty()) return {};
+    const QSize target = requested.isEmpty()
+        ? snapshot.originalSize
+        : snapshot.originalSize.scaled(requested, Qt::KeepAspectRatio).expandedTo(QSize(1, 1));
+    QImage image = snapshot.preview;
+    if (image.size() != snapshot.originalSize && (target.width() > image.width() || target.height() > image.height())) {
+        image = QImage::fromData(snapshot.png, "PNG");
+    }
+    return image.scaled(target, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 }
 
 void Clipboard::readOffer(Offer* offer)
@@ -336,11 +380,8 @@ void Clipboard::readOffer(Offer* offer)
 
     Item item;
     if (chosen.startsWith(QLatin1String("image/"))) {
-        item.image.loadFromData(data);
-        if (item.image.isNull()) {
-            return;
-        }
-        item.png = chosen == QLatin1String("image/png") ? data : QByteArray();
+        const QImage image = QImage::fromData(data);
+        if (!item.setImage(image, chosen == QLatin1String("image/png") ? data : QByteArray())) return;
     } else {
         if (data.size() > maxText) {
             return;
@@ -358,11 +399,12 @@ void Clipboard::add(Item item)
     if (!m_enabled) {
         return;
     }
+    QMutexLocker lock(&m_itemsMutex);
     item.time = QDateTime::currentDateTime();
     // Already in the list: back to the top (pinned if it was).
     for (qsizetype i = 0; i < m_items.size(); ++i) {
         const Item& old = m_items[i];
-        if ((!item.text.isEmpty() && old.text == item.text) || (!item.image.isNull() && old.image == item.image)) {
+        if ((item.id && item.id == old.id) || (!item.text.isEmpty() && old.text == item.text) || item.sameImage(old)) {
             item.pinned = old.pinned;
             item.id = old.id;
             m_items.removeAt(i);
@@ -382,6 +424,7 @@ void Clipboard::add(Item item)
             ++i;
         }
     }
+    lock.unlock();
     emit itemsChanged();
 }
 
@@ -390,20 +433,14 @@ void Clipboard::setSelection(const Item& item)
     if (!m_manager || !m_device) {
         return;
     }
-    QByteArray png = item.png;
-    if (!item.image.isNull() && png.isEmpty()) {
-        QBuffer buffer(&png);
-        buffer.open(QIODevice::WriteOnly);
-        item.image.save(&buffer, "PNG");
-    }
     {
         QMutexLocker lock(&m_mutex);
-        m_sourceText = item.image.isNull() ? item.text.toUtf8() : QByteArray();
-        m_sourcePng = item.image.isNull() ? QByteArray() : png;
+        m_sourceText = item.png.isEmpty() ? item.text.toUtf8() : QByteArray();
+        m_sourcePng = item.png;
     }
     auto* source = ext_data_control_manager_v1_create_data_source(m_manager);
     ext_data_control_source_v1_add_listener(source, &ClipboardCallbacks::sourceListener, this);
-    if (item.image.isNull()) {
+    if (item.png.isEmpty()) {
         for (const char* type : textTypes) {
             ext_data_control_source_v1_offer(source, type);
         }
@@ -417,7 +454,7 @@ void Clipboard::setSelection(const Item& item)
 
 void Clipboard::paste(int id)
 {
-    for (Item& item : m_items) {
+    for (const Item& item : std::as_const(m_items)) {
         if (item.id == id) {
             setSelection(item);
             // Like Windows: back to the top.
@@ -431,10 +468,12 @@ void Clipboard::paste(int id)
 
 void Clipboard::remove(int id)
 {
+    QMutexLocker lock(&m_itemsMutex);
     for (qsizetype i = 0; i < m_items.size(); ++i) {
         if (m_items[i].id == id) {
             const bool pinned = m_items[i].pinned;
             m_items.removeAt(i);
+            lock.unlock();
             if (pinned) {
                 savePinned();
             }
@@ -446,9 +485,11 @@ void Clipboard::remove(int id)
 
 void Clipboard::togglePin(int id)
 {
+    QMutexLocker lock(&m_itemsMutex);
     for (Item& item : m_items) {
         if (item.id == id) {
             item.pinned = !item.pinned;
+            lock.unlock();
             savePinned();
             emit itemsChanged();
             return;
@@ -458,8 +499,10 @@ void Clipboard::togglePin(int id)
 
 void Clipboard::clear()
 {
+    QMutexLocker lock(&m_itemsMutex);
     m_items.erase(std::remove_if(m_items.begin(), m_items.end(), [](const Item& item) { return !item.pinned; }),
         m_items.end());
+    lock.unlock();
     emit itemsChanged();
 }
 
@@ -474,10 +517,7 @@ void Clipboard::copyText(const QString& text)
 void Clipboard::copyImage(const QImage& image)
 {
     Item item;
-    item.image = image;
-    QBuffer buffer(&item.png);
-    buffer.open(QIODevice::WriteOnly);
-    image.save(&buffer, "PNG");
+    if (!item.setImage(image)) return;
     setSelection(item);
     add(item);
 }
@@ -487,28 +527,29 @@ void Clipboard::copyImage(const QImage& image)
 void Clipboard::savePinned() const
 {
     const QDir dir(storageDir());
-    dir.mkpath(QStringLiteral("."));
-    // The old images are rewritten from scratch.
-    for (const QString& old : dir.entryList({ QStringLiteral("*.png") }, QDir::Files)) {
-        QFile::remove(dir.filePath(old));
-    }
+    if (!dir.mkpath(QStringLiteral("."))) return;
+    QSet<QString> liveFiles;
     QJsonArray list;
-    int n = 0;
     for (const Item& item : m_items) {
-        if (!item.pinned) {
+        if (!item.pinned) continue;
+        if (item.png.isEmpty()) {
+            list.append(QJsonObject { { QStringLiteral("text"), item.text } });
             continue;
         }
-        if (item.image.isNull()) {
-            list.append(QJsonObject { { QStringLiteral("text"), item.text } });
-        } else {
-            const QString name = QStringLiteral("%1.png").arg(++n);
-            item.image.save(dir.filePath(name), "PNG");
-            list.append(QJsonObject { { QStringLiteral("image"), name } });
+        const QString name = QString::fromLatin1(QCryptographicHash::hash(item.png, QCryptographicHash::Sha256).toHex())
+            + QStringLiteral(".png");
+        if (!dir.exists(name)) {
+            QSaveFile file(dir.filePath(name));
+            if (!vela::openPrivateFile(file) || file.write(item.png) != item.png.size() || !file.commit()) return;
         }
+        liveFiles.insert(name);
+        list.append(QJsonObject { { QStringLiteral("image"), name } });
     }
-    QFile file(dir.filePath(QStringLiteral("pinned.json")));
-    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        file.write(QJsonDocument(list).toJson(QJsonDocument::Compact));
+    QSaveFile file(dir.filePath(QStringLiteral("pinned.json")));
+    const QByteArray json = QJsonDocument(list).toJson(QJsonDocument::Compact);
+    if (!vela::openPrivateFile(file) || file.write(json) != json.size() || !file.commit()) return;
+    for (const QString& old : dir.entryList({ QStringLiteral("*.png") }, QDir::Files)) {
+        if (!liveFiles.contains(old)) QFile::remove(dir.filePath(old));
     }
 }
 
@@ -526,10 +567,10 @@ void Clipboard::loadPinned()
         item.pinned = true;
         item.time = QDateTime::currentDateTime();
         if (object.contains(QStringLiteral("image"))) {
-            item.image.load(dir.filePath(object[QStringLiteral("image")].toString()));
-            if (item.image.isNull()) {
-                continue;
-            }
+            QFile png(dir.filePath(object[QStringLiteral("image")].toString()));
+            if (!png.open(QIODevice::ReadOnly)) continue;
+            const QByteArray bytes = png.readAll();
+            if (!item.setImage(QImage::fromData(bytes, "PNG"), bytes)) continue;
         } else {
             item.text = object[QStringLiteral("text")].toString();
         }
