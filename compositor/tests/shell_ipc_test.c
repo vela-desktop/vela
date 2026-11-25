@@ -89,7 +89,9 @@ int main(void)
     CHECK(server);
     struct wlr_output first_wlr = { .name = "DP-1" }, second_wlr = { .name = "DP-2" };
     struct vela_output first = { .wlr = &first_wlr }, second = { .wlr = &second_wlr };
-    char directory[] = "/tmp/vela-shell-ipc-XXXXXX";
+    // Private to the test, in the working directory (the build tree under
+    // ctest), never a publicly writable one; the path stays short for sun_path.
+    char directory[] = "/proc/self/cwd/vela-shell-ipc-XXXXXX";
     CHECK(mkdtemp(directory));
     CHECK(setenv("XDG_RUNTIME_DIR", directory, 1) == 0);
     snprintf(server->socket_name, sizeof(server->socket_name), "test");
