@@ -1,0 +1,115 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Valgrind Memcheck
+
+on:
+  schedule:
+    - cron: '35 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/valgrind.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: valgrind-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  memcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - name: Dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed
+          base-devel git cmake shaderc vulkan-headers vulkan-icd-loader
+          gtest python openssh wayland wayland-protocols wlroots0.20
+          libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
+          fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
+          qt6-svg qt6-wayland qt6-tools layer-shell-qt hicolor-icon-theme
+          pipewire wireplumber systemd-libs valgrind
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build debug binaries without sanitizers
+        run: |
+          cmake -S . -B build-valgrind -DCMAKE_BUILD_TYPE=Debug \
+            -DVELA_BUILD_TOOLS=ON -DVELA_BUILD_GPU_TEST_TOOLS=OFF
+          cmake --build build-valgrind --parallel 2
+      - name: Select direct native CPU tests
+        shell: bash
+        run: |
+          # Do not instrument Python, shell wrappers, or GPU driver processes.
+          # Tests that launch Vela indirectly need a dedicated harness later.
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          build = Path("build-valgrind").resolve()
+          listing = subprocess.check_output([
+              "ctest", "--test-dir", str(build), "--show-only=json-v1",
+              "-LE", "gpu|rhi", "-E", "^packaging-update$",
+          ], text=True)
+          tests = []
+          for test in json.loads(listing)["tests"]:
+              command = test.get("command", [])
+              if not command:
+                  continue
+              executable = Path(command[0]).resolve()
+              if not executable.is_relative_to(build) or not executable.is_file():
+                  continue
+              with executable.open("rb") as binary:
+                  if binary.read(4) != b"\x7fELF":
+                      continue
+              tests.append(test["name"])
+
+          if not tests:
+              raise SystemExit("No native CPU tests selected for Memcheck")
+          print("Selected native tests:", *tests, sep="\n")
+          pattern = "^(" + "|".join(re.escape(name) for name in tests) + ")$"
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"VELA_MEMCHECK_TEST_REGEX={pattern}\n")
+          PY
+      - name: Run Memcheck and fail on defects
+        shell: bash
+        run: |
+          cat > build-valgrind/memcheck.cmake <<'CMAKE'
+          set(CTEST_SOURCE_DIRECTORY "$ENV{GITHUB_WORKSPACE}")
+          set(CTEST_BINARY_DIRECTORY "$ENV{GITHUB_WORKSPACE}/build-valgrind")
+          set(CTEST_SITE "github-actions")
+          set(CTEST_BUILD_NAME "vela-valgrind")
+          set(CTEST_MEMORYCHECK_TYPE "Valgrind")
+          set(CTEST_MEMORYCHECK_COMMAND "/usr/bin/valgrind")
+          set(CTEST_MEMORYCHECK_COMMAND_OPTIONS
+              "--tool=memcheck --leak-check=full --show-leak-kinds=definite,possible --errors-for-leak-kinds=definite,possible --track-origins=yes --error-exitcode=99")
+          set(CTEST_TEST_TIMEOUT 900)
+          ctest_start(Experimental)
+          ctest_memcheck(
+              INCLUDE "$ENV{VELA_MEMCHECK_TEST_REGEX}"
+              EXCLUDE_LABEL "gpu|rhi"
+              PARALLEL_LEVEL 2
+              RETURN_VALUE result
+              DEFECT_COUNT defects)
+          message(STATUS "Memcheck result: ${result}; defects: ${defects}")
+          if(NOT result EQUAL 0 OR NOT defects EQUAL 0)
+              message(FATAL_ERROR "Valgrind tests failed or memory defects were detected")
+          endif()
+          CMAKE
+          ctest -S build-valgrind/memcheck.cmake -V
+      - name: Upload Memcheck logs
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: valgrind-results
+          path: build-valgrind/Testing/
+          if-no-files-found: ignore
+          retention-days: 14
