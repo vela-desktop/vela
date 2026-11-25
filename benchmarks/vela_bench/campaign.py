@@ -5,6 +5,7 @@
 
 from contextlib import nullcontext
 import fcntl
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -284,7 +285,7 @@ def freeze_conditions(layout, run_id, snapshot):
     return value
 
 
-def completion(directory, block):
+def completion_record(directory, block):
     path = directory / "blocks" / block_identity(block["id"]) / "complete.json"
     if not path.exists():
         return None
@@ -292,15 +293,27 @@ def completion(directory, block):
     record = read_json(path)
     if record.get("block") != block or record.get("status") != "complete":
         raise BenchError("Campaign completion identity changed")
-    source = directory.parent.parent / "pilots" / identity(record.get("pilot_run_id"))
-    for name, digest in record.get("evidence", {}).items():
-        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name):
+    evidence = record.get("evidence")
+    if not isinstance(evidence, dict) or not evidence or record.get("audit", {}).get("status") != "passed":
+        raise BenchError("Completed block has no accepted evidence")
+    for name, digest in evidence.items():
+        if not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or name in {".", ".."}:
             raise BenchError("Unsafe completed-block evidence path")
+        if not isinstance(digest, str) or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise BenchError("Invalid completed-block evidence digest")
+    identity(record.get("pilot_run_id"))
+    return record
+
+
+def completion(directory, block):
+    record = completion_record(directory, block)
+    if record is None:
+        return None
+    source = directory.parent.parent / "pilots" / record["pilot_run_id"]
+    for name, digest in record["evidence"].items():
         trusted(source / name)
         if file_hash(source / name) != digest:
             raise BenchError("Completed-block evidence changed; refusing resume")
-    if not record.get("evidence") or record.get("audit", {}).get("status") != "passed":
-        raise BenchError("Completed block has no accepted evidence")
     return record
 
 
@@ -561,7 +574,7 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                             trusted(path)
                             with path.open("rb") as stream:
                                 os.fsync(stream.fileno())
-                            evidence[path.name] = file_hash(path)
+                                evidence[path.name] = hashlib.file_digest(stream, "sha256").hexdigest()
                     source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
                     try:
                         os.fsync(source_fd)
@@ -760,6 +773,11 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
     (directory / "report.html").write_text(document, encoding="utf-8")
 
 
+def _file_version(info):
+    # Exclude atime, which our own reads may update.
+    return info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns
+
+
 def export_campaign(parent, data, layout=Layout(), *, timing=None):
     parent = Path(parent)
     parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local export parent, no agent/server.
@@ -767,14 +785,21 @@ def export_campaign(parent, data, layout=Layout(), *, timing=None):
     directory.mkdir(mode=0o755)  # NOSONAR S8707: exclusive validated run name beneath the operator-selected export parent.
     hashes = {}
 
-    def copy_evidence(path, output):
+    def copy_evidence(path, output, expected=None):
         trusted(path)
-        before = file_hash(path)
-        shutil.copyfile(path, output)
-        output.chmod(0o644)
-        if file_hash(output) != before or file_hash(path) != before:
+        source_identity = _file_version(path.lstat())
+        digest = file_hash(path) if expected is None else expected
+        with path.open("rb") as source:
+            if _file_version(os.fstat(source.fileno())) != source_identity:
+                raise BenchError("Source evidence changed during export")
+            with output.open("xb") as destination:
+                shutil.copyfileobj(source, destination, length=1024 * 1024)
+                os.fchmod(destination.fileno(), 0o644)
+        if (digest is None or file_hash(output) != digest
+                or (expected is None and file_hash(path) != digest)
+                or _file_version(path.lstat()) != source_identity):
             raise BenchError("Source evidence changed during export")
-        hashes[str(output.relative_to(directory))] = before
+        hashes[str(output.relative_to(directory))] = digest
 
     campaign = layout.base / "campaigns" / data["run_id"]
     if campaign.exists():
@@ -792,30 +817,41 @@ def export_campaign(parent, data, layout=Layout(), *, timing=None):
             for path in source.iterdir():
                 if re.fullmatch(r"(?:attempt-[0-9]+|complete)\.json", path.name):
                     copy_evidence(path, journal / (block["id"] + "-" + path.name))
+    # Bind each accepted export to its checkpoint, including changes between inspection and copying.
+    planned = {block["id"]: block for block in data["plan"]["blocks"]}
     for block in data["blocks"]:
-        block_identity(block["id"])
-        if not block.get("pilot_run_id"):
+        block_id = block_identity(block["id"])
+        accepted = block["status"] == "complete"
+        pilot_id = block.get("pilot_run_id")
+        expected = {}
+        if accepted:
+            record = completion_record(campaign, planned[block_id])
+            if (record is None or record["pilot_run_id"] != pilot_id or record["audit"] != block["audit"]
+                    or record["profile"] != block["profile"]):
+                raise BenchError("Exported block differs from its accepted checkpoint")
+            expected = record["evidence"]
+        if not pilot_id:
             continue
-        source = layout.base / "pilots" / identity(block["pilot_run_id"])
-        if not source.exists():
+        source = layout.base / "pilots" / identity(pilot_id)
+        if not accepted and not source.exists():
             continue
         trusted(source, directory=True)
-        target = directory / block["id"]
+        target = directory / block_id
         target.mkdir(mode=0o755)
-        for path in source.iterdir():
-            if not re.fullmatch(r"[A-Za-z0-9_.-]+", path.name) or path.suffix not in (".json", ".jsonl", ".png", ".stderr"):
+        names = expected if accepted else sorted(path.name for path in source.iterdir())
+        for name in names:
+            if not re.fullmatch(r"[A-Za-z0-9_.-]+", name) or Path(name).suffix not in (".json", ".jsonl", ".png", ".stderr"):
                 continue
-            output = target / path.name
-            copy_evidence(path, output)
+            copy_evidence(source / name, target / name, expected.get(name))
     atomic_json(directory / "summary.json", data)
     (directory / "summary.json").chmod(0o644)
     hashes["summary.json"] = file_hash(directory / "summary.json")
     kind = "execution-campaign-export" if data["kind"] == "execution-campaign" else "calibration-campaign-export"
-    atomic_json(directory / "manifest.json", {"schema": 1, "kind": kind, "run_id": data["run_id"], "files": hashes})
-    (directory / "manifest.json").chmod(0o644)
     with timing.stage("render-report") if timing else nullcontext():
         render_export(directory, data)
         (directory / "report.html").chmod(0o644)
+    atomic_json(directory / "manifest.json", {"schema": 1, "kind": kind, "run_id": data["run_id"], "files": hashes})
+    (directory / "manifest.json").chmod(0o644)
     return directory
 
 

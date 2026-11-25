@@ -182,3 +182,20 @@ fault recovery.
 Start with coarse timing and use the baseline to choose the first measured
 hotspot. Advance changes that demonstrate a wall-clock or observer-overhead
 benefit and meet the reliability gates.
+
+## Implemented in this draft
+
+The runner now records boot-scoped timing in the `run-all` receipt, per-attempt
+checkpoints and the existing event journals. The [operator guide](../benchmarks/README.md)
+describes how to join those records with instrument receipts to estimate host
+occupancy. The P3 audit hashes each PNG and derives its pixels from the same
+read, reusing only detector results for byte-identical images. Campaign export
+checks copied evidence against accepted checkpoint hashes and verifies the
+source file stayed stable during the copy. Offline reports still run an
+independent raw-evidence audit.
+
+Offline replay showed identical P3 audit results on two archived blocks and
+identical export manifests. See [#228](https://github.com/vela-desktop/vela/pull/228)
+for the tested selections and timings. Physical campaign timing and acceptance
+are pending. Capture, workload pacing and takeover changes still require
+measurements and the qualification described above.
