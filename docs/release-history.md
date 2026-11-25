@@ -1,5 +1,9 @@
 # Release history
 
+What each Beta series shipped and how it was validated. The
+[changelog](../CHANGELOG.md) lists every user-visible change by version, and the
+[roadmap](roadmap.md) covers what comes next.
+
 ## 0.1
 
 ### The first Beta
@@ -53,10 +57,11 @@ controls that could stick and window borders that caught an unexpected
 resize. It also reduced the size of the Ubuntu package.
 
 [0.1.2](https://github.com/vela-desktop/vela/releases/tag/v0.1.2) shipped
-on 16 November 2026 with two exceptions to the maintenance scope. Fedora 45
-gained its own RPM alongside Fedora 44. Users could choose KWallet or GNOME
-Keyring for app passwords while Vela Secrets was still pending. The latter
-was backported to fix [#222](https://github.com/vela-desktop/vela/issues/222).
+on 16 November 2026 with two exceptions to the maintenance scope: Fedora 45
+gained its own RPM alongside Fedora 44, and, to fix
+[#222](https://github.com/vela-desktop/vela/issues/222), users could choose
+KWallet or GNOME Keyring for app passwords while Vela Secrets was still
+pending.
 See the [Fedora packaging change](https://github.com/vela-desktop/vela/pull/224)
 and the keyring changes in [#255](https://github.com/vela-desktop/vela/pull/255)
 and [#277](https://github.com/vela-desktop/vela/pull/277).
@@ -70,7 +75,7 @@ Fixes kept [crowded taskbars navigable](https://github.com/vela-desktop/vela/pul
 preserved [preferences after a failed save](https://github.com/vela-desktop/vela/pull/267)
 and restored [XDG icon theme discovery](https://github.com/vela-desktop/vela/pull/259).
 The [0.1.2 tracker](https://github.com/vela-desktop/vela/issues/225) records
-the backports. The [changelog](../CHANGELOG.md) lists user-visible changes by version.
+the backports.
 
 ### Moving to 0.2
 

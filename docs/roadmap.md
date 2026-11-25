@@ -15,7 +15,7 @@ Those projects are substantial and now provisionally target 0.3.
 Distinguish **merged on main**, **candidate for 0.2**, and
 **shipped in a tagged Beta**: these are not interchangeable statuses.
 
-**0.2 features already merged into `main`**
+**0.2 features already merged into `main`:**
 
 - **Theme engine and personalization:** declarative themes, per-surface
   styles for the taskbar, Start, Quick Settings and notifications, and live
@@ -98,7 +98,7 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   were verified on one Fedora 44 KDE guest. More host and driver combinations
   and the full GPU suites still need validation.
 
-**Build, hardening and CI on `main`**
+**Build, hardening and CI on `main`:**
 
 - **CPU requirements:** official x86 builds target x86-64-v3, and the
   session checks CPU support before starting the compositor. Local builds
@@ -136,12 +136,13 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   and `scripts/release.py` for each step up to the signed tag
   ([#306](https://github.com/vela-desktop/vela/pull/306),
   [design](release-automation.md)).
-- **NVIDIA GPU CI**, which has rented an NVIDIA RTX instance on Vast.ai for
-  each run since 0.1.1 ([#199](https://github.com/vela-desktop/vela/pull/199)),
-  now runs on a weekly rebuilt, digest-pinned image with a verified runner
-  and an advisory gate for fixable package vulnerabilities
+- **NVIDIA GPU CI:** the NVIDIA RTX instance rented on Vast.ai for each run
+  since 0.1.1 ([#199](https://github.com/vela-desktop/vela/pull/199)) now
+  runs a weekly rebuilt, digest-pinned image with a verified runner and an
+  advisory gate for fixable package vulnerabilities
   ([#300](https://github.com/vela-desktop/vela/pull/300)).
-- **Experimental Intel ANV CI** runs on a dedicated self-hosted Intel runner
+- **Intel GPU CI:** the GPU suites on a dedicated self-hosted Intel ANV
+  runner, experimental and passing in full since 15 November
   ([#226](https://github.com/vela-desktop/vela/pull/226)).
 
 **Candidates to evaluate before 0.2, not automatically release blockers:**
@@ -348,20 +349,20 @@ sections above record when work was integrated or published.
   snap layouts and Snap Assist, context menus with entries that can be
   hidden in Settings, light mode, a show-desktop strip, Caffeine, and file
   transfers in the taskbar.
-- **[Taskbar](taskbar.md)**: placement on any screen edge, window filters by
-  desktop and display, attention indicators, app badges and progress, a
-  configurable tray drawer, drag and drop, paging when space runs out, and
-  Super+1…9 and Super+0.
+- **Taskbar**: placement on any screen edge, window filters by desktop and
+  display, attention indicators, app badges and progress, a configurable tray
+  drawer, drag and drop, paging when space runs out, and Super+1…9 and
+  Super+0 ([design](taskbar.md)).
 - **Personalization**: a [theme engine](theme-system.md) with declarative
   themes and per-surface styles, theme galleries with previews and Undo,
   accent, clock and Start icon settings, and Vela Expressive with a palette
   that can follow the wallpaper.
-- **[Visual coherence](visual-coherence.md)**: the same pixels, clock and
-  motion across compositor, shell and apps, and shared controls for all of
-  Vela's interfaces.
-- **[Keyboard](keyboard.md)**: every system layout with a drawn preview to
-  type with, Caps Lock, Compose and modifier options, Num Lock at startup,
-  Caps Lock on screen, custom shortcuts and a default terminal.
+- **Visual coherence**: the same pixels, clock and motion across compositor,
+  shell and apps, and shared controls for all of Vela's interfaces
+  ([plan](visual-coherence.md)).
+- **Keyboard**: every system layout with a drawn preview to type with, Caps
+  Lock, Compose and modifier options, Num Lock at startup, Caps Lock on
+  screen, custom shortcuts and a default terminal ([design](keyboard.md)).
 - **Daily comfort**: clipboard history, snipping tool, touchpad gestures,
   mouse and touchpad settings, [battery alerts](battery-notifications.md) for
   the PC and peripherals, and a [screen-sharing indicator](screen-sharing.md)

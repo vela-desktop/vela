@@ -214,7 +214,6 @@ Never use an untrusted author's screenshot as proof of the resulting theme.
 
 The themes are on `main`; these items decide when schema 1 can be promised.
 
-
 - [x] Reuse the working theme/renderer integration from #205.
 - [x] Versioned keys, type validation, guarded inheritance and official IDs.
 - [x] Runtime surface isolation and explicit candidate selection.

@@ -29,8 +29,8 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 > (and CachyOS, EndeavourOS), Fedora 44 and 45, and Ubuntu 26.10. It is tested on AMD
 > and NVIDIA GPUs, and on Intel in experimental CI; read the
 > [hardware coverage and known limitations](docs/hardware.md) before installing. The
-> interface is available in English and Italian, and on the Experimental channel in
-> Brazilian Portuguese too.
+> interface is in English and Italian, plus Brazilian Portuguese on the Experimental
+> channel.
 
 ## Why Vela
 
@@ -106,13 +106,13 @@ the Experimental channel).
 flowchart TB
     DM["Login screen"] --> S["vela-session"]
     S --> SUP["Supervisor<br/><i>holds the Wayland socket,<br/>restarts the compositor</i>"]
-    SUP --> C["vela-compositor<br/>C17 · wlroots 0.20<br/>own scene graph · Vulkan 1.4 renderer"]
+    SUP --> C["vela-compositor<br/>C17 · wlroots 0.20<br/>own scene graph<br/>Vulkan 1.4 renderer"]
     C -- "standard Wayland protocols" --> SH["vela-shell<br/>Qt Quick"]
-    C --> APPS["Apps<br/>Wayland and Xwayland<br/>(vela-files, vela-settings...)"]
+    C --> APPS["Apps<br/>Wayland and Xwayland<br/>vela-files, vela-settings..."]
+    APPS -- "screen sharing,<br/>file choosers" --> P["xdg-desktop-portal<br/>wlr · GTK"]
+    C -- "capture protocols" --> P
     C -- "ext-session-lock" --> L["vela-lock"]
-    C -- "starts and restarts" --> HELP["Helpers<br/>vela-polkit-agent · vela-bluetooth<br/>vela-brightness (one per display)<br/>vela-update-daemon"]
-    APPS -- "screen sharing, file choosers" --> P["xdg-desktop-portal<br/>wlr · GTK"]
-    P -- "capture protocols" --> C
+    C -- "starts and restarts" --> HELP["Helpers<br/>vela-polkit-agent<br/>vela-bluetooth<br/>vela-brightness<br/>(one per display)<br/>vela-update-daemon"]
     C --> HW["DRM/KMS · libinput · GBM"]
 ```
 

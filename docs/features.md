@@ -31,12 +31,12 @@ changes as the desktop evolves. For the complete key reference see
 </tr>
 </table>
 
-**Theme details (Experimental)**
+**Theme details** (on the Experimental channel)
 
 <table>
 <tr>
-<td width="28%" valign="top"><img src="../themes/screenshots/notifications/round-qs.png" alt="Quick Settings in the Round style, with rounded tiles inset from the curved panel"><br><sub>In the Round style, each corner tile follows the panel’s curve so the gap stays even around the bend.</sub></td>
-<td width="72%" valign="top"><img src="screenshots/expressive-clock.webp" alt="The same lock-screen clock in pale blue on a dark wallpaper and white on a lighter one"><br><sub>The Expressive clock uses the same accent setting in both previews. It checks the brightest pixel behind the time and lightens the digits when they need more contrast.</sub></td>
+<td width="31%" valign="top"><img src="../themes/screenshots/notifications/round-qs.png" alt="Quick Settings in the Round style, with rounded tiles inset from the curved panel"><br><sub><b>Round</b> quick settings: each corner tile follows the panel's curve, so the gap stays even around the bend.</sub></td>
+<td width="69%" valign="top"><img src="screenshots/expressive-clock.webp" alt="The same lock-screen clock in pale blue on a dark wallpaper and white on a lighter one"><br><sub><b>Expressive lock screen</b>: the same accent over two wallpapers. The clock checks the brightest pixel behind the time and lightens the digits when they need more contrast.</sub></td>
 </tr>
 </table>
 
@@ -109,13 +109,14 @@ changes as the desktop evolves. For the complete key reference see
 ## Settings (`vela-settings`)
 - **Displays**: drag-and-drop arrangement, scale, resolution, refresh rate, rotation, and
   "Keep these settings?" with compositor-owned revert on timeout or a Settings crash.
-  Native Wayland configuration requires no external display utility. Monitors snap
-  together and never overlap. Unplug the middle of three monitors and Vela closes the
-  gap, even keeping a window resize in progress under the pointer. Reconnect it and the
-  saved arrangement returns. Closing a
+  Native Wayland configuration requires no external display utility. Also **Night
+  light**, variable refresh rate, tearing, and [brightness](brightness.md) for each
+  monitor over DDC/CI or the backlight.
+- **Several monitors and laptops**: monitors snap together and never overlap. Unplug
+  the middle of three monitors and Vela closes the gap, even keeping a window resize in
+  progress under the pointer; reconnect it and the saved arrangement returns. Closing a
   laptop's lid with an external display connected turns the built-in panel off until
-  the lid opens. Also **Night light**, variable refresh rate, tearing, and
-  [brightness](brightness.md) for each monitor over DDC/CI or the backlight.
+  the lid opens.
 - **Sound** (outputs, inputs, per-app levels, device profiles, codecs and sample
   rates), **Notifications, Clipboard**, **mouse and touchpad** (tap to click, scroll
   direction, three- and four-finger gestures), and Network.
