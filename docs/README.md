@@ -28,6 +28,7 @@ Each design document opens with a status header (see [below](#status-headers)).
 
 - **Compositor and rendering**
   - [Renderer](renderer.md): Vela's own scene and Vulkan renderer, frame timing, effects and title bar.
+  - [Font rendering](font-rendering-improvements.md): the title bar's text, what reviewing Fontreal taught us, and the measured changes.
   - [Visual coherence](visual-coherence.md): one look and one motion across the compositor, the shell and Vela's apps.
   - [Theme system](theme-system.md): themes, styles and their contract.
   - [Taskbar](taskbar.md): which windows a button counts, attention, Super+1…9, the tray's drawer, drag and drop, badges, the taskbar on any edge.

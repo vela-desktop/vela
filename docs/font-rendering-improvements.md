@@ -1,65 +1,80 @@
-# Font rendering: Fontreal findings and planned improvements
+# Font rendering: Fontreal findings and the title bar's text
 
-**Status:** Analysis completed in November 2026; implementation and measurements pending.
+> **Status:** Proposed. **Checked:** 25 November 2026, `6127a13`.
+>
+> **Remaining:** coverage adjusted for linear-light composition, the hinting comparison, thin-stroke recovery and the Qt Quick follow-up are not started ([what comes next](#what-comes-next)). The title text changes in [What changed](#what-changed) still need the real-session check in [testing](testing.md#compositor-text).
 
-This is a short guide to the font-rendering improvements we intend to pursue in Vela. It records what we learned by reviewing [Fontreal V3](https://github.com/calculatetech/fontreal) alongside Vela's current code. It is **not** a renderer design document, an implementation specification, or a claim that any proposed change has already improved image quality.
+This guide records what reviewing [Fontreal V3](https://github.com/calculatetech/fontreal/tree/593ffaf36eb45392743d9a5034e09391a6281f94) (MIT, commit `593ffaf`, 21 November 2026) against Vela's code taught us. It covers what the review found, the changes it led to in the compositor's title text, with measurements, and what is still open. It is not a renderer design: [renderer.md](renderer.md) remains the reference for Qt Quick's text policy (§3) and the title bar (§9).
 
-## What we analyzed
+## Scope
 
-We reviewed these parts of Vela:
+Two kinds of text reach the screen in Vela:
 
-- [`compositor/src/text.c`](../compositor/src/text.c): FreeType rasterization, HarfBuzz shaping, grayscale glyph coverage and premultiplied blending.
-- [`compositor/src/decoration.c`](../compositor/src/decoration.c): title-bar text rendered at physical output scale, and regenerated when relevant inputs change rather than once per frame.
-- [`compositor/src/scene/frame.c`](../compositor/src/scene/frame.c) and [`renderer.md`](renderer.md): pixel alignment and preservation of matching surface buffers through unfiltered 1:1 composition.
-- [`common/src/renderingpolicy.cpp`](../common/src/renderingpolicy.cpp) and [`common/tests/text_rendering.cpp`](../common/tests/text_rendering.cpp): Qt Quick's scalable text rendering, grayscale distance-field antialiasing, and tests for scrolling, scaling, transparency and colored fringes.
+- **Compositor text**: window titles, drawn by [`compositor/src/text.c`](../compositor/src/text.c) for [`decoration.c`](../compositor/src/decoration.c). The compositor owns this text, so this is where we can experiment.
+- **Qt Quick text**: the shell and Vela's apps, under the policy in [`common/src/renderingpolicy.cpp`](../common/src/renderingpolicy.cpp) (scalable distance-field glyphs, grayscale antialiasing; tested by `text-rendering-rhi`). That policy is unchanged.
 
-We also reviewed Fontreal's [outline sampling](https://github.com/calculatetech/fontreal/blob/main/src/fontreal_v3_outline.cpp), [coverage and tone curves](https://github.com/calculatetech/fontreal/blob/main/src/fontreal_v3_coverage.cpp), [thin-stroke treatment](https://github.com/calculatetech/fontreal/blob/main/src/fontreal_v3_thin.cpp), and [Qt Quick integration](https://github.com/calculatetech/fontreal/blob/main/integrations/qt-stock/scenegraph.cpp).
+When [renderer.md](renderer.md) says "do not add a custom compositor text pipeline", it means routing Qt Quick text through the compositor. Title text has always been the compositor's own.
 
-Our findings:
+## Findings
 
-- Vela's compositor currently renders text using FreeType with `FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT`; it does not have Fontreal's extra 4x-per-axis outline sampling or its custom coverage correction.
-- Fontreal rasterizes eligible outlines at four times the final resolution on **each axis**, derives per-pixel coverage, and applies size- and polarity-sensitive adjustments. Its additional thin-stroke handling uses hinted and, where applicable, unhinted outlines to recover details that might otherwise fade.
-- Fontreal conditionally offers RGB subpixel coverage, with restrictions related to output orientation, opacity, transforms and composition. This is not a universally safe rendering mode.
-- Vela's Qt Quick policy intentionally keeps the scalable distance-field renderer stable during animations and fractional scrolling. Fontreal can select native glyph rendering for treated Qt Quick text. Those approaches optimize different properties; a sharper static frame alone would not justify replacing Vela's policy.
-- Vela already protects glyphs *after* rasterization through physical-pixel-aware composition. Improving the glyph mask itself is a separate opportunity.
+### Vela's title text
 
-These are **code-review findings**, not benchmark results. We have not yet established that Fontreal, stock Qt, or any proposed Vela variant is more legible under comparable conditions.
+- FreeType renders grayscale coverage with `FT_LOAD_TARGET_LIGHT`, which hints vertically only. HarfBuzz lays the line out with unhinted, fractional advances (hb-ft's default load flags).
+- The title image is composited in **linear light**. `texture.frag` un-premultiplies, decodes sRGB and premultiplies again, and the target view is `_SRGB` ([renderer.md §7.5](renderer.md)). So FreeType's area coverage acts as a linear-light alpha. Most compositors blend sRGB-encoded values instead, and most font tuning assumes that. The difference is large at the title bar's colors. A pixel half covered by the light palette's `#1a1a1a` on `#f3f3f3` comes out as 179/255 in linear light, against 135 when blended in sRGB values: dark text looks lighter and thinner. A pixel half covered by the dark palette's white on `#202020` comes out as 189 in linear light, against 144: light text looks heavier.
+- Before the changes below:
+  - every glyph was moved to the nearest whole pixel;
+  - the image was exactly the line box, so ink outside it was cut off;
+  - 1-bit bitmaps were read as 8-bit;
+  - the title was drawn again on every width change.
 
-## Improvements we will implement and evaluate
+  [What changed](#what-changed) measures each of these.
+- One font face, with no fallback: characters the face lacks (emoji, CJK, most non-Latin scripts in a Latin font) show as missing-glyph boxes. Color glyphs are not drawn.
 
-We will start with Vela's **compositor-owned text** (not all text rendered by applications). This provides a limited, measurable place to experiment without changing Qt Quick, other clients, or the Vulkan compositor's surface-composition behavior.
+### Fontreal
 
-1. **Reproducible baseline and hinting comparison.** Capture the existing FreeType Light output and compare it with other relevant FreeType hinting settings, especially Normal. Keep the font, size, positioning and text identical for each comparison.
-2. **4x outline supersampling prototype.** Add an experimental grayscale glyph rasterization path that samples scalable outlines at 4x resolution on both axes and reduces the result to physical-pixel coverage. Compare it against FreeType's existing direct rasterization. Preserve HarfBuzz advances, text placement and the intended output dimensions.
-3. **Perceptual coverage adjustment.** Experiment with bounded coverage/tone curves, accounting for physical font size and light-on-dark versus dark-on-light text. Evaluate whether they strengthen weak strokes without making regular text too heavy, collapsing counters, or creating halos. Treat transparent and tinted backgrounds explicitly in testing.
-4. **Selective thin-stroke recovery.** If the baseline and supersampling comparisons expose lost thin strokes or diagonals, prototype a controlled comparison of hinted and unhinted outlines, inspired by Fontreal's method. Only adopt changes that preserve letter shapes and improve actual readability.
-5. **Qt Quick follow-up.** After the compositor experiments, investigate whether any lessons about coverage or perceived contrast can be applied to the existing **SDF** path without compromising animation stability. This is a separate investigation, not a commitment to replace Qt's text renderer or add private Qt hooks.
+- **4x outline sampling.** [`sampleOutline`](https://github.com/calculatetech/fontreal/blob/593ffaf36eb45392743d9a5034e09391a6281f94/src/fontreal_v3_outline.cpp) rasterizes the outline with FreeType's antialiasing at four times the size on each axis. Its grayscale value, `center()`, is the mean of each 4×4 block, and FreeType's coverage is already an exact area at 1x. We measured both on the same light-hinted outlines: 65 Latin letters, digits and symbols, 13.3 to 30 px, Noto Sans Regular and Italic and DejaVu Sans, FreeType 2.15.0. The mean difference per inked pixel was 1.4–1.5/255, total ink differed by 0.07–0.14%, and the largest difference was 22/255, on curved edges, where FreeType flattens Béziers more coarsely at 1x. In Fontreal the 4x buffer feeds the RGB stripes (`stripes()`) and the thin-stroke analysis. On its own in grayscale it is not a visible change, and it costs 16 times the samples.
+- **Coverage and tone curves.** [`toneCurve`](https://github.com/calculatetech/fontreal/blob/593ffaf36eb45392743d9a5034e09391a6281f94/src/fontreal_v3_coverage.cpp) assumes sRGB-encoded blending. `darkInkCore` moves dark ink part of the way toward its linear-light value with `encodeSrgb`, and `lightInkLift` raises light ink. Vela already composites in linear light, so these tables push the wrong way here. Dark ink would need more coverage, not less. Applied on top of Vela's blending, light ink would be lifted twice.
+- **Thin strokes.** [`fontreal_v3_thin.cpp`](https://github.com/calculatetech/fontreal/blob/593ffaf36eb45392743d9a5034e09391a6281f94/src/fontreal_v3_thin.cpp) compares hinted and unhinted outlines, sampled at 4x, to restore faint stems and diagonals at small sizes.
+- **Subpixel positioning.** Fontreal rasterizes each glyph at its fractional phase (`outlineMask`, [`scenegraph.cpp`](https://github.com/calculatetech/fontreal/blob/593ffaf36eb45392743d9a5034e09391a6281f94/integrations/qt-stock/scenegraph.cpp)). Vela has adopted this technique.
+- **Qt Quick integration.** It forces `NativeRendering` for the text it treats and replaces `QSGDefaultContext::createGlyphNode` through its mangled symbol and private Qt headers. RGB stripes are used only on native Wayland surfaces with an opaque clear color. Native rendering conflicts with Vela's policy, which keeps one scalable renderer at rest and in motion, and Vela does not use private Qt hooks.
 
-We intend to **implement these experiments**, review their results, and carry forward the improvements that stand up to visual and performance validation. The experiments are planned work; this document does not mark them as completed.
+These are findings from reading the code. The numbers are measurements of rasterizer output. They are not legibility judgments.
 
-## How we will judge the results
+## What changed
 
-For every candidate, use the same font files and shaping inputs. Include normal, light, bold, italic and monospaced text; small UI sizes and larger control sizes; punctuation, accented characters and scripts supported by the selected fonts. Compare at 100%, 125%, 150%, 175% and 200% output scaling, with dark, light, opaque, transparent and tinted surfaces.
+All of these are in the compositor's title text. Hinting, grayscale antialiasing, colors, blending, vertical centering and the line box's position are unchanged.
 
-We will check:
+| Change | Before | After | Checked by |
+|---|---|---|---|
+| Glyphs at HarfBuzz's exact horizontal position: whole pixels, plus the outline moved by the 26.6 remainder. Light hinting doesn't move points horizontally, so nothing is lost. | Position error up to 0.500 px, RMS 0.290 px | Up to 0.021 px, RMS 0.006 px, which is the measurement's own precision | `compositor.text` |
+| No ink cut off: the image covers the glyphs' ink, up to an em (plus a pixel) outside the line box. That bound stops a title stacking marks (which an app can send) from asking for a large image. | 89 of 216 glyph renders cut, 1.75% of their ink lost; a title starting with "j" loses the tail | 0 cut | `compositor.text` |
+| The line box keeps its pixels: the image grows left and up by whole logical units (`vela_whole_pixel_units`), never by fractions. | — | At 125, 150, 175 and 225%, a fractional offset would land the line box a pixel off at 2.5–5.6% of window positions. Whole units: none. | `compositor.Geometry.WholePixelUnitsKeepTheLineBoxOnItsPixels`; `functional-decorations` (`TitleLettersStayPut`, `BarImagesAtEveryPosition`) |
+| Bitmaps with fewer than 8 bits per pixel (bitmap fonts, embedded strikes) converted before they are read | A 1-bit glyph: 20 bytes read from a 13-byte bitmap, so wrong pixels and a heap over-read | Exactly the set pixels | `compositor.text` |
+| The title is drawn again on a new width only if it would be cut at another glyph (`vela_text_fits`) | Narrowing to 1 px and widening back, at 6 scales: 15,440 drawings. With room for the title: 21,600 | 1,230, one per distinct image. With room: none | `compositor.text`; `functional-decorations` (`TitleFollowsTheWidth`) |
 
-- Stroke continuity, curves, diagonal edges, spacing and preservation of small counters.
-- No new RGB fringes, incorrect alpha, unexpected halos, or changes to the intended text layout.
-- Visual behavior at the actual display pixel size, not only zoomed screenshots.
-- Rasterization time, allocations and memory usage when titles or output scale change; avoid recurring work on otherwise unchanged frames.
-- Regression coverage for existing 1:1 buffer preservation and Qt Quick scrolling/scaling behavior.
+The test compares each change with the old renderer, which it keeps line for line as `legacy_render`. That copy was checked byte for byte against the old `text.c` on 11,136 renders. The old renderer must show each defect, so the measurement can see it, and the new one must beat it by a wide margin. The test fonts are subsets of Noto Sans 2.015, KDE's default font, kept with their hinting in [`compositor/tests/fonts`](../compositor/tests/fonts) (OFL-1.1). Every machine therefore measures the same font.
 
-We will use controlled captures and side-by-side inspection, including cases where the original renderer looks better. Sharper edges are not automatically better readability. No candidate should become the default solely because its screenshots look more contrasted.
+## What comes next
 
-## Boundaries we will keep
+In order. A glyph cache is a prerequisite for anything that costs more per glyph than FreeType's direct rasterization.
 
-- Preserve Vela's physical-pixel positioning and unfiltered 1:1 composition when buffer geometry matches.
-- Preserve Qt Quick's existing scalable, grayscale SDF policy unless a separately tested change demonstrates a net improvement. Do not switch between native and SDF rendering based on whether an animation is active.
-- Do not enable LCD/RGB subpixel rendering globally: translucent, transformed, multi-monitor and rotated output cases need particular care.
-- Do not modify the rendered pixels or font settings of unrelated applications from the compositor.
-- Keep experiments reversible and separate from production behavior until their benefit, compatibility and cost are demonstrated.
-- Respect Fontreal's authorship and licensing if any implementation code, rather than just ideas, is reused.
+1. **Coverage for linear-light composition.** Try FreeType's stem darkening first. It is designed for linear blending, but it applies only where the autofitter or the CFF driver hints the font, so check which driver hints the user's font. Then try bounded curves derived for Vela's blending, not Fontreal's tables. The criteria have to be stated before measuring: comparable stroke darkness in both palettes, and the title's weight next to the Qt text right under it ([visual coherence](visual-coherence.md): the bar and the app's content are seen together).
+2. **Hinting.** Compare Light with the hinting the user chose in fontconfig/KDE, which `text.c` ignores today. A comparison with Normal must also set HarfBuzz's load flags (`hb_ft_font_set_load_flags`). Otherwise hinted glyph widths no longer match unhinted advances, and the spacing measurement fails for reasons unrelated to quality.
+3. **Thin-stroke recovery**, with 4x sampling as its infrastructure, only if small sizes show lost stems or diagonals.
+4. **Qt Quick**: whether anything learned about coverage applies to the distance-field path without touching its stability in motion. This is a separate investigation, with no private Qt hooks.
+5. **Font fallback**, which is separate work: choosing faces through fontconfig per run of characters, and color glyphs.
 
-## Outcome of this analysis
+## How to judge a change
 
-**We have completed the comparison and identified concrete improvements to implement and test.** The first implementation work will be an isolated compositor-text comparison covering hinting, 4x supersampling and coverage adjustments. Thin-stroke recovery and any Qt Quick work will follow the evidence. We will update this guide when those experiments produce reproducible results; this PR itself changes documentation only.
+- Measure before and after on the same inputs with an objective metric, as `compositor.text` does. Include a negative control showing that the old renderer has the defect.
+- Use the bundled fonts for automated checks, adding a subset when a case needs another style ([how they were made](../compositor/tests/fonts/README.md)). Cover regular, italic and bold; small and large sizes; accented letters and stacked marks; 100, 125, 150, 175, 200 and 225%; both palettes, active and inactive; opaque and Mica backgrounds.
+- Look at the result at the display's real pixel size, next to Qt text, including cases where the old renderer looks better. A sharper or darker screenshot is not, by itself, better readability.
+- Keep the existing guarantees: the 1:1 copy at every position (`functional-decorations`, `sharpness`) and Qt Quick's continuity tests (`text-rendering-rhi`).
+
+## Boundaries
+
+- Physical-pixel positioning and the unfiltered 1:1 copy stay.
+- No LCD/RGB subpixel rendering: the bar is translucent, animated, moves between monitors and rotates.
+- Never switch between native and distance-field rendering on whether something moves.
+- The compositor doesn't change other applications' pixels or font settings.
+- Code taken from Fontreal, rather than ideas, keeps its MIT copyright and permission notice.

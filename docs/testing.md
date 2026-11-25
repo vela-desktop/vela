@@ -312,6 +312,57 @@ compare frame pacing and glyph-cache/GPU memory use to the previous revision.
 Record monitor, scale, driver, Qt version, and measurement method. This manual
 hardware check is distinct from the automated Mesa regression.
 
+### Compositor text
+
+```sh
+ctest --test-dir build -R '^compositor\.text$' --output-on-failure
+build/compositor/vela-text-test compositor/tests/fonts --capture-dir /tmp/vela-title-text
+```
+
+`compositor.text` (CPU) measures the title bar's text (`compositor/src/text.c`)
+against the renderer it replaced, which the test keeps line for line as
+`legacy_render`. It uses the Noto Sans subsets in `compositor/tests/fonts`, so
+it needs no installed fonts. Every check measures both renderers. The old one
+must show the defect, so the measurement can see it, and the new one must beat
+it by a wide margin:
+
+- **Positions**: round letters repeated at 100–225% of KDE's default size. Each
+  copy's ink must move as far as HarfBuzz moved the pen. The old renderer is up
+  to 0.5 px off; the new one must stay under 0.05 px, with an RMS under 0.015 px.
+- **Ink**: single glyphs leaving the line box on every side, regular and
+  italic, keep all their coverage, and inside the old box they keep the old
+  pixels. A title starting with "j" keeps its tail, and marks stacked above a
+  letter are kept.
+- **Margins**: whole steps of the caller's margin, the smallest that hold the
+  ink, with the same ink relative to the line box.
+- **Resizing**: a width inside the range `vela_text_fits` reports makes the
+  identical image, and the first width outside it makes a different one. A
+  resize therefore draws the title the fewest times possible, once per
+  distinct image, instead of on every frame.
+- **Bitmap glyphs**: a BDF font written by the test renders exactly its set
+  pixels. The old renderer read past the end of 1-bit bitmaps, so it isn't run
+  on them; the test checks that precondition instead.
+
+The test prints the before and after figures. `--capture-dir` writes both
+renderers' images as PGM, to inspect at their native size.
+`compositor.Geometry.WholePixelUnitsKeepTheLineBoxOnItsPixels` checks that the
+image's margin keeps the line box on its pixels at every window position;
+moving it by the exact fraction instead would not. In `functional-decorations`
+(GPU), using `vela-pattern --title`:
+
+- `TitleFollowsTheWidth` narrows and widens a real window at 100% and 125% and
+  checks that the bar never shows a stale title.
+- `TitleLettersStayPut` opens the same window titled with and without marks
+  stacked above a letter, and checks that the letters below the marks are the
+  same pixels at 100–225%, so the margin doesn't move the line box.
+- `BarImagesAtEveryPosition` also drags a window whose title has ink outside
+  its line box, and checks that its pixels are the same at every position.
+
+Before merging changes to the title text, look at titles in a real session at
+100%, 125% and 150%, in both palettes, active and inactive, including titles
+that start with "j" or carry accents, and resize a window across a title's
+width ([font rendering](font-rendering-improvements.md)).
+
 ## GPU requirements
 
 `tests/functional/test_output_rotation.py` exercises mixed landscape/portrait
