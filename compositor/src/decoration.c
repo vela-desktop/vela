@@ -402,7 +402,7 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
             // by whole logical units, so the line box keeps its pixels
             // wherever the window is (§3.4).
             int units = vela_whole_pixel_units(scale);
-            int margin = units > 0 ? (int)lround(units * scale) : 1;
+            int margin = units > 0 ? (int)lround(units * (double)scale) : 1;
             struct vela_image image = { 0 };
             struct vela_text_layout *layout = &decoration->title_layout;
             vela_text_render(

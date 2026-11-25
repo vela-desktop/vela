@@ -363,7 +363,8 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-text-test PRIVATE vela-pure PkgConfig::FONTS PkgConfig::WLROOTS)
     target_compile_options(vela-text-test PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-text-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
-    add_test(NAME compositor.text COMMAND vela-text-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/fonts)
+    add_test(NAME compositor.text COMMAND vela-text-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/fonts
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)

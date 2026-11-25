@@ -782,10 +782,12 @@ static int partial_pixels(const struct vela_image *image)
 
 static void bitmap_glyphs_are_exact(void)
 {
-    const char *tmp = getenv("TMPDIR");
+    // A private directory under the test's own working directory (the build
+    // tree), never in a publicly writable one.
+    char cwd[PATH_MAX - 64];
+    CHECK(getcwd(cwd, sizeof(cwd)));
     char directory[PATH_MAX];
-    CHECK(snprintf(directory, sizeof(directory), "%s/vela-text-test-XXXXXX", tmp && *tmp ? tmp : "/tmp")
-        < (int)sizeof(directory));
+    CHECK(snprintf(directory, sizeof(directory), "%s/vela-text-XXXXXX", cwd) < (int)sizeof(directory));
     CHECK(mkdtemp(directory));
     char path[PATH_MAX];
     CHECK(snprintf(path, sizeof(path), "%s/test.bdf", directory) < (int)sizeof(path));

@@ -252,7 +252,7 @@ TEST(Geometry, WholePixelUnitsKeepTheLineBoxOnItsPixels)
     for (float scale : { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 3.0f }) {
         const int units = vela_whole_pixel_units(scale);
         ASSERT_GT(units, 0) << scale;
-        const int step = static_cast<int>(std::lround(units * scale)); // pixels
+        const int step = static_cast<int>(std::lround(units * static_cast<double>(scale))); // pixels
         long whole_moved = 0;
         long fraction_moved = 0;
         long positions = 0;
