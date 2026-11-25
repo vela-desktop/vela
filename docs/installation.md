@@ -122,16 +122,16 @@ Fedora 45 updater and its Beta helper.
 git clone https://github.com/vela-desktop/vela.git vela-fedora-45
 ```
 
-Run only the command for your installed package.
+Then run only the command for your installed package.
 
-**Beta (`vela`)** — Wait until the release provides both a Fedora 45 RPM
-and its `SHA256SUMS-fedora-45` manifest, then run
+**Beta (`vela`)**, which installs `v0.1.2` or a later Beta, the first with
+Fedora 45 RPMs:
 
 ```sh
 sh vela-fedora-45/packaging/vela-update --channel beta
 ```
 
-**Experimental (`vela-git`)**
+**Experimental (`vela-git`):**
 
 ```sh
 sh vela-fedora-45/packaging/vela-update --channel experimental

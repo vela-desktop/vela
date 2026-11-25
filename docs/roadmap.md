@@ -298,7 +298,7 @@ provisional targets.
 | Screenshot annotations, Files batch rename, post-crash notification leading to vela-report | Unscheduled |
 | Further Ubuntu updater and package integration validation | Continuous |
 | More Wayland protocols (fifo, commit-timing, xdg-foreign, xdg-toplevel-icon, xdg-dialog) | Evaluate individually; security-context support already merged via #258 |
-| Live blur behind compositor title bars and caching unchanged blurred backgrounds | Unscheduled |
+| Live blur behind compositor title bars | Unscheduled; a cache for unchanged blurred backgrounds was rejected ([visual coherence §9](visual-coherence.md#9-rejected)) |
 | Official pacman package repository for system-managed updates | Unscheduled |
 | Additional languages and community translation workflow | Continuous |
 

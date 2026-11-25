@@ -1,31 +1,33 @@
 # Additional CI quality checks
 
-The main Build workflow runs on pushes to `main` and release branches, Beta
-tags, pull requests and manual dispatch; it also invokes the Fedora build and
-test workflow to gate public releases. Sanitizer Tests and Static Analysis run
-separately on pull requests and manual dispatch, and Sanitizer Tests also runs
-on pushes to prime its cache.
-Standalone Package Test is now manual-only because Build already performs the
-same Arch package build and smoke test on PRs. Documentation-only PRs skip the
-expensive Build jobs after an inexpensive source-change check.
+Every workflow and when it runs is in the table below. Build also invokes the
+Fedora build and test workflow, which gates public releases. Standalone
+Package Test is manual-only, because Build already performs the same Arch
+package build and smoke test on pull requests. Documentation-only pull
+requests skip the expensive Build jobs after an inexpensive source-change
+check.
 
 ## Checks at a glance
 
+In the table, *branches* means `main` and the `release/**` maintenance branches.
+
 | Workflow | What it checks | When it runs |
 |---|---|---|
-| [Build](../.github/workflows/build.yml) | Arch build and CTest, a `qmllint` report (not blocking), Arch and Fedora packages with clean-install smoke tests, `packaging/tests` | Pull requests, pushes to `main` and `release/**`, `v0.*` tags (Beta publication), manual |
-| [Ubuntu 26.10 build](../.github/workflows/ubuntu.yml) | Full source build and the non-GPU CTest suite; installs the DEB on a clean system | Pull requests, pushes to `main` and `release/**`, manual runs. Build also calls this workflow on `v0.*` tags before publishing a Beta |
+| [Build](../.github/workflows/build.yml) | Arch build and CTest, a `qmllint` report (not blocking), Arch and Fedora packages with clean-install smoke tests, `packaging/tests`; on Beta and rehearsal tags, an upgrade from the previous Beta before anything is published | Pull requests, pushes to branches, `v0.*` tags (Beta publication), `rehearsal/v0.*` tags (a draft release, [rehearsal](release-automation.md)), manual |
+| [Ubuntu 26.10 build](../.github/workflows/ubuntu.yml) | Full source build and the non-GPU CTest suite; installs the DEB on a clean system | Pull requests, pushes to branches, manual; Build calls it on `v0.*` and `rehearsal/v0.*` tags |
 | [Static Analysis](../.github/workflows/static-analysis.yml) | ShellCheck on every tracked shell script, `.clang-format` on the changed C/C++ lines (clang-format 18), Clang Static Analyzer, cppcheck and clang-tidy | Pull requests, manual |
-| [Sanitizer Tests](../.github/workflows/sanitizers.yml) | ASan and UBSan on the CPU-only suites | Pull requests, pushes to `main` and `release/**` (cache), manual |
-| [Fuzzing](../.github/workflows/fuzz.yml) | libFuzzer on the `vela.conf`, `.desktop` and DDC/CI parsers ([testing](testing.md)) | Pull requests that touch the parsers (one minute per target), nightly (ten minutes), manual |
-| [Python checks](../.github/workflows/ruff.yml) | Ruff, and the CPU Python suites on Python 3.13 | Pull requests, pushes to `main` and `release/**` |
-| [Documentation checks](../.github/workflows/documentation.yml) | `scripts/check-docs.py`: links, anchors, and build dependencies that drift from the docs | Pull requests that touch the documentation |
-| [CodeQL](../.github/workflows/codeql.yml) | C/C++, Python and GitHub Actions | Pull requests and pushes to `main` and `release/**`, weekly |
-| [OSV dependency scan](../.github/workflows/osv-scanner.yml) | Known vulnerable dependencies | Pull requests and pushes to `main` and `release/**`, weekly |
-| [GitHub Actions security](../.github/workflows/zizmor.yml) | zizmor on the workflows | Changes under `.github/`, weekly |
-| [OpenSSF Scorecard](../.github/workflows/scorecard.yml) | Supply-chain practices | Pushes to `main`, weekly |
-| [Code coverage](../.github/workflows/coverage.yml) | First-party coverage uploaded to Codecov ([below](#first-party-cpugpu-code-coverage)) | Pull requests and pushes to `main` and `release/**`, manual |
+| [Sanitizer Tests](../.github/workflows/sanitizers.yml) | ASan and UBSan on the CPU-only suites | Pull requests, pushes to branches (cache), manual |
+| [Fuzzing](../.github/workflows/fuzz.yml) | libFuzzer on the `vela.conf`, `.desktop` and DDC/CI parsers ([testing](testing.md#fuzzing)) | Pull requests that touch the parsers (one minute per target), nightly (ten minutes), manual |
+| [Python checks](../.github/workflows/ruff.yml) | Ruff, and the CPU Python suites on Python 3.13 | Pull requests, pushes to branches, manual |
+| [Documentation checks](../.github/workflows/documentation.yml) | `scripts/check-docs.py`: links, anchors, and build dependencies that drift from the docs | Pull requests that touch the documentation, manual |
+| [CodeQL](../.github/workflows/codeql.yml) | C/C++, Python and GitHub Actions | Pull requests, pushes to branches, weekly, manual |
+| [OSV dependency scan](../.github/workflows/osv-scanner.yml) | Known vulnerable dependencies | Pull requests, pushes to branches, weekly, manual |
+| [GitHub Actions security](../.github/workflows/zizmor.yml) | zizmor on the workflows | Changes under `.github/`, weekly, manual |
+| [OpenSSF Scorecard](../.github/workflows/scorecard.yml) | Supply-chain practices | Pushes to `main`, weekly, manual |
+| [Code coverage](../.github/workflows/coverage.yml) | First-party coverage uploaded to Codecov ([below](#first-party-cpugpu-code-coverage)) | Pull requests, pushes to branches, manual |
 | GPU CI ([AMD](../.github/workflows/gpu-amd.yml), [NVIDIA](../.github/workflows/gpu-nvidia.yml), [Intel](../.github/workflows/gpu-intel.yml)) | Functional and sharpness suites on real GPUs ([policy](#gpu-ci-policy)) | Manual |
+| [NVIDIA CI image](../.github/workflows/nvidia-ci-image.yml) | Rebuilds and checks the digest-pinned image the NVIDIA runs use ([below](#manual-real-gpu-ci-rented-nvidia-on-vastai)) | Weekly, image changes pushed to branches (with a preflight on pull requests), manual |
+| [Beta update check](../.github/workflows/beta-update-check.yml) | Once the Beta is public, the previous Beta's updater finds it and installs it in clean Arch, Fedora and Ubuntu containers, as users do | After Build publishes a Beta, manual |
 
 Codecov, SonarQube Cloud, the labeler and DCO are described in
 [code quality integrations](code-quality-integrations.md).

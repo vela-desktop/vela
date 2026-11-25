@@ -520,7 +520,8 @@ compositor/src/     compositor core, in C (see c-core.md)
   a11y.c            night light, color filters, magnifier and sticky keys
   input.c           seat, pointer, touchpad, gestures, pointer constraints
   keyboard.c        keyboards, layouts and key handling
-  super_numbers.c   Super+number: which taskbar app or desktop, kept keys
+  keymap_options.c  the XKB options each keyboard gets (docs/keyboard.md)
+  lock_keys.c       Caps Lock and Num Lock shared by every keyboard
   shell.c           the supervised Qt shell and messages to it
   lock.c            session lock and idle handling
   lock_state.c      the lock state shared with the supervisor across crashes
@@ -528,8 +529,9 @@ compositor/src/     compositor core, in C (see c-core.md)
                     (docs/security-model.md)
   capture_watch.c   who is capturing the screen (docs/screen-sharing.md)
   x11_space.c, x11_root.c  X11 apps at the outputs' native pixels
-  brightness.c, bluetooth.c, updates.c  the supervised vela-brightness,
-                    vela-bluetooth and vela-update-daemon children
+  polkit.c, brightness.c, bluetooth.c, updates.c  the supervised
+                    vela-polkit-agent, vela-brightness, vela-bluetooth and
+                    vela-update-daemon children
 
 compositor/tests/   compositor unit tests
 shell/              Qt Quick shell: taskbar, launcher, panels and desktop
@@ -540,7 +542,9 @@ polkit/             vela-polkit-agent and vela-polkit-prompt (docs/polkit-agent.
 common/             Vela.Controls: theme, controls and blur shared by the Qt Quick apps;
                     audio/: vela-audio, the shell's and Settings' audio backend (docs/audio.md);
                     alloc/: allocation helpers (docs/memory-allocation-policy.md);
-                    color/: wallpaper colors and tonal palettes
+                    color/: wallpaper colors and tonal palettes;
+                    shortcuts/: Vela's shortcut table, custom shortcuts and
+                    Super+number, shared by the compositor and Settings
 themes/             built-in theme files and their surface styles (docs/theme-system.md)
 bluetooth/          vela-bluetooth, its pairing agent and client library (docs/bluetooth.md)
 brightness/         vela-brightness: DDC/CI and backlights (docs/brightness.md)

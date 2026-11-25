@@ -114,7 +114,8 @@ uninstrumented code (wlroots or Mesa).
   runs out is in the [host allocation policy](memory-allocation-policy.md).
   No hidden allocation in hot paths (the frame loop reuses its arrays).
 - No macros where a function works (the allocation helpers are macros only
-  to get the type's size right); no callbacks where a direct call works.
+  where a function can't do it: the type's size, and the file and line that
+  a failed allocation reports); no callbacks where a direct call works.
   Lists are `wl_list`, arrays are plain arrays with a count and a capacity.
 - Comments, logs and messages are in English.
 - The GoogleTest suites remain the specification: they include the C headers
