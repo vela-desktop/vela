@@ -387,8 +387,9 @@ under the error message when there is one.
 When the shared Lock state changes because of a key press, the compositor
 sends the shell `caps-lock on` or `caps-lock off`. The shell shows a
 small translucent pill, at the bottom in the middle like the volume
-display (`shell/qml/CapsLockOsd.qml`), on the primary output, with
-Breeze's `keyboard-caps-locked` or `keyboard-caps-disabled` icon and
+display (`shell/qml/CapsLockOsd.qml`), on the display in use (the
+focused window's, else the pointer's:
+[taskbar §11.3](taskbar.md#113-what-opens-from-it)), with Breeze's `keyboard-caps-locked` or `keyboard-caps-disabled` icon and
 *Caps Lock on* or *Caps Lock off*. The two take each other's place: the
 one that appears closes the other. It ignores the pointer, is an alert for
 screen readers, and fades after 1.5 seconds (scaled with Vela's animation
