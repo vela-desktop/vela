@@ -9,7 +9,8 @@ the terminal that Win+Enter opens. Windows is one reference among KDE
 Plasma, GNOME, macOS and COSMIC, never the rule.
 
 > **Status:** Accepted: designed with the maintainer on 21 November 2026;
-> KP1–KP11 implemented in PR #311. **Checked:** 21 November 2026, `bc86a1e`.
+> KP1–KP11 implemented, merged in PR #311 on 22 November 2026.
+> **Checked:** 21 November 2026, `bc86a1e`.
 >
 > **Remaining:** the real-session checks of [§15](#15-tests).
 

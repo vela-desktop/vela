@@ -10,6 +10,18 @@ under "Unreleased" in the pull request that makes a user-visible change.
 
 ## Unreleased
 
+- Brazilian Portuguese: the shell, Files, Settings, the lock screen and the
+  authorization prompt, chosen in Settings > Time and language or from the
+  system's language. Thanks to @arthurlozano.
+
+- The shell renders with Vulkan, like the compositor, instead of OpenGL.
+  Apps started from the shell keep the graphics settings they inherit.
+
+- The shell uses less memory: clipboard images keep a preview sized for the
+  screen, large notification images are scaled down, and tray icons and
+  hidden panels hold less. Clipboard history keeps its scroll position and
+  selection when the history changes.
+
 - Large compositor state replies now reach slower IPC clients in full. The
   lock screen can finish a clean unlock and works from build paths containing
   an apostrophe. Dark blurred panels use finer dithering.
@@ -75,9 +87,9 @@ under "Unreleased" in the pull request that makes a user-visible change.
   the built-in panel. Reopening the lid restores its display settings.
   System suspend on lid close follows the system's logind policy.
 
-- The Ubuntu package recommends the GTK and wlr portal backends, so file
-  choosers in sandboxed apps, screenshots and screen sharing work after a
-  normal installation.
+- The Fedora and Ubuntu packages require the wlr portal backend, and the
+  Ubuntu package recommends the GTK one, so file choosers in sandboxed apps,
+  screenshots and screen sharing work after a normal installation.
 
 - Display layouts keep monitors from overlapping. Unplugging a monitor closes
   gaps that would otherwise trap the pointer on one screen.

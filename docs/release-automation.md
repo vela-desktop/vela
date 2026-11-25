@@ -5,9 +5,13 @@ few commands instead of a checklist. The release rules themselves do not
 change: numbered `v0.<minor>.<patch>` tags, the release branches and the
 validation in [release channels](release-channels.md).
 
-> **Status:** R1–R4 in progress, in stacked pull requests (§8).
+> **Status:** R1–R4 implemented, merged into `main` together with
+> [#306](https://github.com/vela-desktop/vela/pull/306) on 21 November 2026
+> (§8).
 >
-> **Remaining:** review and merge; the first real release made this way.
+> **Remaining:** the first real release made this way, which is also the
+> first run of `release.py finish` creating `release/0.2` and of the
+> `beta-update-check.yml` dispatch from `main`.
 
 ## 1. The problem
 

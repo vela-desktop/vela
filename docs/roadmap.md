@@ -76,6 +76,20 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   lid with an external display connected turns the built-in panel off and
   reopening it restores the panel's settings; suspending on lid close
   follows logind ([#302](https://github.com/vela-desktop/vela/pull/302)).
+- **Keyboard:** a Keyboard section in Settings with every layout the
+  system has, named in Vela's language, drawn and tried by typing before it
+  is added; what Caps Lock does, a Compose key and swapped modifiers; Num
+  Lock at startup, as asked in
+  [community feedback #214](https://github.com/vela-desktop/vela/issues/214);
+  Caps Lock shown on screen and on the lock screen; custom shortcuts; exact
+  shortcut modifiers that follow the layout in use; and a default terminal
+  chosen in Settings, which Win+Enter and updates share
+  ([#311](https://github.com/vela-desktop/vela/pull/311),
+  [design](keyboard.md)).
+- **Languages:** Brazilian Portuguese in the shell, Files, Settings, the lock
+  screen and the authorization prompt, contributed by
+  [@arthurlozano](https://github.com/arthurlozano)
+  ([#317](https://github.com/vela-desktop/vela/pull/317)).
 - **Experimental virtual machines:** [QEMU/KVM with virtio-gpu and Vulkan
   Venus](virtual-machines.md) landed in
   [#251](https://github.com/vela-desktop/vela/pull/251) and supersedes the
@@ -90,13 +104,38 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   session checks CPU support before starting the compositor. Local builds
   can select a different CPU target at configure time
   ([#245](https://github.com/vela-desktop/vela/pull/245)).
+- **Shell on Vulkan:** `vela-shell` renders Qt Quick with Vulkan, as the
+  compositor does, instead of the OpenGL it got from Qt's default; apps the
+  shell launches keep the graphics settings they inherit
+  ([#286](https://github.com/vela-desktop/vela/pull/286)). Files, Settings
+  and the authorization prompt stay on OpenGL.
+- **Shell memory:** clipboard images, notification and tray icons and warm
+  panels keep less memory, and glibc trims once after startup. Idle PSS on
+  the headless test desktop went from 101.9 to 97.3 MiB, and clipboard
+  history with 25 pinned screenshots from 248.7 to 116.7 MiB, with the same
+  frame times ([#285](https://github.com/vela-desktop/vela/pull/285),
+  [measurements](shell-memory.md)).
 - **Reliability and CI:** stricter handling of notification images and
   markup, tighter rules for privileged system prompts, and parser fuzz
   tests in CI
   ([#288](https://github.com/vela-desktop/vela/pull/288),
   [#289](https://github.com/vela-desktop/vela/pull/289),
   [#290](https://github.com/vela-desktop/vela/pull/290),
-  [#294](https://github.com/vela-desktop/vela/pull/294)).
+  [#294](https://github.com/vela-desktop/vela/pull/294)). A compositor audit
+  fixed child supervision, ordered IPC replies to slow clients, locker
+  cleanup and blur dithering
+  ([#321](https://github.com/vela-desktop/vela/pull/321)).
+- **Packaging:** the Fedora and Ubuntu packages require the wlr portal
+  backend that screenshots and screen sharing use
+  ([#313](https://github.com/vela-desktop/vela/pull/313)); the Ubuntu
+  package recommends the GTK one
+  ([#310](https://github.com/vela-desktop/vela/pull/310)).
+- **Release automation:** rehearsal tags that run the whole release
+  pipeline into a draft, upgrade tests from the previous Beta on Arch,
+  Fedora and Ubuntu before publication, release notes from the CHANGELOG
+  and `scripts/release.py` for each step up to the signed tag
+  ([#306](https://github.com/vela-desktop/vela/pull/306),
+  [design](release-automation.md)).
 - **NVIDIA GPU CI**, which has rented an NVIDIA RTX instance on Vast.ai for
   each run since 0.1.1 ([#199](https://github.com/vela-desktop/vela/pull/199)),
   now runs on a weekly rebuilt, digest-pinned image with a verified runner
@@ -104,24 +143,6 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   ([#300](https://github.com/vela-desktop/vela/pull/300)).
 - **Experimental Intel ANV CI** runs on a dedicated self-hosted Intel runner
   ([#226](https://github.com/vela-desktop/vela/pull/226)).
-
-**0.2 targets still in draft pull requests:**
-
-- **Vulkan for the shell:** `vela-shell` renders Qt Quick with Vulkan, as
-  the compositor does, instead of the OpenGL it got from Qt's default; an
-  explicit `QSG_RHI_BACKEND` still wins, and apps the shell launches don't
-  inherit it ([#286](https://github.com/vela-desktop/vela/pull/286)). Before
-  merging: `functional-shell` and the AMD, NVIDIA and Intel GPU suites, and the
-  shell's memory measured against the idle figure in
-  [performance](performance.md). Files, Settings and the authorization
-  prompt stay on OpenGL.
-- **Shell memory:** five places where `vela-shell` keeps memory the screen
-  doesn't need: clipboard images kept both decoded and as PNG, full-size
-  notification images, the calendar's 42 day controls, glibc arenas after
-  startup, and the desktop icons' permanent label shadows
-  ([#285](https://github.com/vela-desktop/vela/pull/285)). Each change must
-  show a `Pss`/`Private_Dirty` saving with no frame-time regression; the
-  document lands with the first of them.
 
 **Candidates to evaluate before 0.2, not automatically release blockers:**
 
@@ -131,12 +152,6 @@ Distinguish **merged on main**, **candidate for 0.2**, and
   [always-on-top #108](https://github.com/vela-desktop/vela/pull/108).
   Both are older draft PRs requiring compatibility work, review and tests;
   do not merge them solely to satisfy the roadmap.
-  [community feedback #214](https://github.com/vela-desktop/vela/issues/214).
-- **Keyboard personalization** ([design](keyboard.md)): a Keyboard section
-  in Settings, a layout picker with every layout, translated names and a
-  preview to type with before adding, Caps Lock/Compose/modifier
-  choices, Num Lock at startup (asked in #214), Caps Lock warnings and
-  display, custom shortcuts and a detected default terminal.
 - Finish the desktop configuration fix
   [#235](https://github.com/vela-desktop/vela/pull/235) /
   [#236](https://github.com/vela-desktop/vela/issues/236).
@@ -259,15 +274,12 @@ own design, cost/maintenance analysis and definition of done.
 |---|---|---|---|---|
 | **Snipping Tool extensions**: OCR, delay, color picker and recording | in PR | [#118](https://github.com/vela-desktop/vela/pull/118) | draft; rebase, review and test | 0.2 candidate |
 | **Always-on-top** | in PR | [#108](https://github.com/vela-desktop/vela/pull/108) | draft; review and test | 0.2 candidate |
-| **Vulkan for the shell** | in PR | [#286](https://github.com/vela-desktop/vela/pull/286) | draft; shell and GPU suites, memory | 0.2 target |
-| **Shell memory** | [#285](https://github.com/vela-desktop/vela/pull/285) | — | design open, code pending | 0.2 target |
 | **Desktop preferences** | [#236](https://github.com/vela-desktop/vela/issues/236) | [#235](https://github.com/vela-desktop/vela/pull/235) | open fix PR | 0.2 stabilization candidate |
 | **Text input and IME** | reconcile with OSK | — | not implemented | 0.3 proposed |
 | **Touch, pen and tablet mode** | [#94](https://github.com/vela-desktop/vela/pull/94) | #94 (design) | design open, code pending | 0.3 proposed |
 | **On-screen keyboard** | [#95](https://github.com/vela-desktop/vela/pull/95) | #95 (design) | design open, code pending | 0.3 proposed |
 | **Experimental HDR** (renderer S7) | [renderer §11](renderer.md#11-stages) | — | not implemented | 0.3 candidate |
 | **Benchmark suite** | in PR | [#109](https://github.com/vela-desktop/vela/pull/109) | work/review ongoing | unassigned |
-| **Release automation**: rehearsal tags, upgrade tests in CI, `release.py` | [release-automation.md](release-automation.md) | [#306](https://github.com/vela-desktop/vela/pull/306) (R1), [#307](https://github.com/vela-desktop/vela/pull/307) (R2), [#308](https://github.com/vela-desktop/vela/pull/308) (R3), [#309](https://github.com/vela-desktop/vela/pull/309) (R4) | R1–R4 in review | 0.2 (release tooling) |
 
 ## Next — Not yet assigned to a release
 
@@ -322,7 +334,8 @@ sections above record when work was integrated or published.
 - **Compositor and renderer**: a [C core](c-core.md), Vela's own scene and
   [Vulkan renderer](renderer.md), pixel-exact fractional scaling, late
   latching, live acrylic blur, rounded corners and shadows, Vela's title bar,
-  and a clean exit on [Vulkan device loss](vulkan-device-loss.md).
+  a clean exit on [Vulkan device loss](vulkan-device-loss.md), and a shell
+  that renders with Vulkan too.
 - **Displays and gaming**: native display configuration with compositor-owned
   rollback, multi-monitor hotplug with per-output scale and layouts that
   never overlap, laptop lids with external displays, direct scanout, VRR,
@@ -346,6 +359,9 @@ sections above record when work was integrated or published.
 - **[Visual coherence](visual-coherence.md)**: the same pixels, clock and
   motion across compositor, shell and apps, and shared controls for all of
   Vela's interfaces.
+- **[Keyboard](keyboard.md)**: every system layout with a drawn preview to
+  type with, Caps Lock, Compose and modifier options, Num Lock at startup,
+  Caps Lock on screen, custom shortcuts and a default terminal.
 - **Daily comfort**: clipboard history, snipping tool, touchpad gestures,
   mouse and touchpad settings, [battery alerts](battery-notifications.md) for
   the PC and peripherals, and a [screen-sharing indicator](screen-sharing.md)
@@ -361,11 +377,12 @@ sections above record when work was integrated or published.
 - **Reliability and security**: compositor and shell crash recovery,
   [`vela-report`](reporting.md) for guided bug reports, `vela-update`,
   [signed packages with verified provenance](package-provenance.md) for Arch
-  and Fedora and for every Beta release, and CI with sanitizers, static analysis and real AMD and NVIDIA
+  and Fedora and for every Beta release, [rehearsed releases](release-automation.md), and CI with sanitizers, static analysis and real AMD and NVIDIA
   GPUs (self-hosted RX 9070 XT and per-run Vast.ai NVIDIA RTX rentals) for GPU-affecting changes and releases.
 - **Virtual machines** (experimental): [QEMU/KVM guests](virtual-machines.md)
   with virtio-gpu and Vulkan Venus.
-- **Languages**: English and Italian, switched live from Settings.
+- **Languages**: English, Italian and Brazilian Portuguese, switched live
+  from Settings.
 
 ## Keeping this page current
 

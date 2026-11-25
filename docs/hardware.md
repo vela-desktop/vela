@@ -65,7 +65,7 @@ These are **coverage descriptions**, not a ranking of hardware or a statement th
 
 ## Integration services
 
-On Arch, the Beta ([`vela`](../packaging/arch/PKGBUILD.beta)) and Experimental ([`vela-git`](../packaging/arch/PKGBUILD)) packages install Vela Core and the standard Vela Desktop integration together. The [Fedora package](../packaging/fedora/vela.spec) and the Ubuntu Experimental DEB built from current `main` recommend the GTK and wlr portal backends, which DNF and APT install by default. On Ubuntu Beta `v0.1.2`, install the portals as described in the [installation guide](installation.md#ubuntu-2610). Additional hardware and services remain optional.
+On Arch, the Beta ([`vela`](../packaging/arch/PKGBUILD.beta)) and Experimental ([`vela-git`](../packaging/arch/PKGBUILD)) packages install Vela Core and the standard Vela Desktop integration together. The [Fedora package](../packaging/fedora/vela.spec) and the Ubuntu Experimental DEB built from current `main` require the wlr portal backend and recommend the GTK one, which DNF and APT install by default. On Ubuntu Beta `v0.1.2`, install the portals as described in the [installation guide](installation.md#ubuntu-2610). Additional hardware and services remain optional.
 
 | Feature | Typically needed |
 |---|---|

@@ -159,8 +159,9 @@ provenance, and installs it with APT.
 
 On Beta `v0.1.2`, install the following packages for file choosers in
 sandboxed apps, screenshots and screen sharing. The Experimental DEB built
-from current `main` recommends all three, so on that channel this step is
-only needed if APT skips recommendations.
+from current `main` requires `xdg-desktop-portal-wlr` and recommends the
+other two, so on that channel this step is only needed if APT skips
+recommendations.
 
 ```sh
 sudo apt install xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-wlr

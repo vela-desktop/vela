@@ -563,15 +563,15 @@ docs/               design and developer documentation
 
 ## Translations
 
-The interface is in English and Italian. Strings in the code are written in English and wrapped for translation: `qsTr()` in QML, `QCoreApplication::translate()` (or `QT_TRANSLATE_NOOP` for tables) in C++. Italian lives in one Qt Linguist file per app:
+The interface is in English, Italian and Brazilian Portuguese. Strings in the code are written in English and wrapped for translation: `qsTr()` in QML, `QCoreApplication::translate()` (or `QT_TRANSLATE_NOOP` for tables) in C++. Each language lives in one Qt Linguist file per app; Vela's language code `pt` means Brazilian Portuguese (`pt_BR` for the system locale and for keyboard layout names):
 
-| App | Translation |
-|---|---|
-| Shell | `shell/i18n/vela-shell_it.ts` |
-| Files | `explorer/i18n/vela-files_it.ts` |
-| Settings | `settings/i18n/vela-settings_it.ts` |
-| Lock screen | `lock/i18n/vela-lock_it.ts` |
-| User Account Control (polkit) | `polkit/i18n/vela-polkit-prompt_it.ts` |
+| App | Italian | Brazilian Portuguese |
+|---|---|---|
+| Shell | `shell/i18n/vela-shell_it.ts` | `shell/i18n/vela-shell_pt.ts` |
+| Files | `explorer/i18n/vela-files_it.ts` | `explorer/i18n/vela-files_pt.ts` |
+| Settings | `settings/i18n/vela-settings_it.ts` | `settings/i18n/vela-settings_pt.ts` |
+| Lock screen | `lock/i18n/vela-lock_it.ts` | `lock/i18n/vela-lock_pt.ts` |
+| User Account Control (polkit) | `polkit/i18n/vela-polkit-prompt_it.ts` | `polkit/i18n/vela-polkit-prompt_pt.ts` |
 
 The build compiles them and embeds them in each executable. After adding or changing text, refresh the files and translate the new entries (they are marked unfinished), for example with Qt Linguist:
 

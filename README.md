@@ -29,7 +29,8 @@ renderer, a Qt Quick shell, a file manager and a settings app, designed together
 > (and CachyOS, EndeavourOS), Fedora 44 and 45, and Ubuntu 26.10. It is tested on AMD
 > and NVIDIA GPUs, and on Intel in experimental CI; read the
 > [hardware coverage and known limitations](docs/hardware.md) before installing. The
-> interface is available in English and Italian.
+> interface is available in English and Italian, and on the Experimental channel in
+> Brazilian Portuguese too.
 
 ## Why Vela
 
