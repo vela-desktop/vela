@@ -99,6 +99,10 @@ class Execution(unittest.TestCase):
         root = self.layout.base / 'campaigns' / data['run_id']
         attempt = read_json(root / 'blocks/motion-vela-r1/attempt-0001.json')
         self.assertEqual(attempt['continuation']['restoration'], 'verified')
+        stages = {span['stage']: span for span in attempt['runner_timing']['stages']}
+        self.assertEqual(stages['supervised-pilot']['exit_status'], 1)
+        self.assertEqual(stages['acceptance-audit']['status'], 'failed')
+        self.assertEqual(stages['restoration-check']['status'], 'finished')
         self.assertTrue(any(row['event'] == 'continue-after-failure' for row in read_events(root / 'events.jsonl')))
         output = export_campaign(self.layout.path('exports'), data, self.layout)
         self.assertEqual(read_export(output), data)

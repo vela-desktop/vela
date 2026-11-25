@@ -69,7 +69,7 @@ class RunAll(unittest.TestCase):
     def invoke(self, *args):
         self.output = io.StringIO()
         with contextlib.redirect_stdout(self.output), contextlib.redirect_stderr(io.StringIO()):
-            return cli.main(['run-all', *args])
+            return cli.main(['run-all', '--output', self.folder.name, *args])
 
     def test_default_preview_schedules_all_48_blocks_without_mutations(self):
         self.assertEqual(self.invoke('--dry-run'), 0)
@@ -92,6 +92,23 @@ class RunAll(unittest.TestCase):
         self.assertTrue(all('--yes' in cmd and '--fast' not in cmd for cmd in self.commands[1:]))
         self.assertEqual([call.args[-1]['case'] for call in self.preflight.call_args_list], ['measure','observe'])
         self.assertEqual(self.export.call_count, 2)
+
+    def test_timing_records_nested_stages_and_verified_campaign_ids(self):
+        self.assertEqual(self.invoke('--dry-run'), 0)
+        output = Path(self.folder.name)
+        self.assertEqual(list(output.glob('run-all-timing-*.json')), [])
+        self.assertEqual(self.invoke('--yes'), 0)
+        receipt, = output.glob('run-all-timing-*.json')
+        timing = json.loads(receipt.read_text())
+        self.assertEqual((timing['clock'], timing['exit_status']), ('CLOCK_MONOTONIC', 0))
+        self.assertEqual(timing['boot_id'], Path('/proc/sys/kernel/random/boot_id').read_text().strip())
+        self.assertTrue(0 <= timing['unattributed_ns'] <= timing['elapsed_ns'])
+        spans = [stage for stage in timing['stages'] if stage['stage'] == 'campaign']
+        self.assertEqual([span['campaign_id'] for span in spans], ['a' * 32, 'b' * 32])
+        for stage in timing['stages']:
+            self.assertLessEqual(timing['begin_ns'], stage['begin_ns'])
+            self.assertLessEqual(stage['begin_ns'], stage['end_ns'])
+            self.assertLessEqual(stage['end_ns'], timing['end_ns'])
 
     def test_eof_never_updates_recovers_or_starts_campaigns(self):
         with patch('builtins.input', side_effect=EOFError):

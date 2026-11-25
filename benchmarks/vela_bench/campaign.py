@@ -3,6 +3,7 @@
 
 """Common durable block executor for qualification, calibration and P1 exercises."""
 
+from contextlib import nullcontext
 import fcntl
 import json
 import os
@@ -20,6 +21,7 @@ from .host import Layout, load_setup, require_workers_stopped, trusted
 from .model import fingerprint, load_campaign, make_plan, MEASUREMENTS, vela_environment
 from .qualification import audit_pilot, qualification_summary
 from .calibration import require_uinput
+from .timing import Timeline
 
 
 def identity(value):
@@ -511,7 +513,9 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             block_dir = directory / "blocks" / block["id"]
             block_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
             attempts = max((int(path.stem.split("-")[-1]) for path in block_dir.glob("attempt-*.json")), default=0) + 1
-            attempt = {"attempt": attempts, "block": block, "pilot_run_id": uuid.uuid4().hex, "status": "running"}
+            timing = Timeline()
+            attempt = {"attempt": attempts, "block": block, "pilot_run_id": uuid.uuid4().hex, "status": "running",
+                       "runner_timing": timing.result(finished=False)}
             attempt_path = block_dir / f"attempt-{attempts:04d}.json"
             atomic_json(attempt_path, attempt)
             phase = block.get("phase", "qualify" if block["fault"] else "calibrate")
@@ -523,42 +527,48 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
             print(f"[{block['id']}] fresh profile/session/calibration; attempt {attempts}", flush=True)
             source = layout.base / "pilots" / attempt["pilot_run_id"]
             try:
-                refreshed=context(host, layout, selected)
-                if 'corpus_inventory' in plan['context']:
-                    from .corpus import describe_inventory
-                    refreshed['corpus_inventory']=describe_inventory(host,layout,load_setup(host,layout))
-                if refreshed != plan["context"]:
-                    raise BenchError("Installed versions or environment changed during campaign")
+                with timing.stage("context-refresh"):
+                    refreshed=context(host, layout, selected)
+                    if 'corpus_inventory' in plan['context']:
+                        from .corpus import describe_inventory
+                        refreshed['corpus_inventory']=describe_inventory(host,layout,load_setup(host,layout))
+                    if refreshed != plan["context"]:
+                        raise BenchError("Installed versions or environment changed during campaign")
                 options = {"campaign_block_id": block["id"]} if exercise or measured or observed else {}
                 if vela_sync_test and block['target'] == 'vela':
                     options['vela_sync_test'] = True
-                outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
-                      presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
-                      calibrate=not block["fault"] and not (measured and phase=="overhead"),
-                      countdown=False, run_id=attempt["pilot_run_id"], fault=block["fault"], campaign_run_id=plan["run_id"], **options)
-                if outcome == 130:
-                    raise KeyboardInterrupt
+                with timing.stage("supervised-pilot") as pilot_timing:
+                    outcome = begin(host, [block["target"]], seconds=5, assume_yes=True, layout=layout,
+                          presentation_probe=not block["fault"] and not (measured and phase=="overhead"), controlled=True,
+                          calibrate=not block["fault"] and not (measured and phase=="overhead"),
+                          countdown=False, run_id=attempt["pilot_run_id"], fault=block["fault"], campaign_run_id=plan["run_id"], **options)
+                    pilot_timing["exit_status"] = outcome
+                    if outcome == 130:
+                        raise KeyboardInterrupt
                 source = layout.base / "pilots" / attempt["pilot_run_id"]
-                audit = audit_block(source, block, plan, layout)
-                attempt["audit"] = audit
-                if audit["status"] != "passed":
-                    raise BenchError(audit.get('error') or "Selected block did not pass its acceptance checks")
-                state = read_json(source / "state.json")
-                if condition_identity(state["conditions_snapshot"]) != resolved_conditions(directory, plan):
-                    raise BenchError("Executed hardware condition differs from the immutable campaign condition")
-                evidence = {}
-                for path in source.iterdir():
-                    if path.is_file() and not path.is_symlink():
-                        trusted(path)
-                        with path.open("rb") as stream:
-                            os.fsync(stream.fileno())
-                        evidence[path.name] = file_hash(path)
-                source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
-                try:
-                    os.fsync(source_fd)
-                finally:
-                    os.close(source_fd)
+                with timing.stage("acceptance-audit"):
+                    audit = audit_block(source, block, plan, layout)
+                    attempt["audit"] = audit
+                    if audit["status"] != "passed":
+                        raise BenchError(audit.get('error') or "Selected block did not pass its acceptance checks")
+                    state = read_json(source / "state.json")
+                    if condition_identity(state["conditions_snapshot"]) != resolved_conditions(directory, plan):
+                        raise BenchError("Executed hardware condition differs from the immutable campaign condition")
+                with timing.stage("evidence-checkpoint"):
+                    evidence = {}
+                    for path in source.iterdir():
+                        if path.is_file() and not path.is_symlink():
+                            trusted(path)
+                            with path.open("rb") as stream:
+                                os.fsync(stream.fileno())
+                            evidence[path.name] = file_hash(path)
+                    source_fd = os.open(source, os.O_RDONLY | os.O_DIRECTORY)
+                    try:
+                        os.fsync(source_fd)
+                    finally:
+                        os.close(source_fd)
                 attempt.update(status="complete", evidence=evidence, profile=state["conditions_snapshot"]["profile"])
+                attempt["runner_timing"] = timing.result()
                 atomic_json(block_dir / "complete.json", attempt)
                 atomic_json(attempt_path, attempt)
                 append_event(directory / "events.jsonl", {"event": "block-complete", "block_id": block["id"], "attempt": attempts})
@@ -604,7 +614,8 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 continuation = None
                 if not cancelled:
                     try:
-                        continuation = verify_failed_block_restoration(host, layout, source, plan)
+                        with timing.stage("restoration-check"):
+                            continuation = verify_failed_block_restoration(host, layout, source, plan)
                     except KeyboardInterrupt:
                         cancelled = True
                     except (BenchError, OSError, ValueError, KeyError, TypeError) as recovery_error:
@@ -612,10 +623,11 @@ def execute(host, targets=None, *, case="calibrate", resume=None, assume_yes=Fal
                 attempt.update(status="interrupted" if cancelled else "failed", error="Operator interrupted the campaign" if cancelled else str(exc))
                 if continuation:
                     attempt['continuation'] = continuation
+                attempt['runner_timing'] = timing.result()
                 atomic_json(attempt_path, attempt)
                 manifest.update(stage="running" if continuation else "interrupted", error=attempt["error"])
                 atomic_json(directory / "manifest.json", manifest)
-                append_event(directory / "events.jsonl", {"event": "block-interrupted" if cancelled else "block-failed", "block_id": block["id"], "error": attempt["error"]})
+                append_event(directory / "events.jsonl", {"event": "block-interrupted" if cancelled else "block-failed", "block_id": block["id"], "attempt": attempts, "error": attempt["error"]})
                 print(f"Block {attempt['status']}: {attempt['error']}. Resume ID: {plan['run_id']}", flush=True)
                 if continuation:
                     append_event(directory / 'events.jsonl', {'event': 'continue-after-failure', 'block_id': block['id'], **continuation})
@@ -748,7 +760,7 @@ pre{white-space:pre-wrap;overflow-wrap:anywhere}img{max-width:100%}
     (directory / "report.html").write_text(document, encoding="utf-8")
 
 
-def export_campaign(parent, data, layout=Layout()):
+def export_campaign(parent, data, layout=Layout(), *, timing=None):
     parent = Path(parent)
     parent.mkdir(parents=True, exist_ok=True)  # NOSONAR S8707: operator-selected local export parent, no agent/server.
     directory = parent / ("campaign-" + identity(data["run_id"]))
@@ -801,8 +813,9 @@ def export_campaign(parent, data, layout=Layout()):
     kind = "execution-campaign-export" if data["kind"] == "execution-campaign" else "calibration-campaign-export"
     atomic_json(directory / "manifest.json", {"schema": 1, "kind": kind, "run_id": data["run_id"], "files": hashes})
     (directory / "manifest.json").chmod(0o644)
-    render_export(directory, data)
-    (directory / "report.html").chmod(0o644)
+    with timing.stage("render-report") if timing else nullcontext():
+        render_export(directory, data)
+        (directory / "report.html").chmod(0o644)
     return directory
 
 
