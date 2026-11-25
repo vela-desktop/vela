@@ -15,13 +15,15 @@
 // finds it and compares everything bit for bit. Alternating rows and columns
 // and close values are the worst case for any filter.
 //
-// Usage: vela-pattern [--scale1] [--app-id ID] [--decorated] [--glass] [--popup X,Y]
+// Usage: vela-pattern [--scale1] [--app-id ID] [--title TITLE] [--decorated] [--glass] [--popup X,Y]
 //                     [WIDTH HEIGHT]   (logical; default 401x301)
 //
 // --scale1: like an old app, always draws at scale 1 (the compositor must
 // magnify): one-pixel lines and a checkerboard, to judge the filter.
 // --decorated: asks for Vela's title bar (xdg-decoration), like Qt and KDE
 // apps.
+// --title TITLE: the window's title instead of "vela-pattern" (title text
+// whose ink leaves the line box, for the title bar's tests).
 // --glass: instead of the pattern, a 50% black fill (ARGB) with the blur
 // behind all of it (ext-background-effect-v1), like Vela's apps with a theme's
 // see-through background: for the blur tests of windows.
@@ -524,6 +526,7 @@ int main(int argc, char** argv)
 {
     int arg = 1;
     const char* appId = "vela.pattern";
+    const char *title = "vela-pattern";
     int decorated = 0;
     int cycleAppIds = 0;
     for (; arg < argc && !strncmp(argv[arg], "--", 2); ++arg) {
@@ -560,6 +563,8 @@ int main(int argc, char** argv)
         } else if (!strcmp(argv[arg], "--app-id") && arg + 1 < argc) {
             // For tests that depend on the app (system dialogs).
             appId = argv[++arg];
+        } else if (!strcmp(argv[arg], "--title") && arg + 1 < argc) {
+            title = argv[++arg];
         }
     }
     if (arg + 1 < argc) {
@@ -596,7 +601,7 @@ int main(int argc, char** argv)
     }
     toplevel = xdg_surface_get_toplevel(xdgSurface);
     xdg_toplevel_add_listener(toplevel, &toplevelListener, NULL);
-    xdg_toplevel_set_title(toplevel, "vela-pattern");
+    xdg_toplevel_set_title(toplevel, title);
     xdg_toplevel_set_app_id(toplevel, appId);
     if (fullscreenParent) {
         xdg_toplevel_set_fullscreen(toplevel, NULL);

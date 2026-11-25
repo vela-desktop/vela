@@ -541,14 +541,16 @@ class Session:
         return path
 
     def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
-                    env=None, glass=False):
+                    env=None, glass=False, title=None):
         """Opens a window (vela-pattern, or `command`); returns its identifier.
 
         decorated: with Vela's title bar (xdg-decoration).
+        title: vela-pattern's title instead of "vela-pattern".
         glass: a 50% black window with the blur behind it (vela-pattern --glass).
         env: optional environment for protocol-specific clients (e.g. Xwayland DISPLAY)."""
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
+                   + (["--title", title] if title else [])
                    + (["--decorated"] if decorated else []) + (["--glass"] if glass else [])
                    + [str(width), str(height)])
         # Preserve per-client output: GPU test tools can fail before their

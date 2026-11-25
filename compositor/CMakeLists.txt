@@ -355,6 +355,16 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME compositor.icons COMMAND vela-icons-test
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+    # The title text (text.c) against the renderer it replaced, on the Noto
+    # Sans subsets in tests/fonts: glyph positions, ink outside the line box,
+    # margins, the widths a title stays the same at, bitmap glyphs
+    # (docs/font-rendering-improvements.md).
+    add_executable(vela-text-test tests/text_test.c src/text.c)
+    target_link_libraries(vela-text-test PRIVATE vela-pure PkgConfig::FONTS PkgConfig::WLROOTS)
+    target_compile_options(vela-text-test PRIVATE -Wall -Wextra -Werror)
+    set_target_properties(vela-text-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)
+    add_test(NAME compositor.text COMMAND vela-text-test ${CMAKE_CURRENT_SOURCE_DIR}/tests/fonts)
+
     add_executable(vela-device-loss-policy-test tests/device_loss_policy_test.c)
     target_include_directories(vela-device-loss-policy-test PRIVATE src)
     set_target_properties(vela-device-loss-policy-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)

@@ -12,6 +12,7 @@ extern "C" {
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdio>
 
 namespace {
 
@@ -227,4 +228,66 @@ TEST(Geometry, PhysicalEdges)
     EXPECT_EQ(vela_physical_edge(-5, 0, 2048, 2560, 1.25), 0);
     EXPECT_EQ(vela_physical_edge(1104, 0, 1152, 1440, 1.25), 1380); // above the 48-high taskbar
     EXPECT_EQ(vela_physical_edge(100, 100, 2148, 2560, 1.25), 0); // output not at the origin
+}
+
+// The title's ink margin (text.h, decoration.c): the ink needs some pixels
+// left of the line box; the image takes the whole number of
+// vela_whole_pixel_units steps that holds them and moves left by those units,
+// so the line box lands on the pixels it had without a margin, at every
+// position of the window. Taking just the pixels needed and moving by their
+// exact fraction (pixels / scale) would land the line box a pixel off at some
+// positions: the negative control.
+TEST(Geometry, WholePixelUnitsKeepTheLineBoxOnItsPixels)
+{
+    EXPECT_EQ(vela_whole_pixel_units(1.0f), 1);
+    EXPECT_EQ(vela_whole_pixel_units(1.25f), 4);
+    EXPECT_EQ(vela_whole_pixel_units(1.5f), 2);
+    EXPECT_EQ(vela_whole_pixel_units(1.75f), 4);
+    EXPECT_EQ(vela_whole_pixel_units(2.0f), 1);
+    EXPECT_EQ(vela_whole_pixel_units(2.25f), 4);
+    EXPECT_EQ(vela_whole_pixel_units(1.125f), 8);
+    EXPECT_EQ(vela_whole_pixel_units(1.1f), 0); // not a short binary fraction: no exact halves to round either way
+    EXPECT_EQ(vela_whole_pixel_units(0.0f), 0);
+
+    for (float scale : { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 3.0f }) {
+        const int units = vela_whole_pixel_units(scale);
+        ASSERT_GT(units, 0) << scale;
+        const int step = static_cast<int>(std::lround(units * scale)); // pixels
+        long whole_moved = 0;
+        long fraction_moved = 0;
+        long positions = 0;
+        // Windows at every whole position on an output at 0 and on one to its
+        // right; the title after the margin or after the icon (decoration.c);
+        // ink 1 to 6 pixels left of the line box.
+        for (int origin : { 0, 1920 }) {
+            for (int window = origin; window < origin + 2400; ++window) {
+                for (int title : { 12, 36 }) {
+                    for (int needed = 1; needed <= 6; ++needed) {
+                        const int line = vela_edges_to_pixels(window + title, 0, 10, 10, origin, 0, scale).x;
+                        const int steps = (needed + step - 1) / step;
+                        const int whole =
+                            vela_edges_to_pixels(window + (title - steps * units), 0, 10, 10, origin, 0, scale).x
+                            + steps * step;
+                        const int fraction =
+                            vela_edges_to_pixels(
+                                window + (title - needed / static_cast<double>(scale)), 0, 10, 10, origin, 0, scale)
+                                .x
+                            + needed;
+                        whole_moved += whole != line;
+                        fraction_moved += fraction != line;
+                        ++positions;
+                    }
+                }
+            }
+        }
+        EXPECT_EQ(whole_moved, 0) << scale << ": " << whole_moved << " of " << positions;
+        if (units > 1) {
+            // The fraction rounds some positions the other way.
+            EXPECT_GT(fraction_moved, positions / 100) << scale << ": " << fraction_moved << " of " << positions;
+        } else {
+            EXPECT_EQ(fraction_moved, 0) << scale; // whole pixels per unit: nothing to round
+        }
+        std::printf("scale %g: line box moved at %ld of %ld positions with whole units, %ld with the fraction\n",
+            static_cast<double>(scale), whole_moved, positions, fraction_moved);
+    }
 }

@@ -4,6 +4,7 @@
 #include "decoration.h"
 
 #include "alloc/alloc.h"
+#include "geometry.h"
 #include "icons.h"
 #include "motion.h"
 #include "render/pixel_buffer.h"
@@ -97,6 +98,7 @@ struct vela_decoration {
     int width;
     float scale;
     char *title_text;
+    struct vela_text_layout title_layout; // fit_min..fit_max: the widths it stays the same at
     char *app_id;
     bool has_icon;
     uint32_t look_version; // the theme and Mica it's drawn with
@@ -386,17 +388,32 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     }
     int title_x = decoration->has_icon ? TITLE_AFTER_ICON : TITLE_MARGIN;
 
-    // The title, rasterized at the output's physical pixels.
+    // The title, rasterized at the output's physical pixels. A new width
+    // alone draws it again only when it would change, cut at another glyph:
+    // an interactive resize changes the width on every frame.
     struct vela_text *text = text_engine(server);
-    if (text && (recolored || rescaled || resized || new_title || new_app)) {
-        int max_width = (int)((width - title_x - 3 * BUTTON_WIDTH - 8) * scale);
+    int max_width = (int)((width - title_x - 3 * BUTTON_WIDTH - 8) * scale);
+    bool refit =
+        resized && !(decoration->title.node && max_width > 0 && vela_text_fits(&decoration->title_layout, max_width));
+    if (text && (recolored || rescaled || refit || new_title || new_app)) {
         if (max_width > 0 && state->title[0]) {
+            // Ink outside the line box (a "j"'s tail, an italic's slant, marks
+            // stacked above a letter) widens the image to the left and above
+            // by whole logical units, so the line box keeps its pixels
+            // wherever the window is (§3.4).
+            int units = vela_whole_pixel_units(scale);
+            int margin = units > 0 ? (int)lround(units * scale) : 1;
             struct vela_image image = { 0 };
-            vela_text_render(text, state->title, vela_text_pixel_size(text) * scale, text_color, max_width, &image);
-            double logical_height = image.height / (double)scale;
+            struct vela_text_layout *layout = &decoration->title_layout;
+            vela_text_render(
+                text, state->title, vela_text_pixel_size(text) * scale, text_color, max_width, margin, &image, layout);
+            double left = units > 0 ? layout->line_x / margin * units : layout->line_x / (double)scale;
+            double above = units > 0 ? layout->line_y / margin * units : layout->line_y / (double)scale;
+            double line_y = round((HEIGHT - layout->line_height / (double)scale) / 2.0);
             double logical_width = image.width / (double)scale;
-            set_image(decoration, &decoration->title, &image, title_x, round((HEIGHT - logical_height) / 2.0),
-                logical_width, logical_height);
+            double logical_height = image.height / (double)scale;
+            set_image(
+                decoration, &decoration->title, &image, title_x - left, line_y - above, logical_width, logical_height);
         } else {
             clear_image(&decoration->title);
         }

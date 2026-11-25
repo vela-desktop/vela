@@ -129,6 +129,17 @@ bool vela_buffer_matches_area(double src_x, double src_y, double buffer_width, d
     return whole && fabs(buffer_width - width * scale) < 1.0 && fabs(buffer_height - height * scale) < 1.0;
 }
 
+int vela_whole_pixel_units(float scale)
+{
+    for (int units = 1; units <= 64; ++units) {
+        double pixels = units * (double)scale; // exact: a float times a small integer
+        if (pixels > 0.0 && pixels == floor(pixels)) {
+            return units;
+        }
+    }
+    return 0;
+}
+
 bool vela_one_to_one(double src_x, double src_y, double src_width, double src_height, int box_width,
     int box_height, bool swapped)
 {

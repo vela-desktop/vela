@@ -69,4 +69,12 @@ bool vela_buffer_matches_area(double src_x, double src_y, double buffer_width, d
 bool vela_one_to_one(double src_x, double src_y, double src_width, double src_height, int box_width,
     int box_height, bool swapped);
 
+// The fewest logical units, up to 64, that are a whole number of physical
+// pixels at `scale` (1 at 100% and 200%, 2 at 150%, 4 at 125%, 175% and 225%),
+// 0 if there are none. An image moved by a whole number of them keeps the rest
+// of its content on the same pixels at every position, exactly: moved by the
+// equivalent fraction (pixels / scale), vela_edges_to_pixels would round some
+// positions the other way (a title's ink margin, decoration.c).
+int vela_whole_pixel_units(float scale);
+
 #endif

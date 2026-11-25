@@ -82,13 +82,22 @@ class BarImagesAtEveryPosition(unittest.TestCase):
     POSITIONS = 40
 
     def test_same_pixels_at_every_position(self):
+        self.check_positions(None, self.POSITIONS)
+
+    def test_title_with_ink_outside_its_line_box(self):
+        # A "j"'s tail left of the pen and marks stacked above a letter: the
+        # image grows left and up by whole logical units (text.h), and is
+        # copied 1:1 at every position all the same.
+        self.check_positions(INK_OUTSIDE, self.POSITIONS // 2)
+
+    def check_positions(self, title, positions):
         for scale in (1.25, 1.5, 1.75, 2.25):
-            with self.subTest(scale=scale), Session(scale=scale, size="2560x1440@60") as vela:
-                window = vela.open_window(400, 300, decorated=True)
+            with self.subTest(scale=scale, title=title), Session(scale=scale, size="2560x1440@60") as vela:
+                window = vela.open_window(400, 300, decorated=True, title=title)
                 vela.wait_for(lambda s: s["focused"] == window)
                 reference = bar_images(vela.pixels(), vela.state().window(window), scale)
                 self.assertEqual(len(reference), 4, "title and three glyphs")
-                for i in range(1, self.POSITIONS):
+                for i in range(1, positions):
                     # Back and forth, so the window stays away from the edges
                     # (and their snap zones).
                     step = 1 + i % 5
@@ -102,9 +111,113 @@ class BarImagesAtEveryPosition(unittest.TestCase):
                         self.assertTrue(image == expected, f"position {i} ({w['x']}, {w['y']}): the {name} changed")
 
 
-def bar_top(image, w, scale):
-    """The bar's first row, in pixels: above it, wallpaper and shadow are black."""
-    column = round((w["x"] + 200) * scale)
+# A title whose ink leaves its line box: a "j"'s tail on the left, marks
+# stacked above the "x" (circumflex, tilde, acute). No spaces, so the bar sees
+# it as one image.
+INK_OUTSIDE = "jupyter-x\u0302\u0303\u0301"
+
+
+class TitleLettersStayPut(unittest.TestCase):
+    """Marks stacked above a letter make the title's image taller (text.h): the
+    image moves up by whole logical units, so the line box, and every letter
+    in it, stays on the pixels it has without the marks. The same window at
+    the same place, titled with and without them, must show the same pixels
+    from the middle of the bar down, where no mark reaches."""
+
+    def test_marks_do_not_move_the_letters(self):
+        for scale in (1.0, 1.25, 1.5, 1.75, 2.25):
+            with self.subTest(scale=scale), Session(scale=scale, size="2560x1440@60") as vela:
+                plain = self.lower_half(vela, "xxxx", scale)
+                marked = self.lower_half(vela, "x\u0302\u0303\u0301xxx", scale)
+                self.assertEqual(plain[0], marked[0], "the window opened elsewhere")
+                self.assertTrue(plain[1] == marked[1], "the marks moved the letters below them")
+
+    def lower_half(self, vela, title, scale):
+        """The window's place and the bar's pixels from its middle row down,
+        across its width; the window is closed afterwards."""
+        window = vela.open_window(400, 300, decorated=True, title=title)
+        vela.wait_for(lambda s: s["focused"] == window)
+        w = vela.state().window(window)
+        image = vela.pixels()
+        top = bar_top(image, w, scale)
+        middle = top + round(BAR / 2 * scale)
+        left = round((w["x"] + 9) * scale)
+        right = round((w["x"] + w["w"] - 3 * BUTTON - 4) * scale)
+        rows = tuple(image.rows[y][left * 3:right * 3] for y in range(middle, top + int(BAR * scale) - 2))
+        vela.command(f"window {window} close")
+        vela.wait_for(lambda s: not s.has(window), what="closed")
+        return (w["x"], w["y"]), rows
+
+
+class TitleFollowsTheWidth(unittest.TestCase):
+    """A new width alone draws the title again only when it would cut it at
+    another glyph (decoration.c; compositor.text checks the widths a title
+    stays the same at). Narrowed and widened by its border, the bar must
+    still show what a fresh drawing shows: never a stale title."""
+
+    def test_cut_and_whole_again(self):
+        for scale in (1.0, 1.25):
+            with self.subTest(scale=scale), Session(scale=scale, size="1920x1080@60") as vela:
+                window = vela.open_window(400, 300, decorated=True)
+                vela.wait_for(lambda s: s["focused"] == window)
+                whole = title_image(vela, window, scale)
+                # The width that cuts the title about halfway: its room is the
+                # bar minus the margin, the three buttons and 8 units
+                # (decoration.c), and the title is about as wide as its ink.
+                title = len(whole[0]) // 3 / scale
+                cut_width = BEFORE_TITLE_ROOM + round(title / 2)
+                # 40 narrower: still room for "vela-pattern", the same pixels.
+                resize_right(vela, window, -40)
+                self.assertTrue(title_image(vela, window, scale) == whole, "narrower, with room: the title changed")
+                # Too narrow for it: cut with an ellipsis, narrower.
+                resize_right(vela, window, cut_width - 360)
+                cut = title_image(vela, window, scale)
+                self.assertFalse(cut == whole, "too narrow: the title wasn't cut")
+                self.assertLess(len(cut[0]), len(whole[0]), "too narrow: the title isn't narrower")
+                # A little wider, still too narrow: never the whole title.
+                resize_right(vela, window, 6)
+                self.assertFalse(title_image(vela, window, scale) == whole, "still too narrow: the whole title")
+                # Back to the first width: the whole title, the same pixels.
+                resize_right(vela, window, 400 - cut_width - 6)
+                self.assertTrue(title_image(vela, window, scale) == whole, "wide again: not the whole title")
+
+
+# A title's room ends this far from the bar's right edge: three buttons and 8
+# units (decoration.c), and starts 12 from its left (no icon).
+BEFORE_TITLE_ROOM = 12 + 3 * BUTTON + 8
+
+
+def resize_right(vela, window, dx):
+    """Drags the window's right border by `dx` units (its invisible border, 4
+    units outside the edge, at half height)."""
+    w = vela.state().window(window)
+    x = w["x"] + w["w"] + 4
+    y = w["y"] + w["h"] // 2
+    vela.input("move", x, y, "sleep", "50", "down", "sleep", "50", "move", x + dx // 2, y, "sleep", "50",
+               "move", x + dx, y, "sleep", "100", "up")
+    vela.wait_for(lambda s: s.window(window)["w"] == w["w"] + dx, what=f"{dx} wider")
+    vela.wait_still(window)
+
+
+def title_image(vela, window, scale):
+    """The title's pixels (the first of the bar's images: vela-pattern has no
+    icon), once the bar has settled. The bar's color is read just left of the
+    buttons, where a title never reaches whatever the width."""
+    previous = None
+    for _ in range(20):
+        w = vela.state().window(window)
+        images = bar_images(vela.pixels(), w, scale, column=w["x"] + w["w"] - 3 * BUTTON - 4)
+        if images and images == previous:
+            return images[0]
+        previous = images
+        time.sleep(0.05)
+    raise AssertionError("the title bar doesn't settle")
+
+
+def bar_top(image, w, scale, column=None):
+    """The bar's first row, in pixels: above it, wallpaper and shadow are black.
+    Read in `column` (units; by default 200 into the window)."""
+    column = round((w["x"] + 200 if column is None else column) * scale)
     return next(y for y in range(image.height) if image.at(column, y) != (0, 0, 0))
 
 
@@ -125,14 +238,16 @@ def drag(vela, w, dx, dy):
     vela.wait_for(moved, what=f"the window moved by {dx}, {dy}")
 
 
-def bar_images(image, w, scale):
+def bar_images(image, w, scale, column=None):
     """The bar's images (icon, title, glyphs), each cropped to its own pixels:
     runs of columns with something drawn on the bar's color, separated by at
-    least 5 units. Away from the rounded corners and from the content."""
-    top = bar_top(image, w, scale)
+    least 5 units. Away from the rounded corners and from the content. The
+    bar's color is read in `column` (units; by default 200 into the window)."""
+    column = w["x"] + 200 if column is None else column
+    top = bar_top(image, w, scale, column)
     middle = top + round(BAR / 2 * scale)
-    background = image.at(round((w["x"] + 200) * scale), middle)
-    left = right = round((w["x"] + 200) * scale)
+    background = image.at(round(column * scale), middle)
+    left = right = round(column * scale)
     while image.at(left - 1, middle) != (0, 0, 0):
         left -= 1
     while image.at(right, middle) != (0, 0, 0):
