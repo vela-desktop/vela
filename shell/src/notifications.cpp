@@ -186,6 +186,12 @@ QImage decodeNotificationImage(
     for (int y = 0; y < height; ++y) {
         std::memcpy(image.scanLine(y), pixels.constData() + qsizetype(rowStride) * y, size_t(rowBytes));
     }
+    // The center draws 28 logical pixels. Keep enough for the largest
+    // scale accepted by Displays, even if a larger output is attached later.
+    constexpr int iconPixels = 28 * 16;
+    if (width > iconPixels || height > iconPixels) {
+        return image.scaled(iconPixels, iconPixels, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    }
     return image;
 }
 
@@ -591,6 +597,7 @@ QString NotificationServer::iconFor(uint id, const QString& appIcon, const QVari
             return QStringLiteral("image://notification/%1/%2").arg(id).arg(++serial); // new at every replacement
         }
     }
+    m_images.remove(id); // a replacement can switch from pixels to a file or theme icon
     for (const char* key : { "image-path", "image_path" }) {
         const QString path = hints.value(QLatin1String(key)).toString();
         if (!path.isEmpty()) {
