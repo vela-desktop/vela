@@ -8,12 +8,10 @@
 // (so the measurement can see it), the new one must be better by a wide
 // margin, and what didn't need to change must not have changed.
 //
-// - Positions: each glyph's ink is where HarfBuzz put the glyph. The old
-//   renderer rounded every glyph to a whole pixel: up to half a pixel off,
-//   so the gaps between letters varied.
+// - Pixels: inside the old image, every pixel is the old one. Glyphs still
+//   start on whole pixels, so their stems keep the contrast they had.
 // - Ink: nothing a glyph draws is cut off. The old image was the line box,
 //   which a "j"'s tail, an italic's overhang or accents above capitals leave.
-//   Inside the old box, a glyph at a whole-pixel position keeps its pixels.
 // - Margins: whole steps of the caller's margin, as small as possible, and
 //   the same ink relative to the line box whatever the margin; at most an em
 //   past the line box, whatever an app puts in its title.
@@ -268,134 +266,83 @@ static void capture(const char *name, const struct vela_image *image)
     CHECK(fclose(file) == 0);
 }
 
-// The centers of the ink's columns between empty columns, in pixels from the
-// image's left edge (a column's center is x + 0.5). Returns how many.
-static int ink_centers(const struct vela_image *image, double *centers, int capacity)
+// ---- Pixels ----
+
+// Titles as apps send them, and strings that are mostly stems ("l", "I",
+// "1"), where a glyph moved by a fraction of a pixel loses the most contrast.
+static const char *const pixel_titles[] = { "File", "Files", "l", "ll", "llll", "lil", "Ill", "Il1", "Mill", "Minimum",
+    "Illinois", "i", "o", "Hello", "Terminal", "Settings", "Utilities", "Documenti", "Il libro", "Firefox",
+    "Visual Studio Code", "jupyter-lab", "Firefox — Mozilla Firefox Private Browsing" };
+
+// The new image, inside the old one (the line box plus a column on the
+// right), has the old pixels exactly: what the old renderer drew didn't move
+// or soften, only the ink it cut off is added outside. Regular and italic,
+// 8 to 16 pt, 100% to 300%, whole and cut with an ellipsis.
+static void pixels_match_the_old_renderer(void)
 {
-    int found = 0;
-    double weight = 0.0;
-    double moment = 0.0;
-    for (int x = 0; x <= image->width; ++x) {
-        long column = 0;
-        for (int y = 0; x < image->width && y < image->height; ++y) {
-            column += alpha_at(image, x, y);
-        }
-        if (column > 0) {
-            weight += (double)column;
-            moment += (double)column * (x + 0.5);
-        } else if (weight > 0.0) {
-            CHECK(found < capacity);
-            centers[found++] = moment / weight;
-            weight = 0.0;
-            moment = 0.0;
-        }
-    }
-    return found;
-}
-
-// Where HarfBuzz puts the pen for each glyph that isn't a space, in pixels
-// from the line's start. Returns how many.
-static int glyph_origins(struct font *font, const char *utf8, double pixel_size, double *origins, int capacity)
-{
-    set_size(font, pixel_size);
-    struct legacy_shaped line = legacy_shape(font->hb, utf8);
-    int found = 0;
-    int64_t pen = 0;
-    hb_codepoint_t space = 0;
-    CHECK(hb_font_get_nominal_glyph(font->hb, ' ', &space));
-    for (unsigned i = 0; i < line.count; ++i) {
-        if (line.infos[i].codepoint != space) {
-            CHECK(found < capacity);
-            origins[found++] = (pen + line.positions[i].x_offset) / 64.0;
-        }
-        pen += line.positions[i].x_advance;
-    }
-    hb_buffer_destroy(line.buffer);
-    return found;
-}
-
-struct errors {
-    double max;
-    double squares;
-    int count;
-};
-
-static void add_error(struct errors *errors, double error)
-{
-    errors->max = fmax(errors->max, fabs(error));
-    errors->squares += error * error;
-    ++errors->count;
-}
-
-static double rms(const struct errors *errors)
-{
-    return errors->count ? sqrt(errors->squares / errors->count) : 0.0;
-}
-
-// ---- Positions ----
-
-// A glyph repeated with spaces between: every copy is the same shape, so each
-// copy's ink must move from the first one's exactly as far as HarfBuzz moved
-// the pen. The spaces leave empty columns between them, and the sizes put the
-// copies at many fractions of a pixel. Round letters: the center of their
-// pixels is the center of their shape to a hundredth of a pixel, wherever
-// they fall. A stem's isn't (a 1.3 px stem's pixel center is up to 0.08 px
-// off, depending on where it falls), which would measure the pixel grid
-// rather than the renderer.
-static void positions_follow_harfbuzz(void)
-{
-    static const char *const strings[] = {
-        "o o o o o o o o o o o o o o o o",
-        "e e e e e e e e e e e e e e e e",
-        "s s s s s s s s s s s s s s s s",
-        "c c c c c c c c c c c c c c c c",
-        "O O O O O O O O O O O O O O O O",
-        "C C C C C C C C C C C C C C C C",
-        "S S S S S S S S S S S S S S S S",
-        "G G G G G G G G G G G G G G G G",
-        "8 8 8 8 8 8 8 8 8 8 8 8 8 8 8 8",
-    };
-    char regular[PATH_MAX];
-    font_path(regular, sizeof(regular), "NotoSans-Regular-subset.ttf");
-    struct font font = open_font(regular);
-    struct errors before = { 0 };
-    struct errors after = { 0 };
-    for (size_t s = 0; s < COUNT(strings); ++s) {
-        for (size_t z = 0; z < COUNT(scales); ++z) {
-            double size = KDE_PIXELS * scales[z];
-            double origins[64];
-            double old_centers[64];
-            double new_centers[64];
-            int glyphs = glyph_origins(&font, strings[s], size, origins, 64);
-            struct vela_image old_image = { 0 };
-            legacy_render(&font, strings[s], size, WHITE, 0, &old_image);
-            struct vela_image new_image = { 0 };
-            struct vela_text_layout layout;
-            vela_text_render(font.text, strings[s], size, WHITE, 0, 1, &new_image, &layout);
-            CHECK(ink_centers(&old_image, old_centers, 64) == glyphs);
-            CHECK(ink_centers(&new_image, new_centers, 64) == glyphs);
-            for (int k = 1; k < glyphs; ++k) {
-                double moved = origins[k] - origins[0];
-                add_error(&before, old_centers[k] - old_centers[0] - moved);
-                add_error(&after, new_centers[k] - new_centers[0] - moved);
+    static const char *const files[] = { "NotoSans-Regular-subset.ttf", "NotoSans-Italic-subset.ttf" };
+    static const double points[] = { 8.0, 10.0, 12.0, 16.0 };
+    static const double all_scales[] = { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 2.75, 3.0 };
+    long renders = 0;
+    long pixels = 0;
+    long more_ink = 0;
+    for (size_t f = 0; f < COUNT(files); ++f) {
+        char path[PATH_MAX];
+        font_path(path, sizeof(path), files[f]);
+        struct font font = open_font(path);
+        for (size_t t = 0; t < COUNT(pixel_titles); ++t) {
+            for (size_t p = 0; p < COUNT(points); ++p) {
+                for (size_t z = 0; z < COUNT(all_scales); ++z) {
+                    double size = points[p] * 96.0 / 72.0 * all_scales[z];
+                    // Whole, then cut to about half its width.
+                    for (int cut = 0; cut < 2; ++cut) {
+                        int max_width = cut ? (int)(size * (double)strlen(pixel_titles[t]) / 4.0) + 1 : 0;
+                        struct vela_image old_image = { 0 };
+                        legacy_render(&font, pixel_titles[t], size, WHITE, max_width, &old_image);
+                        struct vela_image new_image = { 0 };
+                        struct vela_text_layout layout;
+                        vela_text_render(
+                            font.text, pixel_titles[t], size, WHITE, max_width, 1, &new_image, &layout);
+                        CHECK(layout.line_height == old_image.height);
+                        CHECK(layout.line_width + 1 == old_image.width
+                            || (layout.line_width == 1 && old_image.width <= 2));
+                        for (int y = 0; y < old_image.height; ++y) {
+                            for (int x = 0; x < old_image.width; ++x) {
+                                uint32_t old_pixel = old_image.pixels[(size_t)y * (size_t)old_image.width + (size_t)x];
+                                int nx = layout.line_x + x;
+                                int ny = layout.line_y + y;
+                                uint32_t new_pixel = nx < new_image.width && ny < new_image.height
+                                    ? new_image.pixels[(size_t)ny * (size_t)new_image.width + (size_t)nx]
+                                    : 0;
+                                if (old_pixel != new_pixel) {
+                                    fprintf(stderr,
+                                        "\"%s\" (%s) at %.2f px, max width %d: pixel %d,%d was %08x, is %08x\n",
+                                        pixel_titles[t], files[f], size, max_width, x, y, old_pixel, new_pixel);
+                                }
+                                CHECK(old_pixel == new_pixel);
+                                ++pixels;
+                            }
+                        }
+                        CHECK(ink(&new_image) >= ink(&old_image));
+                        more_ink += ink(&new_image) > ink(&old_image);
+                        ++renders;
+                        if (f == 0 && p == 1 && z == 0 && t == 0 && !cut) {
+                            capture("file-before", &old_image);
+                            capture("file-after", &new_image);
+                        }
+                        vela_image_finish(&old_image);
+                        vela_image_finish(&new_image);
+                    }
+                }
             }
-            if (z == 0 && s == 0) {
-                capture("positions-before", &old_image);
-                capture("positions-after", &new_image);
-            }
-            vela_image_finish(&old_image);
-            vela_image_finish(&new_image);
         }
+        close_font(&font);
     }
-    printf("positions, %d glyphs: before max %.3f px rms %.3f px; after max %.3f px rms %.3f px\n", after.count,
-        before.max, rms(&before), after.max, rms(&after));
-    // The old renderer is off by up to half a pixel: the measurement sees it.
-    CHECK(before.max > 0.4 && rms(&before) > 0.2);
-    // The new one is where HarfBuzz says, within what measuring the ink's
-    // center allows (about 0.02 px at most on these letters).
-    CHECK(after.max < 0.05 && rms(&after) < 0.015);
-    CHECK(rms(&after) * 10.0 < rms(&before));
-    close_font(&font);
+    printf("pixels, %ld renders: %ld pixels of the old images, all the same; %ld renders with ink the old one cut\n",
+        renders, pixels, more_ink);
+    // Some of these titles leave the line box ("j", the italic's "f"): the
+    // comparison also sees the ink that was cut.
+    CHECK(more_ink > 0);
 }
 
 // ---- Ink ----
@@ -488,10 +435,7 @@ static void no_ink_is_cut(void)
 }
 
 // A title starting with "j" in KDE's default font, as a terminal or an editor
-// shows it: the tail is cut off before, there after. Glyphs at fractional
-// positions draw different pixels, so only the ink is compared: with the
-// first glyph at the pen, the new image has what the old one had plus the
-// tail.
+// shows it: the tail is cut off before, there after.
 static void title_starting_with_j(void)
 {
     char regular[PATH_MAX];
@@ -906,7 +850,7 @@ int main(int argc, char **argv)
         CHECK(mkdir(capture_dir, 0700) == 0 || errno == EEXIST);
     }
     CHECK(FT_Init_FreeType(&library) == 0);
-    positions_follow_harfbuzz();
+    pixels_match_the_old_renderer();
     no_ink_is_cut();
     title_starting_with_j();
     stacked_marks();

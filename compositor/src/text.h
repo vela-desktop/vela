@@ -7,9 +7,9 @@
 // Text drawn by the compositor (window titles). FreeType for the glyphs,
 // HarfBuzz to lay them out, fontconfig to find the font chosen in KDE
 // (docs/renderer.md §9.5). Text is always rasterized at the exact physical
-// size: never scaled, sharp at every scale. Each glyph sits at HarfBuzz's
-// exact horizontal position, not rounded to a pixel, and no glyph's ink is
-// cut off (docs/font-rendering-improvements.md).
+// size: never scaled, sharp at every scale. Each glyph starts on a whole
+// pixel, as FreeType rasterizes it, and no glyph's ink is cut off
+// (docs/font-rendering-improvements.md).
 
 #include "image.h"
 

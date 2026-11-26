@@ -326,13 +326,13 @@ it needs no installed fonts. Every check measures both renderers. The old one
 must show the defect, so the measurement can see it, and the new one must beat
 it by a wide margin:
 
-- **Positions**: round letters repeated at 100–225% of KDE's default size. Each
-  copy's ink must move as far as HarfBuzz moved the pen. The old renderer is up
-  to 0.5 px off; the new one must stay under 0.05 px, with an RMS under 0.015 px.
+- **Pixels**: 23 titles, including stem-heavy ones like "File", "Ill" and
+  "Il1", regular and italic, 8–16 pt, 100–300%, whole and cut with an ellipsis.
+  Inside the old image, every pixel must be the old one, so stems keep their
+  contrast. Some titles must gain ink the old renderer cut.
 - **Ink**: single glyphs leaving the line box on every side, regular and
-  italic, keep all their coverage, and inside the old box they keep the old
-  pixels. A title starting with "j" keeps its tail, and marks stacked above a
-  letter are kept.
+  italic, keep all their coverage. A title starting with "j" keeps its tail,
+  and marks stacked above a letter are kept.
 - **Margins**: whole steps of the caller's margin, the smallest that hold the
   ink, with the same ink relative to the line box.
 - **Resizing**: a width inside the range `vela_text_fits` reports makes the

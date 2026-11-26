@@ -921,10 +921,11 @@ debug overlay (§10) and for other compositor UI.
   (docs/visual-coherence.md §6.6).
 - **Title**: text with grayscale antialiasing (no RGB subpixel: it doesn't get
   along with transparency and animations), rasterized at each physical scale
-  and never enlarged, one image per title. Glyphs sit at HarfBuzz's exact
-  horizontal positions with none of their ink cut off, and the image is drawn
-  again only when the text, its color or the scale changes, or a new width
-  cuts it at another glyph ([font rendering](font-rendering-improvements.md)).
+  and never enlarged, one image per title. Glyphs start on whole pixels, none
+  of their ink is cut off within the bar (left of the buttons), and the image
+  is drawn again only when the text, its color or the scale changes, or a new
+  width cuts it at another glyph
+  ([font rendering](font-rendering-improvements.md)).
   The font is **KDE's** (§9.5).
 - **App icon**: **always SVG** when the theme offers it (§9.6).
 - **A single shape**: the bar and the app's content are clipped together as one

@@ -10,7 +10,6 @@
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_BITMAP_H
-#include FT_OUTLINE_H
 #include <hb-ft.h>
 #include <hb.h>
 #include <limits.h>
@@ -101,7 +100,7 @@ struct vela_text *vela_text_create_file(const char *file, int index, double poin
         return NULL;
     }
     // HarfBuzz lays the text out with unhinted advances (hb-ft's default
-    // load flags): exact positions, which draw_glyphs keeps.
+    // load flags); draw_glyphs starts each glyph on the nearest pixel.
     text->font = hb_ft_font_create_referenced(text->face);
     text->pixel_size = points * 96.0 / 72.0;
     return text;
@@ -278,29 +277,20 @@ static void draw_glyphs(struct vela_text *text, const struct shaped *line, unsig
     FT_Face face = text->face;
     for (unsigned i = 0; i < count; ++i) {
         const hb_glyph_position_t *position = &line->positions[i];
-        int64_t x = *pen + position->x_offset;
+        // Each glyph on the nearest whole pixel, as FreeType rasterizes it.
+        // Moving the outline by the rest of HarfBuzz's position would spread
+        // a stem over two columns as often as it would sharpen one: Light
+        // hinting leaves the horizontal axis alone, so where a stem falls
+        // within its pixels is the font's design, kept at the whole-pixel pen
+        // (docs/font-rendering-improvements.md, "Subpixel positioning").
+        int64_t whole = floor_div(*pen + position->x_offset + 32, 64);
         // Vertically on whole pixels, as hinted.
         int y = ascender - (int)floor_div(position->y_offset + 32, 64);
         *pen += position->x_advance;
-        if (FT_Load_Glyph(face, line->infos[i].codepoint, FT_LOAD_TARGET_LIGHT) != 0) {
+        if (FT_Load_Glyph(face, line->infos[i].codepoint, FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT) != 0) {
             continue;
         }
         FT_GlyphSlot slot = face->glyph;
-        int64_t whole;
-        if (slot->format == FT_GLYPH_FORMAT_OUTLINE) {
-            // Light hinting moves points only vertically, so the outline can
-            // go exactly where HarfBuzz put it: whole pixels, then the rest of
-            // the 26.6 position moving the outline before it is rasterized.
-            whole = floor_div(x, 64);
-            FT_Outline_Translate(&slot->outline, (FT_Pos)(x - whole * 64), 0);
-            if (FT_Render_Glyph(slot, FT_RENDER_MODE_LIGHT) != 0) {
-                continue;
-            }
-        } else if (slot->format == FT_GLYPH_FORMAT_BITMAP) {
-            whole = floor_div(x + 32, 64); // a bitmap moves by whole pixels only
-        } else {
-            continue;
-        }
         struct placed *glyph = &glyphs[*drawn];
         if (take_coverage(text->library, &slot->bitmap, glyph)) {
             glyph->x = clamp_int(whole + slot->bitmap_left);
