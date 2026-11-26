@@ -15,8 +15,13 @@
 #include <stdbool.h>
 
 struct vela_layer_surface;
+struct vela_output;
 struct vela_server;
 struct vela_view;
+
+// The display the user is working on: the focused window's, else the focused
+// panel's, else the one under the pointer.
+struct vela_output *vela_active_output(struct vela_server *server);
 
 void vela_focus_view(struct vela_server *server, struct vela_view *view);
 // Reconcile each monitor's foreground fullscreen with windows and shell panels.

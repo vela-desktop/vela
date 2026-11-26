@@ -310,6 +310,17 @@ struct vela_layer_surface *vela_focus_modal_layer(struct vela_server *server)
     return NULL;
 }
 
+struct vela_output *vela_active_output(struct vela_server *server)
+{
+    struct vela_view *view = vela_views_focused(server);
+    struct vela_output *output = view ? vela_view_output(view) : NULL;
+    if (!output && server->focused_layer) {
+        output = vela_layer_surface_output(server->focused_layer);
+    }
+    // No window and no panel (the desktop, the lock screen): the pointer's.
+    return output ? output : vela_output_under_cursor(server);
+}
+
 void vela_focus_refocus(struct vela_server *server)
 {
     if (server->locked) {

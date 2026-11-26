@@ -4,6 +4,8 @@
 #include "shell.h"
 
 #include "alloc/alloc.h"
+#include "focus.h"
+#include "output.h"
 #include "process.h"
 #include "server.h"
 #include "util.h"
@@ -20,6 +22,7 @@
 #include <unistd.h>
 #include <wayland-server-core.h>
 #include <wlr/util/log.h>
+#include <wlr/types/wlr_output.h>
 
 bool vela_shell_send(struct vela_server *server, const char *line)
 {
@@ -38,12 +41,27 @@ bool vela_shell_send(struct vela_server *server, const char *line)
     }
     bool sent = false;
     if (connect(fd, (struct sockaddr *)&address, sizeof(address)) == 0) {
-        // Line and newline in a single send: the shell reads by lines.
-        size_t length = strlen(line);
-        char *message = VELA_NEW_N(char, vela_size_add(length, 1));
-        memcpy(message, line, length);
-        message[length] = '\n';
-        sent = send(fd, message, length + 1, MSG_NOSIGNAL) == (ssize_t)(length + 1);
+        // One newline-terminated frame: even if stream reads split or interleave,
+        // the shell cannot dispatch the command with another frame's output.
+        struct vela_output *output = vela_active_output(server);
+        const char *name = output ? output->wlr->name : "";
+        // "active-output <name>\t<line>\n"
+        static const char prefix[] = "active-output ";
+        const size_t prefix_length = strlen(prefix);
+        size_t name_length = strlen(name);
+        size_t line_length = strlen(line);
+        size_t length = vela_size_add(vela_size_add(prefix_length, name_length), vela_size_add(line_length, 2));
+        char *message = VELA_NEW_N(char, length);
+        char *at = message;
+        memcpy(at, prefix, prefix_length);
+        at += prefix_length;
+        memcpy(at, name, name_length);
+        at += name_length;
+        *at++ = '\t';
+        memcpy(at, line, line_length);
+        at += line_length;
+        *at = '\n';
+        sent = send(fd, message, length, MSG_NOSIGNAL) == (ssize_t)length;
         free(message);
     } else {
         wlr_log(WLR_DEBUG, "Shell not reachable on %s", address.sun_path);

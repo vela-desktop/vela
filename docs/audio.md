@@ -224,7 +224,9 @@ server says: optimistic values exist only in the Qt layer (§5.4).
   icon and "Microphone on/off", appears once the server confirms, or after
   2 s showing the unchanged state. Done in A2.
 - **Volume indicator** (`VolumeOsd.qml`): unchanged, plus the microphone
-  variant (no slider). Done in A2.
+  variant (no slider). It appears on the display the user is working on
+  (the focused window's, else the pointer's), not on the main one
+  ([taskbar](taskbar.md#113-what-opens-from-it)). Done in A2.
 - **Quick settings mixer**: outputs, with a Bluetooth headset's battery
   (from the process's vela-bluetooth client, matched by the headset's
   address);

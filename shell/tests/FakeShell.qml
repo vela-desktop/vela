@@ -8,8 +8,11 @@ import QtQuick
 // window was put.
 QtObject {
     property string primaryScreen: "test-output"
+    // The display the user is on, as the compositor says (empty: the main one).
+    property string activeScreen: ""
     property var placed: []
     signal capsLockChanged(bool on)
 
+    function panelScreen() { return activeScreen !== "" ? activeScreen : primaryScreen }
     function placeOnScreen(window, name) { placed = placed.concat([name]) }
 }
