@@ -1,21 +1,21 @@
 {
-  "collected_at": "2026-11-25T12:52:42+00:00",
+  "collected_at": "2026-11-26T12:31:23+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 437,
+      "count": 419,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 145
+      "uniques": 135
     },
     {
       "count": 104,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 14
+      "uniques": 13
     },
     {
-      "count": 58,
+      "count": 61,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
       "uniques": 3
@@ -24,7 +24,7 @@
       "count": 32,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 7
+      "uniques": 6
     },
     {
       "count": 21,
@@ -45,22 +45,22 @@
       "uniques": 2
     },
     {
-      "count": 11,
-      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
-      "title": "/releases/tag/v0.1.2",
-      "uniques": 10
-    },
-    {
-      "count": 11,
-      "path": "/vela-desktop/vela/blob/main/docs/installation.md",
-      "title": "/blob/main/docs/installation.md",
-      "uniques": 8
-    },
-    {
-      "count": 10,
+      "count": 12,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/files.webp",
       "title": "/blob/main/docs/screenshots/files.webp",
-      "uniques": 10
+      "uniques": 12
+    },
+    {
+      "count": 12,
+      "path": "/vela-desktop/vela/releases/tag/v0.1.2",
+      "title": "/releases/tag/v0.1.2",
+      "uniques": 11
+    },
+    {
+      "count": 11,
+      "path": "/vela-desktop/vela/blob/main/docs/development.md",
+      "title": "/blob/main/docs/development.md",
+      "uniques": 6
     }
   ],
   "schema_version": 1,
