@@ -1708,52 +1708,58 @@ class QtShell(RealShell):
         self.assertTrue(self.mapped(self.vela.state(), "vela-start-menu"),
                         "the previous close animation hid the reopened menu")
 
-    def test_hidden_menu_releases_native_surface_before_next_open(self):
+    def reopen_trace(self, log, namespace):
+        """The layer role, surface and blur object of the panel opened in log."""
+        creation = re.search(r'get_layer_surface\(new id zwlr_layer_surface_v1([@#]\d+), '
+                             rf'wl_surface([@#]\d+).*?"{namespace}"', log)
+        self.assertIsNotNone(creation, f"{namespace} layer surface missing from protocol trace")
+        role, surface = map(re.escape, creation.groups())
+        # A new role on every opening: configure and ACK precede its buffer.
+        configure = re.search(rf'zwlr_layer_surface_v1{role}\.configure\(', log)
+        ack = re.search(rf'zwlr_layer_surface_v1{role}\.ack_configure\(', log)
+        attach = re.search(rf'wl_surface{surface}\.attach\(wl_buffer', log)
+        self.assertIsNotNone(configure)
+        self.assertIsNotNone(ack)
+        self.assertIsNotNone(attach)
+        self.assertLess(configure.start(), ack.start())
+        self.assertLess(ack.start(), attach.start())
+        # Hidden, it unmaps without its role (docs/shell-graphics-memory.md).
+        self.assertRegex(log, rf'zwlr_layer_surface_v1{role}\.destroy\(\)')
+        return creation[2]
+
+    def test_reopened_menu_keeps_its_surface_and_blur(self):
+        """Reopened within 10 s, Start maps its kept surface again, with a
+        new layer role and the same blur."""
+        surfaces = []
         for _ in range(3):
             offset = len(self.vela.log_text())
             self.vela.input("key", "super", "sleep", "450", "key", "super", "sleep", "350")
             self.check_desktop()
             log = self.vela.log_text()[offset:]
-            creation = re.search(r'get_layer_surface\(new id zwlr_layer_surface_v1([@#]\d+), '
-                                 r'wl_surface([@#]\d+).*?"vela-start-menu"', log)
-            self.assertIsNotNone(creation, "Start layer surface missing from protocol trace")
-            role, surface = map(re.escape, creation.groups())
-            # Real protocol ordering, including reopening after destruction:
-            # a non-null buffer must follow this role's configure and ACK.
-            configure = re.search(rf'zwlr_layer_surface_v1{role}\.configure\(', log)
-            ack = re.search(rf'zwlr_layer_surface_v1{role}\.ack_configure\(', log)
-            attach = re.search(rf'wl_surface{surface}\.attach\(wl_buffer', log)
-            self.assertIsNotNone(configure)
-            self.assertIsNotNone(ack)
-            self.assertIsNotNone(attach)
-            self.assertLess(configure.start(), ack.start())
-            self.assertLess(ack.start(), attach.start())
-            self.assertRegex(log, rf'wl_surface{surface}\.destroy\(\)',
-                          "hidden Start menu retained its native surface and buffer queue")
-            # Blur must bind to the newly created surface on every reopening,
-            # rather than retain hooks to a destroyed Qt platform window.
-            effect = re.search(r'get_background_effect\(new id ext_background_effect_surface_v1'
-                               rf'([@#]\d+), wl_surface{surface}\)', log)
-            self.assertIsNotNone(effect, "reopened menu lost compositor blur")
+            surfaces.append(self.reopen_trace(log, "vela-start-menu"))
+            surface = re.escape(surfaces[-1])
+            self.assertNotRegex(log, rf'wl_surface{surface}\.destroy\(\)',
+                                "hidden Start gave its surface back within 10 s")
+            if len(surfaces) == 1:
+                effect = re.search(r'get_background_effect\(new id ext_background_effect_surface_v1'
+                                   rf'([@#]\d+), wl_surface{surface}\)', log)
+                self.assertIsNotNone(effect, "the menu has no compositor blur")
             self.assertRegex(log, rf'ext_background_effect_surface_v1{re.escape(effect[1])}'
-                                 r'\.set_blur_region\(wl_region')
+                                 r'\.set_blur_region\(wl_region', "reopened menu lost compositor blur")
+        self.assertEqual(len(set(surfaces)), 1, "Start reopened on another surface within 10 s")
 
-    def test_other_panels_can_reopen_after_native_surface_release(self):
+    def test_other_panels_reopen_on_their_kept_surface(self):
         for key, namespace in [("super+a", "vela-quick-settings"),
                                ("super+n", "vela-notification-center"), ("super+v", "vela-clipboard")]:
             with self.subTest(panel=namespace):
+                surfaces = []
                 for _ in range(3):
                     offset = len(self.vela.log_text())
                     self.vela.input("key", key, "sleep", "450", "key", "Escape", "sleep", "350")
                     self.check_desktop()
                     self.assertFalse(self.mapped(self.vela.state(), namespace))
-                    log = self.vela.log_text()[offset:]
-                    creation = re.search(r'get_layer_surface\(.*?wl_surface([@#]\d+).*?'
-                                         rf'"{namespace}"', log)
-                    self.assertIsNotNone(creation, f"{namespace} did not reopen")
-                    surface = re.escape(creation[1])
-                    self.assertRegex(log, rf'wl_surface{surface}\.attach\(wl_buffer')
-                    self.assertRegex(log, rf'wl_surface{surface}\.destroy\(\)')
+                    surfaces.append(self.reopen_trace(self.vela.log_text()[offset:], namespace))
+                self.assertEqual(len(set(surfaces)), 1, f"{namespace} reopened on another surface")
 
     # ------------------------------------------------------ Quick Settings --
     # docs/visual-coherence.md §6.9 and §6.10. Its window is the panel with
@@ -2013,6 +2019,45 @@ class QtShell(RealShell):
         self.assertEqual(self.layer(state, "vela-quick-settings")["output"], "HEADLESS-1")
         self.check_desktop()
 
+    def test_a_kept_panel_reopens_on_the_display_in_use(self):
+        """Closed less than 10 s ago, a panel still has its surface
+        (docs/shell-graphics-memory.md). Opened from the keyboard on the same
+        display, it maps that surface again; on another display it goes there
+        all the same, on a new surface, and gives the old one back."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        outputs = {o["name"]: o for o in state["outputs"]}
+        for namespace, key in (("vela-start-menu", "super"), ("vela-quick-settings", "super+a")):
+            with self.subTest(panel=namespace):
+                previous = None
+                for name in ("HEADLESS-1", "HEADLESS-1", "HEADLESS-2", "HEADLESS-2", "HEADLESS-1"):
+                    output = outputs[name]
+                    offset = len(self.vela.log_text())
+                    with self.input_session() as send:
+                        # With no window, the display in use is the pointer's.
+                        send("move", output["x"] + output["w"] // 2, output["y"] + output["h"] // 2,
+                             "sleep", 200, "key", key)
+                        state = self.vela.wait_for(
+                            lambda s: self.layer(s, namespace) and s["focusedLayer"] == namespace,
+                            what=f"{namespace} open on {name}")
+                        layer = self.layer(state, namespace)
+                        self.assertEqual(layer["output"], name)
+                        self.assertGreaterEqual(layer["x"], output["x"])
+                        self.assertLessEqual(layer["x"] + layer["w"], output["x"] + output["w"])
+                        send("key", "Escape")
+                        self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5,
+                                           what=f"{namespace} closed")
+                    log = self.vela.log_text()[offset:]
+                    surface = self.reopen_trace(log, namespace)
+                    if previous and previous[0] == name:
+                        self.assertEqual(surface, previous[1], f"{namespace} gave its surface back within 10 s")
+                    elif previous:
+                        self.assertNotEqual(surface, previous[1], f"{namespace} kept its surface on {name}")
+                        self.assertRegex(log, rf'wl_surface{re.escape(previous[1])}\.destroy\(\)',
+                                         f"{namespace} kept its surface for {previous[0]}")
+                    previous = (name, surface)
+        self.check_desktop()
+
 
 class KeyboardPanelsWithoutAudio(RealShell):
     """Panels opened from the keyboard with no audio service: the wheel on
@@ -2137,6 +2182,108 @@ class VolumeDisplay(RealShell):
     def _window_center(self, identifier):
         window = self.vela.state().window(identifier)
         return window["x"] + window["w"] // 2, window["y"] + window["h"] // 2
+
+
+def resident_gpu_kib(pid):
+    """VRAM and GTT the process's DRM clients hold (/proc fdinfo), or None
+    where the driver doesn't report VRAM (amdgpu does)."""
+    clients, total = set(), None
+    for fd in os.scandir(f"/proc/{pid}/fdinfo"):
+        try:
+            with open(fd.path) as file:
+                info = file.read()
+        except FileNotFoundError:
+            continue
+        client = re.search(r"^drm-client-id:\s+(\d+)", info, re.M)
+        regions = dict(re.findall(r"^drm-resident-(vram|gtt):\s+(\d+) KiB", info, re.M))
+        if client and "vram" in regions and client[1] not in clients:
+            clients.add(client[1])
+            total = (total or 0) + sum(map(int, regions.values()))
+    return total
+
+
+@unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
+class PanelGraphics(RealShell):
+    """A hidden panel keeps its QRhi for 10 s, then gives it back
+    (docs/shell-graphics-memory.md)."""
+
+    shell_env = {"QT_LOGGING_RULES": "vela.shell.panels.debug=true"}
+    KEPT = 10 # panelGraphicsKept in shell/src/main.cpp
+    NC = "vela-notification-center"
+
+    def released(self, offset):
+        return self.vela.log_text()[offset:].count(f"{self.NC} released its graphics")
+
+    def toggle(self, opening):
+        self.shell_command("notification-center")
+        self.vela.wait_for(lambda s: self.mapped(s, self.NC) == opening,
+                           what="Notification Center " + ("open" if opening else "closed"))
+
+    def surface(self, offset):
+        """The wl_surface of the last Notification Center opened since offset."""
+        found = re.findall(r'get_layer_surface\(new id zwlr_layer_surface_v1[@#]\d+, '
+                           rf'wl_surface([@#]\d+).*?"{self.NC}"', self.vela.log_text()[offset:])
+        self.assertTrue(found, "Notification Center layer surface missing from protocol trace")
+        return found[-1]
+
+    def destroyed(self, surface, offset):
+        return re.search(rf'wl_surface{re.escape(surface)}\.destroy\(\)', self.vela.log_text()[offset:])
+
+    def capture(self):
+        """The open panel once its animation is over, in its window's pixels."""
+        time.sleep(1.5)
+        layer = self.layer(self.vela.state(), self.NC)
+        path = os.path.join(self.vela.directory, "panel.png")
+        self.vela.screenshot(path, region=(layer["x"], layer["y"], layer["w"], layer["h"]))
+        return Image.read(path)
+
+    def test_a_hidden_panel_releases_its_graphics_after_a_while(self):
+        time.sleep(2)
+        idle = resident_gpu_kib(self.shell.pid)
+        offset = len(self.vela.log_text())
+        self.toggle(True)
+        warm = self.capture()
+        surface = self.surface(offset)
+        self.toggle(False)
+        # Reopened before the delay is over, on the same surface, it keeps
+        # them while open, longer than the delay, and the delay starts again
+        # on closing.
+        time.sleep(self.KEPT * 0.6)
+        self.toggle(True)
+        self.assertEqual(self.surface(offset), surface, "reopened within 10 s on another surface")
+        time.sleep(self.KEPT * 0.6)
+        held = resident_gpu_kib(self.shell.pid)
+        self.toggle(False)
+        closed = time.monotonic()
+        time.sleep(self.KEPT * 0.6)
+        self.assertEqual(self.released(offset), 0, "released within 10 s of its last closing")
+        self.assertIsNone(self.destroyed(surface, offset), "gave its surface back within 10 s")
+        self.vela.wait_for(lambda _: self.released(offset) == 1, timeout=self.KEPT, read_state=False,
+                           what="Notification Center released its graphics")
+        self.assertGreaterEqual(time.monotonic() - closed, self.KEPT - 0.5)
+        self.vela.wait_for(lambda _: self.destroyed(surface, offset), timeout=1, read_state=False,
+                           what="Notification Center gave its surface back")
+        if idle is not None:
+            # On RADV each window's allocator holds tens of MiB.
+            self.assertGreater(held - idle, 32 * 1024, "an open panel's graphics weren't measured")
+            time.sleep(0.5)
+            self.assertLess(resident_gpu_kib(self.shell.pid) - idle, 8 * 1024,
+                            "the shell kept the hidden panel's VRAM and GTT")
+        # Back with a new QRhi, the same pixels; closed again, released again.
+        reopened = len(self.vela.log_text())
+        self.toggle(True)
+        cold = self.capture()
+        self.assertNotEqual(self.surface(reopened), surface, "reopened after the release on the old surface")
+        # A new glyph cache, filled in another order: text antialiasing can
+        # differ by a level or two.
+        difference = max(abs(a - b) for new, old in zip(cold.rows, warm.rows) for a, b in zip(new, old))
+        self.assertLessEqual(difference, 3, "reopened after the release, it looks different")
+        self.toggle(False)
+        closed = time.monotonic()
+        self.vela.wait_for(lambda _: self.released(offset) == 2, timeout=self.KEPT * 1.5, read_state=False,
+                           what="released again")
+        self.assertGreaterEqual(time.monotonic() - closed, self.KEPT - 0.5, "released again at once")
+        self.check_desktop()
 
 
 # Black and white stripes 4 pixels wide: blurred they become one gray, seen
