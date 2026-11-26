@@ -88,7 +88,9 @@ jobs:
       - name: Build instrumented binaries
         run: |
           ccache --zero-stats
-          cmake --build build-sanitized --parallel 2
+          # Every core of the runner (4 on hosted ones). An ASan build peaks around
+          # 3.4 GB at 4 jobs, its tests around 1.1 GB: far below the runner's 16 GB.
+          cmake --build build-sanitized --parallel "$(nproc)"
       - name: Compiler cache statistics
         if: always()
         run: |
@@ -108,14 +110,14 @@ jobs:
 
       - name: Native lane sanitizer tests
         run: >-
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180
+          ctest --test-dir build-sanitized --output-on-failure --parallel "$(nproc)" --timeout 180
           --tests-from-file "$GITHUB_WORKSPACE/build-sanitized/lane-native.txt"
           --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-native.xml"
 
       - name: Qt lane sanitizer tests
         if: ${{ !cancelled() }}
         run: >-
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180
+          ctest --test-dir build-sanitized --output-on-failure --parallel "$(nproc)" --timeout 180
           --tests-from-file "$GITHUB_WORKSPACE/build-sanitized/lane-qt.txt"
           --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-qt.xml"
 
@@ -128,7 +130,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
             exclude='^packaging-update$'
           fi
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 \
+          ctest --test-dir build-sanitized --output-on-failure --parallel "$(nproc)" --timeout 180 \
             --tests-from-file "$GITHUB_WORKSPACE/build-sanitized/lane-scripts.txt" -E "$exclude" \
             --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-scripts.xml"
 

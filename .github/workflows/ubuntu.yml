@@ -92,7 +92,7 @@ jobs:
       - name: Build
         run: |
           ccache --zero-stats
-          cmake --build build-ubuntu --parallel 2
+          cmake --build build-ubuntu --parallel "$(nproc)" # every core of the runner
       - name: Ubuntu compiler cache statistics
         if: always()
         run: ccache --show-stats || true
