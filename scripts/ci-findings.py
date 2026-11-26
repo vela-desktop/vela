@@ -40,6 +40,16 @@ CPPCHECK_FAILURES = {"syntaxError", "preprocessorErrorDirective", "unknownMacro"
 QMLLINT = re.compile(r"^Warning: (?P<file>/[^:]+):(?P<line>\d+):\d+: (?P<message>.*) \[(?P<check>[a-z.-]+)\]$")
 
 
+def output_path(path: Path) -> Path:
+    """A file to write, which must be inside the current directory or this
+    checkout: an argument cannot send it anywhere else."""
+    resolved = os.path.realpath(path)
+    for base in (os.path.realpath(os.getcwd()), str(ROOT)):
+        if os.path.commonpath([resolved, base]) == base:
+            return Path(resolved)
+    raise SystemExit(f"{path}: not inside the current directory or {ROOT}")
+
+
 @dataclass(frozen=True, order=True)
 class Finding:
     tool: str
@@ -143,11 +153,11 @@ def main(argv: list[str] | None = None) -> int:
 
     ceilings = json.loads(args.ceilings.read_text(encoding="utf-8")) if args.ceilings.exists() else {}
     if args.list:
-        args.list.write_text("".join(f"{finding.tool}: {finding}\n" for tool in findings
+        output_path(args.list).write_text("".join(f"{finding.tool}: {finding}\n" for tool in findings
                                      for finding in sorted(findings[tool])), encoding="utf-8")
     if args.update:
         ceilings = update(args.lane, findings, ceilings)
-        args.ceilings.write_text(json.dumps(ceilings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        output_path(args.ceilings).write_text(json.dumps(ceilings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         print(f"updated {args.ceilings}")
         return 0
 

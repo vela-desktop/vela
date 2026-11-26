@@ -26,11 +26,22 @@ import subprocess
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
 TEST_LANES = ("native", "qt", "scripts")
 SOURCE_LANES = ("native", "qt")
 GPU_LABELS = {"gpu", "rhi"}
 QT_LIBRARY = re.compile(r"^libQt6[A-Za-z0-9]*\.so")
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx"}
+
+
+def output_path(path: Path) -> Path:
+    """A file to write, which must be inside the current directory or this
+    checkout: an argument cannot send it anywhere else."""
+    resolved = os.path.realpath(path)
+    for base in (os.path.realpath(os.getcwd()), str(ROOT)):
+        if os.path.commonpath([resolved, base]) == base:
+            return Path(resolved)
+    raise SystemExit(f"{path}: not inside the current directory or {ROOT}")
 
 
 def needed(path: Path) -> list[str] | None:
@@ -258,7 +269,7 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         text = "".join(f"{name}\n" for name in names)
         if args.output:
-            args.output.write_text(text, encoding="utf-8")
+            output_path(args.output).write_text(text, encoding="utf-8")
         else:
             sys.stdout.write(text)
         return 0
@@ -267,8 +278,9 @@ def main(argv: list[str] | None = None) -> int:
         if not entries:
             print(f"the {args.lane} source lane is empty", file=sys.stderr)
             return 1
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(json.dumps(entries, indent=1) + "\n", encoding="utf-8")
+        output = output_path(args.output)
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(json.dumps(entries, indent=1) + "\n", encoding="utf-8")
         print(f"{len(entries)} {args.lane} translation units in {args.output}")
         return 0
     failures = check(build, args.sources)

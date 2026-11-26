@@ -4,6 +4,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -105,6 +106,8 @@ class Main(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root)
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.root)  # outputs must be inside the current directory
         self.log = self.root / "clazy.log"
         self.log.write_text(f"{self.root}/a.cpp:1:1: warning: x [-Wclazy-strict-iterators]\n")
         self.ceilings = self.root / "ceilings.json"
@@ -126,6 +129,11 @@ class Main(unittest.TestCase):
         self.assertEqual(self.run_main("--update")[0], 0)
         self.assertEqual(json.loads(self.ceilings.read_text()), {"qt": {"clazy": {"strict-iterators": 1}}})
         self.assertEqual(self.run_main()[0], 0)
+
+    def test_outputs_stay_inside_the_current_directory(self):
+        with self.assertRaises(SystemExit):
+            m.output_path(Path("/etc/vela-findings.txt"))
+        self.assertEqual(m.output_path(Path("list.txt")), self.root.resolve() / "list.txt")
 
     def test_the_repository_ceilings_are_valid(self):
         ceilings = json.loads(m.CEILINGS.read_text(encoding="utf-8"))
