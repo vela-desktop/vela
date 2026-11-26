@@ -356,10 +356,10 @@ if(VELA_BUILD_TOOLS)
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
     # The title text (text.c) against the renderer it replaced, on the Noto
-    # Sans subsets in tests/fonts: glyph positions, ink outside the line box,
-    # margins, the widths a title stays the same at, bitmap glyphs
+    # Sans subsets in tests/fonts: the old pixels kept, ink outside the line
+    # box, margins, the widths a title stays the same at, bitmap glyphs
     # (docs/font-rendering-improvements.md).
-    add_executable(vela-text-test tests/text_test.c src/text.c)
+    add_executable(vela-text-test tests/text_test.c) # includes src/text.c
     target_link_libraries(vela-text-test PRIVATE vela-pure PkgConfig::FONTS PkgConfig::WLROOTS)
     target_compile_options(vela-text-test PRIVATE -Wall -Wextra -Werror)
     set_target_properties(vela-text-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON)

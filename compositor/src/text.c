@@ -202,6 +202,27 @@ static struct shaped shape(hb_font_t *font, const char *utf8)
     return out;
 }
 
+// Too long for `max_width` (0: no limit): cut, with "…" (shaped into
+// `ellipsis`) after the first `keep` glyphs, `width` wide with it (26.6).
+// Returns whether it was cut; if not, `keep` and `width` are left as they are.
+static bool cut_line(
+    hb_font_t *font, const struct shaped *line, int max_width, struct shaped *ellipsis, unsigned *keep, int64_t *width)
+{
+    if (max_width <= 0 || line->width <= (int64_t)max_width * 64) {
+        return false;
+    }
+    *ellipsis = shape(font, "…");
+    *width = 0;
+    *keep = 0;
+    while (
+        *keep < line->count && *width + line->positions[*keep].x_advance + ellipsis->width <= (int64_t)max_width * 64) {
+        *width += line->positions[*keep].x_advance;
+        ++*keep;
+    }
+    *width += ellipsis->width;
+    return true;
+}
+
 // The max_width values that keep the same glyphs of `line` (or all of them),
 // so the same image: the inverse of the cut in vela_text_render.
 static void fit(
@@ -353,18 +374,7 @@ void vela_text_render(struct vela_text *text, const char *utf8, double pixel_siz
     struct shaped ellipsis = { 0 };
     unsigned keep = line.count;
     int64_t width = line.width;
-    // Too long: cut it and add "…".
-    bool cut = max_width > 0 && line.width > (int64_t)max_width * 64;
-    if (cut) {
-        ellipsis = shape(text->font, "…");
-        width = 0;
-        keep = 0;
-        while (keep < line.count && width + line.positions[keep].x_advance + ellipsis.width <= (int64_t)max_width * 64) {
-            width += line.positions[keep].x_advance;
-            ++keep;
-        }
-        width += ellipsis.width;
-    }
+    bool cut = cut_line(text->font, &line, max_width, &ellipsis, &keep, &width);
     fit(&line, &ellipsis, keep, cut, layout);
 
     int ascender = 0;

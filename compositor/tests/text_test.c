@@ -3,7 +3,8 @@
 
 // The compositor's text (text.c; docs/font-rendering-improvements.md),
 // measured against the renderer it replaced: legacy_render below is text.c as
-// it was before that change, line for line. Every improvement is measured on
+// it was before that change, its drawing line for line and the parts that
+// didn't change taken from text.c itself. Every improvement is measured on
 // both, on the same font, sizes and strings: the old one must show the defect
 // (so the measurement can see it), the new one must be better by a wide
 // margin, and what didn't need to change must not have changed.
@@ -28,7 +29,8 @@
 // tests/fonts, hinting included, so every machine measures the same font.
 // `--capture-dir DIR` also writes the old and new images as PGM files.
 
-#include "text.h"
+// text.c itself, for the parts the old renderer shares with it.
+#include "../src/text.c"
 
 #include <errno.h>
 #include <fontconfig/fontconfig.h>
@@ -101,45 +103,20 @@ static void close_font(struct font *font)
     FT_Done_Face(font->face);
 }
 
-static void set_size(struct font *font, double pixel_size)
+static void set_font_size(struct font *font, double pixel_size)
 {
     FT_Set_Char_Size(font->face, 0, (FT_F26Dot6)lround(pixel_size * 64.0), 72, 72);
     hb_ft_font_changed(font->hb);
 }
 
-// ---- The old renderer: text.c before the change, line for line ----
+// ---- The old renderer ----
 
-struct legacy_shaped {
-    hb_buffer_t *buffer;
-    hb_glyph_info_t *infos;
-    hb_glyph_position_t *positions;
-    unsigned count;
-    int64_t width;
-};
+// text.c before the change: its drawing line for line. Shaping, cutting with
+// "…" and blending didn't change, so it uses text.c's own (shape, cut_line,
+// over), included above.
 
-static struct legacy_shaped legacy_shape(hb_font_t *font, const char *utf8)
-{
-    struct legacy_shaped out = { .buffer = hb_buffer_create() };
-    int length = (int)strlen(utf8);
-    hb_buffer_add_utf8(out.buffer, utf8, length, 0, length);
-    hb_buffer_guess_segment_properties(out.buffer);
-    hb_shape(font, out.buffer, NULL, 0);
-    out.infos = hb_buffer_get_glyph_infos(out.buffer, &out.count);
-    out.positions = hb_buffer_get_glyph_positions(out.buffer, &out.count);
-    for (unsigned i = 0; i < out.count; ++i) {
-        out.width += out.positions[i].x_advance;
-    }
-    return out;
-}
-
-static uint32_t legacy_over(uint32_t dst, int shift, double value, double coverage)
-{
-    double old = ((dst >> shift) & 0xff) / 255.0;
-    return (uint32_t)lround(fmin(1.0, value * coverage + old * (1.0 - coverage)) * 255.0) << shift;
-}
-
-static void legacy_draw_glyphs(FT_Face face, const struct legacy_shaped *line, unsigned count, int64_t *pen,
-    int ascender, const double color[4], struct vela_image *image)
+static void legacy_draw_glyphs(FT_Face face, const struct shaped *line, unsigned count, int64_t *pen, int ascender,
+    const double color[4], struct vela_image *image)
 {
     for (unsigned i = 0; i < count; ++i) {
         const hb_glyph_position_t *position = &line->positions[i];
@@ -163,8 +140,8 @@ static void legacy_draw_glyphs(FT_Face face, const struct legacy_shaped *line, u
                         continue;
                     }
                     uint32_t *dst = &image->pixels[(size_t)y * (size_t)image->width + (size_t)x];
-                    *dst = legacy_over(*dst, 24, 1.0, coverage) | legacy_over(*dst, 16, color[1], coverage)
-                        | legacy_over(*dst, 8, color[2], coverage) | legacy_over(*dst, 0, color[3], coverage);
+                    *dst = over(*dst, 24, 1.0, coverage) | over(*dst, 16, color[1], coverage)
+                        | over(*dst, 8, color[2], coverage) | over(*dst, 0, color[3], coverage);
                 }
             }
         }
@@ -176,22 +153,12 @@ static void legacy_render(
     struct font *font, const char *utf8, double pixel_size, uint32_t color, int max_width, struct vela_image *out)
 {
     FT_Face face = font->face;
-    set_size(font, pixel_size);
-    struct legacy_shaped line = legacy_shape(font->hb, utf8);
-    struct legacy_shaped ellipsis = { 0 };
+    set_font_size(font, pixel_size);
+    struct shaped line = shape(font->hb, utf8);
+    struct shaped ellipsis = { 0 };
     unsigned keep = line.count;
     int64_t width = line.width;
-    if (max_width > 0 && line.width > (int64_t)max_width * 64) {
-        ellipsis = legacy_shape(font->hb, "…");
-        width = 0;
-        keep = 0;
-        while (
-            keep < line.count && width + line.positions[keep].x_advance + ellipsis.width <= (int64_t)max_width * 64) {
-            width += line.positions[keep].x_advance;
-            ++keep;
-        }
-        width += ellipsis.width;
-    }
+    cut_line(font->hb, &line, max_width, &ellipsis, &keep, &width);
     const FT_Size_Metrics *metrics = &face->size->metrics;
     int ascender = (int)ceil(metrics->ascender / 64.0);
     int descender = (int)floor(metrics->descender / 64.0);
@@ -248,6 +215,29 @@ static bool same_layout(const struct vela_text_layout *a, const struct vela_text
     return a->line_x == b->line_x && a->line_y == b->line_y && a->line_width == b->line_width
         && a->line_height == b->line_height && a->ascender == b->ascender && a->fit_min == b->fit_min
         && a->fit_max == b->fit_max;
+}
+
+// Whether the new image, from its line box, has every pixel of the old one
+// (the line box and a column), out to where the new one ends (beyond: empty).
+// The first that differs is written to stderr.
+static bool keeps_old_pixels(
+    const struct vela_image *old_image, const struct vela_image *new_image, const struct vela_text_layout *layout)
+{
+    for (int y = 0; y < old_image->height; ++y) {
+        for (int x = 0; x < old_image->width; ++x) {
+            uint32_t old_pixel = old_image->pixels[(size_t)y * (size_t)old_image->width + (size_t)x];
+            int nx = layout->line_x + x;
+            int ny = layout->line_y + y;
+            uint32_t new_pixel = nx < new_image->width && ny < new_image->height
+                ? new_image->pixels[(size_t)ny * (size_t)new_image->width + (size_t)nx]
+                : 0;
+            if (old_pixel != new_pixel) {
+                fprintf(stderr, "pixel %d,%d of the old image was %08x, is %08x\n", x, y, old_pixel, new_pixel);
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 // The image's alpha, dark on light, for looking at the two renderers.
@@ -311,23 +301,12 @@ static void pixels_match_the_old_renderer(void)
                         CHECK(layout.line_height == old_image.height);
                         CHECK(layout.line_width + 1 == old_image.width
                             || (layout.line_width == 1 && old_image.width <= 2));
-                        for (int y = 0; y < old_image.height; ++y) {
-                            for (int x = 0; x < old_image.width; ++x) {
-                                uint32_t old_pixel = old_image.pixels[(size_t)y * (size_t)old_image.width + (size_t)x];
-                                int nx = layout.line_x + x;
-                                int ny = layout.line_y + y;
-                                uint32_t new_pixel = nx < new_image.width && ny < new_image.height
-                                    ? new_image.pixels[(size_t)ny * (size_t)new_image.width + (size_t)nx]
-                                    : 0;
-                                if (old_pixel != new_pixel) {
-                                    fprintf(stderr,
-                                        "\"%s\" (%s) at %.2f px, max width %d: pixel %d,%d was %08x, is %08x\n",
-                                        pixel_titles[t], files[f], size, max_width, x, y, old_pixel, new_pixel);
-                                }
-                                CHECK(old_pixel == new_pixel);
-                                ++pixels;
-                            }
+                        if (!keeps_old_pixels(&old_image, &new_image, &layout)) {
+                            fprintf(stderr, "\"%s\" (%s) at %.2f px, max width %d\n", pixel_titles[t], files[f], size,
+                                max_width);
+                            CHECK(false);
                         }
+                        pixels += (long)old_image.width * old_image.height;
                         CHECK(ink(&new_image) >= ink(&old_image));
                         bool cut_ink = ink(&new_image) > ink(&old_image);
                         CHECK(cut_ink
@@ -360,8 +339,8 @@ static void pixels_match_the_old_renderer(void)
 // The ink of one glyph, rendered by FreeType at its pen (whole pixel).
 static long glyph_ink(struct font *font, const char *utf8, double pixel_size)
 {
-    set_size(font, pixel_size);
-    struct legacy_shaped line = legacy_shape(font->hb, utf8);
+    set_font_size(font, pixel_size);
+    struct shaped line = shape(font->hb, utf8);
     CHECK(line.count == 1);
     CHECK(FT_Load_Glyph(font->face, line.infos[0].codepoint, FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT) == 0);
     const FT_Bitmap *bitmap = &font->face->glyph->bitmap;
@@ -410,17 +389,7 @@ static void no_ink_is_cut(void)
                 CHECK(new_ink == expected);
                 // The line box is where it was: inside the old image, the
                 // same pixels, so the text hasn't moved and nothing else changed.
-                for (int y = 0; y < old_image.height; ++y) {
-                    for (int x = 0; x < old_image.width; ++x) {
-                        uint32_t old_pixel = old_image.pixels[(size_t)y * (size_t)old_image.width + (size_t)x];
-                        int nx = layout.line_x + x;
-                        int ny = layout.line_y + y;
-                        uint32_t new_pixel = nx < new_image.width && ny < new_image.height
-                            ? new_image.pixels[(size_t)ny * (size_t)new_image.width + (size_t)nx]
-                            : 0;
-                        CHECK(old_pixel == new_pixel);
-                    }
-                }
+                CHECK(keeps_old_pixels(&old_image, &new_image, &layout));
                 CHECK(layout.line_height == old_image.height);
                 if (z == COUNT(scales) - 1 && (g == 0 || g == 1)) {
                     char name[64];
@@ -757,7 +726,7 @@ static void bitmap_glyphs_are_exact(void)
     // bits as coverage and, on the last rows, past the end of FreeType's
     // buffer (which is why legacy_render isn't run on it: under the
     // sanitizers that read is an error).
-    set_size(&font, 13.0);
+    set_font_size(&font, 13.0);
     CHECK(FT_Load_Glyph(font.face, FT_Get_Char_Index(font.face, 'A'), FT_LOAD_RENDER | FT_LOAD_TARGET_LIGHT) == 0);
     const FT_Bitmap *bitmap = &font.face->glyph->bitmap;
     CHECK(bitmap->pixel_mode == FT_PIXEL_MODE_MONO);

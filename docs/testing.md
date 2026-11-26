@@ -320,8 +320,9 @@ build/compositor/vela-text-test compositor/tests/fonts --capture-dir /tmp/vela-t
 ```
 
 `compositor.text` (CPU) measures the title bar's text (`compositor/src/text.c`)
-against the renderer it replaced, which the test keeps line for line as
-`legacy_render`. It uses the Noto Sans subsets in `compositor/tests/fonts`, so
+against the renderer it replaced, `legacy_render`: the old drawing line for
+line, with the parts that didn't change taken from `text.c`, which the test
+includes. It uses the Noto Sans subsets in `compositor/tests/fonts`, so
 it needs no installed fonts. Every check measures both renderers. The old one
 must show the defect, so the measurement can see it, and the new one must beat
 it by a wide margin:
