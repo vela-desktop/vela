@@ -54,6 +54,7 @@ the current behavior.
 - [Lock wallpaper quality](lock-wallpaper-quality.md): the password screen's wallpaper blur (#149).
 - [Deferred SHM capture readback](capture-readback-async.md): capture without blocking presentation (#132).
 - [Lower-cost screen capture](capture-cost.md): which capture consumers need CPU pixels, and the next steps.
+- [Shell graphics memory](shell-graphics-memory.md): where the shell's VRAM goes, and hidden panels giving it back.
 
 ## Developing
 
