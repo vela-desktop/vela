@@ -6,6 +6,7 @@ xdg-decoration: 32 high, above the content, with the title written by the
 compositor and the three buttons; closing, maximizing with a double click.
 It's found on screen, not from the state."""
 
+import contextlib
 import glob
 import math
 import os
@@ -14,7 +15,7 @@ import subprocess
 import time
 import unittest
 
-from harness import Session, tool
+from harness import Session, pattern_clicked, tool
 
 BAR = 32
 BUTTON = 46
@@ -94,8 +95,7 @@ class BarImagesAtEveryPosition(unittest.TestCase):
     def check_positions(self, title, positions):
         for scale in (1.25, 1.5, 1.75, 2.25):
             with self.subTest(scale=scale, title=title), Session(scale=scale, size="2560x1440@60") as vela:
-                window = vela.open_window(400, 300, decorated=True, title=title)
-                vela.wait_for(lambda s: s["focused"] == window)
+                window = vela.open_focused(400, 300, decorated=True, title=title)
                 reference = bar_images(vela.pixels(), vela.state().window(window), scale)
                 self.assertEqual(len(reference), 4, "title and three glyphs")
                 for i in range(1, positions):
@@ -136,8 +136,7 @@ class TitleLettersStayPut(unittest.TestCase):
     def lower_half(self, vela, title, scale):
         """The window's place and the bar's pixels from its middle row down,
         across its width; the window is closed afterwards."""
-        window = vela.open_window(400, 300, decorated=True, title=title)
-        vela.wait_for(lambda s: s["focused"] == window)
+        window = vela.open_focused(400, 300, decorated=True, title=title)
         w = vela.state().window(window)
         image = vela.pixels()
         top = bar_top(image, w, scale)
@@ -145,8 +144,7 @@ class TitleLettersStayPut(unittest.TestCase):
         left = round((w["x"] + 9) * scale)
         right = round((w["x"] + w["w"] - 3 * BUTTON - 4) * scale)
         rows = tuple(image.rows[y][left * 3:right * 3] for y in range(middle, top + int(BAR * scale) - 2))
-        vela.command(f"window {window} close")
-        vela.wait_for(lambda s: not s.has(window), what="closed")
+        vela.close_window(window)
         return (w["x"], w["y"]), rows
 
 
@@ -163,10 +161,9 @@ class TitleStaysInTheBar(unittest.TestCase):
     def test_the_app_keeps_its_pixels_and_clicks(self):
         for scale in (1.0, 1.25, 1.5):
             with self.subTest(scale=scale), Session(scale=scale, size="1920x1080@60") as vela:
-                log = os.path.join(vela.directory, f"client-{len(vela.clients) + 1}.log")
-                window = vela.open_window(command=[tool("vela-pattern"), "--decorated", "--log-pointer",
-                                                   "--title", INK_BELOW, "400", "300"])
-                vela.wait_for(lambda s: s["focused"] == window)
+                log = vela.next_client_log()
+                window = vela.open_focused(command=[tool("vela-pattern"), "--decorated", "--log-pointer",
+                                                    "--title", INK_BELOW, "400", "300"])
                 w = vela.state().window(window)
                 image = vela.pixels()
                 # vela-pattern's pixels from the content's top-left corner (R =
@@ -184,11 +181,7 @@ class TitleStaysInTheBar(unittest.TestCase):
                         self.assertEqual(image.at(x, y), expected, f"the title covers the app at {dx},{dy}")
                 # A click right under the title's "x" reaches the app.
                 vela.input("move", w["x"] + 24, w["y"] + BAR + 1, "sleep", "50", "down", "sleep", "50", "up")
-                def clicked(_):
-                    with open(log, encoding="utf-8", errors="replace") as f:
-                        lines = f.read().splitlines()
-                    return all(f"vela-pattern: pointer-button 272 {state} window" in lines for state in (1, 0))
-                vela.wait_for(clicked, read_state=False, what="the press and the release in the app")
+                vela.wait_for_client_log(log, pattern_clicked(), "the press and the release in the app")
 
 
 class TitleAcrossTheOutputEdge(unittest.TestCase):
@@ -202,8 +195,7 @@ class TitleAcrossTheOutputEdge(unittest.TestCase):
     def test_the_letters_move_with_the_window(self):
         for scale, positions in ((1.5, (-15, -13, -11, -9, -7)), (1.25, (-20, -16, -12, -8, -4))):
             with self.subTest(scale=scale), Session(scale=scale, size="1920x1080@60") as vela:
-                window = vela.open_window(400, 300, decorated=True, title="jupyter-lab")
-                vela.wait_for(lambda s: s["focused"] == window)
+                window = vela.open_focused(400, 300, decorated=True, title="jupyter-lab")
                 previous = None
                 for x in positions:
                     move_to(vela, window, x)
@@ -221,16 +213,49 @@ class TitleAcrossTheOutputEdge(unittest.TestCase):
                     previous = (x, bar)
 
 
-def move_to(vela, window, x, y=None):
+def move_to(vela, window, x, y=None, attempts=3):
     """Drags the window by its bar until its top-left corner is at (`x`, `y`)
-    units (`y` None: where it is)."""
-    for _ in range(3):
-        w = vela.state().window(window)
-        target_y = w["y"] if y is None else y
-        if (w["x"], w["y"]) == (x, target_y):
+    units (`y` None: where it is), in up to `attempts` drags, each checked."""
+    w = vela.state().window(window)
+    target = (x, w["y"] if y is None else y)
+    for _ in range(attempts):
+        if (w["x"], w["y"]) == target:
             return
-        drag(vela, w, x - w["x"], target_y - w["y"])
-    raise AssertionError(f"the window doesn't go to {x}, {y}")
+        drag(vela, w, target[0] - w["x"], target[1] - w["y"])
+        w = vela.state().window(window)
+    if (w["x"], w["y"]) != target:
+        raise AssertionError(f"the window is at {w['x']}, {w['y']} after {attempts} drags, not at {target}")
+
+
+@contextlib.contextmanager
+def window_at(vela, title, x, y):
+    """A focused 400x300 decorated window titled `title`, dragged to (`x`, `y`)
+    units; closed afterwards. Yields its identifier."""
+    window = vela.open_focused(400, 300, decorated=True, title=title)
+    try:
+        move_to(vela, window, x, y)
+        yield window
+    finally:
+        vela.close_window(window)
+
+
+def now_and_before(vela, capture):
+    """capture() with titles drawn as now and as before their ink was kept
+    (test-title-line-box, decoration.c)."""
+    now = capture()
+    vela.command("test-title-line-box on")
+    try:
+        return now, capture()
+    finally:
+        vela.command("test-title-line-box off")
+
+
+def differences(rows, other, start=0, end=None):
+    """How much each channel differs between two captures' rows, in the
+    columns from `start` to `end` (pixels)."""
+    return [abs(a - b) for row, other_row in zip(rows, other)
+            for a, b in zip(row[start * 3:None if end is None else end * 3],
+                            other_row[start * 3:None if end is None else end * 3])]
 
 
 class TitleAsBefore(unittest.TestCase):
@@ -252,34 +277,24 @@ class TitleAsBefore(unittest.TestCase):
             vela.randr("--output", "HEADLESS-2", "--scale", "1.5", "--pos", "1920,0")
             vela.wait_for(lambda s: any(o["name"] == "HEADLESS-2" and o["x"] == 1920 for o in s["outputs"]),
                           what="the second output at 150%, on the right")
-            now = [self.left_part(vela, title) for title in ("Files", "jupyter-lab")]
-            vela.command("test-title-line-box on")
-            before = [self.left_part(vela, title) for title in ("Files", "jupyter-lab")]
-            self.assertTrue(now[0] == before[0], "the title on the 100% output isn't the one drawn as before")
+            files = now_and_before(vela, lambda: self.left_part(vela, "Files"))
+            self.assertTrue(files[0] == files[1], "the title on the 100% output isn't the one drawn as before")
             # The "j"'s tail, kept now, makes the image wider on the left, so it
             # is stretched by a slightly different factor: the letters drawn
             # before stay within a few levels (4 of 255 measured), the tail
             # left of the title's margin (12 units) is new.
-            worst = max(abs(a - b) for row_now, row_before in zip(now[1], before[1])
-                        for a, b in zip(row_now[12 * 3:], row_before[12 * 3:]))
-            self.assertLessEqual(worst, 8, "jupyter-lab's letters changed on the 100% output")
-            tail = sum(abs(a - b) for row_now, row_before in zip(now[1], before[1])
-                       for a, b in zip(row_now[:12 * 3], row_before[:12 * 3]))
-            self.assertGreater(tail, 0, "the j's tail isn't drawn on the 100% output")
+            jupyter = now_and_before(vela, lambda: self.left_part(vela, "jupyter-lab"))
+            self.assertLessEqual(max(differences(*jupyter, start=12)), 8,
+                                 "jupyter-lab's letters changed on the 100% output")
+            self.assertGreater(sum(differences(*jupyter, end=12)), 0, "the j's tail isn't drawn on the 100% output")
 
     def left_part(self, vela, title):
-        """The bar's rows on the left output, where the window's title is; the
-        window is closed afterwards."""
-        window = vela.open_window(400, 300, decorated=True, title=title)
-        vela.wait_for(lambda s: s["focused"] == window)
-        move_to(vela, window, 1920 - 70, 200)
-        vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2", what="the window on the 150% output")
-        w = vela.state().window(window)
-        image = vela.pixels(output=0)
-        rows = tuple(image.rows[y][(1920 - 70) * 3:] for y in range(w["y"], w["y"] + BAR))
+        """The bar's rows on the left output, where the window's title is."""
+        with window_at(vela, title, 1920 - 70, 200) as window:
+            vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2", what="the window on the 150% output")
+            image = vela.pixels(output=0)
+            rows = tuple(image.rows[y][(1920 - 70) * 3:] for y in range(200, 200 + BAR))
         self.assertTrue(any(len(set(row[12 * 3:])) > 3 for row in rows), "no title on the left output")
-        vela.command(f"window {window} close")
-        vela.wait_for(lambda s: not s.has(window), what="closed")
         return rows
 
     def test_a_font_taller_than_the_bar(self):
@@ -292,28 +307,21 @@ class TitleAsBefore(unittest.TestCase):
                 os.makedirs(vela.env["XDG_CONFIG_HOME"], exist_ok=True)
                 with open(os.path.join(vela.env["XDG_CONFIG_HOME"], "kdeglobals"), "w") as config:
                     config.write("[General]\nfont=Noto Sans,18\n[WM]\nactiveFont=Noto Sans,18\n")
-                for position in range(4):
-                    now = self.bar(vela, "File – È pronto", 100 + position, 150 + position, scale)
-                    vela.command("test-title-line-box on")
-                    before = self.bar(vela, "File – È pronto", 100 + position, 150 + position, scale)
-                    vela.command("test-title-line-box off")
-                    self.assertTrue(now == before, f"at {100 + position}, {150 + position}: the bar changed")
+                for x, y in ((100 + i, 150 + i) for i in range(4)):
+                    now, before = now_and_before(vela, lambda: self.bar(vela, "File – È pronto", x, y, scale))
+                    self.assertTrue(now == before, f"at {x}, {y}: the bar changed")
 
     def bar(self, vela, title, x, y, scale):
         """The bar's pixels, from its first row to its last, across the title's
-        room, with the window at (x, y); the window is closed afterwards."""
-        window = vela.open_window(400, 300, decorated=True, title=title)
-        vela.wait_for(lambda s: s["focused"] == window)
-        move_to(vela, window, x, y)
-        image = vela.pixels()
+        room, with the window at (x, y)."""
+        with window_at(vela, title, x, y):
+            image = vela.pixels()
         top = math.floor(y * scale + 0.5)
         bottom = math.floor((y + BAR) * scale + 0.5) # the content's first row
         left = math.floor((x + 9) * scale + 0.5)
         right = math.floor((x + 400 - 3 * BUTTON) * scale + 0.5)
         rows = tuple(image.rows[row][left * 3:right * 3] for row in range(top, bottom))
         self.assertTrue(any(len(set(row)) > 3 for row in rows[:len(rows) // 4]), "nothing near the bar's top")
-        vela.command(f"window {window} close")
-        vela.wait_for(lambda s: not s.has(window), what="closed")
         return rows
 
 
@@ -326,8 +334,7 @@ class TitleFollowsTheWidth(unittest.TestCase):
     def test_cut_and_whole_again(self):
         for scale in (1.0, 1.25):
             with self.subTest(scale=scale), Session(scale=scale, size="1920x1080@60") as vela:
-                window = vela.open_window(400, 300, decorated=True)
-                vela.wait_for(lambda s: s["focused"] == window)
+                window = vela.open_focused(400, 300, decorated=True)
                 whole = title_image(vela, window, scale)
                 # The width that cuts the title about halfway: its room is the
                 # bar minus the margin, the three buttons and 8 units
@@ -496,11 +503,9 @@ class ShellColors(unittest.TestCase):
         with Session() as vela:
             vela.command("mica #102030 #405060")
             # Side by side, the second one active.
-            first = vela.open_window(400, 300, decorated=True)
-            vela.wait_for(lambda s: s["focused"] == first)
+            first = vela.open_focused(400, 300, decorated=True)
             vela.keys("super+Left")
-            second = vela.open_window(400, 300, decorated=True)
-            vela.wait_for(lambda s: s["focused"] == second)
+            second = vela.open_focused(400, 300, decorated=True)
             vela.keys("super+Right")
             time.sleep(0.6) # the morphs
 
@@ -545,8 +550,7 @@ class ShellColors(unittest.TestCase):
             settled(lambda p: max(p) < 120, "a dark glyph, light")
             vela.command("theme dark dark #ff0000")
             settled(lambda p: min(p) > 160, "white again")
-            other = vela.open_window(200, 150, decorated=True)
-            vela.wait_for(lambda s: s["focused"] == other)
+            vela.open_focused(200, 150, decorated=True)
             settled(lambda p: 110 < min(p) and max(p) < 150, "gray, inactive")
 
     def test_the_close_hover_fades(self):
@@ -636,8 +640,7 @@ class IconCache(unittest.TestCase):
     def test_evicted_icon_stays_on_screen_and_comes_back(self):
         with Session() as vela:
             self.write_icon(vela, self.MAGENTA)
-            held = vela.open_window(400, 300, app_id="vela.test.held", decorated=True)
-            vela.wait_for(lambda s: s["focused"] == held)
+            held = vela.open_focused(400, 300, app_id="vela.test.held", decorated=True)
             self.wait_for_icon(vela, held, self.MAGENTA, "the held window's icon")
             # From here a cyan icon has been drawn again: its entry was evicted.
             self.write_icon(vela, self.CYAN)
