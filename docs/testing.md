@@ -334,7 +334,9 @@ it by a wide margin:
   italic, keep all their coverage. A title starting with "j" keeps its tail,
   and marks stacked above a letter are kept.
 - **Margins**: whole steps of the caller's margin, the smallest that hold the
-  ink, with the same ink relative to the line box.
+  ink, with the same ink relative to the line box. The caller's room (the
+  title bar) bounds the image on every side: the left and top room hold whole
+  margins only, and a negative room ends the image inside the line box.
 - **Resizing**: a width inside the range `vela_text_fits` reports makes the
   identical image, and the first width outside it makes a different one. A
   resize therefore draws the title the fewest times possible, once per
@@ -359,6 +361,9 @@ a rectangle moved by whole pixels moves by as many across that edge, which
   same pixels at 100–225%, so the margin doesn't move the line box.
 - `BarImagesAtEveryPosition` also drags a window whose title has ink outside
   its line box, and checks that its pixels are the same at every position.
+- `TitleStaysInTheBar` titles a window with dots stacked below a letter at
+  100–150%. The app's first rows under the title must keep their pixels, and a
+  click right under the title must reach the app.
 - `TitleAcrossTheOutputEdge` drags a window titled "jupyter-lab" partly off
   the output's left edge at 125% and 150%. Between positions, the title's
   pixels must move by exactly the window's move.

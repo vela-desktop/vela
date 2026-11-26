@@ -149,6 +149,47 @@ class TitleLettersStayPut(unittest.TestCase):
         return (w["x"], w["y"]), rows
 
 
+# Dots stacked below an "x" (an app can send any title): their ink reaches
+# below the bar, where the app's content starts.
+INK_BELOW = "x" + "\u0323" * 5 + " Files"
+
+
+class TitleStaysInTheBar(unittest.TestCase):
+    """The title's image never leaves the bar (decoration.c): ink past its
+    bottom edge is left out, so the app's first rows keep their pixels and
+    its clicks, also right under the title."""
+
+    def test_the_app_keeps_its_pixels_and_clicks(self):
+        for scale in (1.0, 1.25, 1.5):
+            with self.subTest(scale=scale), Session(scale=scale, size="1920x1080@60") as vela:
+                log = os.path.join(vela.directory, f"client-{len(vela.clients) + 1}.log")
+                window = vela.open_window(command=[tool("vela-pattern"), "--decorated", "--log-pointer",
+                                                   "--title", INK_BELOW, "400", "300"])
+                vela.wait_for(lambda s: s["focused"] == window)
+                w = vela.state().window(window)
+                image = vela.pixels()
+                # vela-pattern's pixels from the content's top-left corner (R =
+                # x, G = y, B their high bits), in the first rows, under the
+                # title and the margin before it. The corner is on a physical
+                # pixel near the logical one: found by its pattern, away from
+                # the title's columns.
+                near = (round(w["x"] * scale), round((w["y"] + BAR) * scale))
+                left, top = next((x - 300, y - 8) for x in range(near[0] + 297, near[0] + 304)
+                                 for y in range(near[1] + 5, near[1] + 12) if image.at(x, y) == (44, 8, 16))
+                for y in range(top, top + round(4 * scale)):
+                    for x in range(left, left + round(200 * scale)):
+                        dx, dy = x - left, y - top
+                        expected = (dx & 255, dy & 255, (dx >> 8 & 15) << 4 | (dy >> 8 & 15))
+                        self.assertEqual(image.at(x, y), expected, f"the title covers the app at {dx},{dy}")
+                # A click right under the title's "x" reaches the app.
+                vela.input("move", w["x"] + 24, w["y"] + BAR + 1, "sleep", "50", "down", "sleep", "50", "up")
+                def clicked(_):
+                    with open(log, encoding="utf-8", errors="replace") as f:
+                        lines = f.read().splitlines()
+                    return all(f"vela-pattern: pointer-button 272 {state} window" in lines for state in (1, 0))
+                vela.wait_for(clicked, read_state=False, what="the press and the release in the app")
+
+
 class TitleAcrossTheOutputEdge(unittest.TestCase):
     """Dragged partly off the output's left edge, the window moves its title
     by as many pixels as the window: "jupyter-lab"'s image starts left of the

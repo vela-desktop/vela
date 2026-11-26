@@ -400,16 +400,25 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
             // Ink outside the line box (a "j"'s tail, an italic's slant, marks
             // stacked above a letter) widens the image to the left and above
             // by whole logical units, so the line box keeps its pixels
-            // wherever the window is (§3.4).
+            // wherever the window is (§3.4). It stays within the bar and left
+            // of the buttons: what it covers takes the bar's clicks, and
+            // below the bar is the app.
             int units = vela_whole_pixel_units(scale);
             int margin = units > 0 ? (int)lround(units * (double)scale) : 1;
+            double pixel_size = vela_text_pixel_size(text) * scale;
+            int line_height = vela_text_line_height(text, pixel_size);
+            double line_y = round((HEIGHT - line_height / (double)scale) / 2.0);
+            const struct vela_text_room room = {
+                .left = (int)floor(title_x * (double)scale),
+                .top = (int)floor(line_y * scale),
+                .right = (int)floor(8.0 * scale), // max_width leaves 8 units before the buttons
+                .bottom = (int)floor((HEIGHT - line_y) * scale) - line_height,
+            };
             struct vela_image image = { 0 };
             struct vela_text_layout *layout = &decoration->title_layout;
-            vela_text_render(
-                text, state->title, vela_text_pixel_size(text) * scale, text_color, max_width, margin, &image, layout);
+            vela_text_render(text, state->title, pixel_size, text_color, max_width, margin, &room, &image, layout);
             double left = units > 0 ? layout->line_x / margin * units : layout->line_x / (double)scale;
             double above = units > 0 ? layout->line_y / margin * units : layout->line_y / (double)scale;
-            double line_y = round((HEIGHT - layout->line_height / (double)scale) / 2.0);
             double logical_width = image.width / (double)scale;
             double logical_height = image.height / (double)scale;
             set_image(

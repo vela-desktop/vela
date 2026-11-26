@@ -14,7 +14,8 @@
 //   which a "j"'s tail, an italic's overhang or accents above capitals leave.
 // - Margins: whole steps of the caller's margin, as small as possible, and
 //   the same ink relative to the line box whatever the margin; at most an em
-//   past the line box, whatever an app puts in its title.
+//   past the line box, whatever an app puts in its title, and never past the
+//   room the caller gives (the title bar).
 // - Resizing: a width in [fit_min, fit_max] makes the same image, and one
 //   outside it a different one; drawn again only outside it, an interactive
 //   resize draws the title a few times instead of on every frame.
@@ -302,7 +303,7 @@ static void pixels_match_the_old_renderer(void)
                         struct vela_image new_image = { 0 };
                         struct vela_text_layout layout;
                         vela_text_render(
-                            font.text, pixel_titles[t], size, WHITE, max_width, 1, &new_image, &layout);
+                            font.text, pixel_titles[t], size, WHITE, max_width, 1, NULL, &new_image, &layout);
                         CHECK(layout.line_height == old_image.height);
                         CHECK(layout.line_width + 1 == old_image.width
                             || (layout.line_width == 1 && old_image.width <= 2));
@@ -389,7 +390,7 @@ static void no_ink_is_cut(void)
                 legacy_render(&font, glyphs[g], size, WHITE, 0, &old_image);
                 struct vela_image new_image = { 0 };
                 struct vela_text_layout layout;
-                vela_text_render(font.text, glyphs[g], size, WHITE, 0, 1, &new_image, &layout);
+                vela_text_render(font.text, glyphs[g], size, WHITE, 0, 1, NULL, &new_image, &layout);
                 long old_ink = ink(&old_image);
                 long new_ink = ink(&new_image);
                 expected_total += expected;
@@ -447,7 +448,7 @@ static void title_starting_with_j(void)
         legacy_render(&font, "jupyter-lab", size, WHITE, 0, &old_image);
         struct vela_image new_image = { 0 };
         struct vela_text_layout layout;
-        vela_text_render(font.text, "jupyter-lab", size, WHITE, 0, 1, &new_image, &layout);
+        vela_text_render(font.text, "jupyter-lab", size, WHITE, 0, 1, NULL, &new_image, &layout);
         // The tail, left of the pen: missing before, there now.
         long tail = 0;
         for (int y = 0; y < new_image.height; ++y) {
@@ -485,7 +486,7 @@ static void stacked_marks(void)
         legacy_render(&font, STACKED, size, WHITE, 0, &old_image);
         struct vela_image new_image = { 0 };
         struct vela_text_layout layout;
-        vela_text_render(font.text, STACKED, size, WHITE, 0, 1, &new_image, &layout);
+        vela_text_render(font.text, STACKED, size, WHITE, 0, 1, NULL, &new_image, &layout);
         long above = 0;
         for (int y = 0; y < layout.line_y; ++y) {
             for (int x = 0; x < new_image.width; ++x) {
@@ -526,7 +527,7 @@ static void stacked_marks_are_bounded(void)
         int reach = (int)ceil(size) + 1;
         struct vela_image image = { 0 };
         struct vela_text_layout layout;
-        vela_text_render(font.text, title, size, WHITE, 0, 1, &image, &layout);
+        vela_text_render(font.text, title, size, WHITE, 0, 1, NULL, &image, &layout);
         CHECK(layout.line_y == reach); // the marks reach past it: cut at the bound
         CHECK(image.height <= layout.line_height + 2 * reach);
         CHECK(image.width <= layout.line_width + 2 * reach);
@@ -538,6 +539,61 @@ static void stacked_marks_are_bounded(void)
         }
         CHECK(above > 0); // the marks within reach are drawn
         vela_image_finish(&image);
+    }
+    close_font(&font);
+}
+
+// The caller's room (the title bar, decoration.c) bounds the image on each
+// side, and ink beyond it is left out: here, dots stacked below an "x" (an
+// app can send any title) would reach below the bar, over the app; a "j"'s
+// tail and marks above leave the line box too. Within the room, the image is
+// the one without a room; the left and top room hold whole margins only. A
+// negative room ends the image inside the line box.
+static void room_bounds_the_image(void)
+{
+    static const char *const title = "jx\u0302\u0303\u0301\u0302\u0303\u0301\u0323\u0323\u0323\u0323\u0323 Files";
+    char regular[PATH_MAX];
+    font_path(regular, sizeof(regular), "NotoSans-Regular-subset.ttf");
+    struct font font = open_font(regular);
+    for (size_t z = 0; z < COUNT(scales); ++z) {
+        double size = KDE_PIXELS * scales[z];
+        struct vela_image free_image = { 0 };
+        struct vela_text_layout free_layout;
+        vela_text_render(font.text, title, size, WHITE, 0, 1, NULL, &free_image, &free_layout);
+        int below = free_image.height - free_layout.line_y - free_layout.line_height;
+        // The ink leaves the line box on three sides, past the room below.
+        CHECK(free_layout.line_x >= 1 && free_layout.line_y > 3 && below > 3);
+        static const int margins[] = { 1, 2, 3 };
+        for (size_t m = 0; m < COUNT(margins); ++m) {
+            const struct vela_text_room room = { 1, 3, 2, 3 };
+            struct vela_image image = { 0 };
+            struct vela_text_layout layout;
+            vela_text_render(font.text, title, size, WHITE, 0, margins[m], &room, &image, &layout);
+            // As many whole margins as fit in the room, which the ink fills.
+            CHECK(layout.line_x == room.left / margins[m] * margins[m]);
+            CHECK(layout.line_y == room.top / margins[m] * margins[m]);
+            CHECK(image.width - layout.line_x - layout.line_width <= room.right);
+            CHECK(image.height - layout.line_y - layout.line_height == room.bottom); // the dots fill it
+            // Inside the image, the same ink as without a room.
+            for (int y = 0; y < image.height; ++y) {
+                for (int x = 0; x < image.width; ++x) {
+                    int fx = x - layout.line_x + free_layout.line_x;
+                    int fy = y - layout.line_y + free_layout.line_y;
+                    CHECK(alpha_at(&image, x, y) == alpha_at(&free_image, fx, fy));
+                }
+            }
+            CHECK(ink(&image) < ink(&free_image));
+            vela_image_finish(&image);
+        }
+        // A room smaller than the line box: the image ends inside it.
+        const struct vela_text_room inside = { 0, 0, -2, -3 };
+        struct vela_image image = { 0 };
+        struct vela_text_layout layout;
+        vela_text_render(font.text, title, size, WHITE, 0, 1, &inside, &image, &layout);
+        CHECK(layout.line_x == 0 && layout.line_y == 0);
+        CHECK(image.width == layout.line_width - 2 && image.height == layout.line_height - 3);
+        vela_image_finish(&image);
+        vela_image_finish(&free_image);
     }
     close_font(&font);
 }
@@ -554,13 +610,13 @@ static void margins_are_whole_steps(void)
         double size = KDE_PIXELS * scales[z];
         struct vela_image first = { 0 };
         struct vela_text_layout first_layout;
-        vela_text_render(font.text, MARGIN_TEXT, size, WHITE, 0, 1, &first, &first_layout);
+        vela_text_render(font.text, MARGIN_TEXT, size, WHITE, 0, 1, NULL, &first, &first_layout);
         // With a margin of 1, exactly the ink's overflow.
         CHECK(first_layout.line_x > 0 && first_layout.line_y > 0);
         for (size_t m = 0; m < COUNT(margins); ++m) {
             struct vela_image image = { 0 };
             struct vela_text_layout layout;
-            vela_text_render(font.text, MARGIN_TEXT, size, WHITE, 0, margins[m], &image, &layout);
+            vela_text_render(font.text, MARGIN_TEXT, size, WHITE, 0, margins[m], NULL, &image, &layout);
             CHECK(layout.line_x % margins[m] == 0 && layout.line_y % margins[m] == 0);
             // The smallest whole number of steps that holds the ink.
             CHECK(layout.line_x >= first_layout.line_x && layout.line_x < first_layout.line_x + margins[m]);
@@ -610,7 +666,7 @@ static void resizing_keeps_the_image(void)
             // whole with room to spare.
             struct vela_image whole = { 0 };
             struct vela_text_layout whole_layout;
-            vela_text_render(font.text, titles[t], size, WHITE, 0, 1, &whole, &whole_layout);
+            vela_text_render(font.text, titles[t], size, WHITE, 0, 1, NULL, &whole, &whole_layout);
             CHECK(whole_layout.fit_max == INT_MAX && vela_text_fits(&whole_layout, 0));
             int widest = whole_layout.fit_min + 64;
             struct vela_image kept = { 0 };
@@ -623,7 +679,7 @@ static void resizing_keeps_the_image(void)
                 int width = frame < widest ? widest - frame : frame - widest + 2;
                 struct vela_image image = { 0 };
                 struct vela_text_layout layout;
-                vela_text_render(font.text, titles[t], size, WHITE, width, 1, &image, &layout);
+                vela_text_render(font.text, titles[t], size, WHITE, width, 1, NULL, &image, &layout);
                 ++frames;
                 ++drawn_before; // the old decoration.c drew the title on every new width
                 CHECK(vela_text_fits(&layout, width));
@@ -662,7 +718,7 @@ static void resizing_keeps_the_image(void)
                 if (step % 97 == 0) {
                     struct vela_image image = { 0 };
                     struct vela_text_layout layout;
-                    vela_text_render(font.text, titles[t], size, WHITE, width, 1, &image, &layout);
+                    vela_text_render(font.text, titles[t], size, WHITE, width, 1, NULL, &image, &layout);
                     CHECK(same_image(&kept, &image) && same_layout(&kept_layout, &layout));
                     vela_image_finish(&image);
                 }
@@ -757,7 +813,7 @@ static void bitmap_glyphs_are_exact(void)
     // After: converted, every set bit is a full pixel and nothing else has ink.
     struct vela_image image = { 0 };
     struct vela_text_layout layout;
-    vela_text_render(font.text, "AB", 13.0, WHITE, 0, 1, &image, &layout);
+    vela_text_render(font.text, "AB", 13.0, WHITE, 0, 1, NULL, &image, &layout);
     int bits = set_bits();
     printf(
         "bitmap font, %d pixels set: before, reads %zu bytes of a %zu-byte bitmap; after, %ld px of ink, %d partial\n",
@@ -822,8 +878,8 @@ static void loads_configured_title_font(void)
     struct vela_image expected = { 0 };
     struct vela_text_layout actual_layout;
     struct vela_text_layout expected_layout;
-    vela_text_render(text, "jupyter", vela_text_pixel_size(text), WHITE, 0, 1, &actual, &actual_layout);
-    vela_text_render(bundled, "jupyter", 16.0, WHITE, 0, 1, &expected, &expected_layout);
+    vela_text_render(text, "jupyter", vela_text_pixel_size(text), WHITE, 0, 1, NULL, &actual, &actual_layout);
+    vela_text_render(bundled, "jupyter", 16.0, WHITE, 0, 1, NULL, &expected, &expected_layout);
     CHECK(ink(&actual) > 0 && same_image(&actual, &expected) && same_layout(&actual_layout, &expected_layout));
 
     vela_image_finish(&actual);
@@ -855,6 +911,7 @@ int main(int argc, char **argv)
     title_starting_with_j();
     stacked_marks();
     stacked_marks_are_bounded();
+    room_bounds_the_image();
     margins_are_whole_steps();
     resizing_keeps_the_image();
     bitmap_glyphs_are_exact();
