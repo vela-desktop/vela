@@ -1,0 +1,20 @@
+{
+  "qt": {
+    "clazy": {
+      "detaching-temporary": 143,
+      "non-pod-global-static": 87,
+      "range-loop-detach": 137
+    },
+    "qmllint": {
+      "comma": 1,
+      "confusing-expression-statement": 24,
+      "id-shadows-member": 12,
+      "import": 14,
+      "incompatible-type": 1,
+      "missing-property": 256,
+      "property-override": 1,
+      "unqualified": 1709,
+      "unresolved-type": 1
+    }
+  }
+}

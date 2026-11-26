@@ -3,9 +3,12 @@
 
 name: Static Analysis
 
-# PR validation only; post-merge build and packaging run in build.yml.
+# PR validation, and on main to prime the analysis compiler cache and to
+# notice when a new analyzer release changes the counts.
 on:
   pull_request:
+  push:
+    branches: [main, 'release/**']
   workflow_dispatch:
 
 permissions:
@@ -102,71 +105,85 @@ jobs:
           # Stream the patch to the log and propagate the formatter's status.
           bash scripts/format-changed.sh 'HEAD^1' --diff
 
+  # Both lanes of docs/ci-lanes.md analyse every first-party translation unit
+  # of a full Clang build: the Clang Static Analyzer (through clang-tidy) and
+  # cppcheck in both, Clazy and qmllint in the Qt lane. Each finding count is
+  # held to its ceiling in scripts/ci-findings-ceilings.json.
   static-analysis:
     needs: changes
     if: needs.changes.outputs.heavy == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
-    steps:
-      - name: Install Arch build and analysis tools
+    env: &analysis-env
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-analysis
+      CCACHE_MAXSIZE: 1G
+    steps: &analysis-steps
+      - name: Dependencies
         run: >-
           pacman -Syu --noconfirm --needed
-          base-devel git cmake python clang clang-tools-extra cppcheck shellcheck
-          shaderc vulkan-headers vulkan-icd-loader wayland wayland-protocols
-          wlroots0.20 libxkbcommon pixman libinput libdrm mesa
-          freetype2 harfbuzz fontconfig librsvg cairo pam polkit
+          base-devel git cmake ninja ccache python clang clang-tools-extra clazy cppcheck
+          shaderc vulkan-headers vulkan-icd-loader gtest openssh
+          wayland wayland-protocols wlroots0.20 libxkbcommon pixman libinput libdrm mesa
+          freetype2 harfbuzz fontconfig librsvg cairo zlib pam polkit
+          qt6-base qt6-declarative qt6-svg qt6-wayland qt6-tools qt6-multimedia layer-shell-qt
+          hicolor-icon-theme pipewire wireplumber systemd-libs
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      # Analyze the compositor's C code, without needing Qt or a GPU.
-      - name: Configure Clang static analyzer
+      # ci-lanes.py lists the tracked sources with git; the checkout belongs
+      # to another user than the container's root.
+      - name: Trust the checkout
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+      - name: Restore analysis compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache-analysis
+          key: ccache-arch-clang-analysis-v1-${{ github.event.pull_request.base.sha || github.sha }}
+          restore-keys: |
+            ccache-arch-clang-analysis-v1-
+
+      # Everything that can be built, GPU test tools included, so that every
+      # tracked C and C++ file is compiled; ci-lanes.py checks that it is.
+      - name: Configure with Clang
         run: >-
-          scan-build cmake -S . -B build-static
-          -DVELA_BUILD_SHELL=OFF
-          -DVELA_BUILD_TOOLS=OFF
-          -DCMAKE_BUILD_TYPE=Debug
+          cmake -S . -B build-analysis -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+          -DVELA_BUILD_TOOLS=ON -DVELA_BUILD_GPU_TEST_TOOLS=ON
 
-      - name: Clang Static Analyzer
-        run: >-
-          scan-build --status-bugs -o scan-reports
-          cmake --build build-static --parallel 2
-
-      - name: cppcheck on pure C modules
-        shell: bash
+      # The analysers need generated headers and moc output.
+      - name: Build
         run: |
-          cppcheck --std=c17 --enable=warning --error-exitcode=1 \
-            --suppress=missingIncludeSystem --suppress=unusedFunction \
-            compositor/src/buffer.c compositor/src/color.c \
-            compositor/src/config.c compositor/src/frame_clock.c \
-            compositor/src/geometry.c compositor/src/legacy_names.c \
-            compositor/src/motion.c compositor/src/output_config.c \
-            compositor/src/sun.c compositor/src/util.c compositor/src/x11_space.c \
-            common/shortcuts/custom.c common/shortcuts/shortcuts.c \
-            common/shortcuts/super_numbers.c common/shortcuts/table.c common/terminal/terminal.c \
-            brightness/src/ddc.c brightness/src/fake.c brightness/src/lines.c \
-            brightness/src/scheduler.c brightness/src/transfer.c
+          ccache --zero-stats
+          cmake --build build-analysis
+          ccache --show-stats
 
-      - name: clang-tidy on pure C modules
-        shell: bash
-        run: |
-          clang-tidy -p build-static --quiet \
-            --checks='-*,clang-analyzer-core.*,bugprone-sizeof-expression' \
-            compositor/src/buffer.c compositor/src/color.c \
-            compositor/src/config.c compositor/src/frame_clock.c \
-            compositor/src/geometry.c compositor/src/output_config.c \
-            compositor/src/sun.c compositor/src/util.c compositor/src/x11_space.c \
-            common/shortcuts/custom.c common/shortcuts/shortcuts.c \
-            common/shortcuts/super_numbers.c common/shortcuts/table.c common/terminal/terminal.c \
-            brightness/src/ddc.c brightness/src/fake.c brightness/src/lines.c \
-            brightness/src/scheduler.c brightness/src/transfer.c
+      - name: Analyse the lane (${{ github.job }})
+        env:
+          LANE: ${{ github.job == 'static-analysis' && 'native' || 'qt' }}
+        run: bash scripts/static-analysis.sh "$LANE" build-analysis analysis-reports
 
-      - name: Upload analyzer reports
-        if: always()
+      - name: Upload analysis reports
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: clang-analyzer-reports
-          path: scan-reports/
+          name: static-analysis-${{ github.job }}
+          path: |
+            analysis-reports/*.log
+            analysis-reports/findings.txt
           if-no-files-found: ignore
           retention-days: 14
+
+  static-analysis-qt:
+    needs: changes
+    if: needs.changes.outputs.heavy == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+    env: *analysis-env
+    steps: *analysis-steps
