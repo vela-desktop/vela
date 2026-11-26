@@ -172,6 +172,8 @@ endforeach()
 qt_add_qml_module(vela-settings
     URI Vela.Settings
     VERSION 1.0
+    # Where Vela.Controls and Vela.Bluetooth.Ui are built, for qmllint.
+    IMPORT_PATH ${PROJECT_BINARY_DIR}/common ${PROJECT_BINARY_DIR}/common/bluetooth
     QML_FILES ${SETTINGS_QML_FILES})
 
 target_compile_options(vela-settings PRIVATE -Wall -Wextra)

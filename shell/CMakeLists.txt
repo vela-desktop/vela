@@ -184,6 +184,8 @@ set_source_files_properties(qml/Menus.qml qml/Styles.qml PROPERTIES QT_QML_SINGL
 qt_add_qml_module(vela-shell
     URI Vela.Shell
     VERSION 1.0
+    # Where Vela.Controls and Vela.Bluetooth.Ui are built, for qmllint.
+    IMPORT_PATH ${PROJECT_BINARY_DIR}/common ${PROJECT_BINARY_DIR}/common/bluetooth
     QML_FILES ${VELA_QML_FILES})
 
 target_compile_options(vela-shell PRIVATE -Wall -Wextra)
@@ -352,6 +354,7 @@ if(VELA_BUILD_TOOLS)
         set_source_files_properties(${file} PROPERTIES QT_RESOURCE_ALIAS ${name} QT_QML_SINGLETON_TYPE TRUE)
     endforeach()
     qt_add_qml_module(vela-taskbar-test URI Vela.Taskbar.Test VERSION 1.0
+        IMPORT_PATH ${PROJECT_BINARY_DIR}/common
         QML_FILES qml/Taskbar.qml qml/TaskbarApps.qml qml/TaskbarButton.qml qml/TrayIcon.qml qml/TrayOverflow.qml
         qml/NotificationCenter.qml qml/NotificationList.qml qml/SmallButton.qml qml/ShadowRoom.qml ${taskbar_fakes})
     add_test(NAME shell-taskbar COMMAND vela-taskbar-test)
