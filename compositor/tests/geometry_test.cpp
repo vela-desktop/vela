@@ -204,6 +204,40 @@ TEST(Geometry, AdjacentRectanglesStayAdjacent)
     EXPECT_EQ(box.height, 60);
 }
 
+// A rectangle moved by whole pixels moves its pixels by as many and keeps its
+// size, also across the output's left and top edges, where its coordinates
+// turn negative: a window dragged partly off the output (its title's image
+// sits there, decoration.c). lround would round -1.5 to -2 and 1.5 to 2.
+TEST(Geometry, WholePixelMovesAcrossTheOutputEdge)
+{
+    long moved_wrong = 0;
+    long resized = 0;
+    long checked = 0;
+    for (double scale : { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0 }) {
+        const int units = vela_whole_pixel_units(static_cast<float>(scale));
+        ASSERT_GT(units, 0) << scale;
+        const int step = static_cast<int>(std::lround(units * scale));
+        for (int origin : { 0, 1920 }) {
+            for (int x = origin - 300; x < origin + 300; ++x) {
+                for (double width : { 1.0, 10.5, 37.0 }) {
+                    const vela_pixel_box a = vela_edges_to_pixels(x, x, width, width, origin, origin, scale);
+                    const vela_pixel_box b =
+                        vela_edges_to_pixels(x + units, x + units, width, width, origin, origin, scale);
+                    moved_wrong += b.x != a.x + step || b.y != a.y + step;
+                    resized += b.width != a.width || b.height != a.height;
+                    ++checked;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(moved_wrong, 0) << "of " << checked;
+    EXPECT_EQ(resized, 0) << "of " << checked;
+    // Halves round up on both sides of the edge.
+    EXPECT_EQ(vela_edges_to_pixels(-1, 0, 2, 1, 0, 0, 1.5).x, -1);
+    EXPECT_EQ(vela_edges_to_pixels(-1, 0, 2, 1, 0, 0, 1.5).width, 3);
+    EXPECT_EQ(vela_edges_to_pixels(1, 0, 2, 1, 0, 0, 1.5).x, 2);
+}
+
 TEST(Geometry, BufferMatchesArea)
 {
     EXPECT_TRUE(vela_buffer_matches_area(0, 0, 1280, 720, 1024, 576, 1.25)); // drawn at the output scale
@@ -257,10 +291,12 @@ TEST(Geometry, WholePixelUnitsKeepTheLineBoxOnItsPixels)
         long fraction_moved = 0;
         long positions = 0;
         // Windows at every whole position on an output at 0 and on one to its
-        // right; the title after the margin or after the icon (decoration.c);
-        // ink 1 to 6 pixels left of the line box.
+        // right, also partly off the output's left edge (the image's left
+        // edge on one side of it, the line box on the other); the title after
+        // the margin or after the icon (decoration.c); ink 1 to 6 pixels left
+        // of the line box.
         for (int origin : { 0, 1920 }) {
-            for (int window = origin; window < origin + 2400; ++window) {
+            for (int window = origin - 200; window < origin + 2400; ++window) {
                 for (int title : { 12, 36 }) {
                     for (int needed = 1; needed <= 6; ++needed) {
                         const int line = vela_edges_to_pixels(window + title, 0, 10, 10, origin, 0, scale).x;

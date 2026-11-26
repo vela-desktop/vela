@@ -149,6 +149,46 @@ class TitleLettersStayPut(unittest.TestCase):
         return (w["x"], w["y"]), rows
 
 
+class TitleAcrossTheOutputEdge(unittest.TestCase):
+    """Dragged partly off the output's left edge, the window moves its title
+    by as many pixels as the window: "jupyter-lab"'s image starts left of the
+    line box (the "j"'s tail, text.h), so its left edge crosses the output's
+    edge before the letters do, and the letters must not jump a pixel then
+    (geometry.h, vela_edges_to_pixels). The columns both positions show must
+    match, shifted by the window's move."""
+
+    def test_the_letters_move_with_the_window(self):
+        for scale, positions in ((1.5, (-15, -13, -11, -9, -7)), (1.25, (-20, -16, -12, -8, -4))):
+            with self.subTest(scale=scale), Session(scale=scale, size="1920x1080@60") as vela:
+                window = vela.open_window(400, 300, decorated=True, title="jupyter-lab")
+                vela.wait_for(lambda s: s["focused"] == window)
+                previous = None
+                for x in positions:
+                    move_to(vela, window, x)
+                    w = vela.state().window(window)
+                    image = vela.pixels()
+                    rows = range(round(w["y"] * scale) + 2, round((w["y"] + BAR) * scale) - 2)
+                    bar = [image.rows[y] for y in rows]
+                    if previous is not None:
+                        shift = round((x - previous[0]) * scale)
+                        width = round(120 * scale)
+                        before = [row[:width * 3] for row in previous[1]]
+                        after = [row[shift * 3:(shift + width) * 3] for row in bar]
+                        self.assertTrue(before == after, f"from x={previous[0]} to x={x}: the title moved"
+                                        f" other than {shift} pixels")
+                    previous = (x, bar)
+
+
+def move_to(vela, window, x):
+    """Drags the window by its bar until its left edge is at `x` units."""
+    for _ in range(3):
+        w = vela.state().window(window)
+        if w["x"] == x:
+            return
+        drag(vela, w, x - w["x"], 0)
+    raise AssertionError(f"the window doesn't go to x={x}")
+
+
 class TitleFollowsTheWidth(unittest.TestCase):
     """A new width alone draws the title again only when it would cut it at
     another glyph (decoration.c; compositor.text checks the widths a title

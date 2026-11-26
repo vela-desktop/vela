@@ -346,9 +346,11 @@ it by a wide margin:
 The test prints the before and after figures. `--capture-dir` writes both
 renderers' images as PGM, to inspect at their native size.
 `compositor.Geometry.WholePixelUnitsKeepTheLineBoxOnItsPixels` checks that the
-image's margin keeps the line box on its pixels at every window position;
-moving it by the exact fraction instead would not. In `functional-decorations`
-(GPU), using `vela-pattern --title`:
+image's margin keeps the line box on its pixels at every window position, also
+partly off the output's left edge; moving it by the exact fraction instead
+would not. `compositor.Geometry.WholePixelMovesAcrossTheOutputEdge` checks that
+a rectangle moved by whole pixels moves by as many across that edge, which
+`lround` breaks. In `functional-decorations` (GPU), using `vela-pattern --title`:
 
 - `TitleFollowsTheWidth` narrows and widens a real window at 100% and 125% and
   checks that the bar never shows a stale title.
@@ -357,6 +359,9 @@ moving it by the exact fraction instead would not. In `functional-decorations`
   same pixels at 100–225%, so the margin doesn't move the line box.
 - `BarImagesAtEveryPosition` also drags a window whose title has ink outside
   its line box, and checks that its pixels are the same at every position.
+- `TitleAcrossTheOutputEdge` drags a window titled "jupyter-lab" partly off
+  the output's left edge at 125% and 150%. Between positions, the title's
+  pixels must move by exactly the window's move.
 
 Before merging changes to the title text, look at titles in a real session at
 100%, 125% and 150%, in both palettes, active and inactive, including titles

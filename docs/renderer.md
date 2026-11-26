@@ -83,6 +83,9 @@ A logical rectangle `[x, x+w)` becomes physical as
 `[round(x·s), round((x+w)·s))`. Rounding position and width separately produces
 one-pixel gaps between side-by-side windows (snap!) or overlaps. With edges, two
 rectangles adjacent in logical space always stay adjacent in physical space.
+Halves round up on both sides of 0 (`floor(v + 0.5)`, not `lround`): a rectangle
+moved by whole pixels moves by as many and keeps its size, also when it crosses
+the output's left or top edge.
 
 ### 3.3 1:1 buffers, no resampling
 

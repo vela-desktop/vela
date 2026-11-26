@@ -111,13 +111,21 @@ int vela_physical_edge(int logical, int full_start, int full_end, int pixels, do
     return (int)lround((logical - full_start) * scale);
 }
 
+// Halves up, on both sides of 0: lround rounds -1.5 to -2 but 1.5 to 2, so a
+// rectangle moved by whole pixels across the output's edge would land a pixel
+// off (or change size).
+static int round_edge(double value)
+{
+    return (int)floor(value + 0.5);
+}
+
 struct vela_pixel_box vela_edges_to_pixels(double x, double y, double width, double height, double origin_x,
     double origin_y, double scale)
 {
-    int x1 = (int)lround((x - origin_x) * scale);
-    int y1 = (int)lround((y - origin_y) * scale);
-    int x2 = (int)lround((x + width - origin_x) * scale);
-    int y2 = (int)lround((y + height - origin_y) * scale);
+    int x1 = round_edge((x - origin_x) * scale);
+    int y1 = round_edge((y - origin_y) * scale);
+    int x2 = round_edge((x + width - origin_x) * scale);
+    int y2 = round_edge((y + height - origin_y) * scale);
     return (struct vela_pixel_box) { x1, y1, x2 - x1, y2 - y1 };
 }
 

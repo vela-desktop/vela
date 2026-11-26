@@ -54,7 +54,9 @@ struct vela_pixel_box {
 };
 
 // A logical rectangle in pixels (§3.2): the edges are rounded, not position
-// and size, so adjacent rectangles stay adjacent.
+// and size, so adjacent rectangles stay adjacent. Halves round up everywhere,
+// so moving a rectangle by whole pixels moves its pixels by as many, also
+// across the output's left or top edge.
 struct vela_pixel_box vela_edges_to_pixels(double x, double y, double width, double height, double origin_x,
     double origin_y, double scale);
 
@@ -72,9 +74,10 @@ bool vela_one_to_one(double src_x, double src_y, double src_width, double src_he
 // The fewest logical units, up to 64, that are a whole number of physical
 // pixels at `scale` (1 at 100% and 200%, 2 at 150%, 4 at 125%, 175% and 225%),
 // 0 if there are none. An image moved by a whole number of them keeps the rest
-// of its content on the same pixels at every position, exactly: moved by the
-// equivalent fraction (pixels / scale), vela_edges_to_pixels would round some
-// positions the other way (a title's ink margin, decoration.c).
+// of its content on the same pixels at every position, exactly (also across
+// the output's edge, vela_edges_to_pixels): moved by the equivalent fraction
+// (pixels / scale), it would round some positions the other way (a title's
+// ink margin, decoration.c).
 int vela_whole_pixel_units(float scale);
 
 #endif
