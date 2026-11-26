@@ -199,10 +199,21 @@ before this change:
 
 `asan-ubsan` is not on a PR's critical path, so separate runners per lane
 would save about 20 s, at the cost of a second build. They are not part of
-this plan. Each static-analysis job now builds everything with Clang. On a
-32-thread machine, analysis took 27 s for the native lane and 80 s for the
-Qt lane; on a hosted runner, expect several times that. The jobs prime a
-compiler cache on `main`.
+this plan.
+
+The static-analysis jobs build everything with Clang. Their first run on a
+hosted runner, with a cold compiler cache:
+
+| Job | Build | Analysis | Total |
+|---|---:|---:|---:|
+| `static-analysis` (native) | 7 min | 3 min (clang-tidy; cppcheck in seconds) | 11 min |
+| `static-analysis-qt` | 15 min | 16.5 min (clang-tidy 11.6, Clazy and qmllint 4.8, cppcheck 7 s) | 33 min |
+
+The counts were the same as on a local machine. The jobs prime a compiler
+cache on `main`, which shortens the builds but not the analysis. That makes
+`static-analysis-qt` the longest job of a PR. Splitting its clang-tidy run
+over several runners would bring it down, at the cost of one build per
+runner.
 
 ## Not in this plan
 

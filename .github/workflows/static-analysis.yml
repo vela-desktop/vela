@@ -163,7 +163,7 @@ jobs:
           cmake --build build-analysis
           ccache --show-stats
 
-      - name: Analyse the lane (${{ github.job }})
+      - name: Analyse the lane
         env:
           LANE: ${{ github.job == 'static-analysis' && 'native' || 'qt' }}
         run: bash scripts/static-analysis.sh "$LANE" build-analysis analysis-reports
