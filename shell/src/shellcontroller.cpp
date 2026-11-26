@@ -77,7 +77,7 @@ ShellController::ShellController(QObject* parent)
     connect(qGuiApp, &QGuiApplication::screenRemoved, this, &ShellController::primaryScreenChanged);
     connect(&m_server, &QLocalServer::newConnection, this, [this] {
         while (QLocalSocket* socket = m_server.nextPendingConnection()) {
-            connect(socket, &QLocalSocket::readyRead, this, [this, socket] {
+            const auto readCommands = [this, socket] {
                 while (socket->canReadLine()) {
                     const QByteArray line = socket->readLine().trimmed();
                     if (line == "choose-source") {
@@ -91,19 +91,25 @@ ShellController::ShellController(QObject* parent)
                         handleCommand(line);
                     }
                 }
-            });
-            connect(socket, &QLocalSocket::disconnected, this, [this, socket] {
+            };
+            connect(socket, &QLocalSocket::readyRead, this, readCommands);
+            connect(socket, &QLocalSocket::disconnected, this, [this, socket, readCommands] {
+                // A peer can close immediately after writing multiple lines.
+                readCommands();
                 if (m_chooser == socket) {
                     m_chooser = nullptr;
                     emit chooseSourceCancelled(); // the portal gave up
                 }
-                // A possible command without a final newline.
+                // Legacy clients may send a command without a final newline.
+                // A truncated compositor frame must never be dispatched.
                 const QByteArray rest = socket->readAll().trimmed();
-                if (!rest.isEmpty()) {
+                if (!rest.isEmpty() && !rest.startsWith("active-output")) {
                     handleCommand(rest);
                 }
                 socket->deleteLater();
             });
+            // Also drain bytes already buffered when the connection is accepted.
+            readCommands();
         }
     });
 }
@@ -283,8 +289,24 @@ bool ShellController::listen()
     return true;
 }
 
-void ShellController::handleCommand(const QByteArray& command)
+void ShellController::handleCommand(const QByteArray& line)
 {
+    QByteArray command = line;
+    // The compositor frames the output and command together. Only a whole
+    // frame can change the active output or dispatch its command.
+    if (line.startsWith("active-output ")) {
+        constexpr qsizetype prefixLength = 14;
+        const qsizetype separator = line.indexOf('\t', prefixLength);
+        if (separator < 0 || separator + 1 == line.size()) {
+            return;
+        }
+        const QString name = QString::fromUtf8(line.mid(prefixLength, separator - prefixLength));
+        if (name != m_activeScreen) {
+            m_activeScreen = name;
+            emit activeScreenChanged();
+        }
+        command = line.mid(separator + 1);
+    }
     const QList<QByteArray> parts = command.split(' ');
     if (command == "toggle-start") {
         emit toggleStartRequested();
@@ -486,6 +508,21 @@ QString ShellController::primaryScreen() const
 {
     const QScreen* screen = vela::primaryOutputScreen(m_preferredPrimaryOutput);
     return screen ? screen->name() : QString();
+}
+
+QString ShellController::panelScreen() const
+{
+    // The compositor's word first (the focused window's display), then the
+    // main output: with a video fullscreen on the second monitor, the volume
+    // indicator and Start belong there, where the user is looking.
+    if (!m_activeScreen.isEmpty()) {
+        for (const QScreen* screen : QGuiApplication::screens()) {
+            if (screen->name() == m_activeScreen) {
+                return m_activeScreen;
+            }
+        }
+    }
+    return primaryScreen();
 }
 
 void ShellController::setPreferredPrimaryOutput(const QString& name)

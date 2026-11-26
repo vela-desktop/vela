@@ -487,9 +487,12 @@ The test exercises normal, snapped, maximized and restored window states so frac
 
 The compositor tells the Qt shell what to show (Start, Alt+Tab, the window menu,
 accessibility state) with one line per message on
-`$XDG_RUNTIME_DIR/vela-shell-$WAYLAND_DISPLAY.sock`. In the harness,
-`vela.fake_shell()` listens on that socket and collects the lines, so scenarios can
-assert on them without the real shell:
+`$XDG_RUNTIME_DIR/vela-shell-$WAYLAND_DISPLAY.sock`. Each line starts with the
+display in use, `active-output <name>\t<command>` (an empty name when there is no
+output; [taskbar §11.3](taskbar.md#113-what-opens-from-it)). In the harness,
+`vela.fake_shell()` listens on that socket and collects the lines, each split into
+`active-output <name>` followed by the command, so scenarios can assert on them
+without the real shell:
 
 ```python
 shell = vela.fake_shell()
