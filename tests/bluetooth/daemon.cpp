@@ -371,10 +371,13 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
             fake->calls.clear();
             fake->writes.clear();
             fake->forgetAgents();
-            for (const QString& path : fake->devices.keys()) {
+            // Copies of the keys: removing changes the maps.
+            const QStringList paths = fake->devices.keys();
+            for (const QString& path : paths) {
                 fake->removeDevice(path);
             }
-            for (const QString& name : fake->adapters.keys()) {
+            const QStringList names = fake->adapters.keys();
+            for (const QString& name : names) {
                 fake->removeAdapter(name);
             }
             fake->addAdapter(hci0, { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") });
@@ -1331,7 +1334,8 @@ private slots:
         const Asked question = nextQuestion(0);
         QCOMPARE(question.kind(), QStringLiteral("show-pin"));
         const QString pin = question.details.value(QStringLiteral("pin")).toString();
-        QVERIFY2(pin.size() == 6 && pin.toUInt() <= 999999 && pin.count(QRegularExpression(QStringLiteral("[0-9]"))) == 6, qPrintable(pin));
+        static const QRegularExpression digit(QStringLiteral("[0-9]"));
+        QVERIFY2(pin.size() == 6 && pin.toUInt() <= 999999 && pin.count(digit) == 6, qPrintable(pin));
         QCOMPARE(errorOf(add), QString());
         // The PIN BlueZ got is the one shown.
         QVERIFY(agentLog().contains(QStringLiteral("RequestPinCode ") + keyboard + QStringLiteral(" -> ") + pin));

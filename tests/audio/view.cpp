@@ -393,7 +393,8 @@ private slots:
     void draggedSliderEndsOnTheLastValue()
     {
         QList<double> shown;
-        connect(audio.get(), &Audio::changed, this, [&] { shown.append(audio->volume()); });
+        QObject scope; // disconnects when `shown` goes away
+        connect(audio.get(), &Audio::changed, &scope, [&] { shown.append(audio->volume()); });
         for (int i = 1; i <= 20; i++) {
             audio->setVolume(QStringLiteral("output"), speakers, 1.0 - i * 0.02);
         }

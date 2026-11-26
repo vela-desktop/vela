@@ -112,7 +112,6 @@ bool Accessibility::sendCaffeineCommand(const QByteArray& command)
     const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
     QLocalSocket socket;
     socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    bool confirmed = false;
     if (socket.waitForConnected(300)) {
         QByteArray request("caffeine-set ");
         request += command;
@@ -128,9 +127,8 @@ bool Accessibility::sendCaffeineCommand(const QByteArray& command)
                 && response.value(QStringLiteral("ok")).isBool()) {
                 // The compositor applied or rejected the request before
                 // generating this state. Never display a speculative "off".
-                update(QJsonDocument(response.value(QStringLiteral("state")).toObject())
-                    .toJson(QJsonDocument::Compact));
-                confirmed = true;
+                update(
+                    QJsonDocument(response.value(QStringLiteral("state")).toObject()).toJson(QJsonDocument::Compact));
                 if (!response.value(QStringLiteral("ok")).toBool()) {
                     qWarning() << "vela-shell: compositor rejected caffeine command:" << command;
                 }
@@ -138,12 +136,10 @@ bool Accessibility::sendCaffeineCommand(const QByteArray& command)
             }
         }
     }
-    if (!confirmed) {
-        qWarning() << "vela-shell: caffeine state unconfirmed; keeping last known state:" << command;
-        // The compositor may have applied a request despite a lost reply.
-        QTimer::singleShot(250, this, &Accessibility::query);
-        QTimer::singleShot(1000, this, &Accessibility::query);
-    }
+    qWarning() << "vela-shell: caffeine state unconfirmed; keeping last known state:" << command;
+    // The compositor may have applied a request despite a lost reply.
+    QTimer::singleShot(250, this, &Accessibility::query);
+    QTimer::singleShot(1000, this, &Accessibility::query);
     return false;
 }
 

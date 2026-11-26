@@ -143,10 +143,11 @@ struct ClipboardCallbacks {
     static void send(void* data, ext_data_control_source_v1*, const char* mimeType, int32_t fd)
     {
         auto* self = static_cast<Clipboard*>(data);
+        Q_ASSERT(self);
         QByteArray payload;
         {
             QMutexLocker lock(&self->m_mutex);
-            payload = QByteArray(mimeType) == "image/png" ? self->m_sourcePng : self->m_sourceText;
+            payload = qstrcmp(mimeType, "image/png") == 0 ? self->m_sourcePng : self->m_sourceText;
         }
         // In another thread: a large image doesn't stall the shell while the
         // app reads it.

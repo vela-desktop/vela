@@ -24,9 +24,9 @@
 namespace {
 
 struct Category {
-    const char* key;
-    const char* label;
-    const char* icon;
+    const char* key = nullptr;
+    const char* label = nullptr;
+    const char* icon = nullptr;
     QStringList mimes; // the first decides which is the current app; all are set
 };
 

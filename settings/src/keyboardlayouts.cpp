@@ -141,12 +141,13 @@ void KeyboardLayouts::load()
         if (entry.layout.isEmpty()) {
             continue;
         }
-        auto group = groupOf.constFind(entry.layout);
-        if (group == groupOf.constEnd()) {
-            group = groupOf.insert(entry.layout, int(m_groups.size()));
+        int groupIndex = groupOf.value(entry.layout, -1);
+        if (groupIndex < 0) {
+            groupIndex = int(m_groups.size());
+            groupOf.insert(entry.layout, groupIndex);
             m_groups.append(Group {});
         }
-        Group& into = m_groups[*group];
+        Group& into = m_groups[groupIndex];
         const int index = int(m_entries.size());
         if (entry.variant.isEmpty()) {
             into.layout = index;
@@ -185,31 +186,32 @@ void KeyboardLayouts::translate()
     // Languages and countries by code, in English and in their own language.
     QHash<QString, QString> words;
     const auto languageWords = [&](const QString& code) {
-        auto found = words.constFind(u'l' + code);
-        if (found == words.constEnd()) {
-            const QLocale::Language language = QLocale::codeToLanguage(code, QLocale::ISO639Part3);
-            // QLocale falls back to the default locale for a language it has
-            // no data for: its own name only when it really is that one.
-            const QLocale own(language);
-            const QString text = language == QLocale::AnyLanguage ? QString()
-                : own.language() == language ? QLocale::languageToString(language) + u' ' + own.nativeLanguageName()
-                                             : QLocale::languageToString(language);
-            found = words.insert(u'l' + code, text);
+        const QString key = u'l' + code;
+        if (const auto found = words.constFind(key); found != words.constEnd()) {
+            return *found;
         }
-        return *found;
+        const QLocale::Language language = QLocale::codeToLanguage(code, QLocale::ISO639Part3);
+        // QLocale falls back to the default locale for a language it has
+        // no data for: its own name only when it really is that one.
+        const QLocale own(language);
+        const QString text = language == QLocale::AnyLanguage ? QString()
+            : own.language() == language ? QLocale::languageToString(language) + u' ' + own.nativeLanguageName()
+                                         : QLocale::languageToString(language);
+        words.insert(key, text);
+        return text;
     };
     const auto countryWords = [&](const QString& code) {
-        auto found = words.constFind(u'c' + code);
-        if (found == words.constEnd()) {
-            const QLocale::Territory territory = QLocale::codeToTerritory(code);
-            const QLocale own(QLocale::AnyLanguage, territory);
-            const QString text = territory == QLocale::AnyTerritory ? QString()
-                : own.territory() == territory
-                ? QLocale::territoryToString(territory) + u' ' + own.nativeTerritoryName()
-                : QLocale::territoryToString(territory);
-            found = words.insert(u'c' + code, text);
+        const QString key = u'c' + code;
+        if (const auto found = words.constFind(key); found != words.constEnd()) {
+            return *found;
         }
-        return *found;
+        const QLocale::Territory territory = QLocale::codeToTerritory(code);
+        const QLocale own(QLocale::AnyLanguage, territory);
+        const QString text = territory == QLocale::AnyTerritory ? QString()
+            : own.territory() == territory ? QLocale::territoryToString(territory) + u' ' + own.nativeTerritoryName()
+                                           : QLocale::territoryToString(territory);
+        words.insert(key, text);
+        return text;
     };
     for (Entry& entry : m_entries) {
         entry.name = catalog.value(entry.english, entry.english);

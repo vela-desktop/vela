@@ -98,10 +98,13 @@ private:
     {
         fake->run([this] {
             fake->forgetAgents();
-            for (const QString& path : fake->devices.keys()) {
+            // Copies of the keys: removing changes the maps.
+            const QStringList paths = fake->devices.keys();
+            for (const QString& path : paths) {
                 fake->removeDevice(path);
             }
-            for (const QString& name : fake->adapters.keys()) {
+            const QStringList names = fake->adapters.keys();
+            for (const QString& name : names) {
                 fake->removeAdapter(name);
             }
             fake->addAdapter(hci0, { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") });

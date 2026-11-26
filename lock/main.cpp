@@ -636,7 +636,7 @@ int main(int argc, char* argv[])
     QTimer frames;
     frames.setInterval(33);
     capsFrames = &frames;
-    QObject::connect(&frames, &QTimer::timeout, [] {
+    QObject::connect(&frames, &QTimer::timeout, &frames, [] {
         const double opacity = vela::lock::capsDisplayOpacity(capsShown.elapsed(), capsHoldMs, capsFadeMs);
         if (opacity != capsDisplay) {
             capsDisplay = opacity;

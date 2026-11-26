@@ -39,8 +39,8 @@ template<typename T> void destroyProxy(T*& proxy)
 struct Displays::Client {
     struct Head;
     struct Mode {
-        Head* head;
-        zwlr_output_mode_v1* proxy;
+        Head* head = nullptr;
+        zwlr_output_mode_v1* proxy = nullptr;
         int width = 0, height = 0, refresh = 0;
         bool preferred = false;
         ~Mode() { destroyProxy(proxy); }
@@ -51,8 +51,8 @@ struct Displays::Client {
         }
     };
     struct Head {
-        Client* client;
-        zwlr_output_head_v1* proxy;
+        Client* client = nullptr;
+        zwlr_output_head_v1* proxy = nullptr;
         QString name, description;
         bool enabled = false;
         int x = 0, y = 0, transform = 0;

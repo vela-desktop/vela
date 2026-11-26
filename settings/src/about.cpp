@@ -43,8 +43,9 @@ QString readFile(const QString& path)
 QString cpuName()
 {
     const QString cpuinfo = readFile(QStringLiteral("/proc/cpuinfo"));
-    const QRegularExpressionMatch m = QRegularExpression(QStringLiteral("^model name\\s*:\\s*(.+)$"),
-        QRegularExpression::MultilineOption).match(cpuinfo);
+    static const QRegularExpression model(
+        QStringLiteral("^model name\\s*:\\s*(.+)$"), QRegularExpression::MultilineOption);
+    const QRegularExpressionMatch m = model.match(cpuinfo);
     QString name = m.hasMatch() ? m.captured(1).trimmed() : QSysInfo::currentCpuArchitecture();
     const int threads = cpuinfo.count(QStringLiteral("processor\t:"));
     return threads > 0 ? name + QStringLiteral("   (") + QString::number(threads) + QStringLiteral(" thread)") : name;
@@ -52,8 +53,8 @@ QString cpuName()
 
 QString memory()
 {
-    const QRegularExpressionMatch m = QRegularExpression(QStringLiteral("MemTotal:\\s*(\\d+) kB"))
-                                          .match(readFile(QStringLiteral("/proc/meminfo")));
+    static const QRegularExpression total(QStringLiteral("MemTotal:\\s*(\\d+) kB"));
+    const QRegularExpressionMatch m = total.match(readFile(QStringLiteral("/proc/meminfo")));
     if (!m.hasMatch()) {
         return {};
     }
@@ -69,15 +70,17 @@ QStringList graphics()
     vela::process::ExternalProcess lspci;
     lspci.start(QStringLiteral("lspci"), QStringList {});
     lspci.waitForFinished(2000);
+    static const QRegularExpression revision(QStringLiteral("\\s*\\(rev [0-9a-f]+\\)$"));
+    static const QRegularExpression marketingName(QStringLiteral("\\[([^\\]]+)\\]$"));
     QStringList out;
     for (const QString& line : QString::fromUtf8(lspci.readAllStandardOutput()).split(u'\n')) {
         if (!line.contains(QLatin1String("VGA compatible")) && !line.contains(QLatin1String("3D controller"))
             && !line.contains(QLatin1String("Display controller"))) {
             continue;
         }
-        QString name = line.section(QStringLiteral(": "), 1).remove(QRegularExpression(QStringLiteral("\\s*\\(rev [0-9a-f]+\\)$")));
+        QString name = line.section(QStringLiteral(": "), 1).remove(revision);
         // The marketing name in square brackets, when present, says more.
-        const QRegularExpressionMatch bracket = QRegularExpression(QStringLiteral("\\[([^\\]]+)\\]$")).match(name);
+        const QRegularExpressionMatch bracket = marketingName.match(name);
         if (name.startsWith(QLatin1String("Advanced Micro Devices"))) {
             name = QStringLiteral("AMD ") + (bracket.hasMatch() ? bracket.captured(1) : name.section(u']', 1).trimmed());
         } else if (name.startsWith(QLatin1String("NVIDIA"))) {
@@ -92,10 +95,17 @@ QStringList graphics()
 
 QString osRelease(const QString& key)
 {
+    // KEY=value or KEY="value", one per line.
+    static const QRegularExpression assignment(
+        QStringLiteral("^([A-Za-z0-9_]+)=\"?([^\"\\n]*)\"?$"), QRegularExpression::MultilineOption);
     const QString text = readFile(QStringLiteral("/etc/os-release"));
-    const QRegularExpressionMatch m = QRegularExpression(QStringLiteral("^") + key + QStringLiteral("=\"?([^\"\\n]*)\"?$"),
-        QRegularExpression::MultilineOption).match(text);
-    return m.hasMatch() ? m.captured(1) : QString();
+    for (auto it = assignment.globalMatch(text); it.hasNext();) {
+        const QRegularExpressionMatch m = it.next();
+        if (m.captured(1) == key) {
+            return m.captured(2);
+        }
+    }
+    return {};
 }
 
 } // namespace

@@ -73,7 +73,7 @@ public:
             const QDBusMessage reply = message.createReply(QVariant(devices.value(message.path())));
             if (const int delay = delayNext.take(message.path())) {
                 message.setDelayedReply(true);
-                QTimer::singleShot(delay, [connection, reply] { connection.send(reply); });
+                QTimer::singleShot(delay, this, [connection, reply] { connection.send(reply); });
             } else {
                 connection.send(reply);
             }

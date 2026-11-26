@@ -228,7 +228,8 @@ public:
 
     void removeAdapter(const QString& name)
     {
-        for (const QString& path : devices.keys()) {
+        const QStringList paths = devices.keys(); // removing changes the map
+        for (const QString& path : paths) {
             if (devices[path].adapter == name) {
                 removeDevice(path);
             }
@@ -345,7 +346,8 @@ public:
     // (`come back`) without any.
     bool leave()
     {
-        for (const QString& agent : agents.keys()) {
+        for (auto it = agents.keyBegin(); it != agents.keyEnd(); ++it) {
+            const QString& agent = *it;
             QDBusMessage release = QDBusMessage::createMethodCall(
                 agent.section(u' ', 0, 0), agent.section(u' ', 1), QStringLiteral("org.bluez.Agent1"), QStringLiteral("Release"));
             send(release);
@@ -567,7 +569,8 @@ private:
             auto* watcher = new QDBusServiceWatcher(message.service(), connection(), QDBusServiceWatcher::WatchForUnregistration, this);
             connect(watcher, &QDBusServiceWatcher::serviceUnregistered, this, [this, watcher, owner = message.service()] {
                 watcher->deleteLater();
-                for (const QString& key : agents.keys()) {
+                const QStringList keys = agents.keys(); // forgetting changes the map
+                for (const QString& key : keys) {
                     if (key.section(u' ', 0, 0) == owner) {
                         forget(key);
                     }
@@ -720,9 +723,9 @@ private:
     // The agent of Pair's caller, else the default one (agent_get).
     QString agentFor(const QString& caller) const
     {
-        for (const QString& key : agents.keys()) {
-            if (key.section(u' ', 0, 0) == caller) {
-                return key;
+        for (auto it = agents.keyBegin(); it != agents.keyEnd(); ++it) {
+            if (it->section(u' ', 0, 0) == caller) {
+                return *it;
             }
         }
         return defaultAgent();

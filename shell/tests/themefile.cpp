@@ -65,7 +65,7 @@ private slots:
     void tokensAreTheOnesOfThemeAndStylesQml()
     {
         QSet<QString> read;
-        const QRegularExpression key(QStringLiteral("(?:themed|styles\\.(?:size|flag|picture))\\(\"([^\"]+)\""));
+        static const QRegularExpression key(QStringLiteral("(?:themed|styles\\.(?:size|flag|picture))\\(\"([^\"]+)\""));
         for (const char* path : { THEME_QML, STYLES_QML }) {
             QFile qml(QString::fromUtf8(path));
             QVERIFY(qml.open(QIODevice::ReadOnly | QIODevice::Text));
@@ -77,7 +77,8 @@ private slots:
         // common/CMakeLists.txt lists its keys by hand, this keeps them in step.
         QFile header(QStringLiteral(THEMEFILE_H));
         QVERIFY(header.open(QIODevice::ReadOnly | QIODevice::Text));
-        const QRegularExpression layoutKey(QStringLiteral("(?:size\\(|themed\\(tokens, QStringLiteral\\()\"(taskbar-[a-z-]+)\""));
+        static const QRegularExpression layoutKey(
+            QStringLiteral("(?:size\\(|themed\\(tokens, QStringLiteral\\()\"(taskbar-[a-z-]+)\""));
         int layoutKeys = 0;
         for (auto it = layoutKey.globalMatch(QString::fromUtf8(header.readAll())); it.hasNext(); ++layoutKeys) {
             read.insert(it.next().captured(1));

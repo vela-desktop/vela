@@ -91,7 +91,7 @@ public:
     explicit FakeStream(const QStringList& arguments)
     {
         m_process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-        QObject::connect(&m_process, &QProcess::readyReadStandardOutput, [this] {
+        QObject::connect(&m_process, &QProcess::readyReadStandardOutput, &m_process, [this] {
             while (m_process.canReadLine()) {
                 const QList<QByteArray> words = m_process.readLine().trimmed().split(' ');
                 if (words.value(0) == "ready") {
@@ -176,7 +176,7 @@ public:
     FakeDevice()
     {
         m_process.setProcessChannelMode(QProcess::ForwardedErrorChannel);
-        QObject::connect(&m_process, &QProcess::readyReadStandardOutput, [this] {
+        QObject::connect(&m_process, &QProcess::readyReadStandardOutput, &m_process, [this] {
             while (m_process.canReadLine()) {
                 const QList<QByteArray> words = m_process.readLine().trimmed().split(' ');
                 if (words.value(0) == "ready") {

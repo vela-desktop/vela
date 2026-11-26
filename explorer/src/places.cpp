@@ -63,8 +63,8 @@ bool hasMountPoints(const QVariant& value)
 }
 
 struct UserDir {
-    QStandardPaths::StandardLocation location;
-    const char* icon;
+    QStandardPaths::StandardLocation location {};
+    const char* icon = nullptr;
 };
 
 const UserDir userDirs[] = {

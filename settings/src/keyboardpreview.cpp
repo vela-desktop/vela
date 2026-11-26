@@ -18,7 +18,7 @@ namespace {
 // A key of the drawing, in units of a key's width.
 struct Cap {
     QByteArray name;
-    qreal x, y, w, h;
+    qreal x = 0, y = 0, w = 0, h = 0;
     qreal x2 = 0, w2 = 0; // a tall Enter's wider top
 };
 
