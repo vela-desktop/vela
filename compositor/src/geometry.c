@@ -111,14 +111,44 @@ int vela_physical_edge(int logical, int full_start, int full_end, int pixels, do
     return (int)lround((logical - full_start) * scale);
 }
 
+// Halves up, on both sides of 0: lround rounds -1.5 to -2 but 1.5 to 2, so a
+// rectangle moved by whole pixels across the output's edge would land a pixel
+// off (or change size).
+static int round_edge(double value)
+{
+    return (int)floor(value + 0.5);
+}
+
 struct vela_pixel_box vela_edges_to_pixels(double x, double y, double width, double height, double origin_x,
     double origin_y, double scale)
 {
-    int x1 = (int)lround((x - origin_x) * scale);
-    int y1 = (int)lround((y - origin_y) * scale);
-    int x2 = (int)lround((x + width - origin_x) * scale);
-    int y2 = (int)lround((y + height - origin_y) * scale);
+    int x1 = round_edge((x - origin_x) * scale);
+    int y1 = round_edge((y - origin_y) * scale);
+    int x2 = round_edge((x + width - origin_x) * scale);
+    int y2 = round_edge((y + height - origin_y) * scale);
     return (struct vela_pixel_box) { x1, y1, x2 - x1, y2 - y1 };
+}
+
+bool vela_crop_box(struct vela_pixel_box *box, struct vela_fbox *src, const struct vela_pixel_box *clip)
+{
+    if (box->width <= 0 || box->height <= 0) {
+        return false;
+    }
+    int x1 = box->x > clip->x ? box->x : clip->x;
+    int y1 = box->y > clip->y ? box->y : clip->y;
+    int x2 = box->x + box->width < clip->x + clip->width ? box->x + box->width : clip->x + clip->width;
+    int y2 = box->y + box->height < clip->y + clip->height ? box->y + box->height : clip->y + clip->height;
+    if (x2 <= x1 || y2 <= y1) {
+        return false;
+    }
+    double per_x = src->width / box->width; // buffer units per pixel
+    double per_y = src->height / box->height;
+    src->x += (x1 - box->x) * per_x;
+    src->y += (y1 - box->y) * per_y;
+    src->width = (x2 - x1) * per_x;
+    src->height = (y2 - y1) * per_y;
+    *box = (struct vela_pixel_box) { x1, y1, x2 - x1, y2 - y1 };
+    return true;
 }
 
 bool vela_buffer_matches_area(double src_x, double src_y, double buffer_width, double buffer_height, double width,
@@ -127,6 +157,17 @@ bool vela_buffer_matches_area(double src_x, double src_y, double buffer_width, d
     bool whole = src_x == floor(src_x) && src_y == floor(src_y) && buffer_width == floor(buffer_width)
         && buffer_height == floor(buffer_height);
     return whole && fabs(buffer_width - width * scale) < 1.0 && fabs(buffer_height - height * scale) < 1.0;
+}
+
+int vela_whole_pixel_units(float scale)
+{
+    for (int units = 1; units <= 64; ++units) {
+        double pixels = units * (double)scale; // exact: a float times a small integer
+        if (pixels > 0.0 && pixels == floor(pixels)) {
+            return units;
+        }
+    }
+    return 0;
 }
 
 bool vela_one_to_one(double src_x, double src_y, double src_width, double src_height, int box_width,

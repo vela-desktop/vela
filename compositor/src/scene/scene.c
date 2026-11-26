@@ -283,6 +283,20 @@ void vela_buffer_node_set_size(struct vela_buffer_node *buffer, double width, do
     vela_scene_changed(buffer->node.scene);
 }
 
+void vela_buffer_node_set_crop(struct vela_buffer_node *buffer, const struct wlr_fbox *crop)
+{
+    bool cropped = crop != NULL;
+    if (cropped == buffer->cropped
+        && (!cropped
+            || (crop->x == buffer->crop.x && crop->y == buffer->crop.y && crop->width == buffer->crop.width
+                && crop->height == buffer->crop.height))) {
+        return;
+    }
+    buffer->cropped = cropped;
+    buffer->crop = cropped ? *crop : (struct wlr_fbox) { 0 };
+    vela_scene_changed(buffer->node.scene);
+}
+
 // -------------------------------------------------------------- surfaces --
 
 static void for_each_surface_at(struct wlr_surface *surface, int x, int y, vela_surface_iterator iterator,
@@ -472,6 +486,10 @@ static bool hit_node(struct vela_node *node, double lx, double ly, struct vela_h
         double height = node->type == VELA_NODE_RECT ? ((struct vela_rect_node *)node)->height
                                                      : ((struct vela_buffer_node *)node)->height;
         found = nx >= 0 && ny >= 0 && nx < width && ny < height;
+        if (found && node->type == VELA_NODE_BUFFER && ((struct vela_buffer_node *)node)->cropped) {
+            const struct wlr_fbox *crop = &((struct vela_buffer_node *)node)->crop;
+            found = nx >= crop->x && ny >= crop->y && nx < crop->x + crop->width && ny < crop->y + crop->height;
+        }
         if (found) {
             hit->surface = NULL;
         }

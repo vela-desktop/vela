@@ -12,6 +12,7 @@ extern "C" {
 #include <gtest/gtest.h>
 
 #include <cmath>
+#include <cstdio>
 
 namespace {
 
@@ -203,6 +204,100 @@ TEST(Geometry, AdjacentRectanglesStayAdjacent)
     EXPECT_EQ(box.height, 60);
 }
 
+// A rectangle moved by whole pixels moves its pixels by as many and keeps its
+// size, also across the output's left and top edges, where its coordinates
+// turn negative: a window dragged partly off the output (its title's image
+// sits there, decoration.c). lround would round -1.5 to -2 and 1.5 to 2.
+TEST(Geometry, WholePixelMovesAcrossTheOutputEdge)
+{
+    long moved_wrong = 0;
+    long resized = 0;
+    long checked = 0;
+    for (double scale : { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25, 2.5, 3.0 }) {
+        const int units = vela_whole_pixel_units(static_cast<float>(scale));
+        ASSERT_GT(units, 0) << scale;
+        const int step = static_cast<int>(std::lround(units * scale));
+        for (int origin : { 0, 1920 }) {
+            for (int x = origin - 300; x < origin + 300; ++x) {
+                for (double width : { 1.0, 10.5, 37.0 }) {
+                    const vela_pixel_box a = vela_edges_to_pixels(x, x, width, width, origin, origin, scale);
+                    const vela_pixel_box b =
+                        vela_edges_to_pixels(x + units, x + units, width, width, origin, origin, scale);
+                    moved_wrong += b.x != a.x + step || b.y != a.y + step;
+                    resized += b.width != a.width || b.height != a.height;
+                    ++checked;
+                }
+            }
+        }
+    }
+    EXPECT_EQ(moved_wrong, 0) << "of " << checked;
+    EXPECT_EQ(resized, 0) << "of " << checked;
+    // Halves round up on both sides of the edge.
+    EXPECT_EQ(vela_edges_to_pixels(-1, 0, 2, 1, 0, 0, 1.5).x, -1);
+    EXPECT_EQ(vela_edges_to_pixels(-1, 0, 2, 1, 0, 0, 1.5).width, 3);
+    EXPECT_EQ(vela_edges_to_pixels(1, 0, 2, 1, 0, 0, 1.5).x, 2);
+}
+
+// A crop takes whole pixels off the box and the matching part off the
+// buffer: copied 1:1, it stays 1:1; stretched, the rest is stretched alike.
+TEST(Geometry, CropBox)
+{
+    vela_pixel_box box = { 10, 20, 100, 30 };
+    vela_fbox src = { 0, 0, 100, 30 };
+    const vela_pixel_box below = { 0, 25, 80, 100 };
+    ASSERT_TRUE(vela_crop_box(&box, &src, &below));
+    EXPECT_EQ(box.x, 10);
+    EXPECT_EQ(box.y, 25);
+    EXPECT_EQ(box.width, 70);
+    EXPECT_EQ(box.height, 25);
+    EXPECT_EQ(src.x, 0.0);
+    EXPECT_EQ(src.y, 5.0);
+    EXPECT_EQ(src.width, 70.0);
+    EXPECT_EQ(src.height, 25.0);
+
+    vela_pixel_box stretched = { 0, 0, 50, 20 }; // 75x30 drawn at two thirds
+    vela_fbox part = { 0, 0, 75, 30 };
+    const vela_pixel_box corner = { 10, 0, 40, 10 };
+    ASSERT_TRUE(vela_crop_box(&stretched, &part, &corner));
+    EXPECT_EQ(stretched.width, 40);
+    EXPECT_EQ(stretched.height, 10);
+    EXPECT_EQ(part.x, 15.0);
+    EXPECT_EQ(part.y, 0.0);
+    EXPECT_EQ(part.width, 60.0);
+    EXPECT_EQ(part.height, 15.0);
+
+    vela_pixel_box outside = { 0, 0, 10, 10 };
+    vela_fbox none = { 0, 0, 10, 10 };
+    const vela_pixel_box far = { 20, 20, 5, 5 };
+    EXPECT_FALSE(vela_crop_box(&outside, &none, &far));
+}
+
+// A title's image taller than its bar (a font taller than the bar, marks
+// above and below), cropped to the bar as frame.c does (the crop in the
+// image's coordinates, decoration.c): the image's pixels end exactly on the
+// bar's, at every position and scale, and stay 1:1.
+TEST(Geometry, CropFollowsTheBarsPixels)
+{
+    long off = 0;
+    for (double scale : { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25 }) {
+        const int units = vela_whole_pixel_units(static_cast<float>(scale));
+        for (int window = -40; window < 400; ++window) {
+            for (int above = 1; above <= 3; ++above) {
+                const double image_y = -1.0 * above * units; // whole units above the bar
+                const double height = 34.0 + above * units;
+                const double image = window + image_y; // where frame.c's lx is
+                vela_pixel_box box = vela_edges_to_pixels(0, image, 10, height, 0, 0, scale);
+                vela_fbox src = { 0, 0, box.width * 1.0, box.height * 1.0 };
+                const vela_pixel_box crop = vela_edges_to_pixels(0, image + -image_y, 10, 32, 0, 0, scale);
+                ASSERT_TRUE(vela_crop_box(&box, &src, &crop));
+                const vela_pixel_box bar = vela_edges_to_pixels(0, window, 10, 32, 0, 0, scale);
+                off += box.y != bar.y || box.height != bar.height || src.height != box.height;
+            }
+        }
+    }
+    EXPECT_EQ(off, 0);
+}
+
 TEST(Geometry, BufferMatchesArea)
 {
     EXPECT_TRUE(vela_buffer_matches_area(0, 0, 1280, 720, 1024, 576, 1.25)); // drawn at the output scale
@@ -227,4 +322,68 @@ TEST(Geometry, PhysicalEdges)
     EXPECT_EQ(vela_physical_edge(-5, 0, 2048, 2560, 1.25), 0);
     EXPECT_EQ(vela_physical_edge(1104, 0, 1152, 1440, 1.25), 1380); // above the 48-high taskbar
     EXPECT_EQ(vela_physical_edge(100, 100, 2148, 2560, 1.25), 0); // output not at the origin
+}
+
+// The title's ink margin (text.h, decoration.c): the ink needs some pixels
+// left of the line box; the image takes the whole number of
+// vela_whole_pixel_units steps that holds them and moves left by those units,
+// so the line box lands on the pixels it had without a margin, at every
+// position of the window. Taking just the pixels needed and moving by their
+// exact fraction (pixels / scale) would land the line box a pixel off at some
+// positions: the negative control.
+TEST(Geometry, WholePixelUnitsKeepTheLineBoxOnItsPixels)
+{
+    EXPECT_EQ(vela_whole_pixel_units(1.0f), 1);
+    EXPECT_EQ(vela_whole_pixel_units(1.25f), 4);
+    EXPECT_EQ(vela_whole_pixel_units(1.5f), 2);
+    EXPECT_EQ(vela_whole_pixel_units(1.75f), 4);
+    EXPECT_EQ(vela_whole_pixel_units(2.0f), 1);
+    EXPECT_EQ(vela_whole_pixel_units(2.25f), 4);
+    EXPECT_EQ(vela_whole_pixel_units(1.125f), 8);
+    EXPECT_EQ(vela_whole_pixel_units(1.1f), 0); // not a short binary fraction: no exact halves to round either way
+    EXPECT_EQ(vela_whole_pixel_units(0.0f), 0);
+
+    for (float scale : { 1.0f, 1.25f, 1.5f, 1.75f, 2.0f, 2.25f, 2.5f, 3.0f }) {
+        const int units = vela_whole_pixel_units(scale);
+        ASSERT_GT(units, 0) << scale;
+        const int step = static_cast<int>(std::lround(units * static_cast<double>(scale))); // pixels
+        long whole_moved = 0;
+        long fraction_moved = 0;
+        long positions = 0;
+        // Windows at every whole position on an output at 0 and on one to its
+        // right, also partly off the output's left edge (the image's left
+        // edge on one side of it, the line box on the other); the title after
+        // the margin or after the icon (decoration.c); ink 1 to 6 pixels left
+        // of the line box.
+        for (int origin : { 0, 1920 }) {
+            for (int window = origin - 200; window < origin + 2400; ++window) {
+                for (int title : { 12, 36 }) {
+                    for (int needed = 1; needed <= 6; ++needed) {
+                        const int line = vela_edges_to_pixels(window + title, 0, 10, 10, origin, 0, scale).x;
+                        const int steps = (needed + step - 1) / step;
+                        const int whole =
+                            vela_edges_to_pixels(window + (title - steps * units), 0, 10, 10, origin, 0, scale).x
+                            + steps * step;
+                        const int fraction =
+                            vela_edges_to_pixels(
+                                window + (title - needed / static_cast<double>(scale)), 0, 10, 10, origin, 0, scale)
+                                .x
+                            + needed;
+                        whole_moved += whole != line;
+                        fraction_moved += fraction != line;
+                        ++positions;
+                    }
+                }
+            }
+        }
+        EXPECT_EQ(whole_moved, 0) << scale << ": " << whole_moved << " of " << positions;
+        if (units > 1) {
+            // The fraction rounds some positions the other way.
+            EXPECT_GT(fraction_moved, positions / 100) << scale << ": " << fraction_moved << " of " << positions;
+        } else {
+            EXPECT_EQ(fraction_moved, 0) << scale; // whole pixels per unit: nothing to round
+        }
+        std::printf("scale %g: line box moved at %ld of %ld positions with whole units, %ld with the fraction\n",
+            static_cast<double>(scale), whole_moved, positions, fraction_moved);
+    }
 }

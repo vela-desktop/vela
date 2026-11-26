@@ -541,19 +541,21 @@ class Session:
         return path
 
     def open_window(self, width=400, height=300, command=None, timeout=5.0, app_id=None, decorated=False,
-                    env=None, glass=False):
+                    env=None, glass=False, title=None):
         """Opens a window (vela-pattern, or `command`); returns its identifier.
 
         decorated: with Vela's title bar (xdg-decoration).
+        title: vela-pattern's title instead of "vela-pattern".
         glass: a 50% black window with the blur behind it (vela-pattern --glass).
         env: optional environment for protocol-specific clients (e.g. Xwayland DISPLAY)."""
         before = {w["id"] for w in self.state().windows}
         pattern = ([tool("vela-pattern")] + (["--app-id", app_id] if app_id else [])
+                   + (["--title", title] if title else [])
                    + (["--decorated"] if decorated else []) + (["--glass"] if glass else [])
                    + [str(width), str(height)])
         # Preserve per-client output: GPU test tools can fail before their
         # first Wayland surface is mapped, and DEVNULL hides the actual cause.
-        client_log_path = os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
+        client_log_path = self.next_client_log()
         with open(client_log_path, "w") as client_log:
             client = subprocess.Popen(command or pattern, env=self.client_env if env is None else env,
                                       stdout=client_log, stderr=subprocess.STDOUT)
@@ -583,6 +585,33 @@ class Session:
         identifier = next(iter({w["id"] for w in state.windows} - before))
         self.wait_still(identifier) # the opening animation is over (it rises a few pixels)
         return identifier
+
+    def next_client_log(self):
+        """The log (stdout and stderr) of the next client open_window() starts."""
+        return os.path.join(self.directory, f"client-{len(self.clients) + 1}.log")
+
+    def wait_for_client_log(self, path, condition, what):
+        """Until `condition(text)` holds for the client log at `path`."""
+        def done(_):
+            try:
+                with open(path, encoding="utf-8", errors="replace") as log:
+                    return condition(log.read())
+            except FileNotFoundError:
+                return False
+        self.wait_for(done, read_state=False, what=what)
+
+    def open_focused(self, width=400, height=300, **options):
+        """Opens a window as open_window() does and waits until it has the
+        focus; returns its identifier."""
+        window = self.open_window(width, height, **options)
+        self.wait_for(lambda s: s["focused"] == window, what="the new window focused")
+        return window
+
+    def close_window(self, window):
+        """Closes the window from the window menu's command and waits until
+        it's gone."""
+        self.command(f"window {window} close")
+        self.wait_for(lambda s: not s.has(window), what="closed")
 
     def wait_still(self, identifier, timeout=3.0):
         """Waits until the window's geometry stays still for a while."""
@@ -620,6 +649,16 @@ class Session:
         path = os.path.join(self.directory, "shot.png")
         self.screenshot(path, output=output)
         return Image.read(path)
+
+
+def pattern_clicked(surface="window"):
+    """A condition for wait_for_client_log(): vela-pattern's log
+    (--log-pointer) has a press and a release of the left button on `surface`
+    ("window" or "popup")."""
+    def clicked(text):
+        lines = text.splitlines()
+        return all(f"vela-pattern: pointer-button 272 {state} {surface}" in lines for state in (1, 0))
+    return clicked
 
 
 class FakeShell:

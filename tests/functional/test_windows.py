@@ -189,7 +189,7 @@ class Windows(unittest.TestCase):
         self.vela.open_window()
         self.vela.command("workspace new switch")
         self.vela.wait_for(lambda s: s["workspace"] == 1, what="desktop 2")
-        log = os.path.join(self.vela.directory, f"client-{len(self.vela.clients) + 1}.log")
+        log = self.vela.next_client_log()
         window = self.vela.open_window(command=[tool("vela-pattern"), "--log-keys", "400", "300"])
         self.vela.command("workspace switch 0")
         self.vela.wait_for(lambda s: s["workspace"] == 0, what="desktop 1")

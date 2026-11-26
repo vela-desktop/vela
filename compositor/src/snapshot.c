@@ -24,6 +24,7 @@ struct piece {
     struct vela_node *node; // vela_buffer_node or vela_rect_node
     double x, y; // relative to the frame's center
     double width, height;
+    struct wlr_fbox crop; // an image's crop (scene.h), if it has one
 };
 
 struct vela_snapshot {
@@ -109,6 +110,10 @@ static void collect(struct vela_snapshot *snapshot, struct vela_node *node, doub
         struct vela_buffer_node *copy = vela_buffer_node_create(snapshot->tree, image->buffer, image->texture,
             &image->src, image->transform, image->width, image->height);
         add_piece(snapshot, &copy->node, lx - cx, ly - cy, image->width, image->height);
+        if (image->cropped) {
+            vela_buffer_node_set_crop(copy, &image->crop);
+            snapshot->pieces[snapshot->count - 1].crop = image->crop;
+        }
         return;
     }
     case VELA_NODE_SURFACE: {
@@ -167,8 +172,13 @@ static void snapshot_apply(struct vela_snapshot *snapshot, double cx, double cy,
             vela_rect_node_set_size((struct vela_rect_node *)piece->node, piece->width * scale_x,
                 piece->height * scale_y);
         } else {
-            vela_buffer_node_set_size((struct vela_buffer_node *)piece->node, piece->width * scale_x,
-                piece->height * scale_y);
+            struct vela_buffer_node *image = (struct vela_buffer_node *)piece->node;
+            vela_buffer_node_set_size(image, piece->width * scale_x, piece->height * scale_y);
+            if (image->cropped) {
+                const struct wlr_fbox crop = { piece->crop.x * scale_x, piece->crop.y * scale_y,
+                    piece->crop.width * scale_x, piece->crop.height * scale_y };
+                vela_buffer_node_set_crop(image, &crop);
+            }
         }
     }
     vela_node_set_opacity(&snapshot->tree->node, opacity);

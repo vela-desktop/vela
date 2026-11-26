@@ -379,6 +379,18 @@ static void visit(struct vela_scene *scene, struct vela_node *node, double lx, d
         struct vela_buffer_node *buffer = (struct vela_buffer_node *)node;
         struct wlr_box box = to_pixels(lx, ly, buffer->width, buffer->height, p);
         snap_to_buffer(&box, &buffer->src, buffer->transform, buffer->width, buffer->height, p->scale);
+        struct wlr_fbox src = buffer->src;
+        if (buffer->cropped && buffer->transform == WL_OUTPUT_TRANSFORM_NORMAL) {
+            struct wlr_box clip =
+                to_pixels(lx + buffer->crop.x, ly + buffer->crop.y, buffer->crop.width, buffer->crop.height, p);
+            struct vela_pixel_box cut = { box.x, box.y, box.width, box.height };
+            struct vela_fbox part = { src.x, src.y, src.width, src.height };
+            if (!vela_crop_box(&cut, &part, &(struct vela_pixel_box) { clip.x, clip.y, clip.width, clip.height })) {
+                break;
+            }
+            box = (struct wlr_box) { cut.x, cut.y, cut.width, cut.height };
+            src = (struct wlr_fbox) { part.x, part.y, part.width, part.height };
+        }
         if (!on_screen(&box, p) || !buffer->texture || !vela_texture_shown(buffer->texture)) {
             break;
         }
@@ -386,7 +398,7 @@ static void visit(struct vela_scene *scene, struct vela_node *node, double lx, d
         e->key = node;
         e->texture = buffer->texture;
         e->content = vela_texture_content(buffer->texture);
-        e->src = buffer->src;
+        e->src = src;
         e->transform = buffer->transform;
         e->box = box;
         e->opacity = opacity;

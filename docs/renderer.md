@@ -83,6 +83,9 @@ A logical rectangle `[x, x+w)` becomes physical as
 `[round(x·s), round((x+w)·s))`. Rounding position and width separately produces
 one-pixel gaps between side-by-side windows (snap!) or overlaps. With edges, two
 rectangles adjacent in logical space always stay adjacent in physical space.
+Halves round up on both sides of 0 (`floor(v + 0.5)`, not `lround`): a rectangle
+moved by whole pixels moves by as many and keeps its size, also when it crosses
+the output's left or top edge.
 
 ### 3.3 1:1 buffers, no resampling
 
@@ -917,8 +920,13 @@ debug overlay (§10) and for other compositor UI.
   the normal one. No pressed state: a button acts on the press
   (docs/visual-coherence.md §6.6).
 - **Title**: text with grayscale antialiasing (no RGB subpixel: it doesn't get
-  along with transparency and animations), glyphs rasterized for each physical
-  scale and never enlarged, in a texture atlas. The font is **KDE's** (§9.5).
+  along with transparency and animations), rasterized at each physical scale
+  and never enlarged, one image per title. Glyphs start on whole pixels, none
+  of their ink is cut off within the bar (left of the buttons), and the image
+  is drawn again only when the text, its color or the scale changes, or a new
+  width cuts it at another glyph
+  ([font rendering](font-rendering-improvements.md)).
+  The font is **KDE's** (§9.5).
 - **App icon**: **always SVG** when the theme offers it (§9.6).
 - **A single shape**: the bar and the app's content are clipped together as one
   rounded rectangle, with the shadow around the whole. When maximized or snapped,
@@ -958,8 +966,8 @@ For now the title uses the font chosen in KDE, so bars are consistent with Qt
 apps: `activeFont` in the `[WM]` section of `kdeglobals`, otherwise `font` in
 `[General]`, otherwise KDE's default (Noto Sans 10 pt), found with fontconfig.
 Sizes in points become logical pixels at 96 DPI (10 pt = 13.33 px) and then
-physical pixels with the output's scale. The font is reloaded when `kdeglobals`
-changes.
+physical pixels with the output's scale. The font is read once, when the first
+title bar is drawn: a font changed in KDE applies from the next session.
 
 ### 9.6 Icons, always SVG
 

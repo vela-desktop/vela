@@ -312,6 +312,78 @@ compare frame pacing and glyph-cache/GPU memory use to the previous revision.
 Record monitor, scale, driver, Qt version, and measurement method. This manual
 hardware check is distinct from the automated Mesa regression.
 
+### Compositor text
+
+```sh
+ctest --test-dir build -R '^compositor\.text$' --output-on-failure
+build/compositor/vela-text-test compositor/tests/fonts --capture-dir /tmp/vela-title-text
+```
+
+`compositor.text` (CPU) measures the title bar's text (`compositor/src/text.c`)
+against the renderer it replaced, `legacy_render`: the old drawing line for
+line, with the parts that didn't change taken from `text.c`, which the test
+includes. It uses the Noto Sans subsets in `compositor/tests/fonts`, so
+it needs no installed fonts. Every check measures both renderers. The old one
+must show the defect, so the measurement can see it, and the new one must beat
+it by a wide margin:
+
+- **Pixels**: 23 titles, including stem-heavy ones like "File", "Ill" and
+  "Il1", regular and italic, 8–16 pt, 100–300%, whole and cut with an ellipsis.
+  Inside the old image, every pixel must be the old one, so stems keep their
+  contrast. A title whose ink stays in its line box must make the old image
+  exactly, the same size, so a stretched copy samples it the same. Some titles
+  must gain ink the old renderer cut.
+- **Ink**: single glyphs leaving the line box on every side, regular and
+  italic, keep all their coverage. A title starting with "j" keeps its tail,
+  and marks stacked above a letter are kept.
+- **Margins**: whole steps of the caller's margin, the smallest that hold the
+  ink, with the same ink relative to the line box.
+- **Resizing**: a width inside the range `vela_text_fits` reports makes the
+  identical image, and the first width outside it makes a different one. A
+  resize therefore draws the title the fewest times possible, once per
+  distinct image, instead of on every frame.
+- **Bitmap glyphs**: a BDF font written by the test renders exactly its set
+  pixels. The old renderer read past the end of 1-bit bitmaps, so it isn't run
+  on them; the test checks that precondition instead.
+
+The test prints the before and after figures. `--capture-dir` writes both
+renderers' images as PGM, to inspect at their native size.
+`compositor.Geometry.WholePixelUnitsKeepTheLineBoxOnItsPixels` checks that the
+image's margin keeps the line box on its pixels at every window position, also
+partly off the output's left edge; moving it by the exact fraction instead
+would not. `compositor.Geometry.WholePixelMovesAcrossTheOutputEdge` checks that
+a rectangle moved by whole pixels moves by as many across that edge, which
+`lround` breaks. `compositor.Geometry.CropBox` and `CropFollowsTheBarsPixels`
+check the scene's crop: whole pixels come off a 1:1 image and it stays 1:1,
+and a title image taller than its bar ends exactly on the bar's pixels at every
+position and scale. In `functional-decorations` (GPU), using
+`vela-pattern --title`:
+
+- `TitleFollowsTheWidth` narrows and widens a real window at 100% and 125% and
+  checks that the bar never shows a stale title.
+- `TitleLettersStayPut` opens the same window titled with and without marks
+  stacked above a letter, and checks that the letters below the marks are the
+  same pixels at 100–225%, so the margin doesn't move the line box.
+- `BarImagesAtEveryPosition` also drags a window whose title has ink outside
+  its line box, and checks that its pixels are the same at every position.
+- `TitleStaysInTheBar` titles a window with dots stacked below a letter at
+  100–150%. The app's first rows under the title must keep their pixels, and a
+  click right under the title must reach the app.
+- `TitleAsBefore` compares the bar's final pixels with the same window under
+  `test-title-line-box on`, which draws titles as before: the line box and a
+  column, uncropped. "Files" on a 100% output, in a window mostly on a 150%
+  output, must be identical, and "jupyter-lab"'s letters within 8 levels. With
+  an 18 pt font, taller than the bar, at 125% and 175% and four positions,
+  "File – È pronto" must be identical inside the bar.
+- `TitleAcrossTheOutputEdge` drags a window titled "jupyter-lab" partly off
+  the output's left edge at 125% and 150%. Between positions, the title's
+  pixels must move by exactly the window's move.
+
+Before merging changes to the title text, look at titles in a real session at
+100%, 125% and 150%, in both palettes, active and inactive, including titles
+that start with "j" or carry accents, and resize a window across a title's
+width ([font rendering](font-rendering-improvements.md)).
+
 ## GPU requirements
 
 `tests/functional/test_output_rotation.py` exercises mixed landscape/portrait
@@ -420,6 +492,7 @@ test-output add 2560x1440
 test-output remove HEADLESS-2
 test-power off
 test-power on
+test-title-line-box on
 reload-config
 ```
 
