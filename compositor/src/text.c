@@ -392,7 +392,8 @@ void vela_text_render(struct vela_text *text, const char *utf8, double pixel_siz
         draw_glyphs(text, &ellipsis, ellipsis.count, &pen, ascender, glyphs, &drawn);
     }
 
-    // The ink's bounds and the line box's. Up to an em outside the box (real
+    // The ink's bounds and the old image's (the line box and a column). Up to
+    // an em outside the box (real
     // fonts stay well within it, and a title stacking marks, which an app can
     // send, can't ask for a huge image), and within the caller's room.
     int reach = (int)ceil(pixel_size) + 1;
@@ -405,7 +406,7 @@ void vela_text_render(struct vela_text *text, const char *utf8, double pixel_siz
     }
     int left = 0;
     int top = 0;
-    int right = layout->line_width;
+    int right = vela_max(1, clamp_int(ceil_div(width, 64) + 1)); // the old image's width
     int bottom = layout->line_height;
     for (unsigned i = 0; i < drawn; ++i) {
         left = vela_min(left, glyphs[i].x);

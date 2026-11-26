@@ -8,8 +8,11 @@
 // (so the measurement can see it), the new one must be better by a wide
 // margin, and what didn't need to change must not have changed.
 //
-// - Pixels: inside the old image, every pixel is the old one. Glyphs still
-//   start on whole pixels, so their stems keep the contrast they had.
+// - Pixels: inside the old image, every pixel is the old one, and text whose
+//   ink stays inside makes the old image exactly, the same size: stretched
+//   onto another output (a window across two at different scales), it is
+//   sampled the same. Glyphs still start on whole pixels, so their stems keep
+//   the contrast they had.
 // - Ink: nothing a glyph draws is cut off. The old image was the line box,
 //   which a "j"'s tail, an italic's overhang or accents above capitals leave.
 // - Margins: whole steps of the caller's margin, as small as possible, and
@@ -277,8 +280,10 @@ static const char *const pixel_titles[] = { "File", "Files", "l", "ll", "llll", 
 
 // The new image, inside the old one (the line box plus a column on the
 // right), has the old pixels exactly: what the old renderer drew didn't move
-// or soften, only the ink it cut off is added outside. Regular and italic,
-// 8 to 16 pt, 100% to 300%, whole and cut with an ellipsis.
+// or soften, only the ink it cut off is added outside. When nothing was cut,
+// it is the old image, the same size: a stretched copy samples it the same.
+// Regular and italic, 8 to 16 pt, 100% to 300%, whole and cut with an
+// ellipsis.
 static void pixels_match_the_old_renderer(void)
 {
     static const char *const files[] = { "NotoSans-Regular-subset.ttf", "NotoSans-Italic-subset.ttf" };
@@ -287,6 +292,7 @@ static void pixels_match_the_old_renderer(void)
     long renders = 0;
     long pixels = 0;
     long more_ink = 0;
+    long same_size = 0;
     for (size_t f = 0; f < COUNT(files); ++f) {
         char path[PATH_MAX];
         font_path(path, sizeof(path), files[f]);
@@ -325,7 +331,11 @@ static void pixels_match_the_old_renderer(void)
                             }
                         }
                         CHECK(ink(&new_image) >= ink(&old_image));
-                        more_ink += ink(&new_image) > ink(&old_image);
+                        bool cut_ink = ink(&new_image) > ink(&old_image);
+                        CHECK(cut_ink
+                            || (same_image(&old_image, &new_image) && layout.line_x == 0 && layout.line_y == 0));
+                        same_size += !cut_ink;
+                        more_ink += cut_ink;
                         ++renders;
                         if (f == 0 && p == 1 && z == 0 && t == 0 && !cut) {
                             capture("file-before", &old_image);
@@ -339,8 +349,9 @@ static void pixels_match_the_old_renderer(void)
         }
         close_font(&font);
     }
-    printf("pixels, %ld renders: %ld pixels of the old images, all the same; %ld renders with ink the old one cut\n",
-        renders, pixels, more_ink);
+    printf("pixels, %ld renders: %ld pixels of the old images, all the same; %ld renders the old image exactly, %ld "
+           "with ink the old one cut\n",
+        renders, pixels, same_size, more_ink);
     // Some of these titles leave the line box ("j", the italic's "f"): the
     // comparison also sees the ink that was cut.
     CHECK(more_ink > 0);
