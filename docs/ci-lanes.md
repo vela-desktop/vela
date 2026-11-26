@@ -77,10 +77,16 @@ push of `889acefa` (run 45840870212):
 ## Stage 2: every analyser over all of its lane (done)
 
 [`scripts/static-analysis.sh`](../scripts/static-analysis.sh) runs one lane
-over a full Clang build. The Static Analysis workflow runs it in two jobs:
-`static-analysis` for the native lane, which keeps the name the `Main
-protection` ruleset requires, and `static-analysis-qt`. The same command
-reproduces a job locally.
+over a full Clang build, and the same command reproduces a job locally. In
+the Static Analysis workflow:
+
+- `static-analysis` runs the native lane and keeps the name the `Main
+  protection` ruleset requires;
+- `static-analysis-qt-part` runs the Qt lane in four parts on four runners:
+  clang-tidy split in three shards (`--only clang-tidy --shard I/3`, every
+  third file by name) and the other analysers (`--only tools`);
+- `static-analysis-qt` gathers the parts' logs and compares the whole lane
+  with its ceilings. It fails if a shard's log is missing.
 
 | Analyser | Native lane | Qt lane |
 |---|---|---|
@@ -202,18 +208,18 @@ would save about 20 s, at the cost of a second build. They are not part of
 this plan.
 
 The static-analysis jobs build everything with Clang. Their first run on a
-hosted runner, with a cold compiler cache:
+hosted runner, before the Qt lane was split, with a cold compiler cache:
 
 | Job | Build | Analysis | Total |
 |---|---:|---:|---:|
 | `static-analysis` (native) | 7 min | 3 min (clang-tidy; cppcheck in seconds) | 11 min |
 | `static-analysis-qt` | 15 min | 16.5 min (clang-tidy 11.6, Clazy and qmllint 4.8, cppcheck 7 s) | 33 min |
 
-The counts were the same as on a local machine. The jobs prime a compiler
-cache on `main`, which shortens the builds but not the analysis. That makes
-`static-analysis-qt` the longest job of a PR. Splitting its clang-tidy run
-over several runners would bring it down, at the cost of one build per
-runner.
+The counts were the same as on a local machine. With a warm cache, on the
+next push, the builds took under a minute and the jobs 6 (native) and 11 (Qt)
+minutes, of which the Qt lane's clang-tidy took most. That run is now split
+over three runners, each with its own build from the shared compiler cache,
+so a cold cache costs one build per runner but no more wall time.
 
 ## Not in this plan
 
