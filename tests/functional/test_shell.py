@@ -2019,6 +2019,45 @@ class QtShell(RealShell):
         self.assertEqual(self.layer(state, "vela-quick-settings")["output"], "HEADLESS-1")
         self.check_desktop()
 
+    def test_a_kept_panel_reopens_on_the_display_in_use(self):
+        """Closed less than 10 s ago, a panel still has its surface
+        (docs/shell-graphics-memory.md). Opened from the keyboard on the same
+        display, it maps that surface again; on another display it goes there
+        all the same, on a new surface, and gives the old one back."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        outputs = {o["name"]: o for o in state["outputs"]}
+        for namespace, key in (("vela-start-menu", "super"), ("vela-quick-settings", "super+a")):
+            with self.subTest(panel=namespace):
+                previous = None
+                for name in ("HEADLESS-1", "HEADLESS-1", "HEADLESS-2", "HEADLESS-2", "HEADLESS-1"):
+                    output = outputs[name]
+                    offset = len(self.vela.log_text())
+                    with self.input_session() as send:
+                        # With no window, the display in use is the pointer's.
+                        send("move", output["x"] + output["w"] // 2, output["y"] + output["h"] // 2,
+                             "sleep", 200, "key", key)
+                        state = self.vela.wait_for(
+                            lambda s: self.layer(s, namespace) and s["focusedLayer"] == namespace,
+                            what=f"{namespace} open on {name}")
+                        layer = self.layer(state, namespace)
+                        self.assertEqual(layer["output"], name)
+                        self.assertGreaterEqual(layer["x"], output["x"])
+                        self.assertLessEqual(layer["x"] + layer["w"], output["x"] + output["w"])
+                        send("key", "Escape")
+                        self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5,
+                                           what=f"{namespace} closed")
+                    log = self.vela.log_text()[offset:]
+                    surface = self.reopen_trace(log, namespace)
+                    if previous and previous[0] == name:
+                        self.assertEqual(surface, previous[1], f"{namespace} gave its surface back within 10 s")
+                    elif previous:
+                        self.assertNotEqual(surface, previous[1], f"{namespace} kept its surface on {name}")
+                        self.assertRegex(log, rf'wl_surface{re.escape(previous[1])}\.destroy\(\)',
+                                         f"{namespace} kept its surface for {previous[0]}")
+                    previous = (name, surface)
+        self.check_desktop()
+
 
 class KeyboardPanelsWithoutAudio(RealShell):
     """Panels opened from the keyboard with no audio service: the wheel on

@@ -125,7 +125,10 @@ That is not worth the change in how text looks.
   LayerShellQt destroys the layer role and detaches the buffer.
 - **Shown again within 10 s,** the timer stops and the surface gets a new
   layer role, configured before its first buffer. The blur object stays bound
-  to the surface and receives its region again.
+  to the surface and receives its region again. On another display (Start
+  from the second taskbar, or a panel opened from the keyboard on the display
+  in use), Qt recreates the window for its new screen: the panel opens on a
+  new surface and the old one goes, while the `QRhi` stays.
 - **When the timer fires,** the panel calls `destroy()` for the surface and
   swapchain, sets `persistentGraphics` and `persistentSceneGraph` to false,
   and calls `QQuickWindow::releaseResources()`. Shown again later, it sets
@@ -160,6 +163,9 @@ The functional tests cover each trigger:
 - `test_reopened_menu_keeps_its_surface_and_blur` and
   `test_other_panels_reopen_on_their_kept_surface`: a new layer role on the
   same surface, configured before its buffer, with Start's blur.
+- `test_a_kept_panel_reopens_on_the_display_in_use`: Start and Quick
+  Settings, kept, open on the display in use; on the same display on their
+  kept surface, on another one on a new surface, the old one destroyed.
 
 Each of five changes makes these tests fail: destroying the surface on hide,
 not destroying it at the release, not releasing, not restoring the flags,
@@ -180,10 +186,13 @@ loaded by the shell through `LD_LIBRARY_PATH`.
   without Qt that creates and destroys 100 Wayland swapchains on the same
   device doesn't grow, so Mesa and RADV are not involved.
 
-  With this change, a panel destroys its swapchain only together with its
-  `QRhi`, whose pools go too: 60 quick openings of each panel kept the shell
-  flat. The leak remains for a window whose surface is destroyed while its
-  `QRhi` lives; the shell has none left.
+  With this change, a panel reopened on the same display keeps its
+  swapchain, and destroys it with its `QRhi`, whose pools go too: 60 quick
+  openings of each panel kept the shell flat. A panel that opens on another
+  display within 10 s still loses a swapchain with its `QRhi` alive, and holds
+  those 190 KiB until the release: 40 openings of Start alternating between
+  two displays added 7.3 MiB, and 10 s after the last one the shell was back
+  at its idle VRAM and GTT (+12 KiB).
 
 - **VMA's block size.** `QRhiVulkan` creates its allocator without
   `preferredLargeHeapBlockSize`, so VMA uses its own default of 256 MiB, whose
