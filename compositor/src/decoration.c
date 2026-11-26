@@ -4,6 +4,7 @@
 #include "decoration.h"
 
 #include "alloc/alloc.h"
+#include "geometry.h"
 #include "icons.h"
 #include "motion.h"
 #include "render/pixel_buffer.h"
@@ -97,6 +98,8 @@ struct vela_decoration {
     int width;
     float scale;
     char *title_text;
+    struct vela_text_layout title_layout; // fit_min..fit_max: the widths it stays the same at
+    double title_x, title_y; // where the title's image is, in the bar
     char *app_id;
     bool has_icon;
     uint32_t look_version; // the theme and Mica it's drawn with
@@ -292,6 +295,28 @@ static void set_image(struct vela_decoration *decoration, struct image *image, s
     wlr_buffer_drop(buffer);
 }
 
+// Keeps only the line box and a column, uncropped, as titles were before their ink was
+// kept (test-title-line-box): what the tests compare the bar with, whatever
+// size the image had.
+static void keep_line_box(struct vela_image *image, struct vela_text_layout *layout)
+{
+    int width = layout->line_width + 1;
+    int height = layout->line_height;
+    uint32_t *pixels = VELA_NEW_N(uint32_t, vela_size_mul((size_t)width, (size_t)height));
+    int copied = vela_max(0, vela_min(width, image->width - layout->line_x));
+    for (int y = 0; y < vela_min(height, image->height - layout->line_y); ++y) {
+        memcpy(&pixels[(size_t)y * (size_t)width],
+            &image->pixels[(size_t)(layout->line_y + y) * (size_t)image->width + (size_t)layout->line_x],
+            (size_t)copied * sizeof(uint32_t));
+    }
+    vela_image_finish(image);
+    image->pixels = pixels;
+    image->width = width;
+    image->height = height;
+    layout->line_x = 0;
+    layout->line_y = 0;
+}
+
 // The bars' text, loaded on first use (NULL: no font).
 static struct vela_text *text_engine(struct vela_server *server)
 {
@@ -386,20 +411,50 @@ void vela_decoration_update(struct vela_decoration *decoration, const struct vel
     }
     int title_x = decoration->has_icon ? TITLE_AFTER_ICON : TITLE_MARGIN;
 
-    // The title, rasterized at the output's physical pixels.
+    // The title, rasterized at the output's physical pixels. A new width
+    // alone draws it again only when it would change, cut at another glyph:
+    // an interactive resize changes the width on every frame.
     struct vela_text *text = text_engine(server);
-    if (text && (recolored || rescaled || resized || new_title || new_app)) {
-        int max_width = (int)((width - title_x - 3 * BUTTON_WIDTH - 8) * scale);
+    int max_width = (int)((width - title_x - 3 * BUTTON_WIDTH - 8) * scale);
+    bool refit =
+        resized && !(decoration->title.node && max_width > 0 && vela_text_fits(&decoration->title_layout, max_width));
+    if (text && (recolored || rescaled || refit || new_title || new_app)) {
         if (max_width > 0 && state->title[0]) {
+            // Ink outside the line box (a "j"'s tail, an italic's slant, marks
+            // stacked above a letter) widens the image to the left and above
+            // by whole logical units, so the line box keeps its pixels
+            // wherever the window is (§3.4). The node is cropped to the bar
+            // (below).
+            int units = vela_whole_pixel_units(scale);
+            int margin = units > 0 ? (int)lround(units * (double)scale) : 1;
             struct vela_image image = { 0 };
-            vela_text_render(text, state->title, vela_text_pixel_size(text) * scale, text_color, max_width, &image);
-            double logical_height = image.height / (double)scale;
+            struct vela_text_layout *layout = &decoration->title_layout;
+            vela_text_render(
+                text, state->title, vela_text_pixel_size(text) * scale, text_color, max_width, margin, &image, layout);
+            if (server->test_title_line_box) {
+                keep_line_box(&image, layout);
+            }
+            double left = units > 0 ? layout->line_x / margin * units : layout->line_x / (double)scale;
+            double above = units > 0 ? layout->line_y / margin * units : layout->line_y / (double)scale;
+            double line_y = round((HEIGHT - layout->line_height / (double)scale) / 2.0);
             double logical_width = image.width / (double)scale;
-            set_image(decoration, &decoration->title, &image, title_x, round((HEIGHT - logical_height) / 2.0),
-                logical_width, logical_height);
+            double logical_height = image.height / (double)scale;
+            decoration->title_x = title_x - left;
+            decoration->title_y = line_y - above;
+            set_image(decoration, &decoration->title, &image, decoration->title_x, decoration->title_y, logical_width,
+                logical_height);
         } else {
             clear_image(&decoration->title);
         }
+    }
+    // The title is drawn and takes clicks only within the bar, left of the
+    // buttons, exactly to the pixels of their edges wherever the window is
+    // (scene.h): ink past the bar (a font taller than it, marks stacked
+    // below a letter) would cover the app and take its clicks.
+    if (decoration->title.node && !server->test_title_line_box) {
+        const struct wlr_fbox bar = { -decoration->title_x, -decoration->title_y, vela_max(0, width - 3 * BUTTON_WIDTH),
+            HEIGHT };
+        vela_buffer_node_set_crop(decoration->title.node, &bar);
     }
 
     // The button glyphs in the text's color; Close's white one, shown as much

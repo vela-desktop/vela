@@ -124,6 +124,9 @@ struct vela_buffer_node {
     struct wlr_fbox src;
     enum wl_output_transform transform;
     double width, height;
+    // Only this part of it is drawn and takes clicks (vela_buffer_node_set_crop).
+    bool cropped;
+    struct wlr_fbox crop;
 };
 
 // The scene: the root, the outputs drawing it and the choices that apply to
@@ -212,6 +215,12 @@ struct vela_rect_node *vela_rect_node_create(struct vela_tree *parent, double wi
 struct vela_buffer_node *vela_buffer_node_create(struct vela_tree *parent, struct wlr_buffer *buffer,
     struct wlr_texture *texture, const struct wlr_fbox *src, enum wl_output_transform transform, double width,
     double height);
+// Draws only the part of the image inside `crop` (logical, from the node's
+// top-left corner; NULL: all of it), and only that part takes clicks. Its
+// edges become pixels like every other edge (§3.2), so they fall exactly on
+// the pixels of the edges they follow (a title stops at its bar's). Images
+// with an untransformed buffer only.
+void vela_buffer_node_set_crop(struct vela_buffer_node *buffer, const struct wlr_fbox *crop);
 void vela_node_destroy(struct vela_node *node);
 
 void vela_node_set_position(struct vela_node *node, double x, double y);

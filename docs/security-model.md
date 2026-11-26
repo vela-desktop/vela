@@ -40,8 +40,8 @@ rejected without waiting for a writer. Read descriptors are close-on-exec.
 - every connection is checked with `SO_PEERCRED`: another user's process, or a
   process inside a Flatpak sandbox, is refused;
 - at most 32 connections are open at once;
-- `test-output`, `test-power` and `test-shell` exist only for the functional
-  tests: they are refused unless the compositor runs on the headless backend,
+- `test-output`, `test-power`, `test-shell` and `test-title-line-box` exist
+  only for the functional tests: they are refused unless the compositor runs on the headless backend,
   outside a real session, with `VELA_TEST_COMMANDS=1`
   ([testing](testing.md)).
 

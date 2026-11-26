@@ -90,7 +90,8 @@ struct vela_commands {
     char path[108];
     struct wl_list clients;
     int client_count;
-    // test-output, test-power and test-shell: only in a headless session
+    // test-output, test-power, test-shell and test-title-line-box: only in a
+    // headless session
     // started with VELA_TEST_COMMANDS=1 (the functional tests).
     bool test_commands;
 };
@@ -607,6 +608,10 @@ static void run_command(struct vela_server *server, const char *line)
         vela_capture_watch_test_shell(server->capture_watch, line + 11);
     } else if (starts_with(line, "test-output ")) {
         vela_test_output_command(server, line + 12);
+    } else if (strcmp(line, "test-title-line-box on") == 0 || strcmp(line, "test-title-line-box off") == 0) {
+        // For tests: titles drawn from now on keep only their line box and a
+        // column, uncropped, as before their ink was kept (decoration.c).
+        server->test_title_line_box = strcmp(line, "test-title-line-box on") == 0;
     } else if (strcmp(line, "test-power off") == 0 || strcmp(line, "test-power on") == 0) {
         // For tests: turns outputs off and on like inactivity does, headless
         // ones only (like test-output).

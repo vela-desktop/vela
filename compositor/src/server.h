@@ -162,6 +162,9 @@ struct vela_server {
     // text_loaded: tried, even if there is no font.
     struct vela_text *text;
     bool text_loaded;
+    // test-title-line-box (functional tests only): titles drawn as they were
+    // before their ink was kept, the line box and a column (decoration.c).
+    bool test_title_line_box;
     struct vela_icons *icons;
     struct wl_list snapshot_animations; // the snapshot animations (snapshot.h)
     // In vela_server_animate's ticks: the frames they ask for are the

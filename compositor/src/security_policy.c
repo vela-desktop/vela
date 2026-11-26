@@ -65,7 +65,9 @@ static bool word(const char *line, const char *command)
 
 bool vela_command_test_only(const char *line)
 {
-    return line && (word(line, "test-output") || word(line, "test-power") || word(line, "test-shell"));
+    return line
+        && (word(line, "test-output") || word(line, "test-power") || word(line, "test-shell")
+            || word(line, "test-title-line-box"));
 }
 
 // The peer's process as a pidfd, bound by the kernel to the connection: -1

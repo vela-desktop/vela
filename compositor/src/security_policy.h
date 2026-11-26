@@ -19,8 +19,9 @@
 bool vela_global_privileged(const char *interface);
 
 // Command-socket lines that exist only for the functional tests
-// (test-output, test-power, test-shell): refused unless the compositor was
-// started for tests (VELA_TEST_COMMANDS=1 and the headless backend).
+// (test-output, test-power, test-shell, test-title-line-box): refused unless
+// the compositor was started for tests (VELA_TEST_COMMANDS=1 and the headless
+// backend).
 bool vela_command_test_only(const char *line);
 
 // Whether the process at the other end of a Unix socket runs in a Flatpak
