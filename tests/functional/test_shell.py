@@ -15,9 +15,11 @@ import re
 import shutil
 import socket
 import subprocess
+import struct
 import time
 import sys
 import unittest
+import zlib
 
 from harness import BUILD, ROOT, TIME_SCALE, Image, PrivateBus, Session, tool
 
@@ -85,7 +87,12 @@ class RealShell(unittest.TestCase):
         icons = subprocess.run([SHELL, "--check-icons"], env=dict(env, QT_QPA_PLATFORM="offscreen"),
                                capture_output=True, text=True, timeout=10 * TIME_SCALE)
         self.assertEqual(icons.returncode, 0, icons.stderr)
-        self.shell = subprocess.Popen([SHELL], env=env, stdout=self.vela.log, stderr=self.vela.log)
+        self.shell_environment = env
+        self.start_shell()
+
+    def start_shell(self):
+        self.shell = subprocess.Popen([SHELL], env=self.shell_environment,
+                                      stdout=self.vela.log, stderr=self.vela.log)
         self.vela.clients.append(self.shell)
         # In a session the shell is the compositor's child; here, this one is
         # (its previews are not screen sharing, docs/screen-sharing.md §4.2).
@@ -136,6 +143,58 @@ class RealShell(unittest.TestCase):
         with socket.socket(socket.AF_UNIX) as connection:
             connection.connect(path)
             connection.sendall(line.encode() + b"\n")
+
+
+@unittest.skipUnless(shutil.which("wl-paste"), "wl-paste needed to read the selected PNG")
+class ClipboardHistory(RealShell):
+    shell_settings = "[clipboard]\nhistory=true\n"
+
+    def prepare_shell(self):
+        directory = os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard")
+        os.makedirs(directory)
+        # The previous shell wrote numbered PNG files. Include ancillary data
+        # so decoding and re-encoding the right pixels would still fail.
+        def chunk(kind, data):
+            return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+
+        width, height = 800, 360
+        self.png = (b"\x89PNG\r\n\x1a\n"
+                    + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                    + chunk(b"tEXt", b"Title\0Original clipboard bytes")
+                    + chunk(b"IDAT", zlib.compress((b"\0" + b"\x20\x60\xe0" * width) * height))
+                    + chunk(b"IEND", b""))
+        with open(os.path.join(directory, "1.png"), "wb") as image:
+            image.write(self.png)
+        with open(os.path.join(directory, "pinned.json"), "w") as manifest:
+            json.dump([{"text": f"Pin {i}"} for i in range(16)] + [{"image": "1.png"}], manifest)
+
+    def test_paste_a_legacy_pin_beyond_the_viewport(self):
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 16 + ["key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+
+    def test_delete_selects_the_next_pin(self):
+        # Del on "Pin 15", at the bottom of the view: the selection moves to
+        # the image after it, which Enter then pastes.
+        with self.input_session() as send:
+            send("sleep", 50)
+            self.shell_command("clipboard")
+            self.vela.wait_for(lambda s: s["focusedLayer"] == "vela-clipboard", what="clipboard keyboard focus")
+            send(*(["key", "Down"] * 15 + ["key", "Delete", "key", "Return"]))
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="paste closes clipboard")
+        paste = subprocess.run(["wl-paste", "--type", "image/png"], env=self.vela.client_env,
+                               capture_output=True, check=True, timeout=5 * TIME_SCALE)
+        self.assertEqual(paste.stdout, self.png)
+        with open(os.path.join(self.vela.env["XDG_DATA_HOME"], "vela", "clipboard", "pinned.json")) as manifest:
+            texts = [entry.get("text") for entry in json.load(manifest)]
+        self.assertNotIn("Pin 15", texts)
+        self.assertIn("Pin 14", texts)
 
 
 @unittest.skipUnless(os.path.exists(SHELL), "vela-shell not built (VELA_BUILD_SHELL=OFF)")
@@ -1013,8 +1072,8 @@ class QtShell(RealShell):
                          [(notification_id, 2) for notification_id in ids], signals)
         self.assertEqual(self.notification_action_events(signals), [(ids[0], "default")], signals)
 
-    def test_selected_primary_controls_keyboard_panel_and_notification_remap(self):
-        """The real Qt layers follow the selected output across off/on."""
+    def test_selected_primary_controls_notification_remap_and_keyboard_follows_pointer(self):
+        """Notifications follow the selected output; keyboard panels follow the pointer."""
         if not shutil.which("gdbus"):
             self.skipTest("gdbus required for desktop notification")
 
@@ -1025,12 +1084,13 @@ class QtShell(RealShell):
         # Allow Config's QFileSystemWatcher/debounce to deliver the update.
         time.sleep(0.5)
 
+        main = next(o for o in self.vela.state()["outputs"] if o["name"] == "HEADLESS-1")
         with self.input_session() as send:
-            send("key", "super+v")
+            send("move", main["x"] + 200, main["y"] + 200, "key", "super+v")
             self.vela.wait_for(
-                lambda s: (layer := self.layer(s, "vela-clipboard")) and layer["output"] == "HEADLESS-2"
+                lambda s: (layer := self.layer(s, "vela-clipboard")) and layer["output"] == "HEADLESS-1"
                           and s["focusedLayer"] == "vela-clipboard",
-                timeout=8, what="clipboard focused on explicitly selected output")
+                timeout=8, what="clipboard focused on the pointer's output")
             send("key", "Escape")
             self.vela.wait_for(lambda s: not self.mapped(s, "vela-clipboard"), what="clipboard closed")
 
@@ -1912,6 +1972,177 @@ class QtShell(RealShell):
         self.assertEqual((layer["y"], layer["h"]), (main["y"], main["h"]))
         image = self.vela.pixels()
         self.assertEqual(self.panel_top(image, x, layer["y"] + 1, layer["y"] + layer["h"]), main_top)
+
+    def test_panels_opened_from_the_keyboard_follow_the_focused_display(self):
+        """The volume indicator, Start and quick settings belong on the display
+        the user is working on: with a fullscreen video on the
+        second monitor they would otherwise open on the first one, where nobody
+        is looking (the volume keys seem to do nothing)."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.input("move", second["x"] + second["w"] // 2, second["y"] + second["h"] // 2)
+        window = self.vela.open_window(1920, 1080, command=[tool("vela-pattern"), "--fullscreen-parent", "1920", "1080"])
+        state = self.vela.wait_for(lambda s: s["focused"] == window and s.window(window)["fullscreen"],
+                                   what="a fullscreen window on the second display")
+        self.assertEqual(state.window(window)["output"], "HEADLESS-2")
+        def open_and_close(key, namespace):
+            # One virtual keyboard per scene: a new one sends its keymap first
+            # and can lose the Escape, or take the keyboard from the panel.
+            with self.input_session() as send:
+                send("key", key)
+                state = self.vela.wait_for(lambda s: self.layer(s, namespace) and s["focusedLayer"] == namespace,
+                                           what=f"{namespace} open and focused")
+                send("key", "Escape")
+                self.vela.wait_for(lambda s: not self.mapped(s, namespace), timeout=5, what=f"{namespace} closed")
+            return self.layer(state, namespace)["output"]
+
+        for key, namespace in (("super", "vela-start-menu"), ("super+a", "vela-quick-settings"),
+                               ("super+x", "vela-context-menu")):
+            with self.subTest(panel=namespace):
+                self.assertEqual(open_and_close(key, namespace), "HEADLESS-2")
+        # Restart the real receiver with the same focused fullscreen client.
+        self.shell.kill()
+        self.shell.wait(timeout=5 * TIME_SCALE)
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-taskbar"), what="old shell gone")
+        self.start_shell()
+        self.vela.wait_for(
+            lambda s: s["focused"] == window and any(layer["namespace"] == "vela-wallpaper"
+                and layer["mapped"] and layer["output"] == "HEADLESS-2" for layer in s["layers"]),
+            what="fullscreen still focused and replacement shell mapped on secondary output")
+        self.assertEqual(open_and_close("super", "vela-start-menu"), "HEADLESS-2")
+        self.vela.command("test-output remove HEADLESS-2")
+        self.vela.wait_for(lambda s: len(s["outputs"]) == 1, what="secondary display removed")
+        self.vela.input("key", "super+a")
+        state = self.vela.wait_for(lambda s: self.layer(s, "vela-quick-settings"),
+                                   what="quick settings after hotplug")
+        self.assertEqual(self.layer(state, "vela-quick-settings")["output"], "HEADLESS-1")
+        self.check_desktop()
+
+
+class KeyboardPanelsWithoutAudio(RealShell):
+    """Panels opened from the keyboard with no audio service: the wheel on
+    the volume icon shows no indicator. PipeWire points nowhere, so nothing
+    here can change this machine's volume."""
+
+    shell_env = {"PIPEWIRE_RUNTIME_DIR": "/nonexistent/vela-test-pipewire",
+                 "PIPEWIRE_REMOTE": "vela-test-no-pipewire"}
+
+    def test_alt_tab_and_the_taskbar_wheel_leave_the_display_in_use(self):
+        """Alt+Tab opens on the focused window's display too. The wheel on
+        the main taskbar's volume icon, with no indicator to show, must not
+        leave that taskbar's display to the next panel opened from the
+        keyboard."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.vela.input("move", second["x"] + 300, second["y"] + 300)
+        first = self.vela.open_window(400, 300)
+        other = self.vela.open_window(400, 300)
+        self.vela.wait_for(lambda s: s["focused"] == other and s.window(first)["output"] == "HEADLESS-2"
+                           and s.window(other)["output"] == "HEADLESS-2", what="two windows on the second display")
+        def main_bar(s):
+            return next((layer for layer in s["layers"] if layer["namespace"] == "vela-taskbar"
+                         and layer["mapped"] and layer["output"] == "HEADLESS-1"), None)
+        bar = main_bar(self.vela.wait_for(main_bar, what="the main taskbar"))
+        with self.input_session() as send:
+            send("keydown", "alt", "key", "Tab")
+            state = self.vela.wait_for(lambda s: self.layer(s, "vela-switcher"), what="Alt+Tab shown")
+            self.assertEqual(self.layer(state, "vela-switcher")["output"], "HEADLESS-2")
+            send("keyup", "alt")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-switcher"), timeout=5, what="Alt+Tab closed")
+            focused = self.vela.state()["focused"]
+            self.assertIn(focused, (first, other))
+            # A taskbar menu dismissed with nothing chosen leaves no output
+            # behind either (CodeRabbit on #320).
+            send("move", bar["x"] + 300, bar["y"] + bar["h"] // 2, "sleep", 300, "click", "right")
+            state = self.vela.wait_for(lambda s: self.layer(s, "vela-context-menu"), what="the taskbar menu")
+            self.assertEqual(self.layer(state, "vela-context-menu")["output"], "HEADLESS-1")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-context-menu"), timeout=5, what="menu closed")
+            self.vela.wait_for(lambda s: s["focused"] == focused, what="focus unchanged after the menu")
+            send("key", "super")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-start-menu") and s["focusedLayer"] == "vela-start-menu",
+                what="Start open after the menu")
+            self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+            # The volume icon, just left of the clock on the main taskbar.
+            x, y = bar["x"] + bar["w"] - 110, bar["y"] + bar["h"] // 2
+            send("move", x, y, "sleep", 300, "move", x + 1, y, "sleep", 300, "scroll", 1, "sleep", 300)
+            self.assertFalse(self.mapped(self.vela.state(), "vela-volume-osd"), "an audio service answered")
+            # Back on the second display's window, the keyboard opens Start.
+            send("move", second["x"] + 300, second["y"] + 300, "sleep", 200)
+            self.vela.wait_for(lambda s: s["focused"] == focused, what="focus unchanged")
+            send("key", "super")
+            state = self.vela.wait_for(
+                lambda s: self.layer(s, "vela-start-menu") and s["focusedLayer"] == "vela-start-menu",
+                what="Start open and focused")
+            self.assertEqual(self.layer(state, "vela-start-menu")["output"], "HEADLESS-2")
+            send("key", "Escape")
+            self.vela.wait_for(lambda s: not self.mapped(s, "vela-start-menu"), timeout=5, what="Start closed")
+        self.check_desktop()
+
+
+class VolumeDisplay(RealShell):
+    """The real volume OSD with a private PipeWire graph."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(ROOT, "tests", "audio"))
+        try:
+            from fixture import AudioFixture, missing_tools
+        finally:
+            sys.path.pop(0)
+        if missing := missing_tools():
+            self.skipTest("Missing audio fixture tools: " + ", ".join(missing))
+        self.audio = AudioFixture()
+        self.audio.start()
+        self.addCleanup(self.audio.stop)
+        self.shell_env = {"PIPEWIRE_RUNTIME_DIR": self.audio.env["XDG_RUNTIME_DIR"],
+                          "PIPEWIRE_REMOTE": "pipewire-0",
+                          "DBUS_SYSTEM_BUS_ADDRESS": self.audio.env["DBUS_SYSTEM_BUS_ADDRESS"]}
+        super().setUp()
+
+    def test_volume_osd_follows_fullscreen_and_focus_changes(self):
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        main, second = (next(o for o in state["outputs"] if o["name"] == name)
+                        for name in ("HEADLESS-1", "HEADLESS-2"))
+        self.vela.wait_for(
+            lambda s: any(layer["namespace"] == "vela-taskbar" and layer["mapped"]
+                          and layer["output"] == "HEADLESS-2" for layer in s["layers"]),
+            what="secondary Qt taskbar mapped")
+        self.vela.input("move", main["x"] + 200, main["y"] + 200)
+        first = self.vela.open_window(300, 200)
+        self.vela.wait_for(lambda s: s["focused"] == first and s.window(first)["output"] == "HEADLESS-1")
+        self.vela.input("move", second["x"] + 200, second["y"] + 200)
+        window = self.vela.open_window(1920, 1080, command=[tool("vela-pattern"), "--fullscreen-parent", "1920", "1080"])
+        self.vela.wait_for(lambda s: s["focused"] == window and s.window(window)["fullscreen"]
+                           and s.window(window)["output"] == "HEADLESS-2")
+
+        namespace = "vela-volume-osd"
+
+        def request_volume(s):
+            if self.layer(s, namespace):
+                return True
+            # The asynchronous audio client may not yet have received defaults.
+            self.vela.keys("XF86AudioRaiseVolume")
+            return False
+
+        state = self.vela.wait_for(request_volume, timeout=10, interval=0.25, what="volume OSD on fullscreen")
+        self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-2")
+        self.vela.input("move", *self._window_center(first), "click", "left")
+        self.vela.wait_for(lambda s: s["focused"] == first, what="first display focused")
+        self.vela.keys("XF86AudioLowerVolume")
+        state = self.vela.wait_for(lambda s: (layer := self.layer(s, namespace))
+                                   and layer["output"] == "HEADLESS-1", what="volume OSD on first display")
+        self.assertEqual(self.layer(state, namespace)["output"], "HEADLESS-1")
+        self.check_desktop()
+
+    def _window_center(self, identifier):
+        window = self.vela.state().window(identifier)
+        return window["x"] + window["w"] // 2, window["y"] + window["h"] // 2
 
 
 def resident_gpu_kib(pid):

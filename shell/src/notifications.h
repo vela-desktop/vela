@@ -31,7 +31,7 @@ constexpr int maxNotificationSummaryChars = 512;
 constexpr int maxNotificationBodyChars = 4096;
 constexpr int maxNotificationHistory = 100; // the oldest leave the center
 
-// The pixels of an "image-data" hint, (iiibiiay) in the spec, as a QImage;
+// The display-sized icon of an "image-data" hint, (iiibiiay) in the spec;
 // null if the fields don't describe a buffer that holds them. The data comes
 // from any client on the session bus: every size is checked before a byte is
 // read, and images larger than maxNotificationImageSide on a side are refused.

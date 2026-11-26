@@ -169,6 +169,7 @@ set(VELA_QML_FILES
     qml/TaskbarTooltip.qml
     qml/FileDialogs.qml
     qml/ClipboardPanel.qml
+    qml/ClipboardList.qml
     qml/SnipOverlay.qml
     qml/ShadowRoom.qml)
 
@@ -211,7 +212,15 @@ install(TARGETS vela-shell RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # The tests (ctest): the Exec key of .desktop files, default apps, the
 # volume's steps and the animation effects switch Style reads.
 if(VELA_BUILD_TOOLS)
-    find_package(Qt6 6.5 REQUIRED COMPONENTS Test)
+    find_package(Qt6 6.5 REQUIRED COMPONENTS Test Network)
+    qt_add_executable(vela-shell-controller-test tests/shellcontroller_test.cpp
+        src/shellcontroller.cpp src/shellcontroller.h)
+    target_include_directories(vela-shell-controller-test PRIVATE src)
+    target_compile_options(vela-shell-controller-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-shell-controller-test PRIVATE vela-color
+        Qt6::Gui Qt6::DBus Qt6::Network Qt6::Test LayerShellQt::Interface)
+    add_test(NAME shell-controller COMMAND vela-shell-controller-test)
+    set_tests_properties(shell-controller PROPERTIES TIMEOUT 15 ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     qt_add_executable(vela-transfer-monitor-test
         tests/transfers.cpp src/transfermonitor.cpp src/transfermonitor.h)
     target_include_directories(vela-transfer-monitor-test PRIVATE src)
@@ -389,6 +398,21 @@ if(VELA_BUILD_TOOLS)
     add_test(NAME shell-config COMMAND vela-config-test)
     set_tests_properties(shell-config PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+    # Clipboard history in a private home, offscreen: no compositor, so the
+    # list, its images and the pinned files alone.
+    qt_add_executable(vela-clipboard-test tests/clipboard_test.cpp src/clipboard.cpp src/clipboard.h
+        ${PROJECT_SOURCE_DIR}/common/tests/privatehome.h)
+    # The ext-data-control code generated for vela-shell: after it, as above.
+    add_dependencies(vela-clipboard-test vela-shell)
+    target_sources(vela-clipboard-test PRIVATE ${SHELL_GENERATED_DIR}/ext-data-control-v1-protocol.c)
+    target_include_directories(vela-clipboard-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests src
+        ${SHELL_GENERATED_DIR})
+    target_compile_options(vela-clipboard-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-clipboard-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test
+        PkgConfig::SHELL_WAYLAND_CLIENT)
+    add_test(NAME shell-clipboard COMMAND vela-clipboard-test)
+    set_tests_properties(shell-clipboard PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
     qt_add_executable(vela-start-icon-test tests/starticon.cpp src/starticon.h)
     target_include_directories(vela-start-icon-test PRIVATE src)
     target_compile_options(vela-start-icon-test PRIVATE -Wall -Wextra)
@@ -480,7 +504,11 @@ if(VELA_BUILD_TOOLS)
     target_include_directories(vela-notification-image-test PRIVATE src)
     target_compile_options(vela-notification-image-test PRIVATE -Wall -Wextra)
     target_link_libraries(vela-notification-image-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Quick Qt6::Test)
-    add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        add_test(NAME shell-notification-image COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-notification-image-test>)
+    else()
+        add_test(NAME shell-notification-image COMMAND vela-notification-image-test)
+    endif()
     set_tests_properties(shell-notification-image PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
     # Who shares the screen, named, against a fake compositor (docs/screen-sharing.md §5).

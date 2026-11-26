@@ -272,6 +272,13 @@
         </message>
     </context>
     <context>
+        <name>ClipboardList</name>
+        <message>
+            <source>See more</source>
+            <translation>Ver mais</translation>
+        </message>
+    </context>
+    <context>
         <name>ClipboardPanel</name>
         <message>
             <source>Clipboard</source>
@@ -296,10 +303,6 @@
         <message>
             <source>There's nothing here. When you copy something, you'll find it here to paste it again.</source>
             <translation>Não há nada aqui. Quando você copiar algo, encontrará aqui para colar novamente.</translation>
-        </message>
-        <message>
-            <source>See more</source>
-            <translation>Ver mais</translation>
         </message>
         <message>
             <source>&amp;Unpin</source>

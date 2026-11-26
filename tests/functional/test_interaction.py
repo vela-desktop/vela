@@ -8,6 +8,7 @@ Snap Assist, snap layouts (Win+Z) and snap groups. The shell is a FakeShell
 collecting the messages."""
 
 import os
+import signal
 import time
 import unittest
 
@@ -156,6 +157,21 @@ class Interaction(unittest.TestCase):
     # What is under a pointer at rest changes: the pointer follows, as if it
     # had moved. Before, it stayed with what was there until the next motion.
 
+    def test_the_first_press_of_the_first_device_reaches_the_app(self):
+        # The window opens before any input device exists. The seat has a
+        # pointer all the same, so the app's wl_pointer is ready before
+        # this vela-input's press. Before, the capability came with the
+        # device and the press right after it: an app busy in between (here
+        # stopped) bound wl_pointer too late and never saw the press.
+        window, log = self.pattern_clicks(300, 200)
+        client = self.vela.clients[-1]
+        client.send_signal(signal.SIGSTOP)
+        try:
+            self.vela.input("move", *self.center(window), "down", "sleep", "50", "up")
+        finally:
+            client.send_signal(signal.SIGCONT)
+        self.wait_click(log, self.pattern_click())
+
     def test_pointer_follows_a_window_opening_under_it(self):
         below = self.vela.open_window(500, 400)
         self.vela.input("move", *self.center(below))
@@ -265,6 +281,46 @@ class Interaction(unittest.TestCase):
         self.vela.keys("XF86AudioLowerVolume")
         time.sleep(0.6)
         self.assertEqual(self.shell.received("volume down"), ["volume down"])
+
+    def test_the_shell_hears_which_display_the_user_is_on(self):
+        """Before its messages the compositor says which display the user is
+        working on (focus.c): the volume indicator, Start and quick settings
+        open there, on the focused window's display, not on the main one.
+        Every command carries its own snapshot, including after reconnect."""
+        self.vela.command("test-output add 1920x1080")
+        state = self.vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two displays")
+        second = next(o for o in state["outputs"] if o["name"] == "HEADLESS-2")
+        self.shell.clear()
+        self.vela.input("move", second["x"] + 200, second["y"] + 200)
+        window = self.vela.open_window(300, 200)
+        self.vela.wait_for(lambda s: s["focused"] == window and s.window(window)["output"] == "HEADLESS-2",
+                           what="a window focused on the second display")
+        self.vela.keys("XF86AudioRaiseVolume")
+        self.shell.wait_for("volume up")
+        lines = self.shell.received()
+        self.assertIn("active-output HEADLESS-2", lines)
+        self.assertLess(lines.index("active-output HEADLESS-2"), lines.index("volume up"),
+                        "the display came after the command it belongs to")
+        # The snapshot must survive a missing receiver and a fresh shell.
+        self.shell.close()
+        self.vela.keys("XF86AudioLowerVolume")
+        self.shell = self.vela.fake_shell()
+        self.vela.keys("XF86AudioLowerVolume")
+        self.shell.wait_for("volume down")
+        lines = self.shell.received()
+        self.assertEqual(lines[lines.index("volume down") - 1], "active-output HEADLESS-2")
+
+        # Focus moves to the other output, even if the pointer moves back.
+        main = next(o for o in state["outputs"] if o["name"] == "HEADLESS-1")
+        self.vela.input("move", main["x"] + 200, main["y"] + 200)
+        other = self.vela.open_window(300, 200)
+        self.vela.wait_for(lambda s: s["focused"] == other and s.window(other)["output"] == "HEADLESS-1")
+        self.vela.input("move", second["x"] + 200, second["y"] + 200)
+        self.shell.clear()
+        self.vela.keys("XF86AudioRaiseVolume")
+        self.shell.wait_for("volume up")
+        lines = self.shell.received()
+        self.assertEqual(lines[lines.index("volume up") - 1], "active-output HEADLESS-1")
 
     def test_win_ctrl_v_opens_the_sound_page(self):
         self.vela.keys("super+ctrl+v")

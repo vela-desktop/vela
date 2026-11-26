@@ -75,6 +75,10 @@
 #include <QtDebug>
 #include <QtQml/QQmlExtensionPlugin>
 
+#ifdef __GLIBC__
+#include <malloc.h>
+#endif
+
 #include <chrono>
 #include <cstdio>
 #include <memory>
@@ -398,6 +402,14 @@ int main(int argc, char* argv[])
         return 0;
     }
 
+#ifdef __GLIBC__
+    // Keep startup allocations from spreading across arenas on large machines.
+    // mallopt is local to the shell and preserves the environment of launched apps.
+    if (!qEnvironmentVariableIsSet("MALLOC_ARENA_MAX")
+        && !qgetenv("GLIBC_TUNABLES").contains("glibc.malloc.arena_max=")) {
+        mallopt(M_ARENA_MAX, 2);
+    }
+#endif
     vela::rendering::configureApplication();
     QGuiApplication app(argc, argv);
     // Select the shell renderer locally so launched applications keep their own Qt settings.
@@ -808,5 +820,22 @@ int main(int argc, char* argv[])
     QObject::connect(&app, &QGuiApplication::primaryScreenChanged, notificationPopups, resyncNotifications);
     refreshNotifications();
 
+#ifdef __GLIBC__
+    // The QML and renderer workers have finished startup once each initial
+    // desktop surface has submitted its first frame. Trim on the GUI thread.
+    int pendingFrames = 0;
+    QObject startupFrames;
+    for (QWindow* surface : QGuiApplication::allWindows()) {
+        auto* window = qobject_cast<QQuickWindow*>(surface);
+        if (!window || !window->isVisible()) continue;
+        ++pendingFrames;
+        QObject::connect(
+            window, &QQuickWindow::frameSwapped, &startupFrames,
+            [&pendingFrames] {
+                if (--pendingFrames == 0) malloc_trim(0);
+            },
+            Qt::ConnectionType(Qt::QueuedConnection | Qt::SingleShotConnection));
+    }
+#endif
     return app.exec();
 }

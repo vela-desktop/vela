@@ -109,7 +109,7 @@ class BlurPolicy(unittest.TestCase):
 
     def expected(self, acrylic, saturation=1.25, amount=TINT[3]):
         """Per channel, the lowest and highest value the dither allows: it adds
-        up to 1/255 either way in linear light, before the panel. A theme's
+        about one encoded sRGB step either way, before the panel. A theme's
         blur-look can change the saturation and the tint's amount."""
         c = [to_linear(v / 255) for v in self.WALLPAPER]
         if acrylic:
@@ -117,7 +117,8 @@ class BlurPolicy(unittest.TestCase):
             c = [luma + (v - luma) * saturation for v in c]
             c = [v * (1 - amount) + to_linear(t) * amount for v, t in zip(c, self.TINT[:3])]
         under = 1 - 128 / 255 # the panel's black at 50%
-        return [(to_srgb((v - 1 / 255) * under) - 1, to_srgb((v + 1 / 255) * under) + 1) for v in c]
+        return [(to_srgb(to_linear(max(0, to_srgb(v) - 1) / 255) * under) - 1,
+                 to_srgb(to_linear(min(255, to_srgb(v) + 1) / 255) * under) + 1) for v in c]
 
     def start(self, vela, namespace):
         color = "{:02x}{:02x}{:02x}".format(*self.WALLPAPER)
@@ -137,6 +138,12 @@ class BlurPolicy(unittest.TestCase):
                 pixel = image.at(x, y)
                 self.assertTrue(all(lo <= v <= hi for v, (lo, hi) in zip(pixel, expected)),
                                 f"{label} at ({x}, {y}): {pixel}, expected within {expected}")
+
+    def test_dark_blur_dither_stays_within_one_encoded_step(self):
+        self.WALLPAPER = (5, 12, 24)
+        with Session() as vela:
+            self.start(vela, "test")
+            self.check(vela, "dark plain blur", self.expected(False))
 
     def test_acrylic_only_for_vela(self):
         for namespace, acrylic in (("vela-test", True), ("test", False)):

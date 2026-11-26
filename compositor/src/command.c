@@ -77,6 +77,8 @@ struct client {
     // matters, every line is the whole state), and the line being written.
     bool watching[TOPICS];
     char *queued[TOPICS];
+    char *reply; // one ordered reply may wait behind the line being written
+    bool input_closed;
     char *out;
     size_t out_length, out_done;
     bool brightness_live; // shows a brightness slider (brightness-live on)
@@ -282,8 +284,9 @@ static void window_rects_json(struct vela_server *server, struct vela_buffer *js
 }
 
 // Questions with an answer: false if the line isn't one of them.
-static bool answer(struct vela_server *server, int fd, const char *line)
+static bool answer(struct client *client, const char *line)
 {
+    struct vela_server *server = client->server;
     struct vela_buffer reply = { 0 };
     if (strcmp(line, "modifiers") == 0) {
         // The shell doesn't have the keyboard when the taskbar is clicked, so
@@ -326,8 +329,7 @@ static bool answer(struct vela_server *server, int fd, const char *line)
         return false;
     }
     vela_buffer_append(&reply, "\n");
-    (void)!send(fd, reply.data, reply.length, MSG_NOSIGNAL);
-    vela_buffer_finish(&reply);
+    client->reply = reply.data;
     return true;
 }
 
@@ -570,11 +572,6 @@ static void run_command(struct vela_server *server, const char *line)
         blur_look(server, line + 10);
     } else if (strcmp(line, "paste") == 0) {
         vela_input_paste(server->input); // Win+V: the shell has put the item on the clipboard
-    } else if (strcmp(line, "modifiers") == 0 || strcmp(line, "workspaces") == 0
-        || strcmp(line, "accessibility") == 0 || strcmp(line, "window-rects") == 0
-        || strcmp(line, "caffeine status") == 0 || starts_with(line, "caffeine-set ")
-        || strcmp(line, "brightness") == 0 || starts_with(line, "watch ") || starts_with(line, "brightness-live ")) {
-        // already answered to whoever asked, or about the connection itself
     } else if (starts_with(line, "brightness-probe ")) {
         vela_brightness_probe(server, line + 17); // Settings is showing this output
     } else if (starts_with(line, "brightness ")) {
@@ -649,6 +646,8 @@ static void stop_watching(struct client *client)
         free(client->queued[i]);
         client->queued[i] = NULL;
     }
+    free(client->reply);
+    client->reply = NULL;
     free(client->out);
     client->out = NULL;
 }
@@ -659,17 +658,19 @@ static void flush(struct client *client)
 {
     for (;;) {
         if (!client->out) {
+            client->out = client->reply;
+            client->reply = NULL;
             for (int i = 0; i < TOPICS && !client->out; ++i) {
                 if (client->queued[i]) {
                     client->out = client->queued[i];
-                    client->out_length = strlen(client->out);
-                    client->out_done = 0;
                     client->queued[i] = NULL;
                 }
             }
             if (!client->out) {
                 break;
             }
+            client->out_length = strlen(client->out);
+            client->out_done = 0;
         }
         ssize_t n = send(client->fd, client->out + client->out_done, client->out_length - client->out_done,
             MSG_NOSIGNAL | MSG_DONTWAIT);
@@ -689,14 +690,17 @@ static void flush(struct client *client)
             client->out = NULL;
         }
     }
-    wl_event_source_fd_update(client->source, WL_EVENT_READABLE | (client->out ? WL_EVENT_WRITABLE : 0));
+    uint32_t mask = client->reply || client->input_closed ? 0 : WL_EVENT_READABLE;
+    wl_event_source_fd_update(client->source, mask | (client->out ? WL_EVENT_WRITABLE : 0));
 }
 
 static void queue(struct client *client, int topic, const char *line)
 {
     free(client->queued[topic]);
     client->queued[topic] = vela_strdup(line);
-    flush(client);
+    // The writable callback also resumes dispatch of buffered requests.
+    wl_event_source_fd_update(
+        client->source, WL_EVENT_WRITABLE | (client->reply || client->input_closed ? 0 : WL_EVENT_READABLE));
 }
 
 static char *topic_line(struct vela_server *server, int topic)
@@ -797,51 +801,42 @@ static int handle_client(int fd, uint32_t mask, void *data)
     if (mask & WL_EVENT_WRITABLE) {
         flush(client);
     }
-    char chunk[256];
-    ssize_t n = -1;
-    // Bound each event-loop turn to MAX_LINE bytes, not the lifetime of the
-    // socket. A stream may contain thousands of short, valid commands. Do
-    // not read past the remaining capacity: that would silently discard the
-    // tail of a read, then close an otherwise valid connection on a burst.
-    // Once this buffer fills, drain its complete lines below and let the
-    // still-readable fd wake us again for the next batch.
-    while (client->length < MAX_LINE) {
-        size_t room = MAX_LINE - client->length;
-        size_t amount = room < sizeof(chunk) ? room : sizeof(chunk);
-        n = read(fd, chunk, amount);
-        if (n <= 0) {
+    // At most one input buffer per turn. When a reply is waiting, leave the
+    // remaining requests here and apply socket backpressure until it moves.
+    if (!client->reply && !client->input_closed && client->length < MAX_LINE) {
+        ssize_t n;
+        do {
+            n = read(fd, client->buffer + client->length, MAX_LINE - client->length);
+        } while (n < 0 && errno == EINTR);
+        if (n > 0) {
+            client->length += (size_t)n;
+        } else if (n == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
+            client->input_closed = true;
+        }
+    }
+    size_t used = 0;
+    while (!client->reply && used < client->length) {
+        char *line = client->buffer + used;
+        char *end = memchr(line, '\n', client->length - used);
+        if (!end) {
             break;
         }
-        memcpy(client->buffer + client->length, chunk, (size_t)n);
-        client->length += (size_t)n;
-    }
-    // The complete lines; the rest waits for the next piece.
-    char lines[MAX_LINE + 1];
-    size_t lines_length = 0;
-    char *newline;
-    while ((newline = memchr(client->buffer, '\n', client->length))) {
-        size_t line_length = (size_t)(newline - client->buffer);
-        memcpy(lines + lines_length, client->buffer, line_length);
-        lines[lines_length + line_length] = '\0';
-        lines_length += line_length + 1;
-        client->length -= line_length + 1;
-        memmove(client->buffer, newline + 1, client->length);
-    }
-    for (size_t at = 0; at < lines_length; at += strlen(lines + at) + 1) {
-        if (!connection_line(client, lines + at)) {
-            answer(server, fd, lines + at);
+        *end = '\0';
+        used += (size_t)(end - line) + 1;
+        if (memchr(line, '\0', (size_t)(end - line))) {
+            continue; // discard the entire malformed line
+        }
+        if (connection_line(client, line) || answer(client, line)) {
+            flush(client);
+        } else {
+            run_command(server, line);
         }
     }
-    // A full buffer of COMPLETE lines is not an overlong request: removing
-    // those lines freed capacity. Only an incomplete line occupying all of
-    // MAX_LINE is malformed and must close this client.
-    bool closed = n == 0 || (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) || client->length >= MAX_LINE;
-    if (closed) {
+    client->length -= used;
+    memmove(client->buffer, client->buffer + used, client->length);
+    if ((mask & (WL_EVENT_ERROR | WL_EVENT_HANGUP)) || (!used && client->length == MAX_LINE && !client->reply)
+        || (client->input_closed && !client->out && !client->reply)) {
         client_destroy(client);
-    }
-    // After the client is settled: a command can close everything.
-    for (size_t at = 0; at < lines_length; at += strlen(lines + at) + 1) {
-        run_command(server, lines + at);
     }
     return 0;
 }

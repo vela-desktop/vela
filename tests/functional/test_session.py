@@ -4,8 +4,10 @@
 """The session: lock and unlock, outputs turned off and on, and the
 supervisor restarting the compositor after a crash (locked too)."""
 
+import json
 import os
 import select
+import shlex
 import signal
 import socket
 import subprocess
@@ -35,6 +37,30 @@ def child_compositor(supervisor_pid):
 
 
 class Lock(unittest.TestCase):
+    def test_clean_unlock_allows_launcher_to_finish(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = os.path.join(directory, "finished")
+            launcher = f"{shlex.quote(tool('vela-testlock'))} 300 && echo done > {shlex.quote(marker)}"
+            with Session(env={"VELA_LOCK": launcher}) as vela:
+                vela.command("lock")
+                vela.wait_for(lambda _: os.path.exists(marker), read_state=False,
+                              what="locker returned from its unlock roundtrip")
+                self.assertFalse(vela.state()["locked"])
+
+    def test_clean_unlock_reaps_a_launcher_that_lingers(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = os.path.join(directory, "pid")
+            launcher = f"{shlex.quote(tool('vela-testlock'))} 300 && echo $$ > {shlex.quote(marker)} && exec sleep 30"
+            with Session(env={"VELA_LOCK": launcher}) as vela:
+                vela.command("lock")
+                vela.wait_for(lambda _: os.path.exists(marker) and os.path.getsize(marker) > 0,
+                              read_state=False, what="launcher finishing after unlock")
+                with open(marker) as record:
+                    pid = int(record.read())
+                vela.wait_for(lambda _: not os.path.exists(f"/proc/{pid}"), read_state=False,
+                              what="lingering launcher reaped")
+                self.assertFalse(vela.state()["locked"])
+
     def test_lock_hides_windows_and_unlock_restores_focus(self):
         with Session(lock_hold_ms=1500) as vela:
             window = vela.open_window()
@@ -695,6 +721,28 @@ class Shell(unittest.TestCase):
 
 
 class CommandSocket(unittest.TestCase):
+    def test_invalid_line_is_discarded_and_the_next_question_survives(self):
+        with Session() as vela, socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(5)
+            client.connect(vela.socket_path)
+            client.sendall(b"modifiers\x00modifiers\naccessibility\n")
+            with client.makefile("rb") as replies:
+                self.assertIn(b'"nightLight"', replies.readline())
+
+    def test_pipelined_replies_survive_backpressure_and_half_close(self):
+        with Session() as vela, socket.socket(socket.AF_UNIX) as client:
+            client.settimeout(10)
+            client.connect(vela.socket_path)
+            count = 512
+            client.sendall(b"state\nmodifiers\n" * count)
+            client.shutdown(socket.SHUT_WR)
+            time.sleep(0.1)
+            with client.makefile("rb") as replies:
+                for _ in range(count):
+                    self.assertIn("outputs", json.loads(replies.readline()))
+                    self.assertEqual(replies.readline(), b"0\n")
+                self.assertEqual(replies.readline(), b"")
+
     def test_client_that_hangs_up_before_the_reply_does_not_kill_the_session(self):
         # A large reply ("state" with windows) to clients that reset the
         # connection at once: writing to them must not raise SIGPIPE.
