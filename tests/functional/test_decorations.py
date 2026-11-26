@@ -7,6 +7,7 @@ compositor and the three buttons; closing, maximizing with a double click.
 It's found on screen, not from the state."""
 
 import glob
+import math
 import os
 import re
 import subprocess
@@ -220,14 +221,100 @@ class TitleAcrossTheOutputEdge(unittest.TestCase):
                     previous = (x, bar)
 
 
-def move_to(vela, window, x):
-    """Drags the window by its bar until its left edge is at `x` units."""
+def move_to(vela, window, x, y=None):
+    """Drags the window by its bar until its top-left corner is at (`x`, `y`)
+    units (`y` None: where it is)."""
     for _ in range(3):
         w = vela.state().window(window)
-        if w["x"] == x:
+        target_y = w["y"] if y is None else y
+        if (w["x"], w["y"]) == (x, target_y):
             return
-        drag(vela, w, x - w["x"], 0)
-    raise AssertionError(f"the window doesn't go to x={x}")
+        drag(vela, w, x - w["x"], target_y - w["y"])
+    raise AssertionError(f"the window doesn't go to {x}, {y}")
+
+
+class TitleAsBefore(unittest.TestCase):
+    """A title whose ink stays inside its line box looks exactly as before its
+    ink was kept, also where the old image's pixels mattered in ways the 1:1
+    copy doesn't show. The reference is the same window with
+    `test-title-line-box on`: titles drawn as they were (the line box and a
+    column, decoration.c), compositor.text checking that this is the old
+    renderer's image."""
+
+    def test_across_two_outputs(self):
+        # The window mostly on a 150% output, its title on the 100% one to the
+        # left: the title is drawn at 150% and stretched there, so the image's
+        # exact size decides which pixels are sampled (a column less changed
+        # the "l" of "Files" from 46 to 102 on the light bar).
+        with Session(scale=1.0, size="1920x1080@60") as vela:
+            vela.command("test-output add 1920x1080")
+            vela.wait_for(lambda s: len(s["outputs"]) == 2, what="two outputs")
+            vela.randr("--output", "HEADLESS-2", "--scale", "1.5", "--pos", "1920,0")
+            vela.wait_for(lambda s: any(o["name"] == "HEADLESS-2" and o["x"] == 1920 for o in s["outputs"]),
+                          what="the second output at 150%, on the right")
+            now = [self.left_part(vela, title) for title in ("Files", "jupyter-lab")]
+            vela.command("test-title-line-box on")
+            before = [self.left_part(vela, title) for title in ("Files", "jupyter-lab")]
+            self.assertTrue(now[0] == before[0], "the title on the 100% output isn't the one drawn as before")
+            # The "j"'s tail, kept now, makes the image wider on the left, so it
+            # is stretched by a slightly different factor: the letters drawn
+            # before stay within a few levels (4 of 255 measured), the tail
+            # left of the title's margin (12 units) is new.
+            worst = max(abs(a - b) for row_now, row_before in zip(now[1], before[1])
+                        for a, b in zip(row_now[12 * 3:], row_before[12 * 3:]))
+            self.assertLessEqual(worst, 8, "jupyter-lab's letters changed on the 100% output")
+            tail = sum(abs(a - b) for row_now, row_before in zip(now[1], before[1])
+                       for a, b in zip(row_now[:12 * 3], row_before[:12 * 3]))
+            self.assertGreater(tail, 0, "the j's tail isn't drawn on the 100% output")
+
+    def left_part(self, vela, title):
+        """The bar's rows on the left output, where the window's title is; the
+        window is closed afterwards."""
+        window = vela.open_window(400, 300, decorated=True, title=title)
+        vela.wait_for(lambda s: s["focused"] == window)
+        move_to(vela, window, 1920 - 70, 200)
+        vela.wait_for(lambda s: s.window(window)["output"] == "HEADLESS-2", what="the window on the 150% output")
+        w = vela.state().window(window)
+        image = vela.pixels(output=0)
+        rows = tuple(image.rows[y][(1920 - 70) * 3:] for y in range(w["y"], w["y"] + BAR))
+        self.assertTrue(any(len(set(row[12 * 3:])) > 3 for row in rows), "no title on the left output")
+        vela.command(f"window {window} close")
+        vela.wait_for(lambda s: not s.has(window), what="closed")
+        return rows
+
+    def test_a_font_taller_than_the_bar(self):
+        # KDE's title font at 18 pt: the line box is taller than the bar, so
+        # the bar's crop (scene.h) cuts through it. Inside the bar every pixel
+        # must be as before, the accent on the "È" included; the crop falls
+        # on the bar's own pixels wherever the window is.
+        for scale in (1.25, 1.75):
+            with self.subTest(scale=scale), Session(scale=scale, size="2560x1440@60") as vela:
+                os.makedirs(vela.env["XDG_CONFIG_HOME"], exist_ok=True)
+                with open(os.path.join(vela.env["XDG_CONFIG_HOME"], "kdeglobals"), "w") as config:
+                    config.write("[General]\nfont=Noto Sans,18\n[WM]\nactiveFont=Noto Sans,18\n")
+                for position in range(4):
+                    now = self.bar(vela, "File – È pronto", 100 + position, 150 + position, scale)
+                    vela.command("test-title-line-box on")
+                    before = self.bar(vela, "File – È pronto", 100 + position, 150 + position, scale)
+                    vela.command("test-title-line-box off")
+                    self.assertTrue(now == before, f"at {100 + position}, {150 + position}: the bar changed")
+
+    def bar(self, vela, title, x, y, scale):
+        """The bar's pixels, from its first row to its last, across the title's
+        room, with the window at (x, y); the window is closed afterwards."""
+        window = vela.open_window(400, 300, decorated=True, title=title)
+        vela.wait_for(lambda s: s["focused"] == window)
+        move_to(vela, window, x, y)
+        image = vela.pixels()
+        top = math.floor(y * scale + 0.5)
+        bottom = math.floor((y + BAR) * scale + 0.5) # the content's first row
+        left = math.floor((x + 9) * scale + 0.5)
+        right = math.floor((x + 400 - 3 * BUTTON) * scale + 0.5)
+        rows = tuple(image.rows[row][left * 3:right * 3] for row in range(top, bottom))
+        self.assertTrue(any(len(set(row)) > 3 for row in rows[:len(rows) // 4]), "nothing near the bar's top")
+        vela.command(f"window {window} close")
+        vela.wait_for(lambda s: not s.has(window), what="closed")
+        return rows
 
 
 class TitleFollowsTheWidth(unittest.TestCase):

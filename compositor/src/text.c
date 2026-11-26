@@ -160,15 +160,6 @@ static void line_metrics(const struct vela_text *text, int *ascender, int *desce
     *descender = (int)floor(metrics->descender / 64.0);
 }
 
-int vela_text_line_height(struct vela_text *text, double pixel_size)
-{
-    set_size(text, pixel_size);
-    int ascender = 0;
-    int descender = 0;
-    line_metrics(text, &ascender, &descender);
-    return vela_max(1, ascender - descender);
-}
-
 // Division rounding down and up (C's rounds toward zero; 26.6 positions can
 // be negative).
 static int64_t floor_div(int64_t a, int64_t b)
@@ -354,7 +345,7 @@ static void composite(const struct placed *glyph, int left, int top, const doubl
 }
 
 void vela_text_render(struct vela_text *text, const char *utf8, double pixel_size, uint32_t color, int max_width,
-    int margin, const struct vela_text_room *room, struct vela_image *out, struct vela_text_layout *layout)
+    int margin, struct vela_image *out, struct vela_text_layout *layout)
 {
     set_size(text, pixel_size);
 
@@ -392,18 +383,10 @@ void vela_text_render(struct vela_text *text, const char *utf8, double pixel_siz
         draw_glyphs(text, &ellipsis, ellipsis.count, &pen, ascender, glyphs, &drawn);
     }
 
-    // The ink's bounds and the old image's (the line box and a column). Up to
-    // an em outside the box (real
-    // fonts stay well within it, and a title stacking marks, which an app can
-    // send, can't ask for a huge image), and within the caller's room.
+    // The ink's bounds and the old image's: the line box and a column. Up to
+    // an em outside the box: real fonts stay well within it, and a title
+    // stacking marks (which an app can send) can't ask for a huge image.
     int reach = (int)ceil(pixel_size) + 1;
-    struct vela_text_room limit = { reach, reach, reach, reach };
-    if (room) {
-        limit.left = vela_min(limit.left, room->left);
-        limit.top = vela_min(limit.top, room->top);
-        limit.right = vela_min(limit.right, room->right);
-        limit.bottom = vela_min(limit.bottom, room->bottom);
-    }
     int left = 0;
     int top = 0;
     int right = vela_max(1, clamp_int(ceil_div(width, 64) + 1)); // the old image's width
@@ -414,15 +397,17 @@ void vela_text_render(struct vela_text *text, const char *utf8, double pixel_siz
         right = vela_max(right, clamp_int((int64_t)glyphs[i].x + glyphs[i].width));
         bottom = vela_max(bottom, clamp_int((int64_t)glyphs[i].y + glyphs[i].rows));
     }
-    right = vela_min(right, clamp_int((int64_t)layout->line_width + limit.right));
-    bottom = vela_min(bottom, clamp_int((int64_t)layout->line_height + limit.bottom));
+    left = vela_max(left, -reach);
+    top = vela_max(top, -reach);
+    right = vela_min(right, layout->line_width + reach);
+    bottom = vela_min(bottom, layout->line_height + reach);
     // Left and above in whole margins, so the caller can keep the line box in
-    // place (text.h): as few as hold the ink, as many as fit in the room.
+    // place (text.h).
     int step = margin > 0 ? margin : 1;
-    layout->line_x = (int)vela_min(ceil_div(-left, step), floor_div(limit.left, step)) * step;
-    layout->line_y = (int)vela_min(ceil_div(-top, step), floor_div(limit.top, step)) * step;
-    out->width = vela_max(1, layout->line_x + right);
-    out->height = vela_max(1, layout->line_y + bottom);
+    layout->line_x = (int)ceil_div(-left, step) * step;
+    layout->line_y = (int)ceil_div(-top, step) * step;
+    out->width = layout->line_x + right;
+    out->height = layout->line_y + bottom;
     out->pixels = VELA_NEW_N(uint32_t, vela_size_mul((size_t)out->width, (size_t)out->height));
 
     // Alpha, red, green, blue, from 0 to 1.

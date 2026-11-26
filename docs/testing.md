@@ -329,14 +329,14 @@ it by a wide margin:
 - **Pixels**: 23 titles, including stem-heavy ones like "File", "Ill" and
   "Il1", regular and italic, 8–16 pt, 100–300%, whole and cut with an ellipsis.
   Inside the old image, every pixel must be the old one, so stems keep their
-  contrast. Some titles must gain ink the old renderer cut.
+  contrast. A title whose ink stays in its line box must make the old image
+  exactly, the same size, so a stretched copy samples it the same. Some titles
+  must gain ink the old renderer cut.
 - **Ink**: single glyphs leaving the line box on every side, regular and
   italic, keep all their coverage. A title starting with "j" keeps its tail,
   and marks stacked above a letter are kept.
 - **Margins**: whole steps of the caller's margin, the smallest that hold the
-  ink, with the same ink relative to the line box. The caller's room (the
-  title bar) bounds the image on every side: the left and top room hold whole
-  margins only, and a negative room ends the image inside the line box.
+  ink, with the same ink relative to the line box.
 - **Resizing**: a width inside the range `vela_text_fits` reports makes the
   identical image, and the first width outside it makes a different one. A
   resize therefore draws the title the fewest times possible, once per
@@ -352,7 +352,11 @@ image's margin keeps the line box on its pixels at every window position, also
 partly off the output's left edge; moving it by the exact fraction instead
 would not. `compositor.Geometry.WholePixelMovesAcrossTheOutputEdge` checks that
 a rectangle moved by whole pixels moves by as many across that edge, which
-`lround` breaks. In `functional-decorations` (GPU), using `vela-pattern --title`:
+`lround` breaks. `compositor.Geometry.CropBox` and `CropFollowsTheBarsPixels`
+check the scene's crop: whole pixels come off a 1:1 image and it stays 1:1,
+and a title image taller than its bar ends exactly on the bar's pixels at every
+position and scale. In `functional-decorations` (GPU), using
+`vela-pattern --title`:
 
 - `TitleFollowsTheWidth` narrows and widens a real window at 100% and 125% and
   checks that the bar never shows a stale title.
@@ -364,6 +368,12 @@ a rectangle moved by whole pixels moves by as many across that edge, which
 - `TitleStaysInTheBar` titles a window with dots stacked below a letter at
   100–150%. The app's first rows under the title must keep their pixels, and a
   click right under the title must reach the app.
+- `TitleAsBefore` compares the bar's final pixels with the same window under
+  `test-title-line-box on`, which draws titles as before: the line box and a
+  column, uncropped. "Files" on a 100% output, in a window mostly on a 150%
+  output, must be identical, and "jupyter-lab"'s letters within 8 levels. With
+  an 18 pt font, taller than the bar, at 125% and 175% and four positions,
+  "File – È pronto" must be identical inside the bar.
 - `TitleAcrossTheOutputEdge` drags a window titled "jupyter-lab" partly off
   the output's left edge at 125% and 150%. Between positions, the title's
   pixels must move by exactly the window's move.
@@ -481,6 +491,7 @@ test-output add 2560x1440
 test-output remove HEADLESS-2
 test-power off
 test-power on
+test-title-line-box on
 reload-config
 ```
 

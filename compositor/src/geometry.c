@@ -129,6 +129,28 @@ struct vela_pixel_box vela_edges_to_pixels(double x, double y, double width, dou
     return (struct vela_pixel_box) { x1, y1, x2 - x1, y2 - y1 };
 }
 
+bool vela_crop_box(struct vela_pixel_box *box, struct vela_fbox *src, const struct vela_pixel_box *clip)
+{
+    if (box->width <= 0 || box->height <= 0) {
+        return false;
+    }
+    int x1 = box->x > clip->x ? box->x : clip->x;
+    int y1 = box->y > clip->y ? box->y : clip->y;
+    int x2 = box->x + box->width < clip->x + clip->width ? box->x + box->width : clip->x + clip->width;
+    int y2 = box->y + box->height < clip->y + clip->height ? box->y + box->height : clip->y + clip->height;
+    if (x2 <= x1 || y2 <= y1) {
+        return false;
+    }
+    double per_x = src->width / box->width; // buffer units per pixel
+    double per_y = src->height / box->height;
+    src->x += (x1 - box->x) * per_x;
+    src->y += (y1 - box->y) * per_y;
+    src->width = (x2 - x1) * per_x;
+    src->height = (y2 - y1) * per_y;
+    *box = (struct vela_pixel_box) { x1, y1, x2 - x1, y2 - y1 };
+    return true;
+}
+
 bool vela_buffer_matches_area(double src_x, double src_y, double buffer_width, double buffer_height, double width,
     double height, double scale)
 {

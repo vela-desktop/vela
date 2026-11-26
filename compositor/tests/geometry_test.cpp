@@ -238,6 +238,66 @@ TEST(Geometry, WholePixelMovesAcrossTheOutputEdge)
     EXPECT_EQ(vela_edges_to_pixels(1, 0, 2, 1, 0, 0, 1.5).x, 2);
 }
 
+// A crop takes whole pixels off the box and the matching part off the
+// buffer: copied 1:1, it stays 1:1; stretched, the rest is stretched alike.
+TEST(Geometry, CropBox)
+{
+    vela_pixel_box box = { 10, 20, 100, 30 };
+    vela_fbox src = { 0, 0, 100, 30 };
+    const vela_pixel_box below = { 0, 25, 80, 100 };
+    ASSERT_TRUE(vela_crop_box(&box, &src, &below));
+    EXPECT_EQ(box.x, 10);
+    EXPECT_EQ(box.y, 25);
+    EXPECT_EQ(box.width, 70);
+    EXPECT_EQ(box.height, 25);
+    EXPECT_EQ(src.x, 0.0);
+    EXPECT_EQ(src.y, 5.0);
+    EXPECT_EQ(src.width, 70.0);
+    EXPECT_EQ(src.height, 25.0);
+
+    vela_pixel_box stretched = { 0, 0, 50, 20 }; // 75x30 drawn at two thirds
+    vela_fbox part = { 0, 0, 75, 30 };
+    const vela_pixel_box corner = { 10, 0, 40, 10 };
+    ASSERT_TRUE(vela_crop_box(&stretched, &part, &corner));
+    EXPECT_EQ(stretched.width, 40);
+    EXPECT_EQ(stretched.height, 10);
+    EXPECT_EQ(part.x, 15.0);
+    EXPECT_EQ(part.y, 0.0);
+    EXPECT_EQ(part.width, 60.0);
+    EXPECT_EQ(part.height, 15.0);
+
+    vela_pixel_box outside = { 0, 0, 10, 10 };
+    vela_fbox none = { 0, 0, 10, 10 };
+    const vela_pixel_box far = { 20, 20, 5, 5 };
+    EXPECT_FALSE(vela_crop_box(&outside, &none, &far));
+}
+
+// A title's image taller than its bar (a font taller than the bar, marks
+// above and below), cropped to the bar as frame.c does (the crop in the
+// image's coordinates, decoration.c): the image's pixels end exactly on the
+// bar's, at every position and scale, and stay 1:1.
+TEST(Geometry, CropFollowsTheBarsPixels)
+{
+    long off = 0;
+    for (double scale : { 1.0, 1.25, 1.5, 1.75, 2.0, 2.25 }) {
+        const int units = vela_whole_pixel_units(static_cast<float>(scale));
+        for (int window = -40; window < 400; ++window) {
+            for (int above = 1; above <= 3; ++above) {
+                const double image_y = -1.0 * above * units; // whole units above the bar
+                const double height = 34.0 + above * units;
+                const double image = window + image_y; // where frame.c's lx is
+                vela_pixel_box box = vela_edges_to_pixels(0, image, 10, height, 0, 0, scale);
+                vela_fbox src = { 0, 0, box.width * 1.0, box.height * 1.0 };
+                const vela_pixel_box crop = vela_edges_to_pixels(0, image + -image_y, 10, 32, 0, 0, scale);
+                ASSERT_TRUE(vela_crop_box(&box, &src, &crop));
+                const vela_pixel_box bar = vela_edges_to_pixels(0, window, 10, 32, 0, 0, scale);
+                off += box.y != bar.y || box.height != bar.height || src.height != box.height;
+            }
+        }
+    }
+    EXPECT_EQ(off, 0);
+}
+
 TEST(Geometry, BufferMatchesArea)
 {
     EXPECT_TRUE(vela_buffer_matches_area(0, 0, 1280, 720, 1024, 576, 1.25)); // drawn at the output scale

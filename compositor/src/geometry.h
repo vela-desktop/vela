@@ -60,6 +60,17 @@ struct vela_pixel_box {
 struct vela_pixel_box vela_edges_to_pixels(double x, double y, double width, double height, double origin_x,
     double origin_y, double scale);
 
+// A rectangle in buffer coordinates.
+struct vela_fbox {
+    double x, y, width, height;
+};
+
+// Cuts `box` (pixels) down to its part inside `clip` (pixels), and `src` (the
+// buffer's part drawn on `box`, stretched linearly) down to the part drawn on
+// what remains. An image copied 1:1 stays 1:1: whole pixels come off both.
+// False if nothing remains.
+bool vela_crop_box(struct vela_pixel_box *box, struct vela_fbox *src, const struct vela_pixel_box *clip);
+
 // The app drew at the output scale (§3.4): the buffer, at integer coordinates,
 // is as large as its physical area up to rounding. Then the surface covers
 // exactly the buffer's pixels.
