@@ -46,12 +46,14 @@ QtObject {
     property var tooltip: null
     // The output of the taskbar a panel was opened from (Start, quick
     // settings, notification center, Task View): the panel goes there. Empty:
-    // the main output (opened from the keyboard).
+    // the display the user is working on (the focused window's, as the
+    // compositor says), else the main output (Shell.panelScreen).
     property string panelScreen: ""
     function targetScreen() {
-        const name = panelScreen !== "" ? panelScreen : Shell.primaryScreen
+        const name = panelScreen !== "" ? panelScreen : Shell.panelScreen()
         panelScreen = ""
-        return Qt.application.screens.find(s => s.name === name) || null
+        return Qt.application.screens.find(s => s.name === name)
+            || Qt.application.screens.find(s => s.name === Shell.primaryScreen) || null
     }
     // Puts `window` (hidden) on the panel's output; that output.
     function placeOnTargetScreen(window) {

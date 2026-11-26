@@ -651,7 +651,12 @@ class FakeShell:
                 while chunk := connection.recv(65536):
                     data += chunk
             with self.lock:
-                self.lines += data.decode(errors="replace").splitlines()
+                for line in data.decode(errors="replace").splitlines():
+                    if line.startswith("active-output ") and "\t" in line:
+                        output, command = line.split("\t", 1)
+                        self.lines.extend((output.rstrip(), command))
+                    else:
+                        self.lines.append(line)
 
     def received(self, prefix=""):
         with self.lock:
