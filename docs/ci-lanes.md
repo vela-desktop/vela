@@ -218,8 +218,19 @@ hosted runner, before the Qt lane was split, with a cold compiler cache:
 The counts were the same as on a local machine. With a warm cache, on the
 next push, the builds took under a minute and the jobs 6 (native) and 11 (Qt)
 minutes, of which the Qt lane's clang-tidy took most. That run is now split
-over three runners, each with its own build from the shared compiler cache,
-so a cold cache costs one build per runner but no more wall time.
+over three runners, each with its own build from the shared compiler cache.
+On the first run after the split, with a warm cache:
+
+| Job | Build | Analysis |
+|---|---:|---:|
+| `static-analysis` (native) | 1 min | 6.4 min |
+| `static-analysis-qt-part`, each clang-tidy shard | 0.6–0.9 min | 2.1–3.2 min |
+| `static-analysis-qt-part`, cppcheck, Clazy, qmllint | 0.6 min | 2.5 min |
+| `static-analysis-qt`, the comparison | – | seconds |
+
+From its first job's start to its comparison, the Qt lane took 6 minutes.
+The native lane, in one job, is now the longer of the two. A cold cache costs
+one build per runner, in parallel.
 
 ## Not in this plan
 
