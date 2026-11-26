@@ -503,10 +503,11 @@ int main(int argc, char **argv)
     }
     struct wl_registry *registry = wl_display_get_registry(display);
     wl_registry_add_listener(registry, &registry_listener, NULL);
-    wanted_identifier = strcmp(mode, "ext-window") == 0 && argc > 2 ? argv[2] : NULL;
+    const char *selector = argc > 2 ? argv[2] : NULL; // a window identifier or an output index
+    wanted_identifier = strcmp(mode, "ext-window") == 0 ? selector : NULL;
     wl_display_roundtrip(display);
     wl_display_roundtrip(display); // the toplevels' identifiers
-    const int index = argc > 2 && !wanted_identifier ? atoi(argv[2]) : 0;
+    const int index = selector && !wanted_identifier ? atoi(selector) : 0;
     if (!shm || output_count == 0 || index < 0 || index >= output_count) {
         fprintf(stderr, "vela-share: no such output\n");
         return 1;

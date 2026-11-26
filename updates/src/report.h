@@ -40,7 +40,8 @@ struct vela_up_check {
     char *error_message;
 };
 
-// run.json (§5.3).
+// run.json (§5.3). A C struct: cppcheck's advice for C++ classes does not apply.
+// cppcheck-suppress-begin uninitMemberVarNoCtor
 struct vela_up_run {
     bool present;
     char *action; // "check", "install"
@@ -50,6 +51,7 @@ struct vela_up_run {
     uint64_t start_time; // clock ticks since boot, /proc/PID/stat's 22nd field
     int64_t started_at;
 };
+// cppcheck-suppress-end uninitMemberVarNoCtor
 
 // install.json (§5.3).
 struct vela_up_install {

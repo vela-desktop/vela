@@ -461,7 +461,7 @@ static void copy_rows_all_alignments(void)
     // Long enough to exercise vector loops and their scalar tails. Source
     // and destination can have different unaligned strides in real SHM.
     enum { PIXELS = 257, GUARD = 8, BYTES = PIXELS * 8 };
-    uint8_t source[BYTES + 2 * GUARD], saved[sizeof(source)], destination[sizeof(source)];
+    uint8_t source[BYTES + 2 * GUARD], saved[BYTES + 2 * GUARD], destination[BYTES + 2 * GUARD];
     for (size_t i = 0; i < sizeof(source); ++i) source[i] = (uint8_t)(i * 37 + 13);
     memcpy(saved, source, sizeof(source));
     for (size_t src_offset = 0; src_offset < 8; ++src_offset) {
@@ -623,8 +623,11 @@ static void rearmed_timer_keeps_queued_readbacks(void)
     struct vela_readback *readback = calloc(1, sizeof(*readback));
     assert(readback);
     *readback = (struct vela_readback) {
-        .renderer = &renderer, .staging = { .buffer = buffer }, .point = 5,
-        .started = vela_now_ns(), .done = count_done,
+        .renderer = &renderer,
+        .staging = { .buffer = buffer, .data = mapping },
+        .point = 5,
+        .started = vela_now_ns(),
+        .done = count_done,
     };
     pin_staging(&renderer, buffer, true);
     renderer.readbacks[renderer.readback_count++] = readback;

@@ -99,8 +99,9 @@ static void *make(size_t size)
     assert(object);
     if (made_count == made_capacity) {
         made_capacity = made_capacity ? made_capacity * 2 : 64;
-        made = realloc(made, (size_t)made_capacity * sizeof(*made));
-        assert(made);
+        void **grown = realloc(made, (size_t)made_capacity * sizeof(*made));
+        assert(grown);
+        made = grown;
     }
     made[made_count++] = object;
     return object;
@@ -364,8 +365,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue q, uint32_t count, const V
         }
         if (queue_count == queue_capacity) {
             queue_capacity = queue_capacity ? queue_capacity * 2 : 16;
-            queue = realloc(queue, (size_t)queue_capacity * sizeof(*queue));
-            assert(queue);
+            struct submission *grown = realloc(queue, (size_t)queue_capacity * sizeof(*queue));
+            assert(grown);
+            queue = grown;
         }
         queue[queue_count++] = s;
         if (!gpu_lag) complete_gpu(point);

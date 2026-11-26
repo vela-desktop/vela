@@ -366,7 +366,7 @@ TEST(Shortcuts, ModesGateTheirRows)
 namespace {
 
 struct Expected {
-    vela_action action;
+    vela_action action {};
     const char *arg = nullptr;
 };
 

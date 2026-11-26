@@ -227,6 +227,7 @@ static void test_against_a_model(void)
                     oldest = k;
                 }
             }
+            CHECK(oldest >= 0);
             used[oldest] = 0;
             --count;
         }

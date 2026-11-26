@@ -51,9 +51,12 @@ static int run_file(const char *path)
             }
             data = grown;
         }
-        size_t got = fread(data + size, 1, capacity - size, file);
+        const size_t wanted = capacity - size;
+        size_t got = fread(data + size, 1, wanted, file);
         size += got;
-        if (got == 0) {
+        // A short read is the end of the file or an error: reading again
+        // would read a stream already at its end.
+        if (got < wanted) {
             if (ferror(file)) {
                 fprintf(stderr, "replay: cannot finish reading %s\n", path);
                 fclose(file);

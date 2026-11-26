@@ -11,6 +11,7 @@ extern "C" {
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -140,10 +141,10 @@ TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
     const std::string marker = pattern + "/vela-locked-wayland-0";
     const std::string sentinel = pattern + "/do-not-change";
     {
-        FILE *out = fopen(sentinel.c_str(), "w");
+        // Closed on every return, the early ones of a failed ASSERT included.
+        std::unique_ptr<FILE, int (*)(FILE *)> out(fopen(sentinel.c_str(), "w"), fclose);
         ASSERT_NE(out, nullptr);
-        ASSERT_GT(fputs("unchanged", out), 0);
-        fclose(out);
+        ASSERT_GT(fputs("unchanged", out.get()), 0);
     }
     ASSERT_EQ(symlink(sentinel.c_str(), marker.c_str()), 0);
     ASSERT_TRUE(vela_lock_marker_create_at(runtime_fd, "wayland-0"));
@@ -156,10 +157,10 @@ TEST(PathSecurity, LockMarkerAtomicallyReplacesSymlinks)
     EXPECT_EQ(marker_info.st_mode & 0777, 0600);
 
     char content[16] = {};
-    FILE *in = fopen(sentinel.c_str(), "r");
+    std::unique_ptr<FILE, int (*)(FILE *)> in(fopen(sentinel.c_str(), "r"), fclose);
     ASSERT_NE(in, nullptr);
-    ASSERT_NE(fgets(content, sizeof(content), in), nullptr);
-    fclose(in);
+    ASSERT_NE(fgets(content, sizeof(content), in.get()), nullptr);
+    in.reset();
     EXPECT_STREQ(content, "unchanged");
 
     EXPECT_TRUE(vela_lock_marker_remove_at(runtime_fd, "wayland-0"));

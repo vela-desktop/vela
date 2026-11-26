@@ -185,8 +185,8 @@ struct Pair {
 // it is a background (kept out of T50-59), what it must contrast with and
 // how much (its ContrastCurve at the standard level).
 struct Spec {
-    PaletteOf palette;
-    double tone;
+    PaletteOf palette = PaletteOf::Primary;
+    double tone = 0;
     bool isBackground = false;
     std::optional<Role> background = std::nullopt;
     double contrast = 1.0;
@@ -194,7 +194,7 @@ struct Spec {
 };
 
 struct Scheme {
-    bool dark;
+    bool dark = false;
     TonalPalette primary;
     TonalPalette secondary;
     TonalPalette tertiary;
