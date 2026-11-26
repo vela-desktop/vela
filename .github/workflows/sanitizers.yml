@@ -103,7 +103,7 @@ jobs:
         run: |
           python3 scripts/ci-lanes.py check build-sanitized
           for lane in native qt scripts; do
-            python3 scripts/ci-lanes.py tests build-sanitized --lane "$lane" -o "build-sanitized/lane-$lane.txt"
+            python3 scripts/ci-lanes.py tests build-sanitized --lane "$lane" > "build-sanitized/lane-$lane.txt"
           done
 
       - name: Native lane sanitizer tests

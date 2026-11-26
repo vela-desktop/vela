@@ -12,7 +12,9 @@ lane. A first-party translation unit is Qt when it is compiled with Qt 6's
 headers, native otherwise.
 
   ci-lanes.py tests BUILD --lane native|qt|scripts   test names, one per line
-  ci-lanes.py compdb BUILD --lane native|qt -o FILE  a compile_commands.json
+  ci-lanes.py compdb BUILD --lane native|qt          a compile_commands.json
+
+Both write to standard output.
   ci-lanes.py check BUILD [--sources]                the invariants, and counts
 """
 from __future__ import annotations
@@ -26,22 +28,12 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
 TEST_LANES = ("native", "qt", "scripts")
 SOURCE_LANES = ("native", "qt")
 GPU_LABELS = {"gpu", "rhi"}
 QT_LIBRARY = re.compile(r"^libQt6[A-Za-z0-9]*\.so")
 SOURCE_SUFFIXES = {".c", ".cc", ".cpp", ".cxx"}
 
-
-def output_path(path: Path) -> Path:
-    """A file to write, which must be inside the current directory or this
-    checkout: an argument cannot send it anywhere else."""
-    resolved = os.path.realpath(path)
-    for base in (os.path.realpath(os.getcwd()), str(ROOT)):
-        if os.path.commonpath([resolved, base]) == base:
-            return Path(resolved)
-    raise SystemExit(f"{path}: not inside the current directory or {ROOT}")
 
 
 def needed(path: Path) -> list[str] | None:
@@ -250,11 +242,9 @@ def main(argv: list[str] | None = None) -> int:
     tests = commands.add_parser("tests", help="test names of one lane")
     tests.add_argument("build", type=Path)
     tests.add_argument("--lane", choices=TEST_LANES, required=True)
-    tests.add_argument("-o", "--output", type=Path)
     compdb = commands.add_parser("compdb", help="compile_commands.json of one lane")
     compdb.add_argument("build", type=Path)
     compdb.add_argument("--lane", choices=SOURCE_LANES, required=True)
-    compdb.add_argument("-o", "--output", type=Path, required=True)
     checks = commands.add_parser("check", help="every test in exactly one lane")
     checks.add_argument("build", type=Path)
     checks.add_argument("--sources", action="store_true",
@@ -267,21 +257,15 @@ def main(argv: list[str] | None = None) -> int:
         if not names:
             print(f"the {args.lane} test lane is empty", file=sys.stderr)
             return 1
-        text = "".join(f"{name}\n" for name in names)
-        if args.output:
-            output_path(args.output).write_text(text, encoding="utf-8")
-        else:
-            sys.stdout.write(text)
+        sys.stdout.write("".join(f"{name}\n" for name in names))
         return 0
     if args.command == "compdb":
         entries = build.source_lanes()[args.lane]
         if not entries:
             print(f"the {args.lane} source lane is empty", file=sys.stderr)
             return 1
-        output = output_path(args.output)
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_text(json.dumps(entries, indent=1) + "\n", encoding="utf-8")
-        print(f"{len(entries)} {args.lane} translation units in {args.output}")
+        sys.stdout.write(json.dumps(entries, indent=1) + "\n")
+        print(f"{len(entries)} {args.lane} translation units", file=sys.stderr)
         return 0
     failures = check(build, args.sources)
     for failure in failures:

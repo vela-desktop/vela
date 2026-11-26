@@ -7,6 +7,8 @@ ceiling (docs/ci-lanes.md).
   ci-findings.py LANE --clang-tidy LOG --cppcheck LOG [--clazy LOG] [--qmllint LOG]
 
 A count above its ceiling fails: the findings of that check are printed.
+--list writes every finding to standard output; the summary and the
+failures go to standard error.
 A count below its ceiling fails too, so that the ceiling comes down with the
 fix; --update writes the new counts. Checks without a ceiling have a
 ceiling of 0. Only findings in first-party files count: the source tree,
@@ -24,7 +26,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CEILINGS = ROOT / "scripts" / "ci-findings-ceilings.json"
+CEILINGS_NAME = "scripts/ci-findings-ceilings.json"
+CEILINGS = ROOT / CEILINGS_NAME
 LANES = ("native", "qt")
 TOOLS = ("clang-tidy", "cppcheck", "clazy", "qmllint")
 
@@ -39,15 +42,6 @@ CPPCHECK_FAILURES = {"syntaxError", "preprocessorErrorDirective", "unknownMacro"
                      "internalError", "cppcheckError", "premium-internalError"}
 QMLLINT = re.compile(r"^Warning: (?P<file>/[^:]+):(?P<line>\d+):\d+: (?P<message>.*) \[(?P<check>[a-z.-]+)\]$")
 
-
-def output_path(path: Path) -> Path:
-    """A file to write, which must be inside the current directory or this
-    checkout: an argument cannot send it anywhere else."""
-    resolved = os.path.realpath(path)
-    for base in (os.path.realpath(os.getcwd()), str(ROOT)):
-        if os.path.commonpath([resolved, base]) == base:
-            return Path(resolved)
-    raise SystemExit(f"{path}: not inside the current directory or {ROOT}")
 
 
 @dataclass(frozen=True, order=True)
@@ -113,7 +107,7 @@ def compare(lane: str, findings: dict[str, set[Finding]], ceilings: dict) -> tup
             elif count < ceiling:
                 state = "lower"
                 failures.append(f"{lane} {tool} {check}: {count} findings, below the ceiling of {ceiling}; "
-                                f"lower it in {CEILINGS.relative_to(ROOT)} (or run with --update)")
+                                f"lower it in {CEILINGS_NAME} (or run with --update)")
             rows.append(f"| {tool} | `{check}` | {count} | {ceiling} | {state} |")
     return failures, rows
 
@@ -137,8 +131,7 @@ def main(argv: list[str] | None = None) -> int:
     for tool in TOOLS:
         parser.add_argument(f"--{tool}", type=Path, action="append", default=[], metavar="LOG")
     parser.add_argument("--source", type=Path, default=ROOT, help="source tree the logs refer to")
-    parser.add_argument("--ceilings", type=Path, default=CEILINGS)
-    parser.add_argument("--list", type=Path, help="write every finding to this file")
+    parser.add_argument("--list", action="store_true", help="write every finding to standard output")
     parser.add_argument("--update", action="store_true", help="set the ceilings to the current counts")
     args = parser.parse_args(argv)
 
@@ -151,14 +144,14 @@ def main(argv: list[str] | None = None) -> int:
     if not findings:
         parser.error("give at least one log")
 
-    ceilings = json.loads(args.ceilings.read_text(encoding="utf-8")) if args.ceilings.exists() else {}
+    ceilings = json.loads(CEILINGS.read_text(encoding="utf-8")) if CEILINGS.exists() else {}
     if args.list:
-        output_path(args.list).write_text("".join(f"{finding.tool}: {finding}\n" for tool in findings
-                                     for finding in sorted(findings[tool])), encoding="utf-8")
+        sys.stdout.write("".join(f"{finding.tool}: {finding}\n" for tool in findings
+                                 for finding in sorted(findings[tool])))
     if args.update:
         ceilings = update(args.lane, findings, ceilings)
-        output_path(args.ceilings).write_text(json.dumps(ceilings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        print(f"updated {args.ceilings}")
+        CEILINGS.write_text(json.dumps(ceilings, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        print(f"updated {CEILINGS_NAME}", file=sys.stderr)
         return 0
 
     failures, rows = compare(args.lane, findings, ceilings)
@@ -170,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as out:
             out.write("\n".join(summary) + "\n")
-    print("\n".join(summary))
+    print("\n".join(summary), file=sys.stderr)
     for failure in failures:
         print(f"\nerror: {failure}", file=sys.stderr)
     return 1 if failures else 0

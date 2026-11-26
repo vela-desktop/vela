@@ -4,7 +4,6 @@ import contextlib
 import importlib.util
 import io
 import json
-import os
 import shutil
 import sys
 import tempfile
@@ -106,18 +105,18 @@ class Main(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root)
-        self.addCleanup(os.chdir, os.getcwd())
-        os.chdir(self.root)  # outputs must be inside the current directory
         self.log = self.root / "clazy.log"
         self.log.write_text(f"{self.root}/a.cpp:1:1: warning: x [-Wclazy-strict-iterators]\n")
         self.ceilings = self.root / "ceilings.json"
+        patcher = mock.patch.object(m, "CEILINGS", self.ceilings)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def run_main(self, *extra):
         out = io.StringIO()
         with mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""}), \
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
-            status = m.main(["qt", "--clazy", str(self.log), "--source", str(self.root),
-                             "--ceilings", str(self.ceilings), *extra])
+            status = m.main(["qt", "--clazy", str(self.log), "--source", str(self.root), *extra])
         return status, out.getvalue()
 
     def test_a_missing_ceilings_file_means_zero(self):
@@ -130,13 +129,18 @@ class Main(unittest.TestCase):
         self.assertEqual(json.loads(self.ceilings.read_text()), {"qt": {"clazy": {"strict-iterators": 1}}})
         self.assertEqual(self.run_main()[0], 0)
 
-    def test_outputs_stay_inside_the_current_directory(self):
-        with self.assertRaises(SystemExit):
-            m.output_path(Path("/etc/vela-findings.txt"))
-        self.assertEqual(m.output_path(Path("list.txt")), self.root.resolve() / "list.txt")
+    def test_list_goes_to_standard_output(self):
+        self.ceilings.write_text('{"qt": {"clazy": {"strict-iterators": 1}}}')
+        out, err = io.StringIO(), io.StringIO()
+        with mock.patch.dict("os.environ", {"GITHUB_STEP_SUMMARY": ""}), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            status = m.main(["qt", "--clazy", str(self.log), "--source", str(self.root), "--list"])
+        self.assertEqual(status, 0)
+        self.assertEqual(out.getvalue(), "clazy: a.cpp:1: x [strict-iterators]\n")
+        self.assertIn("Static analysis, qt lane", err.getvalue())
 
     def test_the_repository_ceilings_are_valid(self):
-        ceilings = json.loads(m.CEILINGS.read_text(encoding="utf-8"))
+        ceilings = json.loads((m.ROOT / m.CEILINGS_NAME).read_text(encoding="utf-8"))
         for lane, tools in ceilings.items():
             self.assertIn(lane, m.LANES)
             for tool, counts in tools.items():
