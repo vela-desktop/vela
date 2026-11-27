@@ -206,12 +206,12 @@ put the wrapper under Memcheck instead of Vela; they wait for a harness of
 their own.
 
 Failures in the first full run (45841386812) and after this stage (run
-45997797303, `d57a979e`):
+46031469788, `073ffa14`):
 
 | Lane | Tests | First run | Now | Memcheck defects now | Memcheck step |
 |---|---:|---:|---:|---:|---:|
 | Native | 367 | 8 | 0 | 0 | 7 min |
-| Qt | 71 | 45, including 13 timeouts | 6, all timing | 0 | 16 min |
+| Qt | 71 | 45, including 13 timeouts | 0 | 0 | 13 min |
 
 What the failures were, and what removed them:
 
