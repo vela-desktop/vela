@@ -184,34 +184,42 @@ void KeyboardLayouts::translate()
         }
     }
     // Languages and countries by code, in English and in their own language.
+    // QLocale falls back to the default locale for one it has no data for:
+    // the own name only when it really is that one.
     QHash<QString, QString> words;
-    const auto languageWords = [&](const QString& code) {
-        const QString key = u'l' + code;
+    const auto remembered = [&words](const QString& key, const auto& make) {
         if (const auto found = words.constFind(key); found != words.constEnd()) {
             return *found;
         }
-        const QLocale::Language language = QLocale::codeToLanguage(code, QLocale::ISO639Part3);
-        // QLocale falls back to the default locale for a language it has
-        // no data for: its own name only when it really is that one.
-        const QLocale own(language);
-        const QString text = language == QLocale::AnyLanguage ? QString()
-            : own.language() == language ? QLocale::languageToString(language) + u' ' + own.nativeLanguageName()
-                                         : QLocale::languageToString(language);
+        const QString text = make();
         words.insert(key, text);
         return text;
     };
+    const auto languageWords = [&](const QString& code) {
+        return remembered(u'l' + code, [&] {
+            const QLocale::Language language = QLocale::codeToLanguage(code, QLocale::ISO639Part3);
+            if (language == QLocale::AnyLanguage) {
+                return QString();
+            }
+            QString text = QLocale::languageToString(language);
+            if (const QLocale own(language); own.language() == language) {
+                text += u' ' + own.nativeLanguageName();
+            }
+            return text;
+        });
+    };
     const auto countryWords = [&](const QString& code) {
-        const QString key = u'c' + code;
-        if (const auto found = words.constFind(key); found != words.constEnd()) {
-            return *found;
-        }
-        const QLocale::Territory territory = QLocale::codeToTerritory(code);
-        const QLocale own(QLocale::AnyLanguage, territory);
-        const QString text = territory == QLocale::AnyTerritory ? QString()
-            : own.territory() == territory ? QLocale::territoryToString(territory) + u' ' + own.nativeTerritoryName()
-                                           : QLocale::territoryToString(territory);
-        words.insert(key, text);
-        return text;
+        return remembered(u'c' + code, [&] {
+            const QLocale::Territory territory = QLocale::codeToTerritory(code);
+            if (territory == QLocale::AnyTerritory) {
+                return QString();
+            }
+            QString text = QLocale::territoryToString(territory);
+            if (const QLocale own(QLocale::AnyLanguage, territory); own.territory() == territory) {
+                text += u' ' + own.nativeTerritoryName();
+            }
+            return text;
+        });
     };
     for (Entry& entry : m_entries) {
         entry.name = catalog.value(entry.english, entry.english);
