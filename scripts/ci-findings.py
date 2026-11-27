@@ -31,17 +31,21 @@ CEILINGS = ROOT / CEILINGS_NAME
 LANES = ("native", "qt")
 TOOLS = ("clang-tidy", "cppcheck", "clazy", "qmllint")
 
+# Each pattern matches the head of a line; the trailing " [check]" is split
+# off the rest with rpartition, which keeps the matching linear.
 # path:line:col: warning: message [check] (clang-tidy, clazy)
-CLANG = re.compile(r"^(?P<file>/[^:]+):(?P<line>\d+):\d+: (?:warning|error): (?P<message>.*) \[(?P<check>[^\]]+)\]$")
+CLANG = re.compile(r"(?P<file>/[^:]+):(?P<line>\d+):\d+: (?:warning|error): (?P<rest>.*)")
 # path:line: severity: message [id] (cppcheck with the template CI uses)
-CPPCHECK = re.compile(r"^(?P<file>[^:]+):(?P<line>\d+): \w+: (?P<message>.*) \[(?P<check>\w+)\]$")
+CPPCHECK = re.compile(r"(?P<file>[^:]+):(?P<line>\d+): \w+: (?P<rest>.*)")
 # Warning: path:line:col: message [category] (qmllint)
+QMLLINT = re.compile(r"Warning: (?P<file>/[^:]+):(?P<line>\d+):\d+: (?P<rest>.*)")
+# What a check name may hold, per tool.
+CHECK_NAME = {"clang-tidy": re.compile(r"[^\]]+"), "clazy": re.compile(r"[^\]]+"),
+              "cppcheck": re.compile(r"\w+"), "qmllint": re.compile(r"[a-z.-]+")}
 # cppcheck messages that mean a file was not analysed at all. They count
 # wherever they point, generated files included.
 CPPCHECK_FAILURES = {"syntaxError", "preprocessorErrorDirective", "unknownMacro", "internalAstError",
                      "internalError", "cppcheckError", "premium-internalError"}
-QMLLINT = re.compile(r"^Warning: (?P<file>/[^:]+):(?P<line>\d+):\d+: (?P<message>.*) \[(?P<check>[a-z.-]+)\]$")
-
 
 
 @dataclass(frozen=True, order=True)
@@ -72,20 +76,24 @@ def parse(tool: str, text: str, source: Path) -> set[Finding]:
     pattern = {"clang-tidy": CLANG, "clazy": CLANG, "cppcheck": CPPCHECK, "qmllint": QMLLINT}[tool]
     findings = set()
     for line in text.splitlines():
-        match = pattern.match(line.strip())
+        match = pattern.fullmatch(line.strip())
         if not match:
             continue
+        message, bracket, tail = match["rest"].rpartition(" [")
+        checks = tail.removesuffix("]")
+        if not bracket or checks == tail or not CHECK_NAME[tool].fullmatch(checks):
+            continue
         file = first_party(match["file"], source)
-        if file is None and tool == "cppcheck" and match["check"] in CPPCHECK_FAILURES:
+        if file is None and tool == "cppcheck" and checks in CPPCHECK_FAILURES:
             file = match["file"]
         if file is None:
             continue
-        for check in match["check"].split(","):
+        for check in checks.split(","):
             if tool == "clazy":
                 if not check.startswith("-Wclazy-"):
                     continue  # compiler warnings are the compilers' business
                 check = check.removeprefix("-Wclazy-")
-            findings.add(Finding(tool, check, file, int(match["line"]), match["message"]))
+            findings.add(Finding(tool, check, file, int(match["line"]), message))
     return findings
 
 

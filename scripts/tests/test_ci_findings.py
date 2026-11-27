@@ -7,6 +7,7 @@ import json
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 import unittest
 from unittest import mock
@@ -31,6 +32,20 @@ class Parse(unittest.TestCase):
     def test_one_finding_per_listed_check(self):
         text = f"{SOURCE}/a.cpp:1:1: warning: twice [bugprone-x,cert-y]\n"
         self.assertEqual({f.check for f in m.parse("clang-tidy", text, SOURCE)}, {"bugprone-x", "cert-y"})
+
+    def test_brackets_inside_the_message(self):
+        text = (f"{SOURCE}/a.cpp:1:1: warning: index [i] of list [x] [bugprone-y]\n"
+                f"{SOURCE}/a.cpp:2:1: warning: no check at the end [bugprone-y] here\n"
+                f"{SOURCE}/a.cpp:3:1: warning: empty check []\n")
+        (finding,) = m.parse("clang-tidy", text, SOURCE)
+        self.assertEqual((finding.line, finding.message, finding.check), (1, "index [i] of list [x]", "bugprone-y"))
+
+    def test_long_lines_parse_in_linear_time(self):
+        # A message full of " [" made the old pattern backtrack quadratically.
+        line = f"{SOURCE}/a.cpp:1:1: warning: " + " [" * 200_000 + "x\n"
+        start = time.monotonic()
+        self.assertEqual(m.parse("clang-tidy", line, SOURCE), set())
+        self.assertLess(time.monotonic() - start, 1.0)
 
     def test_clazy_checks_only(self):
         text = (f"{SOURCE}/shell/src/a.cpp:3:9: warning: Mixing iterators [-Wclazy-strict-iterators]\n"
