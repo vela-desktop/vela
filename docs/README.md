@@ -64,6 +64,7 @@ the current behavior.
 - [Performance methodology](performance.md): the scope of published numbers and how to reproduce them.
 - [Scene comparison benchmark](scene-diff-benchmark.md): the CPU benchmark of the scene diff.
 - [CI quality checks](ci-quality.md): sanitizers, static analysis, coverage and GPU CI.
+- [CI lanes](ci-lanes.md): native and Qt lanes, every analyser over all of its lane, and finding ceilings.
 - [Code quality integrations](code-quality-integrations.md): labeler, Codecov, SonarQube Cloud and DCO.
 
 The repository root also has the [contribution guide](../CONTRIBUTING.md), the

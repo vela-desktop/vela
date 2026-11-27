@@ -246,8 +246,10 @@ int main(int argc, char* argv[])
 {
     const int hold = argc > 1 ? atoi(argv[1]) : 1500;
     const bool keep_surfaces = argc > 2 && !strcmp(argv[2], "--keep-surfaces");
-    log_pointer = getenv("VELA_TESTLOCK_LOG_POINTER") && strcmp(getenv("VELA_TESTLOCK_LOG_POINTER"), "0") != 0;
-    log_keyboard = getenv("VELA_TESTLOCK_LOG_KEYBOARD") && strcmp(getenv("VELA_TESTLOCK_LOG_KEYBOARD"), "0") != 0;
+    const char *pointer_log = getenv("VELA_TESTLOCK_LOG_POINTER");
+    const char *keyboard_log = getenv("VELA_TESTLOCK_LOG_KEYBOARD");
+    log_pointer = pointer_log && strcmp(pointer_log, "0") != 0;
+    log_keyboard = keyboard_log && strcmp(keyboard_log, "0") != 0;
     struct wl_display* display = wl_display_connect(NULL);
     if (!display) {
         fprintf(stderr, "vela-testlock: no Wayland display\n");

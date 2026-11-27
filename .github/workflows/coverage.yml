@@ -63,10 +63,11 @@ jobs:
       - name: Build and run CPU tests
         run: |
           ccache --zero-stats
-          cmake --build build-coverage --parallel 2
+          # Every core of the runner (4 on hosted ones).
+          cmake --build build-coverage --parallel "$(nproc)"
           # GPU-specific functional/sharpness cases skip or cannot run on hosted runners.
           # The same packaging-updater exception is used by build.yml.
-          ctest --test-dir build-coverage --output-on-failure --parallel 2 -E '^packaging-update$'
+          ctest --test-dir build-coverage --output-on-failure --parallel "$(nproc)" -E '^packaging-update$'
 
       - name: Coverage compiler cache statistics
         if: always()

@@ -98,8 +98,9 @@ int setenv(const char *name, const char *value, int overwrite)
             *space = '\0';
         }
         if (strcmp(text, name) == 0) {
-            if (once) {
-                unlinkat(trigger_directory(), "setenv", 0);
+            const int directory = trigger_directory();
+            if (once && directory >= 0) {
+                unlinkat(directory, "setenv", 0);
             }
             static const char message[] = "libc-fail: injected setenv failure\n";
             (void)!write(STDERR_FILENO, message, sizeof(message) - 1);

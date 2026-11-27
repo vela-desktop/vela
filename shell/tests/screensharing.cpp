@@ -17,6 +17,7 @@
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
+#include <memory>
 
 namespace {
 
@@ -302,7 +303,8 @@ private Q_SLOTS:
         QTemporaryDir runtime;
         qputenv("XDG_RUNTIME_DIR", runtime.path().toUtf8());
         qputenv("WAYLAND_DISPLAY", "wayland-test");
-        auto* sharing = new ScreenSharing(resolve, nullptr, {}, 300);
+        // Deleted on every return, the early ones of a failed QVERIFY included.
+        auto sharing = std::make_unique<ScreenSharing>(resolve, nullptr, QString(), 300);
         QTest::qWait(200); // refused: nobody listens yet
         QLocalServer server;
         QVERIFY(server.listen(runtime.filePath(QStringLiteral("vela-wayland-test.sock"))));
@@ -315,7 +317,7 @@ private Q_SLOTS:
             QStringLiteral("Dell"), QStringLiteral("U2720Q")) }) })));
         QTRY_VERIFY(sharing->active());
         QCOMPARE(sharing->users().first().toMap().value("what").toString(), QStringLiteral("Your screen"));
-        delete sharing;
+        sharing.reset();
     }
 };
 

@@ -222,6 +222,10 @@ private:
         ProcessPrompt* owner;
     };
 
+    // It owns descriptors and a GLib watch: never copied.
+    ProcessPrompt(const ProcessPrompt&) = delete;
+    ProcessPrompt& operator=(const ProcessPrompt&) = delete;
+
     ProcessPrompt(GPid pid, int in, int out, Events events)
         : m_in(in)
         , m_out(out)

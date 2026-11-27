@@ -3,13 +3,12 @@
 
 #include "workspaces.h"
 
+#include "compositorsocket.h"
 #include "shellcontroller.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QLocalSocket>
-#include <QStandardPaths>
 
 Workspaces::Workspaces(QObject* parent)
     : QObject(parent)
@@ -19,22 +18,7 @@ Workspaces::Workspaces(QObject* parent)
 
 void Workspaces::query()
 {
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(200)) {
-        return;
-    }
-    socket.write("workspaces\n");
-    if (!socket.waitForBytesWritten(200)) {
-        return;
-    }
-    QByteArray reply;
-    while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
-        reply += socket.readAll();
-    }
-    update(reply.trimmed());
+    update(compositor::ask("workspaces", 200));
 }
 
 void Workspaces::update(const QByteArray& json)

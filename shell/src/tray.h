@@ -30,9 +30,10 @@ class QDBusPendingCallWatcher;
 class StatusNotifierWatcher : public QObject, protected QDBusContext {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
-    Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ items)
-    Q_PROPERTY(bool IsStatusNotifierHostRegistered READ hostRegistered)
-    Q_PROPERTY(int ProtocolVersion READ protocolVersion)
+    // D-Bus properties: their changes go out as the watcher's own signals.
+    Q_PROPERTY(QStringList RegisteredStatusNotifierItems READ items) // clazy:exclude=qproperty-without-notify
+    Q_PROPERTY(bool IsStatusNotifierHostRegistered READ hostRegistered) // clazy:exclude=qproperty-without-notify
+    Q_PROPERTY(int ProtocolVersion READ protocolVersion CONSTANT)
 
 public:
     explicit StatusNotifierWatcher(QObject* parent = nullptr);

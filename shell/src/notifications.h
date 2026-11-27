@@ -59,13 +59,13 @@ signals:
 private:
     friend class NotificationServer;
     struct Item {
-        uint id;
+        uint id = 0;
         QString appName;
         QString icon;
         QString summary;
         QString body;
         QVariantList actions;
-        bool hasDefault;
+        bool hasDefault = false;
         QDateTime time;
     };
     std::vector<Item> m_items; // most recent at the top
@@ -150,15 +150,15 @@ Q_SIGNALS:
 
 private:
     struct Notification {
-        uint id;
+        uint id = 0;
         QString appName;
         QString icon;
         QString summary;
         QString body;
         QVariantList actions;
-        bool hasDefault;
-        bool critical;
-        bool transient; // doesn't go to the notification center
+        bool hasDefault = false;
+        bool critical = false;
+        bool transient = false; // doesn't go to the notification center
         std::unique_ptr<QTimer> timer; // expiry; null: stays until dismissed
     };
     void toHistory(const Notification& n);

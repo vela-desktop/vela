@@ -342,6 +342,9 @@ static int runActions(int count, char** words)
     int ok = 1;
     for (int i = 0; i < count && ok; ++i) {
         const char* action = words[i];
+        if (!action) {
+            return 0;
+        }
         const char* arg1 = i + 1 < count ? words[i + 1] : NULL;
         const char* arg2 = i + 2 < count ? words[i + 2] : NULL;
 

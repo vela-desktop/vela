@@ -16,28 +16,6 @@ using vela::audio::Direction;
 using vela::audio::Endpoint;
 using vela::audio::Stream;
 
-namespace {
-
-bool near(double a, double b)
-{
-    return std::abs(a - b) < 0.006;
-}
-
-bool near(const QList<double>& a, const QList<double>& b)
-{
-    if (a.size() != b.size()) {
-        return false;
-    }
-    for (qsizetype i = 0; i < a.size(); i++) {
-        if (!near(a[i], b[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
-} // namespace
-
 class CoreTest : public QObject {
     Q_OBJECT
 
@@ -45,6 +23,12 @@ class CoreTest : public QObject {
 
     const Endpoint* endpoint(const QString& name) const { return core->snapshot().endpoint(name); }
     const Stream* stream(quint32 id) const { return core->snapshot().stream(id); }
+    // Looked up again each time: the snapshot changes while a test waits.
+    bool running(quint32 id) const
+    {
+        const Stream* found = stream(id);
+        return found && found->running;
+    }
     QString linkedTo(quint32 id) const { return harness::linkedTo(*core, id); }
     QString targetOf(quint32 id) const { return harness::targetOf(*core, id); }
 
@@ -185,13 +169,14 @@ private slots:
 
         QTRY_COMPARE(linkedTo(musicId), speakers);
         const Stream* m = stream(musicId);
+        QVERIFY(m);
         QCOMPARE(m->direction, Direction::Output);
         QCOMPARE(m->app.key, QStringLiteral("vela-player"));
         QCOMPARE(m->app.binary, QStringLiteral("vela-player"));
         QCOMPARE(m->mediaRole, QStringLiteral("Music"));
         QVERIFY(m->target.isEmpty());
         QVERIFY(m->isApp());
-        QTRY_VERIFY(stream(musicId) && stream(musicId)->running);
+        QTRY_VERIFY(running(musicId));
 
         QTRY_COMPARE(linkedTo(voiceId), microphone);
         QCOMPARE(stream(voiceId)->direction, Direction::Input);

@@ -24,15 +24,17 @@ a fresh container and check its runtime dependencies and files.
 
 ## Static analysis
 
-[Static Analysis](../.github/workflows/static-analysis.yml) builds Vela's C
-compositor using Clang Static Analyzer (scan-build --status-bugs) and checks
-CPU-independent C modules with cppcheck and clang-tidy. No GPU is necessary.
+[Static Analysis](../.github/workflows/static-analysis.yml) builds everything
+with Clang and analyses every first-party translation unit in two lanes: the
+Clang Static Analyzer (through clang-tidy) and cppcheck in both, Clazy and
+qmllint in the Qt lane. Each check's count of findings is held to a ceiling.
+See [CI lanes](ci-lanes.md). No GPU is necessary.
 
 ## Sanitizers
 
 [Sanitizer Tests](../.github/workflows/sanitizers.yml) builds with
-AddressSanitizer and UndefinedBehaviorSanitizer and runs CPU-only CTest
-suites. It deliberately excludes functional and sharpness tests, which
+AddressSanitizer and UndefinedBehaviorSanitizer and runs the CPU-only CTest
+suites one lane at a time (native, Qt, scripts), each with its own report. It deliberately excludes functional and sharpness tests, which
 need a real GPU exposing Vulkan 1.4 and a DRM render node.
 
 ## Standalone package test (manual only)

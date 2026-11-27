@@ -170,13 +170,12 @@ QVariant FolderModel::data(const QModelIndex& index, int role) const
         // "image-png|image-x-generic": the first one the theme has
         // (remembered).
         static QHash<QString, QString> resolved;
-        auto it = resolved.constFind(e.icon);
-        if (it == resolved.cend()) {
-            const QString specific = e.icon.section(u'|', 0, 0);
-            const QString generic = e.icon.section(u'|', 1, 1);
-            it = resolved.insert(e.icon, QIcon::hasThemeIcon(specific) || generic.isEmpty() ? specific : generic);
+        if (const auto it = resolved.constFind(e.icon); it != resolved.cend()) {
+            return it.value();
         }
-        return it.value();
+        const QString specific = e.icon.section(u'|', 0, 0);
+        const QString generic = e.icon.section(u'|', 1, 1);
+        return resolved.insert(e.icon, QIcon::hasThemeIcon(specific) || generic.isEmpty() ? specific : generic).value();
     }
     case ThumbnailRole: return e.thumbnail;
     case SelectedRole: return m_selected.contains(index.row());

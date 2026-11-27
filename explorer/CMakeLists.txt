@@ -104,6 +104,7 @@ endforeach()
 qt_add_qml_module(vela-files
     URI Vela.Files
     VERSION 1.0
+    IMPORT_PATH ${PROJECT_BINARY_DIR}/common # Vela.Controls, for qmllint
     QML_FILES ${FILES_QML_FILES})
 
 target_compile_options(vela-files PRIVATE -Wall -Wextra)
@@ -129,6 +130,12 @@ if(VELA_BUILD_TOOLS)
     set_tests_properties(files-peek PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
     add_test(NAME files-copies COMMAND vela-files-test)
     set_tests_properties(files-copies PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+    # The icons the folder's entries show, on an icon theme of the test's own.
+    qt_add_executable(vela-files-foldermodel-test tests/foldermodel_test.cpp)
+    target_compile_options(vela-files-foldermodel-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-files-foldermodel-test PRIVATE vela-files-core Qt6::Test)
+    add_test(NAME files-foldermodel COMMAND vela-files-foldermodel-test)
+    set_tests_properties(files-foldermodel PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QPA_PLATFORMTHEME=")
 
     # The views under Qt Quick Test (tests/tst_*.qml), on the QML in qml/:
     # recycled delegates take their state without a fade.

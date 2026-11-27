@@ -232,12 +232,15 @@ TEST(Backlight, HelperFollowsADragAndConfirmsTheMinimum)
     }
     lines.clear();
     run();
+    ASSERT_FALSE(lines.empty());
     EXPECT_EQ(lines.back(), "value 5 45000\n");
 
     vela_helper_line(&helper, "set 6 0");
     lines.clear();
     run();
+    ASSERT_FALSE(panel.sets.empty());
     EXPECT_EQ(panel.sets.back(), 1u);
+    ASSERT_FALSE(lines.empty());
     EXPECT_EQ(lines.back(), "value 6 1\n");
 }
 

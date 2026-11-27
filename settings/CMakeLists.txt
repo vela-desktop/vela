@@ -56,6 +56,7 @@ qt_add_executable(vela-settings
     src/main.cpp
     src/about.cpp
     src/about.h
+    src/systeminfo.h
     src/datetime.cpp
     src/datetime.h
     src/customshortcuts.cpp
@@ -172,6 +173,8 @@ endforeach()
 qt_add_qml_module(vela-settings
     URI Vela.Settings
     VERSION 1.0
+    # Where Vela.Controls and Vela.Bluetooth.Ui are built, for qmllint.
+    IMPORT_PATH ${PROJECT_BINARY_DIR}/common ${PROJECT_BINARY_DIR}/common/bluetooth
     QML_FILES ${SETTINGS_QML_FILES})
 
 target_compile_options(vela-settings PRIVATE -Wall -Wextra)
@@ -273,6 +276,13 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-customshortcuts-test PRIVATE vela-shortcuts vela-settings-inhibit Qt6::Gui
         Qt6::GuiPrivate Qt6::Test)
     add_test(NAME settings-customshortcuts COMMAND vela-customshortcuts-test)
+
+    # Settings > About's reading of the system files and of lspci.
+    qt_add_executable(vela-systeminfo-test tests/systeminfo_test.cpp src/systeminfo.h)
+    target_include_directories(vela-systeminfo-test PRIVATE src)
+    target_compile_options(vela-systeminfo-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-systeminfo-test PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME settings-systeminfo COMMAND vela-systeminfo-test)
 
     # The keyboard layouts and where the layout in use comes from.
     qt_add_executable(vela-keyboardlayouts-test tests/keyboardlayouts_test.cpp src/keyboardlayouts.cpp src/keyboardlayouts.h)

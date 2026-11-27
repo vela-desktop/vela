@@ -5,7 +5,7 @@
 #include <QFile>
 #include <QSaveFile>
 #include <QTemporaryDir>
-#include <QtTest>
+#include <QTest>
 #include <sys/stat.h>
 
 class PrivateFiles : public QObject {

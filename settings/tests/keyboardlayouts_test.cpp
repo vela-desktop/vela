@@ -190,6 +190,10 @@ private slots:
         QCOMPARE(names(italianDefault.groups(QStringLiteral("italiano"))),
             (QStringList { QStringLiteral("EurKEY (US)"), QStringLiteral("Italian") }));
         QCOMPARE(names(italianDefault.groups(QStringLiteral("gothic"))), QStringList { QStringLiteral("Ancient") });
+        // The same for a territory with no locale (Antarctica). Codes Qt
+        // doesn't know (qaa, XX) add no words.
+        QCOMPARE(names(italianDefault.groups(QStringLiteral("antarctica"))), QStringList { QStringLiteral("Ancient") });
+        QCOMPARE(names(italianDefault.groups(QStringLiteral("antartide"))), QStringList {});
         QLocale::setDefault(previous);
 
         // Found through a variant only: the group with just that variant.

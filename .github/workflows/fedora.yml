@@ -91,7 +91,7 @@ jobs:
       - name: Build
         run: |
           ccache --zero-stats
-          cmake --build build-fedora --parallel 2
+          cmake --build build-fedora --parallel "$(nproc)" # every core of the runner
       - name: Compiler cache statistics
         if: always()
         run: |

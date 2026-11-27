@@ -157,7 +157,7 @@ class ServiceModels : public QObject {
     QVariantMap cache() const
     {
         QVariantMap result;
-        for (const QString property : { "devices", "wifiNetworks" }) {
+        for (const QString& property : { "devices", "wifiNetworks" }) {
             result.insert(property, m_model->property(property.toLatin1().constData()));
         }
         return result;
@@ -173,7 +173,7 @@ class ServiceModels : public QObject {
     }
     void gateReads()
     {
-        for (const QString key : { "devices", "details", "known", "wifi" }) {
+        for (const QString& key : { "devices", "details", "known", "wifi" }) {
             option(key, "gate", "release");
         }
     }
@@ -255,7 +255,7 @@ private slots:
     void failedRefreshKeepsCache_data()
     {
         QTest::addColumn<QString>("failure");
-        for (const QString failure : { "exit", "invalid", "timeout" }) {
+        for (const QString& failure : { "exit", "invalid", "timeout" }) {
             QTest::newRow(failure.toLatin1().constData()) << failure;
         }
     }

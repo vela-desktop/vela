@@ -56,6 +56,9 @@ static VkExtensionProperties *device_extensions(VkPhysicalDevice physical, uint3
 static bool has_extension(const VkExtensionProperties *list, uint32_t count, const char *name)
 {
     for (uint32_t i = 0; i < count; ++i) {
+        // vela_alloc never returns NULL; through vulkan_device_init_test.c's
+        // stubs the analyzer still invents a NULL list.
+        // NOLINTNEXTLINE(clang-analyzer-core.NonNullParamChecker)
         if (strcmp(list[i].extensionName, name) == 0) {
             return true;
         }

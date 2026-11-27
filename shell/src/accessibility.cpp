@@ -3,13 +3,12 @@
 
 #include "accessibility.h"
 
+#include "compositorsocket.h"
 #include "shellcontroller.h"
 
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QLocalSocket>
-#include <QStandardPaths>
 
 #include <cmath>
 
@@ -41,22 +40,7 @@ void Accessibility::resetCaffeineCountdown()
 
 void Accessibility::query()
 {
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(200)) {
-        return;
-    }
-    socket.write("accessibility\n");
-    if (!socket.waitForBytesWritten(200)) {
-        return;
-    }
-    QByteArray reply;
-    while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
-        reply += socket.readAll();
-    }
-    update(reply.trimmed());
+    update(compositor::ask("accessibility", 200));
 }
 
 void Accessibility::update(const QByteArray& json)
@@ -108,42 +92,22 @@ void Accessibility::setStickyKeys(bool on)
 
 bool Accessibility::sendCaffeineCommand(const QByteArray& command)
 {
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    bool confirmed = false;
-    if (socket.waitForConnected(300)) {
-        QByteArray request("caffeine-set ");
-        request += command;
-        request += '\n';
-        if (socket.write(request) == request.size()
-            && (socket.bytesToWrite() == 0 || socket.waitForBytesWritten(300))) {
-            QByteArray reply;
-            while (!reply.contains('\n') && socket.waitForReadyRead(300)) {
-                reply += socket.readAll();
-            }
-            const QJsonObject response = QJsonDocument::fromJson(reply.trimmed()).object();
-            if (response.value(QStringLiteral("state")).isObject()
-                && response.value(QStringLiteral("ok")).isBool()) {
-                // The compositor applied or rejected the request before
-                // generating this state. Never display a speculative "off".
-                update(QJsonDocument(response.value(QStringLiteral("state")).toObject())
-                    .toJson(QJsonDocument::Compact));
-                confirmed = true;
-                if (!response.value(QStringLiteral("ok")).toBool()) {
-                    qWarning() << "vela-shell: compositor rejected caffeine command:" << command;
-                }
-                return response.value(QStringLiteral("ok")).toBool();
-            }
+    const QJsonObject response = QJsonDocument::fromJson(compositor::ask("caffeine-set " + command, 300)).object();
+    const QJsonValue state = response.value(QStringLiteral("state"));
+    const QJsonValue ok = response.value(QStringLiteral("ok"));
+    if (state.isObject() && ok.isBool()) {
+        // The compositor applied or rejected the request before generating
+        // this state. Never display a speculative "off".
+        update(QJsonDocument(state.toObject()).toJson(QJsonDocument::Compact));
+        if (!ok.toBool()) {
+            qWarning() << "vela-shell: compositor rejected caffeine command:" << command;
         }
+        return ok.toBool();
     }
-    if (!confirmed) {
-        qWarning() << "vela-shell: caffeine state unconfirmed; keeping last known state:" << command;
-        // The compositor may have applied a request despite a lost reply.
-        QTimer::singleShot(250, this, &Accessibility::query);
-        QTimer::singleShot(1000, this, &Accessibility::query);
-    }
+    qWarning() << "vela-shell: caffeine state unconfirmed; keeping last known state:" << command;
+    // The compositor may have applied a request despite a lost reply.
+    QTimer::singleShot(250, this, &Accessibility::query);
+    QTimer::singleShot(1000, this, &Accessibility::query);
     return false;
 }
 

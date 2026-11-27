@@ -88,7 +88,9 @@ jobs:
       - name: Build instrumented binaries
         run: |
           ccache --zero-stats
-          cmake --build build-sanitized --parallel 2
+          # Every core of the runner (4 on hosted ones). An ASan build peaks around
+          # 3.4 GB at 4 jobs, its tests around 1.1 GB: far below the runner's 16 GB.
+          cmake --build build-sanitized --parallel "$(nproc)"
       - name: Compiler cache statistics
         if: always()
         run: |
@@ -96,7 +98,31 @@ jobs:
             ccache --show-stats
           fi
 
-      - name: CPU-only sanitizer tests
+      # Every CPU test belongs to exactly one lane (docs/ci-lanes.md): native
+      # programs, programs linked to Qt, and repository scripts. The GPU and
+      # Qt Quick RHI tests need a GPU or an OpenGL context and are in none.
+      - name: Split the tests into lanes
+        run: |
+          python3 scripts/ci-lanes.py check build-sanitized
+          for lane in native qt scripts; do
+            python3 scripts/ci-lanes.py tests build-sanitized --lane "$lane" > "build-sanitized/lane-$lane.txt"
+          done
+
+      - name: Native lane sanitizer tests
+        run: >-
+          ctest --test-dir build-sanitized --output-on-failure --parallel "$(nproc)" --timeout 180
+          --tests-from-file "$GITHUB_WORKSPACE/build-sanitized/lane-native.txt"
+          --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-native.xml"
+
+      - name: Qt lane sanitizer tests
+        if: ${{ !cancelled() }}
+        run: >-
+          ctest --test-dir build-sanitized --output-on-failure --parallel "$(nproc)" --timeout 180
+          --tests-from-file "$GITHUB_WORKSPACE/build-sanitized/lane-qt.txt"
+          --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-qt.xml"
+
+      - name: Scripts lane sanitizer tests
+        if: ${{ !cancelled() }}
         run: |
           # The Build workflow owns packaging-update on PRs and on main.
           # Keep explicit workflow_dispatch runs self-contained.
@@ -104,15 +130,18 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" != workflow_dispatch ]; then
             exclude='^packaging-update$'
           fi
-          # The Qt Quick RHI glyph test needs an OpenGL context; hosted Arch CI
-          # runs it under Xvfb/Mesa, not in this CPU-only sanitizer job.
-          ctest --test-dir build-sanitized --output-on-failure --parallel 2 --timeout 180 --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-ctest.xml" -LE "gpu|rhi" -E "$exclude"
+          ctest --test-dir build-sanitized --output-on-failure --parallel "$(nproc)" --timeout 180 \
+            --tests-from-file "$GITHUB_WORKSPACE/build-sanitized/lane-scripts.txt" -E "$exclude" \
+            --output-junit "$GITHUB_WORKSPACE/build-sanitized/sanitizer-scripts.xml"
+
       - name: Upload sanitizer test timings
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: sanitizer-ctest-results
-          path: build-sanitized/sanitizer-ctest.xml
+          path: |
+            build-sanitized/sanitizer-*.xml
+            build-sanitized/lane-*.txt
           if-no-files-found: ignore
           retention-days: 7
       - name: Save failed test logs

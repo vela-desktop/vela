@@ -253,12 +253,12 @@ void setupWallpaper(QQuickWindow* window, QScreen* screen)
 // exclusive zone of -1 covers the whole output, also below the taskbar, and 0
 // keeps out of the space the taskbar reserved.
 struct Panel {
-    const char* qml; // the component in Vela.Shell
-    const char* scope;
-    LayerWindow::Layer layer;
-    LayerWindow::Anchors anchors;
-    int exclusiveZone;
-    LayerWindow::KeyboardInteractivity keyboard;
+    const char* qml = nullptr; // the component in Vela.Shell
+    const char* scope = nullptr;
+    LayerWindow::Layer layer {};
+    LayerWindow::Anchors anchors {};
+    int exclusiveZone = 0;
+    LayerWindow::KeyboardInteractivity keyboard {};
     QMargins margins = {};
     bool clickThrough = false; // neither clicks nor keyboard
 };

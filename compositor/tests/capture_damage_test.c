@@ -53,7 +53,9 @@ static void terminate_frame(struct vela_output_capture_source *source)
     assert(frame);
     frame->source = source;
     wl_list_init(&frame->destroy.link);
+    // output_capture_frame_destroy frees the frame.
     output_capture_frame_destroy(&frame->destroy, NULL);
+    // cppcheck-suppress memleak
 }
 
 int main(void)

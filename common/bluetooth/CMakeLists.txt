@@ -23,6 +23,7 @@ set_source_files_properties(qml/DeviceState.qml PROPERTIES QT_QML_SINGLETON_TYPE
 qt_add_qml_module(vela-bluetooth-ui
     URI Vela.Bluetooth.Ui
     VERSION 1.0
+    IMPORT_PATH ${PROJECT_BINARY_DIR}/common # Vela.Controls, for qmllint
     STATIC
     OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/Vela/Bluetooth/Ui
     QML_FILES

@@ -38,8 +38,9 @@ inline const QString networkManager = QStringLiteral("org.freedesktop.NetworkMan
 class FakeNetworkManager : public QObject {
     Q_OBJECT
     Q_CLASSINFO("D-Bus Interface", "org.freedesktop.NetworkManager")
-    Q_PROPERTY(uint Metered READ metered)
-    Q_PROPERTY(uint Connectivity READ connectivity)
+    // D-Bus properties, read by the daemon under test; nothing in Qt binds them.
+    Q_PROPERTY(uint Metered READ metered) // clazy:exclude=qproperty-without-notify
+    Q_PROPERTY(uint Connectivity READ connectivity) // clazy:exclude=qproperty-without-notify
 
 public:
     uint metered() const { return m_metered; }

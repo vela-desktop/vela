@@ -187,7 +187,12 @@ TEST(SecurityPolicy, PeerGoneBeforeInspectionIsUnknown)
     message.msg_controllen = sizeof(control);
     ASSERT_EQ(recvmsg(pair[0], &message, 0), 1);
     int socket_fd = -1;
-    memcpy(&socket_fd, CMSG_DATA(CMSG_FIRSTHDR(&message)), sizeof(int));
+    const cmsghdr *header = CMSG_FIRSTHDR(&message);
+    if (!header) {
+        ADD_FAILURE() << "no descriptor in the message";
+        return;
+    }
+    memcpy(&socket_fd, CMSG_DATA(header), sizeof(int));
     int status = 0;
     ASSERT_EQ(waitpid(child, &status, 0), child);
     // Its credentials outlive it; its process does not.

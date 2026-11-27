@@ -143,7 +143,10 @@ static pixman_bool_t finish(const char *operation, pixman_bool_t ok)
 {
     failing = false;
     if (!ok) {
-        unlinkat(trigger_directory(), "pixman-fail", 0);
+        const int directory = trigger_directory();
+        if (directory >= 0) {
+            unlinkat(directory, "pixman-fail", 0);
+        }
         fprintf(stderr, "pixman-fail: injected %s failure\n", operation);
         if (getenv("VELA_TEST_PIXMAN_FAIL_BACKTRACE")) {
             void *frames[16];

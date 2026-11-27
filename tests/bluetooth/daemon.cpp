@@ -370,21 +370,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         fake->run([this] {
             fake->calls.clear();
             fake->writes.clear();
-            fake->forgetAgents();
-            for (const QString& path : fake->devices.keys()) {
-                fake->removeDevice(path);
-            }
-            for (const QString& name : fake->adapters.keys()) {
-                fake->removeAdapter(name);
-            }
-            fake->addAdapter(hci0, { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") });
-            FakeBluez::Device mouseDevice;
-            mouseDevice.adapter = hci0;
-            mouseDevice.address = mouseAddress;
-            mouseDevice.alias = QStringLiteral("Mouse");
-            mouseDevice.icon = QStringLiteral("input-mouse");
-            mouseDevice.rssi = -50;
-            mouse = fake->addDevice(mouseDevice);
+            fake->resetToMouse(mouse);
             FakeBluez::Device headsetDevice;
             headsetDevice.adapter = hci0;
             headsetDevice.address = headsetAddress;
@@ -535,31 +521,12 @@ private slots:
         QVERIFY(QDir().mkpath(home.filePath(QStringLiteral("config"))));
 
         fakeThread.start();
-        fake = new FakeBluez;
-        fake->bus = QStringLiteral("fake-bluez");
-        fake->moveToThread(&fakeThread);
-        logind = new FakeLogind;
-        logind->bus = QStringLiteral("fake-logind");
-        logind->moveToThread(&fakeThread);
-        bool ok = false;
-        fake->run([&] {
-            QDBusConnection bluez = QDBusConnection::connectToBus(systemAddress, fake->bus);
-            ok = bluez.registerService(QStringLiteral("org.bluez"))
-                && bluez.registerVirtualObject(QStringLiteral("/"), fake, QDBusConnection::SubPath);
-            QDBusConnection login1 = QDBusConnection::connectToBus(systemAddress, logind->bus);
-            ok = ok && login1.registerService(QStringLiteral("org.freedesktop.login1"))
-                && login1.registerVirtualObject(QStringLiteral("/org/freedesktop/login1"), logind, QDBusConnection::SubPath);
-        });
-        QVERIFY(ok);
+        QVERIFY(startFakes(fakeThread, systemAddress, fake, logind));
     }
 
     void cleanupTestCase()
     {
-        fake->run([this] {
-            QDBusConnection::disconnectFromBus(fake->bus);
-            QDBusConnection::disconnectFromBus(logind->bus);
-        });
-        QMetaObject::invokeMethod(fake, [this] { delete logind; delete fake; }, Qt::BlockingQueuedConnection);
+        stopFakes(fake, logind);
         fakeThread.quit();
         fakeThread.wait();
         QDBusConnection::disconnectFromBus(QStringLiteral("client"));
@@ -1331,7 +1298,8 @@ private slots:
         const Asked question = nextQuestion(0);
         QCOMPARE(question.kind(), QStringLiteral("show-pin"));
         const QString pin = question.details.value(QStringLiteral("pin")).toString();
-        QVERIFY2(pin.size() == 6 && pin.toUInt() <= 999999 && pin.count(QRegularExpression(QStringLiteral("[0-9]"))) == 6, qPrintable(pin));
+        static const QRegularExpression digit(QStringLiteral("[0-9]"));
+        QVERIFY2(pin.size() == 6 && pin.toUInt() <= 999999 && pin.count(digit) == 6, qPrintable(pin));
         QCOMPARE(errorOf(add), QString());
         // The PIN BlueZ got is the one shown.
         QVERIFY(agentLog().contains(QStringLiteral("RequestPinCode ") + keyboard + QStringLiteral(" -> ") + pin));

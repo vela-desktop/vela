@@ -18,15 +18,6 @@ using vela::audio::AppIdentity;
 using vela::audio::AppInfo;
 using vela::audio::Audio;
 
-namespace {
-
-bool near(double a, double b)
-{
-    return std::abs(a - b) < 0.006;
-}
-
-} // namespace
-
 class KeysTest : public QObject {
     Q_OBJECT
 

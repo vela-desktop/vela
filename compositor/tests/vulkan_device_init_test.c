@@ -149,6 +149,13 @@ static void allocator_selection(void)
     unsetenv("VELA_ALLOCATOR");
 }
 
+// Whether the variable is set to exactly this value.
+static bool env_is(const char *name, const char *value)
+{
+    const char *set = getenv(name);
+    return set && strcmp(set, value) == 0;
+}
+
 static void client_environment(void)
 {
     struct vela_vulkan vk = { 0 };
@@ -157,13 +164,13 @@ static void client_environment(void)
     assert(getenv("MESA_LOADER_DRIVER_OVERRIDE") == NULL);
     vk.venus = true;
     assert(vela_vulkan_configure_clients(&vk));
-    assert(strcmp(getenv("MESA_LOADER_DRIVER_OVERRIDE"), "zink") == 0);
+    assert(env_is("MESA_LOADER_DRIVER_OVERRIDE", "zink"));
     setenv("MESA_LOADER_DRIVER_OVERRIDE", "virgl", 1);
     assert(vela_vulkan_configure_clients(&vk));
-    assert(strcmp(getenv("MESA_LOADER_DRIVER_OVERRIDE"), "virgl") == 0);
+    assert(env_is("MESA_LOADER_DRIVER_OVERRIDE", "virgl"));
     setenv("MESA_LOADER_DRIVER_OVERRIDE", "", 1);
     assert(vela_vulkan_configure_clients(&vk));
-    assert(strcmp(getenv("MESA_LOADER_DRIVER_OVERRIDE"), "") == 0);
+    assert(env_is("MESA_LOADER_DRIVER_OVERRIDE", ""));
     unsetenv("MESA_LOADER_DRIVER_OVERRIDE");
 }
 
