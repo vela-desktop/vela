@@ -6,10 +6,10 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
-#include <sys/syscall.h>
 #include <unistd.h>
 
 #ifndef SO_PEERPIDFD
@@ -106,6 +106,18 @@ static long pidfd_pid(int pidfd)
     return pid;
 }
 
+// Whether a pidfd's process has not exited: the pidfd turns readable when it
+// does (Linux 5.3). A zombie counts as gone, and so does any error.
+static bool pidfd_alive(int pidfd)
+{
+    struct pollfd entry = { .fd = pidfd, .events = POLLIN };
+    int ready;
+    do {
+        ready = poll(&entry, 1, 0);
+    } while (ready < 0 && errno == EINTR);
+    return ready == 0;
+}
+
 enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
 {
     if (pid <= 0) {
@@ -140,7 +152,7 @@ enum vela_sandbox vela_peer_sandbox(int socket_fd, pid_t pid)
     }
     // Still alive after the inspection: the pid was the peer's all along. A
     // live process keeps its number, so /proc/<pid> was the peer's own.
-    if (syscall(SYS_pidfd_send_signal, pidfd, 0, NULL, 0) != 0) {
+    if (!pidfd_alive(pidfd)) {
         result = VELA_SANDBOX_UNKNOWN;
     }
     close(pidfd);
@@ -226,7 +238,7 @@ bool vela_peer_program(int socket_fd, pid_t pid, char *exe, size_t size)
         }
     }
     // Still alive afterwards: /proc/<pid> was the peer's all along.
-    if (ok && syscall(SYS_pidfd_send_signal, pidfd, 0, NULL, 0) != 0) {
+    if (ok && !pidfd_alive(pidfd)) {
         ok = false;
     }
     close(pidfd);
