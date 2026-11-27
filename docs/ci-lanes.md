@@ -14,8 +14,10 @@ analyser then covers all the code of its lane. Before this plan, cppcheck and
 clang-tidy read 20 of 353 C and C++ files, Clazy did not run, and qmllint
 could not resolve most of Vela's own QML types. Findings that existed when an
 analyser was extended are held to a per-check **ceiling** that can only come
-down: a new finding fails CI. The aim is coverage and attribution, not speed;
-see [Wall time](#wall-time).
+down: a check with more findings than its ceiling fails CI. The ceiling holds a
+count, not a list, so a change that fixes one finding of a check and adds
+another passes; see [Ceilings](#ceilings). The aim is coverage and
+attribution, not speed; see [Wall time](#wall-time).
 
 ## The lanes
 
@@ -160,11 +162,28 @@ fails and prints that check's findings. A count below it also fails, so that
 the ceiling comes down in the same change as the fix; `--update` writes the
 new counts.
 
+A finding is its check, file, line, column and message. Two findings that
+differ only in the column count twice; a header's finding that several
+translation units report counts once. The comparison is by count: in a
+check with a ceiling above 0, a new finding goes unnoticed if the same change
+fixes another. Comparing lists instead would fail on every edit that moves
+the lines above a finding, since its location is the only identity the
+analysers give. Checks at 0, which are
+all checks of the native lane and all but a few of the Qt lane, catch every
+new finding.
+
+`qmllint` exits with status 0 when it only warns. Any other status fails the
+job whatever the counts: a module that could not be linted, or a finding at
+error level.
+
 After stage 2, the native lane has no findings and no ceilings. The Qt lane
 has ceilings for three Clazy checks about copies and statics
-(`range-loop-detach` 137, `detaching-temporary` 143,
+(`range-loop-detach` 137, `detaching-temporary` 145,
 `non-pod-global-static` 87). It also has ceilings for qmllint's remaining
-categories, mostly `unqualified` (1,709) and `missing-property` (256). The 14
+categories, mostly `unqualified` (2,043) and `missing-property` (276). These
+counts tell findings apart by column; the qmllint figures in
+[What extending the analysers found](#what-extending-the-analysers-found)
+were counted by line, before the column was part of a finding. The 14
 remaining `[import]` warnings are modules registered from C++ at run time
 (`Vela.Audio`, `Vela.Bluetooth`, `Vela.Updates`, `Vela.Files.Backend`,
 `Vela.Shell.Test`). qmllint can only see them once they are declared with

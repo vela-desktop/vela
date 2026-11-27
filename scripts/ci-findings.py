@@ -34,14 +34,15 @@ TOOLS = ("clang-tidy", "cppcheck", "clazy", "qmllint")
 # Each pattern matches the head of a line; the trailing " [check]" is split
 # off the rest with rpartition, which keeps the matching linear.
 # path:line:col: warning: message [check] (clang-tidy, clazy)
-CLANG = re.compile(r"(?P<file>/[^:]+):(?P<line>\d+):\d+: (?:warning|error): (?P<rest>.*)")
-# path:line: severity: message [id] (cppcheck with the template CI uses)
-CPPCHECK = re.compile(r"(?P<file>[^:]+):(?P<line>\d+): \w+: (?P<rest>.*)")
+CLANG = re.compile(r"(?P<file>/[^:]+):(?P<line>\d+):(?P<column>\d+): (?:warning|error): (?P<rest>.*)")
+# path:line:col: severity: message [id] (cppcheck with the template CI uses;
+# older logs have no column)
+CPPCHECK = re.compile(r"(?P<file>[^:]+):(?P<line>\d+):(?:(?P<column>\d+):)? \w+: (?P<rest>.*)")
 # Warning: path:line:col: message [category] (qmllint)
-QMLLINT = re.compile(r"Warning: (?P<file>/[^:]+):(?P<line>\d+):\d+: (?P<rest>.*)")
+QMLLINT = re.compile(r"Warning: (?P<file>/[^:]+):(?P<line>\d+):(?P<column>\d+): (?P<rest>.*)")
 # What a check name may hold, per tool.
 CHECK_NAME = {"clang-tidy": re.compile(r"[^\]]+"), "clazy": re.compile(r"[^\]]+"),
-              "cppcheck": re.compile(r"\w+"), "qmllint": re.compile(r"[a-z.-]+")}
+              "cppcheck": re.compile(r"\w+"), "qmllint": re.compile(r"[A-Za-z0-9.-]+")}
 # cppcheck messages that mean a file was not analysed at all. They count
 # wherever they point, generated files included.
 CPPCHECK_FAILURES = {"syntaxError", "preprocessorErrorDirective", "unknownMacro", "internalAstError",
@@ -55,9 +56,13 @@ class Finding:
     file: str
     line: int
     message: str
+    # Two findings with the same message on one line are two findings; the
+    # same one reported by several translation units (a header) is one.
+    column: int = 0
 
     def __str__(self) -> str:
-        return f"{self.file}:{self.line}: {self.message} [{self.check}]"
+        column = f":{self.column}" if self.column else ""
+        return f"{self.file}:{self.line}{column}: {self.message} [{self.check}]"
 
 
 def first_party(path: str, source: Path) -> str | None:
@@ -93,7 +98,7 @@ def parse(tool: str, text: str, source: Path) -> set[Finding]:
                 if not check.startswith("-Wclazy-"):
                     continue  # compiler warnings are the compilers' business
                 check = check.removeprefix("-Wclazy-")
-            findings.add(Finding(tool, check, file, int(match["line"]), message))
+            findings.add(Finding(tool, check, file, int(match["line"]), message, int(match["column"] or 0)))
     return findings
 
 

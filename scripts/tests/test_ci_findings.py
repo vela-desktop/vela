@@ -27,7 +27,15 @@ class Parse(unittest.TestCase):
                 f"{SOURCE}/compositor/src/a.c:12:5: warning: Null pointer passed [clang-analyzer-core.NonNullParamChecker]\n")
         found = m.parse("clang-tidy", text, SOURCE)
         self.assertEqual(found, {m.Finding("clang-tidy", "clang-analyzer-core.NonNullParamChecker",
-                                           "compositor/src/a.c", 12, "Null pointer passed")})
+                                           "compositor/src/a.c", 12, "Null pointer passed", 5)})
+
+    def test_columns_tell_findings_on_one_line_apart(self):
+        text = (f"Warning: {SOURCE}/shell/qml/Panel.qml:7:3: Unqualified access [unqualified]\n"
+                f"Warning: {SOURCE}/shell/qml/Panel.qml:7:19: Unqualified access [unqualified]\n"
+                f"Warning: {SOURCE}/shell/qml/Panel.qml:7:19: Unqualified access [unqualified]\n")
+        found = m.parse("qmllint", text, SOURCE)
+        self.assertEqual(sorted(f.column for f in found), [3, 19])
+        self.assertEqual(str(min(found)), "shell/qml/Panel.qml:7:3: Unqualified access [unqualified]")
 
     def test_one_finding_per_listed_check(self):
         text = f"{SOURCE}/a.cpp:1:1: warning: twice [bugprone-x,cert-y]\n"
@@ -54,9 +62,13 @@ class Parse(unittest.TestCase):
         self.assertEqual([f.check for f in found], ["strict-iterators"])
 
     def test_cppcheck(self):
-        text = f"{SOURCE}/brightness/src/ddc.c:40: error: Uninitialized variable: x [uninitvar]\n"
-        (finding,) = m.parse("cppcheck", text, SOURCE)
-        self.assertEqual((finding.check, finding.file, finding.line), ("uninitvar", "brightness/src/ddc.c", 40))
+        text = (f"{SOURCE}/brightness/src/ddc.c:40:7: error: Uninitialized variable: x [uninitvar]\n"
+                f"{SOURCE}/brightness/src/ddc.c:40:12: error: Uninitialized variable: x [uninitvar]\n"
+                f"{SOURCE}/brightness/src/ddc.c:41: error: Uninitialized variable: y [uninitvar]\n")
+        found = sorted(m.parse("cppcheck", text, SOURCE))
+        self.assertEqual([(f.check, f.file, f.line, f.column) for f in found],
+                         [("uninitvar", "brightness/src/ddc.c", 40, 7), ("uninitvar", "brightness/src/ddc.c", 40, 12),
+                          ("uninitvar", "brightness/src/ddc.c", 41, 0)])
 
     def test_qmllint(self):
         text = (f"Warning: {SOURCE}/shell/qml/Panel.qml:7:3: Unqualified access [unqualified]\n"
@@ -64,6 +76,12 @@ class Parse(unittest.TestCase):
                 f"Info: {SOURCE}/shell/qml/Panel.qml:8:1: Something [unqualified]\n")
         (finding,) = m.parse("qmllint", text, SOURCE)
         self.assertEqual((finding.check, finding.file, finding.line), ("unqualified", "shell/qml/Panel.qml", 7))
+
+    def test_qmllint_plugin_categories(self):
+        text = (f"Warning: {SOURCE}/shell/qml/Taskbar.qml:1777:17: Property \"anchors\" is custom-parsed "
+                "[Quick.property-changes-parsed]\n")
+        (finding,) = m.parse("qmllint", text, SOURCE)
+        self.assertEqual(finding.check, "Quick.property-changes-parsed")
 
     def test_only_first_party_files(self):
         text = (f"/usr/include/qt6/QtCore/qlist.h:9:1: warning: x [clang-analyzer-core.A]\n"
@@ -151,7 +169,7 @@ class Main(unittest.TestCase):
                 contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             status = m.main(["qt", "--clazy", str(self.log), "--source", str(self.root), "--list"])
         self.assertEqual(status, 0)
-        self.assertEqual(out.getvalue(), "clazy: a.cpp:1: x [strict-iterators]\n")
+        self.assertEqual(out.getvalue(), "clazy: a.cpp:1:1: x [strict-iterators]\n")
         self.assertIn("Static analysis, qt lane", err.getvalue())
 
     def test_the_repository_ceilings_are_valid(self):

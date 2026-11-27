@@ -29,7 +29,7 @@ bash scripts/format-changed.sh origin/main
 
 For a PR targeting a release branch, fetch that branch and pass its remote-tracking ref (for example, `origin/release/0.x`). The script uses the same exclusions as CI. Add `--diff` to preview the changes.
 
-Static Analysis runs the Clang Static Analyzer, cppcheck, Clazy and `qmllint` over every C, C++ and QML file, and holds the number of findings of each check to a ceiling in `scripts/ci-findings-ceilings.json`: a new finding fails the job, and so does a fixed one until its ceiling comes down. To reproduce a lane locally, build with Clang and `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, then run `bash scripts/static-analysis.sh native|qt <build> <reports>`; see [CI lanes](docs/ci-lanes.md).
+Static Analysis runs the Clang Static Analyzer, cppcheck, Clazy and `qmllint` over every C, C++ and QML file, and holds the number of findings of each check to a ceiling in `scripts/ci-findings-ceilings.json`: a check above its ceiling fails the job, and so does one below it until the ceiling comes down. To reproduce a lane locally, build with Clang and `-DCMAKE_EXPORT_COMPILE_COMMANDS=ON`, then run `bash scripts/static-analysis.sh native|qt <build> <reports>`; see [CI lanes](docs/ci-lanes.md).
 
 The functional and sharpness suites need a usable Vulkan 1.4 GPU and render node. On GitHub-hosted CI they can be marked **skipped**, which is not equivalent to a successful hardware test. For renderer or shell changes, run the relevant suites on real hardware if possible and report the GPU and driver used.
 

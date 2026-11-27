@@ -95,7 +95,7 @@ if [[ $only != clang-tidy ]]; then
         # all; and a test that cannot allocate may as well crash.
         --suppress='assertWithSideEffect:*/tests/*' --suppress='assignmentInAssert:*/tests/*'
         --suppress='nullPointerOutOfMemory:*/tests/*'
-        --template='{file}:{line}: {severity}: {message} [{id}]')
+        --template='{file}:{line}:{column}: {severity}: {message} [{id}]')
     if [[ $lane == qt ]]; then
         # moc output stops at an #error unless it sees Qt's moc revision,
         # which lives in a system header cppcheck does not read.
@@ -120,14 +120,12 @@ if [[ $only != clang-tidy ]]; then
         cat "$out"/clazy/*.log > "$out/clazy.log"
         logs+=(--clazy "$out/clazy.log")
 
-        # qmllint over every QML module with the build's import paths. It
-        # exits non-zero on warnings, which are counted like the others.
-        status=0
-        LC_ALL=C cmake --build "$build" --target all_qmllint > "$out/qmllint.log" 2>&1 || status=$?
-        if grep -Eq "(unknown target|No rule to make target).*all_qmllint" "$out/qmllint.log"; then
-            echo "qmllint did not run: the all_qmllint target is missing (exit status $status)" >&2
-            exit 1
-        fi
+        # qmllint over every QML module with the build's import paths. Its
+        # warnings leave the exit status at 0 and are counted like the others;
+        # a non-zero status is a failure to lint (a module that did not build,
+        # a crash, a missing all_qmllint) or an error-level finding.
+        LC_ALL=C cmake --build "$build" --target all_qmllint > "$out/qmllint.log" 2>&1 \
+            || { tail -50 "$out/qmllint.log"; echo "qmllint failed" >&2; exit 1; }
         logs+=(--qmllint "$out/qmllint.log")
     fi
 fi
