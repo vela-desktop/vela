@@ -8,6 +8,7 @@
 // binary runs on two private buses, a fake /dev/rfkill and a fake /sys;
 // this test is the UI the test build trusts.
 
+#include "children.h"
 #include "fakebluez.h"
 #include "trust.h"
 
@@ -297,6 +298,10 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         return indexes;
     }
 
+    // The last OperationChanged so far, empty before the first: QTRY_*
+    // reads it before the signal may have arrived (slow under Valgrind).
+    Operation lastOperation() const { return operations.isEmpty() ? Operation {} : operations.last(); }
+
     bool startDaemon(const QMap<QString, QString>& extra = {}, bool keepLog = false)
     {
         // The last test's signals may still be queued here (blocking calls
@@ -328,6 +333,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         }
         daemon.setProcessEnvironment(environment);
         daemon.setProcessChannelMode(keepLog ? QProcess::SeparateChannels : QProcess::ForwardedErrorChannel);
+        endWithThisTest(daemon);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
         if (!daemon.waitForStarted()) {
             return false;
@@ -490,6 +496,7 @@ private slots:
         qDBusRegisterMetaType<FakeObjects>();
         qDBusRegisterMetaType<DeviceMap>();
         for (auto [bus, address] : { std::pair { &systemBus, &systemAddress }, std::pair { &sessionBus, &sessionAddress } }) {
+            endWithThisTest(*bus);
             bus->start(QStringLiteral("dbus-daemon"), { QStringLiteral("--session"), QStringLiteral("--nofork"), QStringLiteral("--print-address=1") });
             QVERIFY2(bus->waitForStarted() && bus->waitForReadyRead(), "dbus-daemon is needed");
             *address = QString::fromUtf8(bus->readAllStandardOutput().trimmed());
@@ -777,6 +784,7 @@ private slots:
     {
         QProcess second;
         second.setProcessEnvironment(daemon.processEnvironment());
+        endWithThisTest(second);
         second.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
         QVERIFY(second.waitForFinished(5000));
         QCOMPARE(second.exitCode(), 2);
@@ -849,8 +857,8 @@ private slots:
         const QVariantMap entry = devices().value(mouse);
         QVERIFY(entry.value(QStringLiteral("connected")).toBool());
         QCOMPARE(entry.value(QStringLiteral("error")).toString(), QStringLiteral("not-trusted"));
-        QTRY_COMPARE(operations.last().state, QStringLiteral("done"));
-        QCOMPARE(operations.last().error, QStringLiteral("not-trusted"));
+        QTRY_COMPARE(lastOperation().state, QStringLiteral("done"));
+        QCOMPARE(lastOperation().error, QStringLiteral("not-trusted"));
     }
 
     void addThatCannotConnectStaysPaired()
@@ -874,8 +882,8 @@ private slots:
         QDBusPendingCall add = start(QStringLiteral("Add"), { object(mouse), false });
         QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
         QCOMPARE(add.error().message(), QStringLiteral("Pairing was refused on the device."));
-        QTRY_COMPARE(operations.last().state, QStringLiteral("failed"));
-        QCOMPARE(operations.last().error, QStringLiteral("rejected"));
+        QTRY_COMPARE(lastOperation().state, QStringLiteral("failed"));
+        QCOMPARE(lastOperation().error, QStringLiteral("rejected"));
         QCOMPARE(devices().value(mouse).value(QStringLiteral("error")).toString(), QStringLiteral("rejected"));
     }
 
@@ -926,7 +934,7 @@ private slots:
         QTRY_VERIFY(fakeCalls().contains(QStringLiteral("Pair ") + mouse));
         fake->run([this] { fake->setPowered(hci0, false); });
         QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
-        QTRY_COMPARE(operations.last().error, QStringLiteral("adapter-off"));
+        QTRY_COMPARE(lastOperation().error, QStringLiteral("adapter-off"));
         // While off, an Add fails at once.
         QCOMPARE(errorOf(start(QStringLiteral("Add"), { object(keyboard), false })), QStringLiteral("org.vela.Bluetooth.Error.Failed"));
         QVERIFY(!fakeCalls().contains(QStringLiteral("Pair ") + keyboard));
@@ -950,9 +958,9 @@ private slots:
         QCOMPARE(errorOf(call(QStringLiteral("Cancel"), { object(mouse) })), QString());
         QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
         QTRY_VERIFY(fakeCalls().contains(QStringLiteral("CancelPairing ") + mouse));
-        QTRY_COMPARE(operations.last().state, QStringLiteral("cancelled"));
+        QTRY_COMPARE(lastOperation().state, QStringLiteral("cancelled"));
         // The user's own Cancel gives no message.
-        QVERIFY(operations.last().error.isEmpty());
+        QVERIFY(lastOperation().error.isEmpty());
         QVERIFY(!devices().value(mouse).contains(QStringLiteral("error")));
     }
 
@@ -1212,8 +1220,8 @@ private slots:
         QCOMPARE(answer(question.id, QStringLiteral("reject")), QString());
         QCOMPARE(errorOf(add), QStringLiteral("org.vela.Bluetooth.Error.Cancelled"));
         QTRY_VERIFY(agentLog().contains(QStringLiteral("RequestConfirmation ") + mouse + QStringLiteral(" -> org.bluez.Error.Rejected")));
-        QTRY_COMPARE(operations.last().state, QStringLiteral("cancelled"));
-        QVERIFY(operations.last().error.isEmpty());
+        QTRY_COMPARE(lastOperation().state, QStringLiteral("cancelled"));
+        QVERIFY(lastOperation().error.isEmpty());
         QTRY_COMPARE(closedReason(question.id), QStringLiteral("answered"));
         QVERIFY(!devices().value(mouse).value(QStringLiteral("paired")).toBool());
         QVERIFY(!devices().value(mouse).contains(QStringLiteral("error")));

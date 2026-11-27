@@ -243,9 +243,13 @@ What the failures were, and what removed them:
   probe, libglvnd's and librsvg's blocks, and the TLS of threads that are
   alive at exit or absent in a forked child. It never names a frame of
   Vela's code.
-- **Animations.** `tst_controls.qml` read the expressive check box's fill
+- **Waits.** `tst_controls.qml` read the expressive check box's fill
   while it still faded out from the test before; it now waits for the
-  fade, as it already did for the other colours.
+  fade, as it already did for the other colours. `bluetooth-daemon` read
+  the last operation before its first signal could arrive, and aborted on
+  the empty list; and an aborted Bluetooth test left its buses and daemon
+  running, which kept CTest waiting for the whole timeout. The test's
+  children now end with it (`tests/bluetooth/children.h`).
 
 The build uses ccache, like the other Arch jobs: 15 minutes with an empty
 cache.

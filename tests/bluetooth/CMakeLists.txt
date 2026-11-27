@@ -5,7 +5,7 @@
 # §11). The fake is Qt: it's test code. The executable's path is the UI
 # the test build of the daemon trusts (bluetooth/CMakeLists.txt).
 find_package(Qt6 6.5 REQUIRED COMPONENTS DBus Test)
-qt_add_executable(vela-bluetooth-daemon-test daemon.cpp fakebluez.h trust.h)
+qt_add_executable(vela-bluetooth-daemon-test daemon.cpp children.h fakebluez.h trust.h)
 set_target_properties(vela-bluetooth-daemon-test PROPERTIES AUTOMOC ON)
 target_include_directories(vela-bluetooth-daemon-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
 target_compile_options(vela-bluetooth-daemon-test PRIVATE -Wall -Wextra)
@@ -24,7 +24,7 @@ set_tests_properties(bluetooth-daemon PROPERTIES TIMEOUT 180)
 
 # Vela.Bluetooth's model (common/bluetooth) against the same daemon and fake;
 # also a UI the test build trusts.
-qt_add_executable(vela-bluetooth-client-test client.cpp fakebluez.h harness.h trust.h)
+qt_add_executable(vela-bluetooth-client-test client.cpp children.h fakebluez.h harness.h trust.h)
 set_target_properties(vela-bluetooth-client-test PROPERTIES AUTOMOC ON)
 target_include_directories(vela-bluetooth-client-test PRIVATE ${PROJECT_SOURCE_DIR}/common/tests)
 target_compile_options(vela-bluetooth-client-test PRIVATE -Wall -Wextra)
@@ -38,7 +38,7 @@ set_tests_properties(bluetooth-client PROPERTIES TIMEOUT 120)
 # The shell's side (§9.2, §9.3): the questions it draws as the dialog or a
 # notification, and airplane mode; also a UI the test build trusts.
 find_package(Qt6 6.5 REQUIRED COMPONENTS Quick)
-qt_add_executable(vela-bluetooth-shell-test shell.cpp fakebluez.h harness.h trust.h
+qt_add_executable(vela-bluetooth-shell-test shell.cpp children.h fakebluez.h harness.h trust.h
     ${PROJECT_SOURCE_DIR}/shell/src/bluetoothprompts.cpp
     ${PROJECT_SOURCE_DIR}/shell/src/bluetoothprompts.h
     ${PROJECT_SOURCE_DIR}/shell/src/notifications.cpp

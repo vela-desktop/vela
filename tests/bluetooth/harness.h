@@ -11,6 +11,7 @@
 // class derives from it and calls setUp() and tearDown() from
 // initTestCase() and cleanupTestCase().
 
+#include "children.h"
 #include "fakebluez.h"
 #include "trust.h"
 
@@ -50,6 +51,7 @@ protected:
         qDBusRegisterMetaType<FakeInterfaces>();
         qDBusRegisterMetaType<FakeObjects>();
         for (auto [process, address] : { std::pair { &m_systemBus, &systemAddress }, std::pair { &m_sessionBus, &sessionAddress } }) {
+            endWithThisTest(*process);
             process->start(QStringLiteral("dbus-daemon"), { QStringLiteral("--session"), QStringLiteral("--nofork"), QStringLiteral("--print-address=1") });
             if (!process->waitForStarted() || !process->waitForReadyRead()) {
                 return QStringLiteral("dbus-daemon is needed");
@@ -140,6 +142,7 @@ protected:
         trustThisTest(environment);
         daemon.setProcessEnvironment(environment);
         daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
+        endWithThisTest(daemon);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});
         if (!daemon.waitForStarted()) {
             qWarning() << "Could not start Bluetooth daemon:" << daemon.errorString();
