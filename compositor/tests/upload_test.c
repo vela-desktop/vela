@@ -22,6 +22,7 @@
 #include "../src/render/texture.c"
 #include "../src/render/pass.c"
 #include "alloc_count.h"
+#include "vulkan_stubs.h"
 
 #define BUDGET (VELA_UPLOAD_MAX_CHUNKS * VELA_UPLOAD_PIECE_BYTES)
 #define BPP 4
@@ -39,6 +40,7 @@ struct fake_buffer {
     size_t size;
     struct fake_memory *memory;
     bool destroyed;
+    bool readback; // readback staging, outside the upload budget
 };
 
 struct fake_image {
@@ -53,7 +55,7 @@ struct fake_view {
     bool destroyed;
 };
 
-enum op_kind { OP_COPY_BUFFER, OP_COPY_IMAGE, OP_DRAW };
+enum op_kind { OP_COPY_BUFFER, OP_COPY_IMAGE, OP_DRAW, OP_READ_IMAGE };
 
 struct op {
     enum op_kind kind;
@@ -132,6 +134,17 @@ static void run(const struct op *op)
         assert(!op->view->destroyed && !op->view->image->destroyed);
         if (check_drawn) check_drawn(op->view->image);
         break;
+    case OP_READ_IMAGE: {
+        assert(!op->src->destroyed && !op->buffer->destroyed);
+        size_t row_bytes = (size_t)op->width * BPP;
+        assert(op->offset + row_bytes * op->height <= op->buffer->size);
+        for (uint32_t y = 0; y < op->height; ++y) {
+            memcpy(op->buffer->memory->data + op->offset + y * row_bytes,
+                op->src->memory->data + ((size_t)(op->y + (int32_t)y) * op->src->width + (size_t)op->x) * BPP,
+                row_bytes);
+        }
+        break;
+    }
     }
 }
 
@@ -161,28 +174,6 @@ static void record_op(VkCommandBuffer cmd, struct op op)
         assert(fake->ops);
     }
     fake->ops[fake->count++] = op;
-}
-
-bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation)
-{
-    vela_device_loss_mark(&vk->loss, (int32_t)result, operation);
-    return result == VK_SUCCESS && !vela_vulkan_unusable(vk);
-}
-
-void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation)
-{
-    vk->terminal_error = true;
-}
-
-uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t bits, VkMemoryPropertyFlags flags)
-{
-    return 0;
-}
-
-bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
-    VkImageUsageFlags usage)
-{
-    return true;
 }
 
 // Render targets and imported textures: images of their own, never checked.
@@ -285,7 +276,7 @@ VKAPI_ATTR void VKAPI_CALL vkDestroyBuffer(VkDevice device, VkBuffer buffer, con
     struct fake_buffer *fake = (struct fake_buffer *)buffer;
     assert(!fake->destroyed);
     fake->destroyed = true;
-    if (fake->memory) staging_bytes -= fake->size;
+    if (fake->memory && !fake->readback) staging_bytes -= fake->size;
 }
 VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(VkDevice device, VkBuffer buffer,
     VkMemoryRequirements *requirements)
@@ -298,7 +289,9 @@ VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice device, VkBuffer buff
 {
     struct fake_buffer *fake = (struct fake_buffer *)buffer;
     fake->memory = (struct fake_memory *)memory;
-    // Only uploads stage memory in this test.
+    // Readbacks stage whole chunks; uploads, pieces within their budget.
+    fake->readback = fake->size == STAGING_CHUNK_SIZE;
+    if (fake->readback) return VK_SUCCESS;
     staging_bytes += fake->size;
     if (staging_bytes > staging_peak) staging_peak = staging_bytes;
     if (!upload_chunk_size) upload_chunk_size = fake->size;
@@ -318,8 +311,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device, VkPipe
     for (uint32_t i = 0; i < count; ++i) pipelines[i] = (VkPipeline)make(1);
     return VK_SUCCESS;
 }
-VKAPI_ATTR void VKAPI_CALL vkDestroyPipeline(VkDevice device, VkPipeline pipeline,
-    const VkAllocationCallbacks *allocator) {}
 
 VKAPI_ATTR VkResult VKAPI_CALL vkAllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo *info,
     VkCommandBuffer *commands)
@@ -338,10 +329,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkResetCommandBuffer(VkCommandBuffer cmd, VkComma
 VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd, const VkCommandBufferBeginInfo *info)
 {
     ((struct fake_cmd *)cmd)->count = 0;
-    return VK_SUCCESS;
-}
-VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd)
-{
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkQueueSubmit2(VkQueue q, uint32_t count, const VkSubmitInfo2 *submissions,
@@ -421,24 +408,6 @@ VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSet(VkCommandBuffer cmd, VkPipelin
     }
 }
 
-VKAPI_ATTR void VKAPI_CALL vkDestroySemaphore(VkDevice device, VkSemaphore semaphore,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR VkResult VKAPI_CALL vkResetCommandPool(VkDevice device, VkCommandPool pool, VkCommandPoolResetFlags flags)
-{
-    return VK_SUCCESS;
-}
-VKAPI_ATTR void VKAPI_CALL vkDestroyCommandPool(VkDevice device, VkCommandPool pool,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyShaderModule(VkDevice device, VkShaderModule module,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyPipelineLayout(VkDevice device, VkPipelineLayout layout,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorSetLayout(VkDevice device, VkDescriptorSetLayout layout,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroySampler(VkDevice device, VkSampler sampler,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyQueryPool(VkDevice device, VkQueryPool pool,
-    const VkAllocationCallbacks *allocator) {}
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateSemaphore(VkDevice device, const VkSemaphoreCreateInfo *info,
     const VkAllocationCallbacks *allocator, VkSemaphore *semaphore)
 {
@@ -451,39 +420,22 @@ VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(VkPhysicalDevice 
     *properties = (VkPhysicalDeviceMemoryProperties) { .memoryTypeCount = 1 };
 }
 
-// Readbacks, timestamps and the renderer's own creation: never reached.
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyImageToBuffer(VkCommandBuffer cmd, VkImage image, VkImageLayout layout,
-    VkBuffer buffer, uint32_t count, const VkBufferImageCopy *regions) { abort(); }
-VKAPI_ATTR void VKAPI_CALL vkCmdResetQueryPool(VkCommandBuffer cmd, VkQueryPool pool, uint32_t first,
-    uint32_t count) { abort(); }
-VKAPI_ATTR void VKAPI_CALL vkCmdWriteTimestamp2(VkCommandBuffer cmd, VkPipelineStageFlags2 stage,
-    VkQueryPool pool, uint32_t query) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateCommandPool(VkDevice device, const VkCommandPoolCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkCommandPool *pool) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorSetLayout(VkDevice device,
-    const VkDescriptorSetLayoutCreateInfo *info, const VkAllocationCallbacks *allocator,
-    VkDescriptorSetLayout *layout) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreatePipelineLayout(VkDevice device, const VkPipelineLayoutCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkPipelineLayout *layout) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkQueryPool *pool) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateSampler(VkDevice device, const VkSamplerCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkSampler *sampler) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkGetQueryPoolResults(VkDevice device, VkQueryPool pool, uint32_t first,
-    uint32_t count, size_t size, void *data, VkDeviceSize stride, VkQueryResultFlags flags) { abort(); }
-
-VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer cmd, const VkDependencyInfo *dependency) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdBeginRendering(VkCommandBuffer cmd, const VkRenderingInfo *info) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdEndRendering(VkCommandBuffer cmd) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer cmd, uint32_t first, uint32_t count,
-    const VkViewport *viewports) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdSetScissor(VkCommandBuffer cmd, uint32_t first, uint32_t count,
-    const VkRect2D *scissors) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdBindPipeline(VkCommandBuffer cmd, VkPipelineBindPoint point, VkPipeline pipeline) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer cmd, VkPipelineLayout layout,
-    VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *values) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdDraw(VkCommandBuffer cmd, uint32_t vertices, uint32_t instances,
-    uint32_t first_vertex, uint32_t first_instance) {}
+    VkBuffer buffer, uint32_t count, const VkBufferImageCopy *regions)
+{
+    assert(count == 1 && regions[0].bufferRowLength == 0 && regions[0].bufferImageHeight == 0);
+    record_op(cmd,
+        (struct op) {
+            .kind = OP_READ_IMAGE,
+            .buffer = (struct fake_buffer *)buffer,
+            .offset = regions[0].bufferOffset,
+            .src = (struct fake_image *)image,
+            .x = regions[0].imageOffset.x,
+            .y = regions[0].imageOffset.y,
+            .width = regions[0].imageExtent.width,
+            .height = regions[0].imageExtent.height,
+        });
+}
 
 struct wlr_drm_syncobj_timeline *wlr_drm_syncobj_timeline_ref(struct wlr_drm_syncobj_timeline *timeline)
 {
@@ -1240,6 +1192,59 @@ static void uploads_allocate_nothing_once_warm(void)
     fixture_finish(&f);
 }
 
+// wlroots' synchronous read of a shown texture, and the deferred capture
+// (vela_renderer_readback), bring back what the client committed; a capture
+// cancelled by the lock reports a failure, once.
+static int captures_done, captures_failed;
+
+static void capture_done(void *data, bool ok)
+{
+    ++captures_done;
+    captures_failed += !ok;
+}
+
+static void readbacks_return_the_committed_pixels(void)
+{
+    struct fixture f;
+    fixture_init(&f);
+    struct shm_buffer *shm = new_shm(64, 32, 3);
+    struct surface *s = attach(&f, shm);
+    frame(&f);
+    assert(vela_texture_shown(s->texture));
+
+    uint32_t part[8 * 16];
+    const struct wlr_texture_read_pixels_options options = {
+        .data = part,
+        .format = DRM_FORMAT_ARGB8888,
+        .stride = 16 * BPP,
+        .src_box = { 8, 4, 16, 8 },
+    };
+    assert(wlr_texture_read_pixels(s->texture, &options));
+    for (int y = 0; y < 8; ++y) {
+        for (int x = 0; x < 16; ++x) assert(part[y * 16 + x] == pixel(3, 8 + x, 4 + y));
+    }
+
+    struct wl_event_loop *loop = wl_event_loop_create();
+    assert(loop);
+    struct shm_buffer *copy = new_shm(64, 32, 0);
+    captures_done = captures_failed = 0;
+    assert(vela_renderer_readback(f.renderer, loop, &shm->base, &copy->base, capture_done, NULL));
+    for (int i = 0; i < 100 && !captures_done; ++i) wl_event_loop_dispatch(loop, 100);
+    assert(captures_done == 1 && captures_failed == 0);
+    assert(memcmp(copy->pixels, shm->pixels, (size_t)64 * 32 * BPP) == 0);
+
+    assert(vela_renderer_readback(f.renderer, loop, &shm->base, &copy->base, capture_done, NULL));
+    vela_renderer_cancel_readbacks(f.renderer);
+    assert(captures_done == 2 && captures_failed == 1);
+    const struct vela_readback_stats stats = vela_renderer_readback_stats(f.renderer);
+    assert(stats.completed == 1 && stats.failed == 1 && stats.pending == 0);
+
+    wl_event_loop_destroy(loop);
+    drop_shm(copy);
+    drop_shm(shm);
+    fixture_finish(&f);
+}
+
 int main(void)
 {
     extent_cap_shm();
@@ -1254,6 +1259,7 @@ int main(void)
     in_flight_staging_counts();
     device_loss_releases_pending_uploads();
     uploads_allocate_nothing_once_warm();
+    readbacks_return_the_committed_pixels();
     printf("upload: all passed\n");
     return 0;
 }
