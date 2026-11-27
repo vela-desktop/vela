@@ -2,7 +2,7 @@
 
 > **Status:** Accepted. **Checked:** 27 November 2026, `61f4dd73`.
 >
-> **Remaining:** the Qt lane of stage 3 fails on Memcheck defects once its five timing failures are fixed; see [Stage 3](#stage-3-memcheck-per-lane).
+> **Remaining:** the Qt lane of stage 3 fails on Memcheck defects once its six timing failures are fixed; see [Stage 3](#stage-3-memcheck-per-lane).
 
 ## Decision in one paragraph
 
@@ -209,13 +209,13 @@ and twelve Qt tests start through Python or `dbus-run-session`, which would
 put the wrapper under Memcheck instead of Vela; they wait for a harness of
 their own.
 
-Failures in the first full run on GitHub (45841386812), and after this
-stage in the same container image, locally:
+Failures in the first full run (45841386812) and after this stage (run
+45997797303, `d57a979e`):
 
-| Lane | Tests | First run | Now | Memcheck defects now |
-|---|---:|---:|---:|---:|
-| Native | 367 | 8 | 0 | 0 |
-| Qt | 71 | 45, including 13 timeouts | 5, all timing | 0 |
+| Lane | Tests | First run | Now | Memcheck defects now | Memcheck step |
+|---|---:|---:|---:|---:|---:|
+| Native | 367 | 8 | 0 | 0 | 7 min |
+| Qt | 71 | 45, including 13 timeouts | 6, all timing | 0 | 16 min |
 
 What the failures were, and what removed them:
 
@@ -244,13 +244,14 @@ What the failures were, and what removed them:
   alive at exit or absent in a forked child. It never names a frame of
   Vela's code.
 
-The five Qt failures left are assertions with a fixed wait that Memcheck's
+The six Qt failures left are assertions with a fixed wait that Memcheck's
 slowdown outruns: `bluetooth-daemon`, `bluetooth-client` and
 `bluetooth-shell` (the daemon and its questions within a few seconds), and
-`shell-controls-expressive` and `shell-controls-expressive-controls` (a
-check box's colour read before its animation ends).
+three `shell-controls-expressive` variants (a check box's colour read
+before its animation ends, `tst_controls.qml`).
 
-The build uses ccache, like the other Arch jobs.
+The build uses ccache, like the other Arch jobs: 15 minutes with an empty
+cache.
 
 ## Wall time
 
