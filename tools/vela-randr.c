@@ -18,6 +18,8 @@
 #include <string.h>
 #include <wayland-client.h>
 
+#include "alloc/alloc.h"
+
 #include "wlr-output-management-unstable-v1-client-protocol.h"
 
 struct mode {
@@ -82,7 +84,7 @@ static void onPhysicalSize(void* data, struct zwlr_output_head_v1* wl, int32_t w
 
 static void onMode(void* data, struct zwlr_output_head_v1* wl, struct zwlr_output_mode_v1* wlMode)
 {
-    struct mode* mode = calloc(1, sizeof(*mode));
+    struct mode *mode = VELA_NEW(struct mode);
     mode->wl = wlMode;
     mode->next = modes;
     modes = mode;
@@ -135,7 +137,7 @@ static const struct zwlr_output_head_v1_listener headListener = {
 
 static void onHead(void* data, struct zwlr_output_manager_v1* wl, struct zwlr_output_head_v1* wlHead)
 {
-    struct head* head = calloc(1, sizeof(*head));
+    struct head *head = VELA_NEW(struct head);
     head->wl = wlHead;
     head->scale = 1.0;
     head->next = heads;

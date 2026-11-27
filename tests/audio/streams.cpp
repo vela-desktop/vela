@@ -29,7 +29,8 @@ double levelOf(double amplitude)
     return std::cbrt(amplitude);
 }
 
-bool near(double a, double b, double tolerance = 0.02)
+// Levels measured from a recording: looser than harness::near.
+bool roughly(double a, double b, double tolerance = 0.02)
 {
     return std::abs(a - b) < tolerance;
 }
@@ -98,10 +99,10 @@ private slots:
         auto music = tone(QStringLiteral("vela-player"), 0.5);
         QVERIFY(music->waitStreaming());
         auto m = meter(QStringLiteral("output"), speakers);
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.5)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.5)), 5000);
         // 50% on the cubic scale is 0.125 linear: the monitor hears 0.0625.
         run(QStringLiteral("wpctl"), { QStringLiteral("set-volume"), QString::number(id(speakers)), QStringLiteral("0.5") });
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.0625)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.0625)), 5000);
     }
 
     void inputLevelOnlyWhileActive()
@@ -115,7 +116,7 @@ private slots:
         QVERIFY(voice->waitStreaming());
         run(QStringLiteral("pw-link"), { QStringLiteral("vela-voice:output_FL"), microphone + QStringLiteral(":input_MONO") });
         auto m = meter(QStringLiteral("input"), microphone);
-        QTRY_VERIFY2_WITH_TIMEOUT(near(m->level(), levelOf(0.25)), qPrintable(QString::number(m->level())), 5000);
+        QTRY_VERIFY2_WITH_TIMEOUT(roughly(m->level(), levelOf(0.25)), qPrintable(QString::number(m->level())), 5000);
         QCOMPARE(m->monitored(), QList<quint32>({ id(microphone) }));
 
         // Not shown: no stream, and the bar is empty.
@@ -135,7 +136,7 @@ private slots:
         QVERIFY(q && l);
         auto m = meter(QStringLiteral("app"), QStringLiteral("vela-player"));
         QTRY_VERIFY_WITH_TIMEOUT(m->monitored().size() == 2, 5000);
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.4)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.4)), 5000);
 
         // The meters aren't apps, and only one app is there.
         QTest::qWait(200);
@@ -144,7 +145,7 @@ private slots:
         // A stream ends: its monitor goes with it.
         QCOMPARE(loud->close(), 0);
         QTRY_COMPARE(m->monitored(), QList<quint32>({ q }));
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.2)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.2)), 5000);
     }
 
     void meterTracksReplacementStreams()
@@ -152,13 +153,13 @@ private slots:
         auto first = tone(QStringLiteral("vela-player"), 0.3);
         QVERIFY(first->waitStreaming());
         auto m = meter(QStringLiteral("app"), QStringLiteral("vela-player"));
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.3)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.3)), 5000);
         QCOMPARE(m->monitored().size(), 1);
         QCOMPARE(first->close(), 0);
         QTRY_VERIFY(m->monitored().isEmpty());
         auto second = tone(QStringLiteral("vela-player"), 0.5);
         QVERIFY(second->waitStreaming());
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.5)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.5)), 5000);
         QCOMPARE(m->monitored(), QList<quint32>({ second->node() }));
         // Different streams must never retain the previous node's meter.
         QVERIFY(m->monitored().first() == second->node());
@@ -169,14 +170,14 @@ private slots:
         auto music = tone(QStringLiteral("vela-player"), 0.5);
         QVERIFY(music->waitStreaming());
         auto m = meter(QStringLiteral("output"), speakers);
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.5)), 5000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.5)), 5000);
         QCOMPARE(control(QStringLiteral("restart-pipewire")), QStringLiteral("ok"));
         QTRY_VERIFY_WITH_TIMEOUT(m->monitored().isEmpty() || !audio->available(), 5000);
         music.reset();
         QTRY_VERIFY_WITH_TIMEOUT(audio->available() && id(speakers), 10000);
         auto again = tone(QStringLiteral("vela-player"), 0.5);
         QVERIFY(again->waitStreaming());
-        QTRY_VERIFY_WITH_TIMEOUT(near(m->level(), levelOf(0.5)), 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(roughly(m->level(), levelOf(0.5)), 10000);
     }
 
     void streamsGoBeforeTheConnection()

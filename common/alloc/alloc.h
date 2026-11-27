@@ -23,19 +23,22 @@ extern "C" {
 #endif
 
 #define VELA_ALLOC_NORETURN __attribute__((noreturn))
+// The helpers never return NULL; saying so lets compilers and the static
+// analyzers follow a caller without inventing a NULL path.
+#define VELA_ALLOC_NONNULL __attribute__((returns_nonnull))
 
 // Internal entry points. Every failure reaches vela_oom with these file/line.
-void *vela_alloc_at(size_t count, size_t size, const char *file, int line);
-void *vela_grow_size_at(void *items, size_t *capacity, size_t needed, size_t size,
-    const char *file, int line);
+VELA_ALLOC_NONNULL void *vela_alloc_at(size_t count, size_t size, const char *file, int line);
+VELA_ALLOC_NONNULL void *vela_grow_size_at(
+    void *items, size_t *capacity, size_t needed, size_t size, const char *file, int line);
 // `needed` is wider than the int capacity on purpose: a caller's size_t or
 // int64_t count arrives intact and is range-checked here, not truncated by an
 // implicit conversion at the call.
-void *vela_grow_int_at(void *items, int *capacity, long long needed, size_t size,
-    const char *file, int line);
-char *vela_strdup_at(const char *s, const char *file, int line);
-char *vela_strndup_at(const char *s, size_t n, const char *file, int line);
-char *vela_asprintf_at(const char *file, int line, const char *fmt, ...)
+VELA_ALLOC_NONNULL void *vela_grow_int_at(
+    void *items, int *capacity, long long needed, size_t size, const char *file, int line);
+VELA_ALLOC_NONNULL char *vela_strdup_at(const char *s, const char *file, int line);
+VELA_ALLOC_NONNULL char *vela_strndup_at(const char *s, size_t n, const char *file, int line);
+VELA_ALLOC_NONNULL char *vela_asprintf_at(const char *file, int line, const char *fmt, ...)
     __attribute__((format(printf, 3, 4)));
 size_t vela_size_add_at(size_t a, size_t b, const char *file, int line);
 size_t vela_size_mul_at(size_t a, size_t b, const char *file, int line);
@@ -53,7 +56,7 @@ VELA_ALLOC_NORETURN void vela_must_failed(const char *expression, const char *fi
 // "vela: out of memory (operator new) in <process>; rss <n> MiB; available <n> MiB".
 VELA_ALLOC_NORETURN void vela_new_failed(const char *process);
 // `value`, or vela_must_failed when it is NULL.
-const void *vela_must_at(const void *value, const char *expression, const char *file, int line);
+VELA_ALLOC_NONNULL const void *vela_must_at(const void *value, const char *expression, const char *file, int line);
 
 // Public API.
 #define vela_alloc(count, size) vela_alloc_at((count), (size), __FILE__, __LINE__)

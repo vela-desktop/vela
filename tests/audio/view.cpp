@@ -29,24 +29,6 @@ using vela::audio::LevelMeter;
 
 namespace {
 
-bool near(double a, double b)
-{
-    return std::abs(a - b) < 0.006;
-}
-
-bool near(const QList<double>& a, const QList<double>& b)
-{
-    if (a.size() != b.size()) {
-        return false;
-    }
-    for (qsizetype i = 0; i < a.size(); i++) {
-        if (!near(a[i], b[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 QVariantMap find(const QVariantList& list, const QString& field, const QString& value)
 {
     for (const QVariant& item : list) {
@@ -393,7 +375,8 @@ private slots:
     void draggedSliderEndsOnTheLastValue()
     {
         QList<double> shown;
-        connect(audio.get(), &Audio::changed, this, [&] { shown.append(audio->volume()); });
+        QObject scope; // disconnects when `shown` goes away
+        connect(audio.get(), &Audio::changed, &scope, [&] { shown.append(audio->volume()); });
         for (int i = 1; i <= 20; i++) {
             audio->setVolume(QStringLiteral("output"), speakers, 1.0 - i * 0.02);
         }

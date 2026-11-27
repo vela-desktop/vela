@@ -6,7 +6,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QTemporaryDir>
-#include <QtTest>
+#include <QTest>
 
 class ExecutableFileTest : public QObject {
     Q_OBJECT

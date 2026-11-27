@@ -837,6 +837,9 @@ static void copy_row(uint8_t *restrict dst, const uint8_t *restrict src, size_t 
         for (size_t i = 0; i < pixels; ++i) {
             const size_t x = i * sizeof(mask);
             uint32_t pixel;
+            // The analyzer loses the caller's initialized words through the
+            // byte pointer (readback_test.c passes a uint32_t array).
+            // NOLINTNEXTLINE(clang-analyzer-unix.cstring.UninitializedRead)
             memcpy(&pixel, src + x, sizeof(pixel));
             pixel |= mask;
             memcpy(dst + x, &pixel, sizeof(pixel));
@@ -846,6 +849,7 @@ static void copy_row(uint8_t *restrict dst, const uint8_t *restrict src, size_t 
     // Callers use whole-pixel rows. Still bound every conversion by the
     // complete pixel count, preserving any partial final pixel verbatim.
     if (copied < bytes) {
+        // NOLINTNEXTLINE(clang-analyzer-unix.cstring.UninitializedRead): as above
         memcpy(dst + copied, src + copied, bytes - copied);
     }
 }
@@ -892,7 +896,7 @@ static bool read_pixels(struct wlr_texture *wlr, const struct wlr_texture_read_p
 
     // A dmabuf: first wait for whoever is writing it; afterwards, whoever
     // wants to write it will wait for our read.
-    int waits[1];
+    int waits[1] = { -1 };
     int wait_count = 0;
     if (texture->foreign) {
         struct dma_buf_export_sync_file request = { .flags = DMA_BUF_SYNC_READ, .fd = -1 };
@@ -1012,6 +1016,7 @@ void vela_readback_cancel(struct vela_readback *readback)
 // (in the log: a capture that fails says nothing else to its client).
 static void finish_readback(struct vela_readback *readback, enum wlr_log_importance level, const char *failure)
 {
+    assert(readback->dst);
     void (*done)(void *, bool) = readback->done;
     void *data = readback->data;
     const bool ok = !failure;
@@ -1090,6 +1095,7 @@ static int dispatch_readback(int fd, uint32_t mask, void *data)
             break;
         }
         if (completed < readback->point) continue;
+        assert(readback->dst);
         delay = READBACK_YIELD_NS;
         int64_t start = vela_now_ns();
         void *pixels = NULL;

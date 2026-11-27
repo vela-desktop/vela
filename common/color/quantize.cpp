@@ -600,8 +600,8 @@ std::vector<Argb> rankedSuggestions(const std::map<Argb, std::uint32_t>& populat
     // enough of either.
     struct Scored {
         Hct hct;
-        Argb argb;
-        double score;
+        Argb argb = 0;
+        double score = 0;
     };
     std::vector<Scored> scored;
     for (std::size_t i = 0; i < colorsHct.size(); ++i) {

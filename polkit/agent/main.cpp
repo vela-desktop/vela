@@ -54,9 +54,9 @@ struct VelaListenerClass {
 G_DEFINE_TYPE(VelaListener, vela_listener, POLKIT_AGENT_TYPE_LISTENER)
 
 struct Pending {
-    GTask* task;
+    GTask* task = nullptr;
     std::string cookie;
-    GCancellable* cancellable;
+    GCancellable* cancellable = nullptr;
     gulong cancelHandler = 0;
     bool finished = false;
 };

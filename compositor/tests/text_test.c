@@ -206,8 +206,9 @@ static long ink(const struct vela_image *image)
 
 static bool same_image(const struct vela_image *a, const struct vela_image *b)
 {
-    return a->width == b->width && a->height == b->height
-        && memcmp(a->pixels, b->pixels, (size_t)a->width * (size_t)a->height * sizeof(uint32_t)) == 0;
+    if (a->width != b->width || a->height != b->height) return false;
+    if (!a->pixels || !b->pixels) return a->pixels == b->pixels;
+    return memcmp(a->pixels, b->pixels, (size_t)a->width * (size_t)a->height * sizeof(uint32_t)) == 0;
 }
 
 static bool same_layout(const struct vela_text_layout *a, const struct vela_text_layout *b)

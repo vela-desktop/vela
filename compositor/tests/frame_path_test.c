@@ -24,6 +24,7 @@
 #include "../src/render/texture.c"
 #include "../src/render/pass.c"
 #include "alloc_count.h"
+#include "vulkan_stubs.h"
 
 #define WARM_FRAMES 4
 #define FRAMES 240
@@ -37,28 +38,6 @@ static uintptr_t next_handle = 0x1000;
 static int open_handles; // created minus destroyed images, views and memory
 
 #define HANDLE(type) ((type)(next_handle++))
-
-bool vela_vulkan_result(struct vela_vulkan *vk, VkResult result, const char *operation)
-{
-    vela_device_loss_mark(&vk->loss, (int32_t)result, operation);
-    return result == VK_SUCCESS && !vela_vulkan_unusable(vk);
-}
-
-void vela_vulkan_abort(struct vela_vulkan *vk, const char *operation)
-{
-    vk->terminal_error = true;
-}
-
-uint32_t vela_vulkan_memory_type(const struct vela_vulkan *vk, uint32_t bits, VkMemoryPropertyFlags flags)
-{
-    return 0;
-}
-
-bool vela_vulkan_supports_dmabuf(const struct vela_vulkan *vk, VkFormat format, uint64_t modifier,
-    VkImageUsageFlags usage)
-{
-    return true;
-}
 
 bool vela_vulkan_import_dmabuf(struct vela_vulkan *vk, const struct wlr_dmabuf_attributes *dmabuf,
     VkFormat format, VkImageUsageFlags usage, VkImage *image, VkDeviceMemory *memory)
@@ -126,8 +105,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device, VkPipe
     for (uint32_t i = 0; i < count; ++i) pipelines[i] = HANDLE(VkPipeline);
     return VK_SUCCESS;
 }
-VKAPI_ATTR void VKAPI_CALL vkDestroyPipeline(VkDevice device, VkPipeline pipeline,
-    const VkAllocationCallbacks *allocator) {}
 
 VKAPI_ATTR VkResult VKAPI_CALL vkAllocateCommandBuffers(VkDevice device, const VkCommandBufferAllocateInfo *info,
     VkCommandBuffer *commands)
@@ -140,10 +117,6 @@ VKAPI_ATTR VkResult VKAPI_CALL vkResetCommandBuffer(VkCommandBuffer cmd, VkComma
     return VK_SUCCESS;
 }
 VKAPI_ATTR VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer cmd, const VkCommandBufferBeginInfo *info)
-{
-    return VK_SUCCESS;
-}
-VKAPI_ATTR VkResult VKAPI_CALL vkEndCommandBuffer(VkCommandBuffer cmd)
 {
     return VK_SUCCESS;
 }
@@ -168,28 +141,10 @@ VKAPI_ATTR VkResult VKAPI_CALL vkWaitSemaphores(VkDevice device, const VkSemapho
 {
     return VK_SUCCESS;
 }
-VKAPI_ATTR void VKAPI_CALL vkDestroySemaphore(VkDevice device, VkSemaphore semaphore,
-    const VkAllocationCallbacks *allocator) {}
 VKAPI_ATTR VkResult VKAPI_CALL vkDeviceWaitIdle(VkDevice device)
 {
     return VK_SUCCESS;
 }
-VKAPI_ATTR VkResult VKAPI_CALL vkResetCommandPool(VkDevice device, VkCommandPool pool, VkCommandPoolResetFlags flags)
-{
-    return VK_SUCCESS;
-}
-VKAPI_ATTR void VKAPI_CALL vkDestroyCommandPool(VkDevice device, VkCommandPool pool,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyShaderModule(VkDevice device, VkShaderModule module,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyPipelineLayout(VkDevice device, VkPipelineLayout layout,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyDescriptorSetLayout(VkDevice device, VkDescriptorSetLayout layout,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroySampler(VkDevice device, VkSampler sampler,
-    const VkAllocationCallbacks *allocator) {}
-VKAPI_ATTR void VKAPI_CALL vkDestroyQueryPool(VkDevice device, VkQueryPool pool,
-    const VkAllocationCallbacks *allocator) {}
 
 VKAPI_ATTR VkResult VKAPI_CALL vkCreateSemaphore(VkDevice device, const VkSemaphoreCreateInfo *info,
     const VkAllocationCallbacks *allocator, VkSemaphore *semaphore)
@@ -198,8 +153,7 @@ VKAPI_ATTR VkResult VKAPI_CALL vkCreateSemaphore(VkDevice device, const VkSemaph
     return VK_SUCCESS;
 }
 
-// Uploads, readbacks, timestamps and the renderer's own creation: outside
-// what this test draws, so never reached.
+// Uploads and readbacks: outside what this test draws, so never reached.
 VKAPI_ATTR VkResult VKAPI_CALL vkBindBufferMemory(VkDevice device, VkBuffer buffer, VkDeviceMemory memory,
     VkDeviceSize offset) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer cmd, VkBuffer buffer, VkImage image,
@@ -207,47 +161,29 @@ VKAPI_ATTR void VKAPI_CALL vkCmdCopyBufferToImage(VkCommandBuffer cmd, VkBuffer 
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyImage(VkCommandBuffer cmd, VkImage src, VkImageLayout src_layout, VkImage dst,
     VkImageLayout dst_layout, uint32_t count, const VkImageCopy *regions) { abort(); }
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyImageToBuffer(VkCommandBuffer cmd, VkImage image, VkImageLayout layout,
-    VkBuffer buffer, uint32_t count, const VkBufferImageCopy *regions) { abort(); }
-VKAPI_ATTR void VKAPI_CALL vkCmdResetQueryPool(VkCommandBuffer cmd, VkQueryPool pool, uint32_t first,
-    uint32_t count) { abort(); }
-VKAPI_ATTR void VKAPI_CALL vkCmdWriteTimestamp2(VkCommandBuffer cmd, VkPipelineStageFlags2 stage,
-    VkQueryPool pool, uint32_t query) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(VkDevice device, const VkBufferCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkBuffer *buffer) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateCommandPool(VkDevice device, const VkCommandPoolCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkCommandPool *pool) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorSetLayout(VkDevice device,
-    const VkDescriptorSetLayoutCreateInfo *info, const VkAllocationCallbacks *allocator,
-    VkDescriptorSetLayout *layout) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreatePipelineLayout(VkDevice device, const VkPipelineLayoutCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkPipelineLayout *layout) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateQueryPool(VkDevice device, const VkQueryPoolCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkQueryPool *pool) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkCreateSampler(VkDevice device, const VkSamplerCreateInfo *info,
-    const VkAllocationCallbacks *allocator, VkSampler *sampler) { abort(); }
+    VkBuffer buffer, uint32_t count, const VkBufferImageCopy *regions)
+{
+    abort();
+}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateBuffer(
+    VkDevice device, const VkBufferCreateInfo *info, const VkAllocationCallbacks *allocator, VkBuffer *buffer)
+{
+    abort();
+}
 VKAPI_ATTR void VKAPI_CALL vkGetBufferMemoryRequirements(VkDevice device, VkBuffer buffer,
     VkMemoryRequirements *requirements) { abort(); }
-VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(VkPhysicalDevice device,
-    VkPhysicalDeviceMemoryProperties *properties) { abort(); }
-VKAPI_ATTR VkResult VKAPI_CALL vkGetQueryPoolResults(VkDevice device, VkQueryPool pool, uint32_t first,
-    uint32_t count, size_t size, void *data, VkDeviceSize stride, VkQueryResultFlags flags) { abort(); }
+VKAPI_ATTR void VKAPI_CALL vkGetPhysicalDeviceMemoryProperties(
+    VkPhysicalDevice device, VkPhysicalDeviceMemoryProperties *properties)
+{
+    abort();
+}
 VKAPI_ATTR VkResult VKAPI_CALL vkMapMemory(VkDevice device, VkDeviceMemory memory, VkDeviceSize offset,
     VkDeviceSize size, VkMemoryMapFlags flags, void **data) { abort(); }
 
-VKAPI_ATTR void VKAPI_CALL vkCmdPipelineBarrier2(VkCommandBuffer cmd, const VkDependencyInfo *dependency) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdBeginRendering(VkCommandBuffer cmd, const VkRenderingInfo *info) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdEndRendering(VkCommandBuffer cmd) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdSetViewport(VkCommandBuffer cmd, uint32_t first, uint32_t count,
-    const VkViewport *viewports) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdSetScissor(VkCommandBuffer cmd, uint32_t first, uint32_t count,
-    const VkRect2D *scissors) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdBindPipeline(VkCommandBuffer cmd, VkPipelineBindPoint point, VkPipeline pipeline) {}
 VKAPI_ATTR void VKAPI_CALL vkCmdPushDescriptorSet(VkCommandBuffer cmd, VkPipelineBindPoint point,
-    VkPipelineLayout layout, uint32_t set, uint32_t count, const VkWriteDescriptorSet *writes) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdPushConstants(VkCommandBuffer cmd, VkPipelineLayout layout,
-    VkShaderStageFlags stages, uint32_t offset, uint32_t size, const void *values) {}
-VKAPI_ATTR void VKAPI_CALL vkCmdDraw(VkCommandBuffer cmd, uint32_t vertices, uint32_t instances,
-    uint32_t first_vertex, uint32_t first_instance) {}
+    VkPipelineLayout layout, uint32_t set, uint32_t count, const VkWriteDescriptorSet *writes)
+{
+}
 
 // --------------------------------------------- explicit sync, faked --
 

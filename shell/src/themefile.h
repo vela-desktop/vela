@@ -322,7 +322,7 @@ struct Problem {
         UnsupportedSchema, // schema-version= other than schemaVersion
         TooLarge, // a file over maxFileSize
     };
-    Kind kind;
+    Kind kind {};
     QString file;
     int line = 0;
     QString key;
@@ -828,7 +828,8 @@ inline QVariantMap themeSurfacePictures(const QString& theme, const QString& sur
     if (!validName(theme) || layer == Theme || layer >= LayerCount) {
         return {};
     }
-    for (const QString& file : resolve(theme, Theme).files) {
+    const QStringList files = resolve(theme, Theme).files;
+    for (const QString& file : files) {
         const QString name = QFileInfo(file).completeBaseName();
         if (const QStringList images = pictures(QStringLiteral("themes/") + name, surface, layer == Notifications);
             !images.isEmpty()) {

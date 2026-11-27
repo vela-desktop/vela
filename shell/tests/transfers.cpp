@@ -7,7 +7,7 @@
 #include <QDBusConnection>
 #include <QDBusMessage>
 #include <QSignalSpy>
-#include <QtTest>
+#include <QTest>
 
 class TransferEndpoint : public QObject {
     Q_OBJECT

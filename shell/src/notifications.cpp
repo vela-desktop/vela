@@ -71,7 +71,7 @@ QString keptTag(const QString& tag, int& openLinks)
     }
     if (lower == QLatin1String("/a")) {
         if (openLinks == 0) {
-            return QStringLiteral(""); // closes nothing
+            return QLatin1String(""); // closes nothing: dropped (empty, not null)
         }
         --openLinks;
         return closeLink.toString();

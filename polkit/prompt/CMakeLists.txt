@@ -26,6 +26,7 @@ endforeach()
 qt_add_qml_module(vela-polkit-prompt
     URI Vela.Polkit
     VERSION 1.0
+    IMPORT_PATH ${PROJECT_BINARY_DIR}/common # Vela.Controls, for qmllint
     QML_FILES ${PROMPT_QML_FILES})
 
 target_compile_options(vela-polkit-prompt PRIVATE -Wall -Wextra)

@@ -592,7 +592,11 @@ private slots:
         QTest::addColumn<QString>("key");
         QTest::addColumn<QVariant>("value");
         QTest::addColumn<bool>("present");
-        struct Choice { const char* property; const char* key; QVariant value; };
+        struct Choice {
+            const char* property = nullptr;
+            const char* key = nullptr;
+            QVariant value;
+        };
         const QList<Choice> choices {
             { "accent", "appearance/accent", QColor(Qt::red) },
             { "accentSource", "appearance/accentSource", QStringLiteral("chosen") },

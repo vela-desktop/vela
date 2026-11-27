@@ -47,8 +47,8 @@ public:
 
     struct Action {
         enum class Kind { Show, Close };
-        Kind kind;
-        Level level; // Show: Low or Critical
+        Kind kind {};
+        Level level {}; // Show: Low or Critical
         BatteryReading reading; // Close: only its id counts
     };
 

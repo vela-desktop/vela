@@ -69,21 +69,7 @@ private:
     void resetFake()
     {
         fake->run([this] {
-            fake->forgetAgents();
-            for (const QString& path : fake->devices.keys()) {
-                fake->removeDevice(path);
-            }
-            for (const QString& name : fake->adapters.keys()) {
-                fake->removeAdapter(name);
-            }
-            fake->addAdapter(hci0, { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") });
-            FakeBluez::Device device;
-            device.adapter = hci0;
-            device.address = QStringLiteral("00:11:22:33:44:01");
-            device.alias = QStringLiteral("Mouse");
-            device.icon = QStringLiteral("input-mouse");
-            device.rssi = -50;
-            mouse = fake->addDevice(device);
+            FakeBluez::Device device = fake->resetToMouse(mouse);
             device.address = QStringLiteral("00:11:22:33:44:05");
             device.alias = QStringLiteral("Phone <b>");
             device.icon = QStringLiteral("phone");

@@ -59,7 +59,8 @@
         <name>ancient</name>
         <shortDescription>ancient</shortDescription>
         <description>Ancient</description>
-        <languageList><iso639Id>got</iso639Id><iso639Id>uga</iso639Id></languageList>
+        <countryList><iso3166Id>AQ</iso3166Id><iso3166Id>XX</iso3166Id></countryList>
+        <languageList><iso639Id>got</iso639Id><iso639Id>uga</iso639Id><iso639Id>qaa</iso639Id></languageList>
       </configItem>
     </layout>
     <layout>

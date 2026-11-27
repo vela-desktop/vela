@@ -108,7 +108,7 @@ target_link_libraries(vela-panel PRIVATE proto-layer-shell proto-background-effe
 vela_client_protocol(proto-output-management ${PROTOCOLS}/wlr-output-management-unstable-v1.xml
     wlr-output-management-unstable-v1)
 add_executable(vela-randr vela-randr.c)
-target_link_libraries(vela-randr PRIVATE proto-output-management)
+target_link_libraries(vela-randr PRIVATE proto-output-management vela-alloc)
 
 # An X11 app (through Xwayland) for the X11 window tests.
 pkg_check_modules(TOOLS_XCB IMPORTED_TARGET xcb)
