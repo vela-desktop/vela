@@ -52,6 +52,7 @@ public:
     static constexpr int thumbnailSize = 400;
 
 signals:
+    void windowClosed(const QString& identifier);
     void thumbnailReady(const QString& identifier);
     void screenCaptured(const QString& screen, bool ok);
 

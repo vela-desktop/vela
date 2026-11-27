@@ -62,6 +62,7 @@ QtObject {
         signal superReleased()
         signal notificationCenterRequested()
         signal quickSettingsRequested()
+        signal snapAssistRequested(string json)
         function now() { return new Date(2026, 10, 15, 23, 59, 59) }
         function placeOnScreen(window, screen) {}
         function placeAtLeft(window, left) {}
@@ -101,7 +102,17 @@ QtObject {
         function collectPopups() {}
     }
     property QtObject effects: QtObject { function setBlur(window, rects, radius) {} }
-    property QtObject apps: QtObject { function actions(id) { return [] } }
+    property QtObject apps: QtObject {
+        function actions(id) { return [] }
+        function iconForAppId(id) { return "" }
+    }
+    property QtObject capture: QtObject {
+        signal thumbnailReady(string identifier)
+        signal windowClosed(string identifier)
+        function capture(identifiers) {}
+        function title(identifier) { return identifier }
+        function appId(identifier) { return identifier }
+    }
     property QtObject jumps: QtObject {
         function pinned(id) { return [] }
         function recent(id, count) { return [] }

@@ -646,6 +646,19 @@ class CustomShortcuts(RealShell):
 
 
 class QtShell(RealShell):
+    def test_snap_assist_closes_when_origin_closes(self):
+        self.vela.open_window(401, 301)
+        origin = self.vela.open_window(640, 360)
+        self.vela.keys("super+Left")
+        self.vela.wait_for(lambda s: self.mapped(s, "vela-snap-assist"), what="Snap Assist")
+        # A client exits while the exclusive shell layer has keyboard focus.
+        self.vela.command(f"window {origin} close")
+        self.vela.wait_for(lambda s: not self.mapped(s, "vela-snap-assist"), what="Snap Assist dismissed")
+        window = self.vela.open_window(640, 360)
+        self.vela.keys("super+Right")
+        self.vela.wait_for(lambda s: s.window(window)["snap"] == [6, 0, 12, 12],
+                           what="next window receives the snap shortcut")
+
     def secondary_output(self, transform="90", scale=1, side="above", size=(1920, 1080)):
         """Configure a real Qt desktop at any side of the main output. Above or
         left of it means a negative position: the compositor then moves the

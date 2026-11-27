@@ -72,11 +72,22 @@ Window {
     Connections {
         target: Capture
         function onThumbnailReady(identifier) { root.revision++ }
+        function onWindowClosed(identifier) {
+            if (!root.visible) return
+            if (identifier === root.origin) {
+                root.close()
+                return
+            }
+            root.candidates = root.candidates.filter(c => c.id !== identifier)
+            if (root.candidates.length === 0) root.close()
+        }
     }
 
     function close() {
         visible = false
         zones = []
+        candidates = []
+        origin = ""
     }
     function pick(id) {
         const z = zones[current]

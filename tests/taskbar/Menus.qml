@@ -7,6 +7,7 @@ import QtQuick
 
 QtObject {
     property var preview: null
+    property var snapLayout: null
     property var trayOverflow: null
     signal advancePreview()
     property bool previewButtonHovered: false

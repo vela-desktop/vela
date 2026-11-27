@@ -1,0 +1,17 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+schema = 1
+seed = 0
+# Omit targets to discover installed normal sessions. Explicit missing targets
+# are errors. CLI --target/--phase selections override the corresponding list.
+# targets = ["vela", "plasma"]
+# phases = ["responsiveness", "motion", "slow-apps", "scaling", "overhead"]
+
+[display]
+output = "primary"
+resolution = "native"
+refresh = "highest-common-fixed"
+scale = 1.0
+brightness_percent = 100
+power_profile = "performance"

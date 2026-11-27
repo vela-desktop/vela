@@ -93,7 +93,9 @@ static void writeChunk(FILE* file, const char* type, const unsigned char* data, 
         fwrite(data, 1, length, file);
     }
     uLong crc = crc32(0, (const Bytef*)type, 4);
-    crc = crc32(crc, data, length);
+    // zlib treats NULL as an initialization request, even at length zero.
+    // IEND has no payload, but its CRC must still cover the chunk type.
+    if (length) crc = crc32(crc, data, length);
     unsigned char trailer[4];
     put32(trailer, (uint32_t)crc);
     fwrite(trailer, 1, 4, file);

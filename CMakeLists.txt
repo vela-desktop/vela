@@ -35,6 +35,10 @@ endif()
 if(VELA_BUILD_TOOLS)
     enable_testing()
     find_package(Python3 3.13 REQUIRED COMPONENTS Interpreter)
+    add_test(NAME benchmark-core COMMAND ${Python3_EXECUTABLE} -m unittest discover
+        -s ${PROJECT_SOURCE_DIR}/benchmarks/tests -v)
+    set_tests_properties(benchmark-core PROPERTIES
+        ENVIRONMENT "PYTHONPATH=${PROJECT_SOURCE_DIR}/benchmarks" TIMEOUT 30)
     add_test(NAME packaging-update COMMAND ${Python3_EXECUTABLE} -m unittest discover
         -s ${PROJECT_SOURCE_DIR}/packaging/tests -v)
     set_tests_properties(packaging-update PROPERTIES TIMEOUT 120 LABELS distro-packaging)
