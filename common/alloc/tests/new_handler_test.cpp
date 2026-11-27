@@ -5,6 +5,7 @@
 // with the policy's one-line report naming the process.
 
 #include "alloc/new_handler.h"
+#include "undervalgrind.h"
 
 #include <cerrno>
 #include <csignal>
@@ -72,6 +73,11 @@ int main()
     std::puts("ASan build: new handler test skipped");
     return 77;
 #else
+    // Valgrind's operator new aborts by itself, before any new handler.
+    if (VELA_UNDER_VALGRIND()) {
+        std::puts("Valgrind: new handler test skipped");
+        return 77;
+    }
     int failures = 0;
     int status = 0;
     std::string text = run_child(

@@ -127,7 +127,10 @@ static bool with_no_free_descriptor(bool (*operation)(void))
                 highest = fd;
             }
         }
-        struct rlimit limit = { (rlim_t)highest + 1, (rlim_t)highest + 1 };
+        // Only the soft limit: Valgrind refuses to move the hard one.
+        struct rlimit limit;
+        CHECK(getrlimit(RLIMIT_NOFILE, &limit) == 0);
+        limit.rlim_cur = (rlim_t)highest + 1;
         if (setrlimit(RLIMIT_NOFILE, &limit) != 0 || open("/dev/null", O_RDONLY) >= 0 || errno != EMFILE) {
             _exit(2); // the setup itself failed
         }

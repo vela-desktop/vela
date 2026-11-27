@@ -11,6 +11,8 @@
 
 #include "../src/scene/frame.c"
 
+#include "undervalgrind.h"
+
 #include <errno.h>
 #include <stdio.h>
 
@@ -256,6 +258,11 @@ static void test_after_drawing(void)
 
 int main(void)
 {
+    // Valgrind's malloc replaces this one, so pixman would never fail.
+    if (VELA_UNDER_VALGRIND()) {
+        puts("Valgrind: damage fallback test skipped");
+        return 77;
+    }
     test_culling();
     test_before_drawing();
     test_after_ring();

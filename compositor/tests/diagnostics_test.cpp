@@ -5,6 +5,8 @@ extern "C" {
 #include "diagnostics.h"
 }
 
+#include "undervalgrind.h"
+
 #include <gtest/gtest.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
@@ -25,7 +27,10 @@ TEST(ProcessResources, CountsDescriptorsAndReturnsToBaseline)
     EXPECT_EQ(during.sockets, before.sockets + 2);
     struct rlimit limit;
     ASSERT_EQ(getrlimit(RLIMIT_NOFILE, &limit), 0);
-    EXPECT_EQ(during.nofile, limit.rlim_cur);
+    // Valgrind keeps descriptors for itself above the limit it reports.
+    if (!VELA_UNDER_VALGRIND()) {
+        EXPECT_EQ(during.nofile, limit.rlim_cur);
+    }
     EXPECT_GT(during.rss_kib, 0u);
     close(event);
     close(pair[0]);

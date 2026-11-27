@@ -476,7 +476,8 @@ if(VELA_BUILD_TOOLS)
     # (the test's own malloc). Not with ASan, whose allocator it would replace.
     if(NOT VELA_TEST_ASAN)
         add_executable(vela-damage-fallback-test tests/damage_fallback_test.c ${VELA_PROTOCOL_HEADERS})
-        target_include_directories(vela-damage-fallback-test PRIVATE src ${VELA_GENERATED_DIR})
+        target_include_directories(vela-damage-fallback-test PRIVATE src ${VELA_GENERATED_DIR}
+            ${PROJECT_SOURCE_DIR}/common/tests)
         target_compile_definitions(vela-damage-fallback-test PRIVATE WLR_USE_UNSTABLE)
         target_compile_options(vela-damage-fallback-test PRIVATE -ffunction-sections -fdata-sections
             -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -Wno-unused-function)
@@ -486,6 +487,7 @@ if(VELA_BUILD_TOOLS)
         set_target_properties(vela-damage-fallback-test PROPERTIES C_STANDARD 17 C_STANDARD_REQUIRED ON
             C_EXTENSIONS OFF)
         add_test(NAME compositor.damage-fallback COMMAND vela-damage-fallback-test)
+        set_tests_properties(compositor.damage-fallback PROPERTIES SKIP_RETURN_CODE 77)
     endif()
     target_link_options(vela-scene-diff-test PRIVATE -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=free)
     add_test(NAME compositor.scene-diff COMMAND vela-scene-diff-test --test)
