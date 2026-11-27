@@ -81,39 +81,22 @@ protected:
         if (started.isEmpty() && !started.wait(5000)) {
             return QStringLiteral("fake BlueZ thread did not start");
         }
-        fake = new FakeBluez;
-        fake->bus = QStringLiteral("fake-bluez");
-        fake->moveToThread(&fakeThread);
-        logind = new FakeLogind;
-        logind->bus = QStringLiteral("fake-logind");
-        logind->moveToThread(&fakeThread);
-        bool ok = false;
-        fake->run([&] {
-            QDBusConnection bluez = QDBusConnection::connectToBus(systemAddress, fake->bus);
-            ok = bluez.registerService(QStringLiteral("org.bluez"))
-                && bluez.registerVirtualObject(QStringLiteral("/"), fake, QDBusConnection::SubPath);
-            QDBusConnection login1 = QDBusConnection::connectToBus(systemAddress, logind->bus);
-            ok = ok && login1.registerService(QStringLiteral("org.freedesktop.login1"))
-                && login1.registerVirtualObject(QStringLiteral("/org/freedesktop/login1"), logind, QDBusConnection::SubPath);
-        });
-        return ok ? QString() : QStringLiteral("the fakes couldn't take their names");
+        return startFakes(fakeThread, systemAddress, fake, logind)
+            ? QString()
+            : QStringLiteral("the fakes couldn't take their names");
     }
 
     void tearDown()
     {
         stopDaemon();
         if (fake && logind && fakeThread.isRunning()) {
-            fake->run([this] {
-                QDBusConnection::disconnectFromBus(fake->bus);
-                QDBusConnection::disconnectFromBus(logind->bus);
-            });
-            QMetaObject::invokeMethod(fake, [this] { delete logind; delete fake; }, Qt::BlockingQueuedConnection);
+            stopFakes(fake, logind);
         } else {
             delete logind;
             delete fake;
+            fake = nullptr;
+            logind = nullptr;
         }
-        fake = nullptr;
-        logind = nullptr;
         if (fakeThread.isRunning()) {
             fakeThread.quit();
             fakeThread.wait();

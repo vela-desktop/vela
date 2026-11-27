@@ -29,24 +29,6 @@ using vela::audio::LevelMeter;
 
 namespace {
 
-bool near(double a, double b)
-{
-    return std::abs(a - b) < 0.006;
-}
-
-bool near(const QList<double>& a, const QList<double>& b)
-{
-    if (a.size() != b.size()) {
-        return false;
-    }
-    for (qsizetype i = 0; i < a.size(); i++) {
-        if (!near(a[i], b[i])) {
-            return false;
-        }
-    }
-    return true;
-}
-
 QVariantMap find(const QVariantList& list, const QString& field, const QString& value)
 {
     for (const QVariant& item : list) {

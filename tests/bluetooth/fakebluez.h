@@ -368,6 +368,32 @@ public:
         agentLog.clear();
     }
 
+    // As each test starts: no agents, and no adapter but hci0 (on, "vela-pc")
+    // with a mouse nearby, whose path goes to `path`. The mouse, for the
+    // test's other devices to start from.
+    Device resetToMouse(QString& path)
+    {
+        forgetAgents();
+        // Copies of the keys: removing changes the maps.
+        const QStringList paths = devices.keys();
+        for (const QString& device : paths) {
+            removeDevice(device);
+        }
+        const QStringList names = adapters.keys();
+        for (const QString& name : names) {
+            removeAdapter(name);
+        }
+        addAdapter(QStringLiteral("hci0"), { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") });
+        Device mouse;
+        mouse.adapter = QStringLiteral("hci0");
+        mouse.address = QStringLiteral("00:11:22:33:44:01");
+        mouse.alias = QStringLiteral("Mouse");
+        mouse.icon = QStringLiteral("input-mouse");
+        mouse.rssi = -50;
+        path = addDevice(mouse);
+        return mouse;
+    }
+
     // The device asks by itself, through the default agent: `method`
     // ("RequestConfirmation", "RequestAuthorization", "AuthorizeService",
     // "RequestPinCode", "RequestPasskey", "DisplayPasskey") with `extra`
@@ -972,3 +998,45 @@ public:
         return false;
     }
 };
+
+// The fake BlueZ and logind in `thread`, on the system bus at `address` as
+// org.bluez and org.freedesktop.login1. False when they couldn't take their
+// names.
+inline bool startFakes(QThread& thread, const QString& address, FakeBluez*& fake, FakeLogind*& logind)
+{
+    fake = new FakeBluez;
+    fake->bus = QStringLiteral("fake-bluez");
+    fake->moveToThread(&thread);
+    logind = new FakeLogind;
+    logind->bus = QStringLiteral("fake-logind");
+    logind->moveToThread(&thread);
+    bool ok = false;
+    fake->run([&] {
+        QDBusConnection bluez = QDBusConnection::connectToBus(address, fake->bus);
+        ok = bluez.registerService(QStringLiteral("org.bluez"))
+            && bluez.registerVirtualObject(QStringLiteral("/"), fake, QDBusConnection::SubPath);
+        QDBusConnection login1 = QDBusConnection::connectToBus(address, logind->bus);
+        ok = ok && login1.registerService(QStringLiteral("org.freedesktop.login1"))
+            && login1.registerVirtualObject(
+                QStringLiteral("/org/freedesktop/login1"), logind, QDBusConnection::SubPath);
+    });
+    return ok;
+}
+
+// Off the bus and deleted, in their thread (still running).
+inline void stopFakes(FakeBluez*& fake, FakeLogind*& logind)
+{
+    fake->run([&] {
+        QDBusConnection::disconnectFromBus(fake->bus);
+        QDBusConnection::disconnectFromBus(logind->bus);
+    });
+    QMetaObject::invokeMethod(
+        fake,
+        [&] {
+            delete logind;
+            delete fake;
+        },
+        Qt::BlockingQueuedConnection);
+    fake = nullptr;
+    logind = nullptr;
+}

@@ -97,24 +97,7 @@ private:
     void resetFake()
     {
         fake->run([this] {
-            fake->forgetAgents();
-            // Copies of the keys: removing changes the maps.
-            const QStringList paths = fake->devices.keys();
-            for (const QString& path : paths) {
-                fake->removeDevice(path);
-            }
-            const QStringList names = fake->adapters.keys();
-            for (const QString& name : names) {
-                fake->removeAdapter(name);
-            }
-            fake->addAdapter(hci0, { QStringLiteral("AA:AA:AA:AA:AA:00"), QStringLiteral("vela-pc") });
-            FakeBluez::Device device;
-            device.adapter = hci0;
-            device.address = QStringLiteral("00:11:22:33:44:01");
-            device.alias = QStringLiteral("Mouse");
-            device.icon = QStringLiteral("input-mouse");
-            device.rssi = -50;
-            mouse = fake->addDevice(device);
+            FakeBluez::Device device = fake->resetToMouse(mouse);
             device.address = QStringLiteral("00:11:22:33:44:02");
             device.alias = QStringLiteral("Headset");
             device.icon = QStringLiteral("audio-headset");

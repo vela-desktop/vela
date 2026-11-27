@@ -13,6 +13,7 @@
 #include <QStringList>
 #include <QTest>
 
+#include <cmath>
 #include <memory>
 
 namespace harness {
@@ -25,6 +26,25 @@ inline const QString microphone = QStringLiteral("vela-test-microphone");
 
 // WirePlumber writes its state about a second after a change (fixture.py).
 constexpr int wireplumberSaveDelayMs = 1500;
+
+// Volumes, equal within a small tolerance.
+inline bool near(double a, double b)
+{
+    return std::abs(a - b) < 0.006;
+}
+
+inline bool near(const QList<double>& a, const QList<double>& b)
+{
+    if (a.size() != b.size()) {
+        return false;
+    }
+    for (qsizetype i = 0; i < a.size(); i++) {
+        if (!near(a[i], b[i])) {
+            return false;
+        }
+    }
+    return true;
+}
 
 // The endpoint a stream is linked to, by name, or why there is none. A check
 // that waits on it fails with that reason when the stream is missing from
