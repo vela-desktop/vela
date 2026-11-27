@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 name: Valgrind Memcheck
 # Nightly, by hand, and on PRs that change how Memcheck runs. Each CPU lane
-# of docs/ci-lanes.md runs under Memcheck on its own runner: the native lane
-# fails on any test failure or defect; the Qt lane is a report until its
-# findings are triaged ("Stage 3").
+# of docs/ci-lanes.md runs under Memcheck on its own runner and fails on any
+# test failure or defect ("Stage 3").
 on:
   schedule:
     - cron: '35 3 * * *'
@@ -32,7 +31,6 @@ jobs:
         lane: [native, qt]
     runs-on: ubuntu-latest
     timeout-minutes: 120
-    continue-on-error: ${{ matrix.lane == 'qt' }}
     container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
     env:
       QT_QPA_PLATFORM: offscreen

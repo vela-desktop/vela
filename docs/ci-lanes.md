@@ -1,8 +1,6 @@
 # CI lanes: native and Qt
 
 > **Status:** Accepted. **Checked:** 27 November 2026, `61f4dd73`.
->
-> **Remaining:** the Qt lane of stage 3 fails on Memcheck defects once its six timing failures are fixed; see [Stage 3](#stage-3-memcheck-per-lane).
 
 ## Decision in one paragraph
 
@@ -198,10 +196,8 @@ separate change.
 
 `valgrind.yml` runs each CPU lane under Valgrind Memcheck on its own runner:
 nightly, by hand, and on PRs that change the workflow, `ci-lanes.py`,
-`scripts/memcheck.sh` or `scripts/valgrind.supp`. The **native** lane fails
-on any test failure or Memcheck defect. The **Qt** lane is a report
-(`continue-on-error`) until its timing failures below are fixed; then it
-fails on defects too.
+`scripts/memcheck.sh` or `scripts/valgrind.supp`. Both lanes fail on any
+test failure or Memcheck defect.
 
 `scripts/memcheck.sh LANE BUILD` takes the lane's tests from `ci-lanes.py`
 and keeps those whose command is a program of the build tree. Two native
@@ -227,7 +223,11 @@ What the failures were, and what removed them:
   it reports, refuses to move the hard descriptor limit, and ends a process
   whose `execve` fails. The tests of those behaviours skip that one check
   under Valgrind (`common/tests/undervalgrind.h`), or, for the descriptor
-  limit, lower only the soft limit, which works in both.
+  limit, lower only the soft limit, which works in both. Last, a process
+  under Valgrind is Valgrind's tool in `/proc/PID/exe`, where the test
+  build of `vela-bluetooth` looks for the UI it trusts: the Bluetooth tests
+  name the tool to it under Valgrind (`tests/bluetooth/trust.h`). The test
+  build reads that name; the installed daemon never does.
 - **Code generated at run time** has no symbols, and PCRE2's reads whole
   vectors past the end of a string: the script sets
   `QT_ENABLE_REGEXP_JIT=0` and `QV4_FORCE_INTERPRETER=1`.
@@ -243,12 +243,9 @@ What the failures were, and what removed them:
   probe, libglvnd's and librsvg's blocks, and the TLS of threads that are
   alive at exit or absent in a forked child. It never names a frame of
   Vela's code.
-
-The six Qt failures left are assertions with a fixed wait that Memcheck's
-slowdown outruns: `bluetooth-daemon`, `bluetooth-client` and
-`bluetooth-shell` (the daemon and its questions within a few seconds), and
-three `shell-controls-expressive` variants (a check box's colour read
-before its animation ends, `tst_controls.qml`).
+- **Animations.** `tst_controls.qml` read the expressive check box's fill
+  while it still faded out from the test before; it now waits for the
+  fade, as it already did for the other colours.
 
 The build uses ccache, like the other Arch jobs: 15 minutes with an empty
 cache.
