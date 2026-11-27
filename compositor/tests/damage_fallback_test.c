@@ -258,15 +258,17 @@ static void test_after_drawing(void)
 
 int main(void)
 {
+    // Needs no failing allocator (its counters are local), so Memcheck
+    // still sees the frame damage handling and the region cleanup.
+    test_after_drawing();
     // Valgrind's malloc replaces this one, so pixman would never fail.
     if (VELA_UNDER_VALGRIND()) {
-        puts("Valgrind: damage fallback test skipped");
+        puts("Valgrind: damage fallback allocator-failure checks skipped");
         return 77;
     }
     test_culling();
     test_before_drawing();
     test_after_ring();
-    test_after_drawing();
     puts("damage fallback passed");
     return 0;
 }
