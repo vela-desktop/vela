@@ -12,6 +12,7 @@
 // initTestCase() and cleanupTestCase().
 
 #include "fakebluez.h"
+#include "trust.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -136,6 +137,7 @@ protected:
         environment.insert(QStringLiteral("VELA_SYSFS"), home.filePath(QStringLiteral("sys")));
         environment.insert(QStringLiteral("XDG_CONFIG_HOME"), home.filePath(QStringLiteral("config")));
         environment.insert(QStringLiteral("XDG_SESSION_ID"), QStringLiteral("fake"));
+        trustThisTest(environment);
         daemon.setProcessEnvironment(environment);
         daemon.setProcessChannelMode(QProcess::ForwardedErrorChannel);
         daemon.start(QStringLiteral(VELA_BLUETOOTH_DAEMON), {});

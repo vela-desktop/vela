@@ -9,6 +9,7 @@
 // this test is the UI the test build trusts.
 
 #include "fakebluez.h"
+#include "trust.h"
 
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -321,6 +322,7 @@ class BluetoothDaemon : public QObject, protected QDBusContext {
         if (restartWindowMs > 0) {
             environment.insert(QStringLiteral("VELA_BT_RESTART_WINDOW_MS"), QString::number(restartWindowMs));
         }
+        trustThisTest(environment);
         for (auto it = extra.begin(); it != extra.end(); ++it) {
             environment.insert(it.key(), it.value());
         }
