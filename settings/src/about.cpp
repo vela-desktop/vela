@@ -3,6 +3,7 @@
 
 #include "processlaunch.h"
 #include "about.h"
+#include "systeminfo.h"
 
 #include <QCoreApplication>
 #include <QDBusConnection>
@@ -15,7 +16,6 @@
 #include <QFileInfo>
 #include <QLocale>
 #include <QProcess>
-#include <QRegularExpression>
 #include <QSysInfo>
 #include <QVariantMap>
 
@@ -40,72 +40,13 @@ QString readFile(const QString& path)
     return file.open(QIODevice::ReadOnly) ? QString::fromUtf8(file.readAll()) : QString();
 }
 
-QString cpuName()
-{
-    const QString cpuinfo = readFile(QStringLiteral("/proc/cpuinfo"));
-    static const QRegularExpression model(
-        QStringLiteral("^model name\\s*:\\s*(.+)$"), QRegularExpression::MultilineOption);
-    const QRegularExpressionMatch m = model.match(cpuinfo);
-    QString name = m.hasMatch() ? m.captured(1).trimmed() : QSysInfo::currentCpuArchitecture();
-    const int threads = cpuinfo.count(QStringLiteral("processor\t:"));
-    return threads > 0 ? name + QStringLiteral("   (") + QString::number(threads) + QStringLiteral(" thread)") : name;
-}
-
-QString memory()
-{
-    static const QRegularExpression total(QStringLiteral("MemTotal:\\s*(\\d+) kB"));
-    const QRegularExpressionMatch m = total.match(readFile(QStringLiteral("/proc/meminfo")));
-    if (!m.hasMatch()) {
-        return {};
-    }
-    const double gib = m.captured(1).toDouble() / 1024.0 / 1024.0;
-    return QLocale().toString(gib, 'f', 1) + QCoreApplication::translate("About", " GB (usable)");
-}
-
 /** Query PCI graphics devices through an external process with the user's environment. */
 QStringList graphics()
 {
-    // lspci: "03:00.0 VGA compatible controller: Advanced Micro Devices, Inc.
-    // [AMD/ATI] Navi 48 [Radeon RX 9070...]"
     vela::process::ExternalProcess lspci;
     lspci.start(QStringLiteral("lspci"), QStringList {});
     lspci.waitForFinished(2000);
-    static const QRegularExpression revision(QStringLiteral("\\s*\\(rev [0-9a-f]+\\)$"));
-    static const QRegularExpression marketingName(QStringLiteral("\\[([^\\]]+)\\]$"));
-    QStringList out;
-    for (const QString& line : QString::fromUtf8(lspci.readAllStandardOutput()).split(u'\n')) {
-        if (!line.contains(QLatin1String("VGA compatible")) && !line.contains(QLatin1String("3D controller"))
-            && !line.contains(QLatin1String("Display controller"))) {
-            continue;
-        }
-        QString name = line.section(QStringLiteral(": "), 1).remove(revision);
-        // The marketing name in square brackets, when present, says more.
-        const QRegularExpressionMatch bracket = marketingName.match(name);
-        if (name.startsWith(QLatin1String("Advanced Micro Devices"))) {
-            name = QStringLiteral("AMD ") + (bracket.hasMatch() ? bracket.captured(1) : name.section(u']', 1).trimmed());
-        } else if (name.startsWith(QLatin1String("NVIDIA"))) {
-            name = QStringLiteral("NVIDIA ") + (bracket.hasMatch() ? bracket.captured(1) : name.section(u' ', 2));
-        } else if (name.startsWith(QLatin1String("Intel"))) {
-            name = QStringLiteral("Intel ") + (bracket.hasMatch() ? bracket.captured(1) : name.section(u' ', 2));
-        }
-        out << name;
-    }
-    return out;
-}
-
-QString osRelease(const QString& key)
-{
-    // KEY=value or KEY="value", one per line.
-    static const QRegularExpression assignment(
-        QStringLiteral("^([A-Za-z0-9_]+)=\"?([^\"\\n]*)\"?$"), QRegularExpression::MultilineOption);
-    const QString text = readFile(QStringLiteral("/etc/os-release"));
-    for (auto it = assignment.globalMatch(text); it.hasNext();) {
-        const QRegularExpressionMatch m = it.next();
-        if (m.captured(1) == key) {
-            return m.captured(2);
-        }
-    }
-    return {};
+    return systeminfo::graphicsCards(QString::fromUtf8(lspci.readAllStandardOutput()));
 }
 
 } // namespace
@@ -127,8 +68,12 @@ About::About(QObject* parent)
         : QStringLiteral("computer");
 
     m_device << row(QCoreApplication::translate("About", "Device name"), m_hostname);
-    m_device << row(QCoreApplication::translate("About", "Processor"), cpuName());
-    m_device << row(QCoreApplication::translate("About", "Installed RAM"), memory());
+    m_device << row(QCoreApplication::translate("About", "Processor"),
+        systeminfo::cpuName(readFile(QStringLiteral("/proc/cpuinfo")), QSysInfo::currentCpuArchitecture()));
+    const std::optional<double> memory = systeminfo::memoryGiB(readFile(QStringLiteral("/proc/meminfo")));
+    m_device << row(QCoreApplication::translate("About", "Installed RAM"),
+        memory ? QLocale().toString(*memory, 'f', 1) + QCoreApplication::translate("About", " GB (usable)")
+               : QString());
     const QStringList gpus = graphics();
     for (const QString& gpu : gpus) {
         m_device << row(QCoreApplication::translate("About", "Graphics card"), gpu);
@@ -143,7 +88,7 @@ About::About(QObject* parent)
     m_device << row(QCoreApplication::translate("About", "System type"),
         QCoreApplication::translate("About", "%1-bit operating system, %2 processor").arg(QSysInfo::WordSize).arg(QSysInfo::currentCpuArchitecture()));
 
-    QString os = osRelease(QStringLiteral("PRETTY_NAME"));
+    QString os = systeminfo::osReleaseValue(readFile(QStringLiteral("/etc/os-release")), QStringLiteral("PRETTY_NAME"));
     if (os.isEmpty()) {
         os = QSysInfo::prettyProductName();
     }
