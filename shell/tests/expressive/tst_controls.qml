@@ -70,7 +70,8 @@ Item {
             compare(box.radius, 2)
             compare(box.border.width, 2)
             verify(Colors.same(box.border.color, Theme.surfaceVariantText))
-            compare(box.color.a, 0)
+            // init() unchecks it: the fill fades out (Fill's Behavior).
+            tryVerify(() => box.color.a === 0, 5000)
             verify(layer.visible)
             compare(layer.width, 40)
             mouseMove(check, 9, 11)

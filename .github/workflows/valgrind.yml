@@ -1,0 +1,90 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+name: Valgrind Memcheck
+# Nightly, by hand, and on PRs that change how Memcheck runs. Each CPU lane
+# of docs/ci-lanes.md runs under Memcheck on its own runner and fails on any
+# test failure or defect ("Stage 3").
+on:
+  schedule:
+    - cron: '35 3 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/valgrind.yml'
+      - 'scripts/ci-lanes.py'
+      - 'scripts/memcheck.sh'
+      - 'scripts/valgrind.supp'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: valgrind-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  memcheck:
+    name: memcheck (${{ matrix.lane }})
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [native, qt]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    container: archlinux@sha256:522dd24e4a16f41afe71c7561febe519f7575404c291565e9f0be823d1794ca4
+    env:
+      QT_QPA_PLATFORM: offscreen
+      # Non-login CI shells do not load Arch's debuginfod profile script.
+      DEBUGINFOD_URLS: https://debuginfod.archlinux.org
+      CCACHE_DIR: ${{ github.workspace }}/.ccache-valgrind
+      CCACHE_MAXSIZE: 1G
+      LANE: ${{ matrix.lane }}
+    steps:
+      - name: Dependencies
+        run: >-
+          pacman -Syu --noconfirm --needed
+          base-devel git cmake ninja ccache shaderc vulkan-headers vulkan-icd-loader
+          gtest python openssh wayland wayland-protocols wlroots0.20
+          libxkbcommon pixman libinput libdrm mesa freetype2 harfbuzz
+          fontconfig librsvg cairo zlib pam polkit qt6-base qt6-declarative
+          qt6-svg qt6-wayland qt6-tools layer-shell-qt hicolor-icon-theme
+          pipewire wireplumber systemd-libs valgrind debuginfod
+      - name: Verify Valgrind startup
+        timeout-minutes: 5
+        run: |
+          # The stripped glibc loader requires matching debug symbols for Memcheck.
+          # Fail before building Vela if the runner cannot initialize Valgrind.
+          command -v debuginfod-find
+          valgrind --tool=memcheck --error-exitcode=99 /usr/bin/true
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore compiler cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ccache-valgrind
+          key: ccache-arch-valgrind-debug-v1-${{ github.event.pull_request.base.sha || github.sha }}
+          restore-keys: |
+            ccache-arch-valgrind-debug-v1-
+      # Debug, without sanitizers: Memcheck replaces the allocator itself.
+      - name: Configure
+        run: >-
+          cmake -S . -B build-valgrind -G Ninja -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+          -DVELA_BUILD_TOOLS=ON -DVELA_BUILD_GPU_TEST_TOOLS=OFF
+          -DVELA_TEST_TIMEOUT_SCALE=10
+      - name: Build
+        run: |
+          ccache --zero-stats
+          cmake --build build-valgrind
+          ccache --show-stats
+      - name: Run the lane under Memcheck
+        run: bash scripts/memcheck.sh "$LANE" build-valgrind
+      - name: Upload Memcheck logs
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: valgrind-${{ matrix.lane }}
+          path: build-valgrind/Testing/
+          if-no-files-found: ignore
+          retention-days: 14

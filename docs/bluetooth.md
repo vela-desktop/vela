@@ -215,9 +215,10 @@ register such switches.
 - A hard block can't be removed from software. The switch shows Off and
   BlueZ's refusal turns it back, as today (`requested.h`).
 
-`VELA_RFKILL` and `VELA_SYSFS` replace `/dev/rfkill` and `/sys` in the tests.
-Only the test build of the daemon (`vela-bluetooth-testing`, never
-installed) reads them.
+`VELA_RFKILL` and `VELA_SYSFS` replace `/dev/rfkill` and `/sys` in the tests,
+and `VELA_BT_TRUSTED_EXE` adds the executable a test runs in under Valgrind
+to the UI it trusts (§7.3). Only the test build of the daemon
+(`vela-bluetooth-testing`, never installed) reads them.
 
 **Without an adapter**, the property `PlatformBlocked` (§7.1) is true while a
 platform switch of type Bluetooth is blocked: the switch shows Off and can

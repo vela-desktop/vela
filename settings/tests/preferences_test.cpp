@@ -12,6 +12,7 @@
 #include "controls.h"
 #include "preferences.h"
 #include "privatehome.h"
+#include "undervalgrind.h"
 
 #include <unistd.h>
 #include <utility>
@@ -230,6 +231,9 @@ private slots:
     /** An executable whose interpreter is unavailable must report its launch failure. */
     void brokenFolderOpener()
     {
+        if (VELA_UNDER_VALGRIND()) {
+            QSKIP("Valgrind ends a process whose execve fails instead of returning the error");
+        }
         const QByteArray originalPath = qgetenv("PATH");
         const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
         const QString bin = home().filePath(QStringLiteral("broken-bin"));

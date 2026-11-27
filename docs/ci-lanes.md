@@ -1,8 +1,6 @@
 # CI lanes: native and Qt
 
-> **Status:** Accepted. **Checked:** 26 November 2026, `889acefa`.
->
-> **Remaining:** stage 3, Memcheck per lane, after #324; see [Stage 3](#stage-3-memcheck-per-lane-after-324).
+> **Status:** Accepted. **Checked:** 27 November 2026, `61f4dd73`.
 
 ## Decision in one paragraph
 
@@ -194,20 +192,67 @@ analyser can therefore move a count without any change in Vela. The job on
 `main` shows that first; the fix is to adjust the code or the ceiling in a
 separate change.
 
-## Stage 3: Memcheck per lane (after #324)
+## Stage 3: Memcheck per lane
 
-The first full run of the Memcheck workflow proposed in #324 (run
-45841386812) selected every ELF test of the build tree:
+`valgrind.yml` runs each CPU lane under Valgrind Memcheck on its own runner:
+nightly, by hand, and on PRs that change the workflow, `ci-lanes.py`,
+`scripts/memcheck.sh` or `scripts/valgrind.supp`. Both lanes fail on any
+test failure or Memcheck defect.
 
-| Lane | Tests | Summed time | Failures |
-|---|---:|---:|---:|
-| Native | 366 | 852 s | 8 |
-| Qt | 68 | 2,365 s | 45, including 13 timeouts |
+`scripts/memcheck.sh LANE BUILD` takes the lane's tests from `ci-lanes.py`
+and keeps those whose command is a program of the build tree. Two native
+and twelve Qt tests start through Python or `dbus-run-session`, which would
+put the wrapper under Memcheck instead of Vela; they wait for a harness of
+their own.
 
-Once #324 is merged, its selection becomes `ci-lanes.py tests --lane`. The
-native lane fails on defects once its 8 failures are triaged. The Qt lane
-runs as a nightly report, with per-test timeouts set from measured times.
-The Memcheck build should use ccache: 18 of its 45 minutes were compilation.
+Failures in the first full run (45841386812) and after this stage (run
+46031469788, `073ffa14`):
+
+| Lane | Tests | First run | Now | Memcheck defects now | Memcheck step |
+|---|---:|---:|---:|---:|---:|
+| Native | 367 | 8 | 0 | 0 | 7 min |
+| Qt | 71 | 45, including 13 timeouts | 0 | 0 | 13 min |
+
+What the failures were, and what removed them:
+
+- **What Valgrind cannot emulate.** It does not implement
+  `pidfd_send_signal` (3.25), which `security_policy.c` used to confirm a
+  peer was still alive: the check now polls the pidfd, which turns readable
+  when the process exits, and works under Memcheck. Valgrind also replaces
+  `operator new` and `malloc` with its own, keeps descriptors above the limit
+  it reports, refuses to move the hard descriptor limit, and ends a process
+  whose `execve` fails. The tests of those behaviours skip that one check
+  under Valgrind (`common/tests/undervalgrind.h`), or, for the descriptor
+  limit, lower only the soft limit, which works in both. Last, a process
+  under Valgrind is Valgrind's tool in `/proc/PID/exe`, where the test
+  build of `vela-bluetooth` looks for the UI it trusts: the Bluetooth tests
+  name the tool to it under Valgrind (`tests/bluetooth/trust.h`). The test
+  build reads that name; the installed daemon never does.
+- **Code generated at run time** has no symbols, and PCRE2's reads whole
+  vectors past the end of a string: the script sets
+  `QT_ENABLE_REGEXP_JIT=0` and `QV4_FORCE_INTERPRETER=1`.
+- **Debug information.** Memcheck needs glibc's, through debuginfod, and
+  reads every library's the same way. With every test process downloading
+  the same 500 MB at once, the Qt tests spent their timeouts waiting; the
+  script now fetches each library's once, before the tests.
+- **Timeouts.** CTest's default timeout does not reach tests that declare
+  their own. `-DVELA_TEST_TIMEOUT_SCALE=10` multiplies every declared
+  `TIMEOUT` at configure time.
+- **Other projects' code.** `scripts/valgrind.supp` suppresses what is not
+  a defect, each entry with its reason: Qt's vector loads and its `waitid`
+  probe, libglvnd's and librsvg's blocks, and the TLS of threads that are
+  alive at exit or absent in a forked child. It never names a frame of
+  Vela's code.
+- **Waits.** `tst_controls.qml` read the expressive check box's fill
+  while it still faded out from the test before; it now waits for the
+  fade, as it already did for the other colours. `bluetooth-daemon` read
+  the last operation before its first signal could arrive, and aborted on
+  the empty list; and an aborted Bluetooth test left its buses and daemon
+  running, which kept CTest waiting for the whole timeout. The test's
+  children now end with it (`tests/bluetooth/children.h`).
+
+The build uses ccache, like the other Arch jobs: 15 minutes with an empty
+cache.
 
 ## Wall time
 

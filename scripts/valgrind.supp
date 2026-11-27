@@ -1,0 +1,76 @@
+# SPDX-FileCopyrightText: 2026 Brando Giuffrida
+# SPDX-License-Identifier: GPL-3.0-or-later
+#
+# Memcheck reports in other projects' code that are not defects
+# (docs/ci-lanes.md, "Stage 3"). Each entry is as narrow as its stack allows
+# and says why it is safe. Never suppress a frame of Vela's own code here.
+
+# QtCore's AES hash loads whole 16-byte vectors and masks the bytes past the
+# end of the key; it never crosses into another page.
+{
+   qt-aeshash-loads-whole-vectors
+   Memcheck:Addr16
+   ...
+   fun:*aeshash128*
+}
+
+# forkfd probes pidfd support with waitid(P_PIDFD, ..., NULL, ...), a null
+# infop the kernel accepts and Valgrind takes for an unaddressable one.
+{
+   qt-forkfd-probes-waitid-with-null-infop
+   Memcheck:Param
+   waitid(infop)
+   fun:syscall
+   ...
+   fun:vforkfd*
+}
+
+# libglvnd registers its dispatch callbacks once, when the library is loaded,
+# and keeps them for the life of the process.
+{
+   glvnd-dispatch-callbacks-at-load
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   fun:RegisterStubCallbacks
+}
+
+# librsvg's CSS selectors live in servo_arc blocks, which are reached through
+# a pointer past their header: Memcheck sees only an interior pointer.
+{
+   librsvg-servo-arc-interior-pointers
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:malloc
+   ...
+   obj:*/librsvg-2.so*
+}
+
+# A thread's TLS block is reached only from its descriptor, inside its stack.
+# Memcheck counts it as lost when the thread never ends before exit (Qt's
+# thread pool and QtTest's watchdog), or in a forked child, where the
+# parent's threads do not exist (QProcess when exec fails).
+{
+   glibc-tls-of-a-thread-alive-at-exit
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   ...
+   fun:pthread_create*
+}
+
+# GLib keeps a thread's stack of default main contexts in that thread's TLS:
+# lost with the TLS above, in a forked child of a process with a QThread.
+{
+   glib-thread-default-contexts-in-tls
+   Memcheck:Leak
+   match-leak-kinds: definite
+   fun:malloc
+   fun:g_malloc
+   fun:g_queue_new
+   ...
+   fun:g_main_context_push_thread_default
+}

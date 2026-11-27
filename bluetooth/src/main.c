@@ -31,7 +31,13 @@
 static const char *const *ui_executables(void)
 {
 #ifdef VELA_BLUETOOTH_TESTING
-    static const char *const testing[] = { VELA_BT_TEST_UI, VELA_BT_TEST_CLIENT, VELA_BT_TEST_SHELL, NULL };
+    // And the executable a test runs in when that isn't its own: Valgrind's
+    // tool (tests/bluetooth/trust.h).
+    static const char *testing[] = { VELA_BT_TEST_UI, VELA_BT_TEST_CLIENT, VELA_BT_TEST_SHELL, NULL, NULL };
+    const char *trusted = secure_getenv("VELA_BT_TRUSTED_EXE");
+    if (trusted && *trusted == '/') {
+        testing[3] = trusted;
+    }
     return testing;
 #else
     static const char *const installed[] = { VELA_BT_SHELL, VELA_BT_SETTINGS, NULL };
