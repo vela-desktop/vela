@@ -3,6 +3,7 @@
 
 #include "shellcontroller.h"
 
+#include "compositorsocket.h"
 #include "mica.h"
 #include "wallpapercolor.h"
 #include "../../common/primaryoutput.h"
@@ -175,19 +176,13 @@ bool ShellController::sendToRunningInstance(const QByteArray& command)
     return true;
 }
 
-// The compositor's command socket: see vela_commands_listen() (command.c).
 bool ShellController::sendToCompositor(const QByteArray& command)
 {
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
     QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(300)) {
+    if (!compositor::send(socket, command, 300)) {
         qWarning("vela-shell: the compositor isn't responding (%s)", command.constData());
         return false;
     }
-    socket.write(command + '\n');
-    socket.waitForBytesWritten(300);
     socket.disconnectFromServer();
     return true;
 }
@@ -629,17 +624,6 @@ QDateTime ShellController::now() const
 
 bool ShellController::shiftHeld() const
 {
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(100)) {
-        return false;
-    }
-    socket.write("modifiers\n");
-    if (!socket.waitForBytesWritten(100) || !socket.waitForReadyRead(100)) {
-        return false;
-    }
     constexpr int shift = 1; // WLR_MODIFIER_SHIFT
-    return socket.readLine().trimmed().toInt() & shift;
+    return compositor::ask("modifiers", 100).toInt() & shift;
 }

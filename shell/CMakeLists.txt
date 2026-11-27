@@ -25,6 +25,7 @@ qt_add_executable(vela-shell
     src/mimeapps.h
     src/clipboard.cpp
     src/clipboard.h
+    src/compositorsocket.h
     src/snip.cpp
     src/snip.h
     src/shortcutrunner.cpp
@@ -528,6 +529,15 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-brightness-model-test PRIVATE Qt6::Core Qt6::Network Qt6::Test)
     add_test(NAME shell-brightness-model COMMAND vela-brightness-model-test)
     set_tests_properties(shell-brightness-model PROPERTIES TIMEOUT 60)
+
+    # Accessibility and caffeine against a fake compositor socket.
+    qt_add_executable(vela-accessibility-test tests/accessibility_test.cpp src/accessibility.cpp src/accessibility.h
+        src/compositorsocket.h)
+    target_include_directories(vela-accessibility-test PRIVATE src)
+    target_compile_options(vela-accessibility-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-accessibility-test PRIVATE Qt6::DBus Qt6::Gui Qt6::Network Qt6::Test)
+    add_test(NAME shell-accessibility COMMAND vela-accessibility-test)
+    set_tests_properties(shell-accessibility PROPERTIES TIMEOUT 60)
 
     qt_add_executable(vela-primary-output-test tests/primaryoutput.cpp ${PROJECT_SOURCE_DIR}/common/primaryoutput.h)
     target_compile_options(vela-primary-output-test PRIVATE -Wall -Wextra)

@@ -3,23 +3,17 @@
 
 #include "brightness.h"
 
+#include "compositorsocket.h"
+
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QStandardPaths>
 
 #include <algorithm>
 #include <cmath>
 
 namespace {
-
-QString sessionSocket()
-{
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    return runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock");
-}
 
 qint64 now()
 {
@@ -30,7 +24,7 @@ qint64 now()
 
 Brightness::Brightness(QObject* parent, const QString& socketPath, int timeoutMs)
     : QObject(parent)
-    , m_path(socketPath.isEmpty() ? sessionSocket() : socketPath)
+    , m_path(socketPath.isEmpty() ? compositor::socketPath() : socketPath)
     , m_timeout(timeoutMs)
 {
     // The compositor may start after us, or restart: try again every second.

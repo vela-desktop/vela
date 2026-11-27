@@ -3,20 +3,14 @@
 
 #include "screensharing.h"
 
+#include "compositorsocket.h"
+
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QScreen>
-#include <QStandardPaths>
 
 namespace {
-
-QString sessionSocket()
-{
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    return runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock");
-}
 
 const QString fallbackIcon = QStringLiteral("video-display");
 
@@ -39,7 +33,7 @@ QString outputLabel(const QJsonObject& target)
 ScreenSharing::ScreenSharing(Resolver resolver, QObject* parent, const QString& socketPath, int graceMs)
     : QObject(parent)
     , m_resolver(std::move(resolver))
-    , m_path(socketPath.isEmpty() ? sessionSocket() : socketPath)
+    , m_path(socketPath.isEmpty() ? compositor::socketPath() : socketPath)
 {
     m_retry.setSingleShot(true);
     m_retry.setInterval(1000);

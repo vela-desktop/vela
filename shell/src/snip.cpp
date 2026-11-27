@@ -7,6 +7,7 @@
 #include "../../common/privatefile.h"
 
 #include "clipboard.h"
+#include "compositorsocket.h"
 #include "notifications.h"
 #include "windowcapture.h"
 
@@ -18,7 +19,6 @@
 #include <QGuiApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
-#include <QLocalSocket>
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QScreen>
@@ -32,20 +32,7 @@ namespace {
 // The visible windows, asked of the compositor.
 QVariantList queryWindows()
 {
-    const QString runtimeDir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
-    const QString display = qEnvironmentVariable("WAYLAND_DISPLAY", QStringLiteral("wayland-0"));
-    QLocalSocket socket;
-    socket.connectToServer(runtimeDir + QStringLiteral("/vela-") + display + QStringLiteral(".sock"));
-    if (!socket.waitForConnected(200)) {
-        return {};
-    }
-    socket.write("window-rects\n");
-    socket.waitForBytesWritten(200);
-    QByteArray reply;
-    while (!reply.contains('\n') && socket.waitForReadyRead(200)) {
-        reply += socket.readAll();
-    }
-    return QJsonDocument::fromJson(reply.trimmed()).array().toVariantList();
+    return QJsonDocument::fromJson(compositor::ask("window-rects", 200)).array().toVariantList();
 }
 
 } // namespace
