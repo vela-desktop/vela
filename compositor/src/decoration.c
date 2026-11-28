@@ -509,7 +509,12 @@ void vela_decoration_refresh_text(struct vela_decoration *decoration, const stru
 
 void vela_decoration_refresh_icon(struct vela_decoration *decoration, const struct vela_decoration_state *state)
 {
-    update_icon(decoration, state);
+    // As for a new app id: the icon from the new theme, at the window's
+    // opacity, and the title moved where the icon (now there or gone)
+    // leaves it.
+    free(decoration->app_id);
+    decoration->app_id = NULL;
+    vela_decoration_update(decoration, state);
 }
 
 struct vela_decoration *vela_decoration_create(struct vela_server *server, struct vela_tree *parent,

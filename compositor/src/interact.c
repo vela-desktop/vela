@@ -141,7 +141,7 @@ static struct vela_view *resize_border_at(struct vela_server *server, double lx,
 static void set_cursor(struct vela_server *server, const char *name)
 {
     server->interaction->cursor = name;
-    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, name);
+    vela_input_set_cursor_name(server, name);
 }
 
 static void unhover_decoration(struct vela_interaction *interaction)

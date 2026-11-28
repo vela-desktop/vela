@@ -923,7 +923,7 @@ void vela_lock_engage(struct vela_lock *lock)
     // Revoke constraints from the previously focused application as well.
     // Its pointer lock must not remain active through session locking.
     vela_input_constrain(server->input, NULL);
-    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, "default");
+    vela_input_set_cursor_name(server, "default");
     vela_lock_update_layout(lock);
     vela_scene_changed(server->scene);
     wlr_log(WLR_INFO, "Screen locked");
