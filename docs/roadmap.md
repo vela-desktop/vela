@@ -228,6 +228,18 @@ taskbar layouts such as uncombined buttons, system sounds, font and regional
 settings, and printing/scanning integration. Which of these belongs in 0.4
 is provisional.
 
+**Vela UI Toolkit:** consolidate the existing shared `Vela.Controls`, theme
+and motion infrastructure into a reusable Qt Quick/QML toolkit for the
+redesign. Define common design tokens, typography, iconography, controls,
+layouts, dialogs, menus, effects and animation policies, with keyboard and
+screen-reader accessibility, touch input and fractional scaling built in.
+Migrate the shell, Settings, Files and other first-party Qt interfaces
+incrementally, and remove dependencies from shared UI code back into the
+shell. Keep compositor-owned chrome visually aligned through shared design
+tokens without introducing a Qt dependency into the compositor. Reuse Qt
+rather than replacing it; a separate toolkit repository is an option once
+its boundaries and build interfaces are established.
+
 **Design development is intentionally independent of release integration.**
 A dedicated long-lived branch may be used for gradual exploration and
 prototyping **even before 0.2 ships**. Early exploration does not by itself
@@ -247,6 +259,12 @@ ideas, not a commitment to imitate another desktop.
 
 Candidate larger systems work:
 
+- **Vela UI Toolkit maturation:** extend the toolkit with reusable application
+  patterns, documented and versioned QML/CMake interfaces, component tests
+  and example applications. Use it for new first-party applications and
+  complete any remaining migrations from the 0.4 redesign. Evaluate
+  standalone packaging, an independent repository and third-party developer
+  support once the interfaces are sufficiently stable.
 - Per-display ICC profiles and broader color-management support.
 - Hybrid/multi-GPU rendering and device selection, plus optional
   per-monitor virtual desktops where the architecture permits.
