@@ -2,7 +2,7 @@
 
 > **Status:** Accepted. **Checked:** 24 November 2026, `66bdff57` and this change.
 >
-> **Remaining:** three changes in Qt (§6): a command buffer leak on every destroyed swapchain, VMA's block size, which would take the shell from 212.6 to about 102 MiB of VRAM at idle, and remembering a per-font check that slows a panel's first frame.
+> **Remaining:** four changes in Qt (§6): a command buffer leak on every destroyed swapchain, VMA's block size, which would take the shell from 212.6 to about 102 MiB of VRAM at idle, remembering a per-font check that slows a panel's first frame, and curve-renderer Shapes left empty on a new scene graph, which the shell works around.
 
 Since #286 the shell renders Qt Quick with Vulkan. On one 1920×1080 output
 it held about 200 MiB of VRAM at idle. **Every panel opened once held about
@@ -132,7 +132,8 @@ That is not worth the change in how text looks.
 - **When the timer fires,** the panel calls `destroy()` for the surface and
   swapchain, sets `persistentGraphics` and `persistentSceneGraph` to false,
   and calls `QQuickWindow::releaseResources()`. Shown again later, it sets
-  both back to true.
+  both back to true, and has its curve-renderer Shapes build their paths
+  again, which Qt leaves empty on a new scene graph (§6, #326).
 
 The taskbar and the wallpapers stay mapped and are not affected.
 
@@ -150,6 +151,11 @@ Costs:
   longest gap between Start's frames was 10.9 ms at 100 Hz.
 - **The rebuilt panel** looks the same. Its text can differ by one or two
   levels of antialiasing, because the glyph cache is filled in another order.
+- **Finding the curve-renderer Shapes** of a panel shown again after the
+  release walks its items on the GUI thread: 12–110 µs (Start about 90,
+  Quick Settings the most). In three alternating samples with and without
+  it, every panel reopened after 10 s in 8.3–10.5 ms either way, and Start's
+  frames while it opened kept a 10.0 ms median.
 
 The functional tests cover each trigger:
 
@@ -159,7 +165,9 @@ The functional tests cover each trigger:
   - after closing, it gives them back 10 s later, not sooner;
   - where the driver reports VRAM, the shell is back to its idle VRAM and GTT;
   - reopened after the release, the panel opens on a new surface, looks the
-    same, and releases again 10 s after the next close.
+    same, and releases again 10 s after the next close;
+  - reopened after the release, Start still draws its power symbol and,
+    in the power menu, Sign out's: Shapes on the curve renderer.
 - `test_reopened_menu_keeps_its_surface_and_blur` and
   `test_other_panels_reopen_on_their_kept_surface`: a new layer role on the
   same surface, configured before its buffer, with Start's blur.
@@ -167,13 +175,13 @@ The functional tests cover each trigger:
   Settings, kept, open on the display in use; on the same display on their
   kept surface, on another one on a new surface, the old one destroyed.
 
-Each of five changes makes these tests fail: destroying the surface on hide,
+Each of six changes makes these tests fail: destroying the surface on hide,
 not destroying it at the release, not releasing, not restoring the flags,
-and not stopping the timer.
+not stopping the timer, and not rebuilding the curve-renderer Shapes.
 
 ## 6. Changes in Qt
 
-All three were measured with Qt 6.12.0's QtGui rebuilt with the change,
+The first three were measured with Qt 6.12.0's QtGui rebuilt with the change,
 loaded by the shell through `LD_LIBRARY_PATH`.
 
 - **A leak on every destroyed swapchain.** `QVkSwapChain::destroy()` forgets
@@ -210,3 +218,21 @@ loaded by the shell through `LD_LIBRARY_PATH`.
 - **`qt_fontHasNarrowOutlines` remembered per font.** The first sync after a
   release took 1.86 ms instead of 3.23 ms for Start, and 1.58 ms instead of
   2.80 ms for Notification Center. The first frame came 1.1–1.3 ms sooner.
+
+- **Curve-renderer Shapes on a new scene graph** (#326). Reopened after the
+  release, Start lost its power symbol and Sign out's, the only Shapes there
+  with `preferredRendererType: Shape.CurveRenderer`, while the button still
+  worked. On the new scene graph `QQuickShape::updatePaintNode()` creates a
+  new root node, and `QQuickShapeCurveRenderer::setRootNode()` forgets the
+  old nodes without marking the paths dirty, so `updateNode()` adds nothing.
+  `QQuickShapeGenericRenderer::setRootNode()` sets `DirtyList` and rebuilds.
+  The code is the same in Qt 6.11.2, 6.12.1 and `dev`. Marking the paths
+  dirty in `setRootNode()` would come too late: it runs on the render thread
+  after that frame's `sync()`. The Shape has to mark them before its next
+  polish when its nodes go.
+
+  Until then the shell does it itself: shown again after a release, a panel
+  sets `preferredRendererType` of each curve-renderer Shape to the geometry
+  renderer and back. The setter marks every path `DirtyAll`; the renderer is
+  chosen only in `updatePolish()`, so it stays the same and the first frame
+  computes the paths once, as on the panel's first opening.

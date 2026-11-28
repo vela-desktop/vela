@@ -61,10 +61,12 @@
 #include <QIcon>
 #include <QLocale>
 #include <QLoggingCategory>
+#include <QMetaEnum>
 #include <QMouseEvent>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <QQmlEngine>
+#include <QQuickItem>
 #include <QQuickWindow>
 #include <QSGRendererInterface>
 #include <QPointer>
@@ -130,6 +132,39 @@ private:
 // (about 2 ms); later it opens as the first time (about 8 ms).
 constexpr std::chrono::seconds panelGraphicsKept { 10 };
 
+// Has every Shape drawn with the curve renderer under root build its paths
+// again, and returns how many. Qt forgets them when the scene graph is
+// rebuilt: QQuickShapeCurveRenderer::setRootNode() drops the old nodes
+// without marking the paths dirty, so the Shape stays empty (#326; Qt 6.11
+// to dev). Setting preferredRendererType marks them all dirty; set and set
+// back before the next polish, the renderer stays the same and only the
+// first frame computes them, as on the panel's first opening. The geometry
+// renderer rebuilds by itself. Shapes outside the tree get rebuilt when they
+// enter a window.
+int rebuildCurveShapes(QQuickItem* root)
+{
+    int rebuilt = 0;
+    QList<QQuickItem*> items { root };
+    while (!items.isEmpty()) {
+        QQuickItem* item = items.takeLast();
+        items += item->childItems();
+        if (!item->inherits("QQuickShape")) {
+            continue;
+        }
+        const QMetaObject* meta = item->metaObject();
+        const QMetaEnum types = meta->enumerator(meta->indexOfEnumerator("RendererType"));
+        const int curve = types.keyToValue("CurveRenderer");
+        if (curve < 0 || item->property("rendererType").toInt() != curve) {
+            continue;
+        }
+        const QVariant preferred = item->property("preferredRendererType");
+        item->setProperty("preferredRendererType", types.keyToValue("GeometryRenderer"));
+        item->setProperty("preferredRendererType", preferred);
+        rebuilt++;
+    }
+    return rebuilt;
+}
+
 void releaseHiddenPanel(QQuickWindow* window)
 {
     // Hidden, the window keeps its wl_surface, swapchain and QRhi; shown
@@ -151,8 +186,14 @@ void releaseHiddenPanel(QQuickWindow* window)
     });
     QObject::connect(window, &QWindow::visibleChanged, window, [window, release](bool visible) {
         if (visible) {
-            // Kept from the next hide on, until the timer.
             release->stop();
+            if (!window->isPersistentSceneGraph()) {
+                // Released: its first frame builds a new scene graph.
+                const int rebuilt = rebuildCurveShapes(window->contentItem());
+                qCDebug(
+                    lcPanels, "%s rebuilds %d curve shapes", qPrintable(LayerWindow::get(window)->scope()), rebuilt);
+            }
+            // Kept from the next hide on, until the timer.
             window->setPersistentGraphics(true);
             window->setPersistentSceneGraph(true);
         } else {
