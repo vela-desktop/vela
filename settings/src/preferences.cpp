@@ -87,13 +87,14 @@ bool usableThemeName(const QString& name)
 QStringList installedThemes(const std::function<bool(const QString&)>& accept)
 {
     QStringList roots { QDir::homePath() + QStringLiteral("/.icons") };
-    for (const QString& data : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
-        roots.append(data + QStringLiteral("/icons"));
+    const QStringList data = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+    for (const QString& location : data) {
+        roots.append(location + QStringLiteral("/icons"));
     }
     QStringList themes;
     for (const QString& root : std::as_const(roots)) {
-        const QDir dir(root);
-        for (const QFileInfo& entry : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+        const QFileInfoList entries = QDir(root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot);
+        for (const QFileInfo& entry : entries) {
             if (usableThemeName(entry.fileName()) && accept(entry.filePath())) {
                 themes.append(entry.fileName());
             }

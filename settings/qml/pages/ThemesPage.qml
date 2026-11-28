@@ -14,12 +14,14 @@ import Vela.Controls
 // Start).
 Page {
     id: page
+    // Settings' Preferences, named once: qmllint can check page.prefs.
+    readonly property var prefs: Prefs
     property string fontFilter
-    readonly property var visibleFonts: fontFilter.trim() === "" ? Prefs.systemFonts
-        : Prefs.systemFonts.filter(name => name.toLowerCase().includes(fontFilter.trim().toLowerCase()))
+    readonly property var visibleFonts: fontFilter.trim() === "" ? page.prefs.systemFonts
+        : page.prefs.systemFonts.filter(name => name.toLowerCase().includes(fontFilter.trim().toLowerCase()))
     // The theme in use, as the shell takes it (themefile.h): its tokens and
     // what is wrong in it; again when a theme file changes (themesRevision).
-    readonly property var resolved: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme) }
+    readonly property var resolved: { page.prefs.visualTheme; page.prefs.themesRevision; return page.prefs.resolveTheme(page.prefs.visualTheme) }
 
     // A problem of themefile.h (Problem, toVariant()) in a line of the page.
     function describe(problem) {
@@ -57,7 +59,7 @@ Page {
         Card {
             visible: !page.resolved.installed
             icon: "dialog-warning"
-            title: qsTr("\"%1\" isn't installed").arg(Prefs.visualTheme)
+            title: qsTr("\"%1\" isn't installed").arg(page.prefs.visualTheme)
             description: qsTr("vela.conf names a theme Vela can't find: Vela's own look is used")
         }
         Card {
@@ -98,8 +100,8 @@ Page {
                 width: 220
                 usable: page.visibleFonts.length > 0
                 model: page.visibleFonts
-                currentIndex: page.visibleFonts.indexOf(Prefs.systemFont)
-                onChosen: index => Prefs.systemFont = page.visibleFonts[index]
+                currentIndex: page.visibleFonts.indexOf(page.prefs.systemFont)
+                onChosen: index => page.prefs.systemFont = page.visibleFonts[index]
             }
             contentItem: TextBox {
                 width: parent.width
@@ -113,10 +115,10 @@ Page {
             title: qsTr("Icon theme")
             description: qsTr("Icons used across KDE and Qt applications")
             trailing: Choice {
-                usable: Prefs.iconThemes.length > 0
-                model: Prefs.iconThemes
-                currentIndex: Prefs.iconThemes.indexOf(Prefs.iconTheme)
-                onChosen: index => Prefs.iconTheme = Prefs.iconThemes[index]
+                usable: page.prefs.iconThemes.length > 0
+                model: page.prefs.iconThemes
+                currentIndex: page.prefs.iconThemes.indexOf(page.prefs.iconTheme)
+                onChosen: index => page.prefs.iconTheme = page.prefs.iconThemes[index]
             }
         }
         Card {
@@ -124,10 +126,10 @@ Page {
             title: qsTr("Cursor theme")
             description: qsTr("Pointer style used across the desktop")
             trailing: Choice {
-                usable: Prefs.cursorThemes.length > 0
-                model: Prefs.cursorThemes
-                currentIndex: Prefs.cursorThemes.indexOf(Prefs.cursorTheme)
-                onChosen: index => Prefs.cursorTheme = Prefs.cursorThemes[index]
+                usable: page.prefs.cursorThemes.length > 0
+                model: page.prefs.cursorThemes
+                currentIndex: page.prefs.cursorThemes.indexOf(page.prefs.cursorTheme)
+                onChosen: index => page.prefs.cursorTheme = page.prefs.cursorThemes[index]
             }
         }
     }
