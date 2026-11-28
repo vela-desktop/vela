@@ -27,6 +27,14 @@ target_include_directories(vela-process PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_compile_options(vela-process PRIVATE -Wall -Wextra)
 target_link_libraries(vela-process PUBLIC Qt6::Core)
 
+# KDE's configuration files (kdeglobals, kcminputrc) read and written as
+# KConfig does, without KDE (docs/system-appearance.md).
+add_library(vela-kdeconfig STATIC src/kdeconfig.cpp src/kdeconfig.h)
+target_include_directories(vela-kdeconfig PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_compile_options(vela-kdeconfig PRIVATE -Wall -Wextra)
+target_link_libraries(vela-kdeconfig PUBLIC Qt6::Core PRIVATE Qt6::DBus)
+set_target_properties(vela-kdeconfig PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Explicit Qt Quick text policy, independent from the Vela.Controls module.
 add_library(vela-rendering STATIC src/renderingpolicy.cpp)
 target_include_directories(vela-rendering PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
@@ -204,6 +212,7 @@ target_link_libraries(vela-controls PUBLIC
     vela-color # Style.tonal (appearance.cpp)
     vela-rendering
     vela-process
+    vela-kdeconfig # KDE's icon theme (appearance.cpp, iconprovider.h)
     vela-theme-tokens
     Qt6::DBus
     Qt6::Gui
@@ -251,6 +260,19 @@ if(VELA_BUILD_TOOLS)
     target_link_libraries(vela-color-test PRIVATE vela-color Qt6::Test)
     add_test(NAME color COMMAND vela-color-test)
     set_tests_properties(color PROPERTIES TIMEOUT 60)
+
+    # KDE's configuration files without KDE; the D-Bus messages on a bus of
+    # its own.
+    qt_add_executable(vela-kdeconfig-test tests/kdeconfig_test.cpp)
+    target_compile_options(vela-kdeconfig-test PRIVATE -Wall -Wextra)
+    target_link_libraries(vela-kdeconfig-test PRIVATE vela-kdeconfig Qt6::DBus Qt6::Test)
+    find_program(DBUS_RUN_SESSION_EXECUTABLE dbus-run-session)
+    if(DBUS_RUN_SESSION_EXECUTABLE)
+        add_test(NAME kdeconfig COMMAND ${DBUS_RUN_SESSION_EXECUTABLE} -- $<TARGET_FILE:vela-kdeconfig-test>)
+    else()
+        add_test(NAME kdeconfig COMMAND vela-kdeconfig-test)
+    endif()
+    set_tests_properties(kdeconfig PROPERTIES TIMEOUT 60)
 
     # Real-process environment tests need no GPU, display, or Qt 6.6 APIs.
     qt_add_executable(vela-process-launch-test tests/process_launch.cpp)

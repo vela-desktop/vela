@@ -94,7 +94,7 @@ ListView {
             Image {
                 width: 28
                 height: 28
-                source: item.icon
+                source: Theme.versionedIcon(item.icon)
                 sourceSize: Qt.size(width, height)
                 fillMode: Image.PreserveAspectFit
             }

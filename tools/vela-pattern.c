@@ -16,6 +16,7 @@
 // and close values are the worst case for any filter.
 //
 // Usage: vela-pattern [--scale1] [--app-id ID] [--title TITLE] [--decorated] [--glass] [--popup X,Y]
+//                     [--cursor surface|hidden]
 //                     [WIDTH HEIGHT]   (logical; default 401x301)
 //
 // --scale1: like an old app, always draws at scale 1 (the compositor must
@@ -34,6 +35,9 @@
 // --transient-maximized: initially maximizes that child.
 // --transient-siblings: create two overlapping siblings to test Z-order.
 // --fullscreen-parent: request fullscreen for the parent before mapping.
+// --cursor surface|hidden: on entering the window, the pointer is its own
+// 16x16 green surface (wl_pointer.set_cursor), or none at all (hidden), as
+// apps that draw their cursor, and games, do.
 // --log-pointer: writes "vela-pattern: pointer-button BUTTON STATE SURFACE" to
 // stderr for every button event, SURFACE being "window" or "popup" (where
 // the clicks go).
@@ -123,6 +127,36 @@ static struct zwp_locked_pointer_v1* lockedPointer;
 static int lockReleased; // let go: not locked again
 
 static struct wl_surface* pointerSurface; // the one the pointer entered
+static int cursorMode; // --cursor: 1 its own surface, 2 hidden
+static struct wl_surface *cursorSurface;
+
+static void drawCursor(void)
+{
+    enum { SIDE = 16 };
+    const size_t size = (size_t)SIDE * SIDE * 4;
+    const int fd = memfd_create("vela-pattern-cursor", MFD_CLOEXEC);
+    if (fd < 0 || ftruncate(fd, (off_t)size) < 0) {
+        perror("vela-pattern: memfd");
+        exit(1);
+    }
+    uint32_t *pixels = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (pixels == MAP_FAILED) {
+        perror("vela-pattern: mmap");
+        exit(1);
+    }
+    for (int i = 0; i < SIDE * SIDE; ++i) {
+        pixels[i] = 0xff00ff00u;
+    }
+    munmap(pixels, size);
+    struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, (int32_t)size);
+    struct wl_buffer *buffer = wl_shm_pool_create_buffer(pool, 0, SIDE, SIDE, SIDE * 4, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+    cursorSurface = wl_compositor_create_surface(compositor);
+    wl_surface_attach(cursorSurface, buffer, 0, 0);
+    wl_surface_damage_buffer(cursorSurface, 0, 0, SIDE, SIDE);
+    wl_surface_commit(cursorSurface);
+}
 
 static void onLocked(void* data, struct zwp_locked_pointer_v1* locked)
 {
@@ -138,6 +172,12 @@ static void onPointerEnter(void* data, struct wl_pointer* pointer, uint32_t seri
     wl_fixed_t x, wl_fixed_t y)
 {
     pointerSurface = entered;
+    if (cursorMode && entered == surface) {
+        if (cursorMode == 1 && !cursorSurface) {
+            drawCursor();
+        }
+        wl_pointer_set_cursor(pointer, serial, cursorMode == 1 ? cursorSurface : NULL, 0, 0);
+    }
     // Like a game: once the pointer is on the window, it stays there.
     if (lockPointer && pointerConstraints && !lockedPointer && !lockReleased && entered == surface) {
         lockedPointer = zwp_pointer_constraints_v1_lock_pointer(pointerConstraints, surface, pointer, NULL,
@@ -550,6 +590,14 @@ int main(int argc, char** argv)
             transientMaximized = 1;
         } else if (!strcmp(argv[arg], "--transient-siblings")) {
             transientSiblings = 1;
+        } else if (!strcmp(argv[arg], "--cursor") && arg + 1 < argc) {
+            ++arg;
+            cursorMode = !strcmp(argv[arg], "surface") ? 1 : !strcmp(argv[arg], "hidden") ? 2 : 0;
+            if (!cursorMode) {
+                fprintf(stderr, "vela-pattern: --cursor surface or hidden\n");
+                return 1;
+            }
+            logPointer = 1;
         } else if (!strcmp(argv[arg], "--log-pointer")) {
             logPointer = 1;
         } else if (!strcmp(argv[arg], "--log-keys")) {

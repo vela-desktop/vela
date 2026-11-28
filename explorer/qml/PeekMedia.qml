@@ -40,7 +40,7 @@ Item {
         visible: !player.hasVideo
         width: 128
         height: 128
-        source: media.icon !== "" ? "image://fileicon/" + encodeURIComponent(media.icon) : ""
+        source: media.icon !== "" ? Theme.fileIcons + encodeURIComponent(media.icon) : ""
         sourceSize: Qt.size(width, height)
     }
     Row {

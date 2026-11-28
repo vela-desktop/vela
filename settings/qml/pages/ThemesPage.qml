@@ -14,9 +14,14 @@ import Vela.Controls
 // Start).
 Page {
     id: page
+    // Settings' Preferences, named once: qmllint can check page.prefs.
+    readonly property var prefs: Prefs
+    property string fontFilter
+    readonly property var visibleFonts: fontFilter.trim() === "" ? page.prefs.systemFonts
+        : page.prefs.systemFonts.filter(name => name.toLowerCase().includes(fontFilter.trim().toLowerCase()))
     // The theme in use, as the shell takes it (themefile.h): its tokens and
     // what is wrong in it; again when a theme file changes (themesRevision).
-    readonly property var resolved: { Prefs.visualTheme; Prefs.themesRevision; return Prefs.resolveTheme(Prefs.visualTheme) }
+    readonly property var resolved: { page.prefs.visualTheme; page.prefs.themesRevision; return page.prefs.resolveTheme(page.prefs.visualTheme) }
 
     // A problem of themefile.h (Problem, toVariant()) in a line of the page.
     function describe(problem) {
@@ -54,7 +59,7 @@ Page {
         Card {
             visible: !page.resolved.installed
             icon: "dialog-warning"
-            title: qsTr("\"%1\" isn't installed").arg(Prefs.visualTheme)
+            title: qsTr("\"%1\" isn't installed").arg(page.prefs.visualTheme)
             description: qsTr("vela.conf names a theme Vela can't find: Vela's own look is used")
         }
         Card {
@@ -83,5 +88,57 @@ Page {
         }
         OwnThemesCard {}
         ResetThemesCard {}
+    }
+
+    CardGroup {
+        title: qsTr("System appearance")
+        Card {
+            icon: "preferences-desktop-font"
+            title: qsTr("System font")
+            description: qsTr("Font used by KDE and Qt applications")
+            trailing: Choice {
+                width: 220
+                usable: page.visibleFonts.length > 0
+                model: page.visibleFonts
+                currentIndex: page.visibleFonts.indexOf(page.prefs.systemFont)
+                onChosen: index => page.prefs.systemFont = page.visibleFonts[index]
+            }
+            contentItem: TextBox {
+                width: parent.width
+                placeholderText: qsTr("Find a font")
+                text: page.fontFilter
+                onTextChanged: page.fontFilter = text
+            }
+        }
+        Card {
+            icon: "preferences-desktop-icons"
+            title: qsTr("Icon theme")
+            description: qsTr("Icons used across KDE and Qt applications")
+            trailing: Choice {
+                usable: page.prefs.iconThemes.length > 0
+                model: page.prefs.iconThemes
+                currentIndex: page.prefs.iconThemes.indexOf(page.prefs.iconTheme)
+                onChosen: index => page.prefs.iconTheme = page.prefs.iconThemes[index]
+            }
+        }
+        Card {
+            icon: "preferences-desktop-cursor"
+            title: qsTr("Cursor theme")
+            description: qsTr("Pointer style used across the desktop")
+            trailing: Choice {
+                usable: page.prefs.cursorThemes.length > 0
+                model: page.prefs.cursorThemes
+                currentIndex: page.prefs.cursorThemes.indexOf(page.prefs.cursorTheme)
+                onChosen: index => page.prefs.cursorTheme = page.prefs.cursorThemes[index]
+            }
+        }
+        Card {
+            icon: "preferences-desktop-cursor"
+            title: qsTr("Cursor size")
+            description: qsTr("In pixels at 100% scale, one of the sizes the cursor theme is drawn at")
+            trailing: CursorSizeField {
+                prefs: page.prefs
+            }
+        }
     }
 }

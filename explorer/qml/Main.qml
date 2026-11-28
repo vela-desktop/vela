@@ -158,7 +158,7 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 16
                         height: 16
-                        source: "image://fileicon/" + encodeURIComponent(tabButton.modelData.icon)
+                        source: Theme.fileIcons + encodeURIComponent(tabButton.modelData.icon)
                         sourceSize: Qt.size(width, height)
                     }
                     Text {

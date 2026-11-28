@@ -35,7 +35,8 @@ void Appearance::watch()
     const QString shellConfig = QSettings(QStringLiteral("Vela"), QStringLiteral("vela-shell")).fileName();
     // The chosen theme and styles and what they inherit too: editing one shows
     // at once.
-    QStringList paths { shellConfig, wallpaperTintCachePath(), wallpaperColorCachePath(), vela::language::configPath() };
+    QStringList paths { shellConfig, wallpaperTintCachePath(), wallpaperColorCachePath(), vela::language::configPath(),
+        vela::kde::configPath(QStringLiteral("kdeglobals")) };
     paths += m_loaded.files();
     for (const QString& path : std::as_const(paths)) {
         if (path.isEmpty()) {
@@ -129,6 +130,10 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const vela::conf::Motion motion = vela::conf::motion(vela::conf::read(vela::language::configPath()));
+    // The icon theme chosen in Settings (or in KDE): a new one reloads the
+    // icons as a new mode does.
+    const QString iconTheme = configuredIconTheme();
+    const bool iconThemeChanged = iconTheme != m_iconTheme;
     vela::themes::Loaded loaded = vela::themes::loadConfigured(vela::language::configPath());
     const QStringList files = loaded.files();
     const bool filesChanged = files != m_loaded.files();
@@ -167,7 +172,8 @@ void Appearance::reload()
     const QColor otherSource = schemeSource(!light);
     const bool otherChanged = otherSource != m_otherTonalSource;
     m_otherTonalSource = otherSource;
-    if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive) {
+    if (light == m_light && accent == m_accent && mica == m_mica && micaInactive == m_micaInactive
+        && !iconThemeChanged) {
         // Only the theme, the palette, the wallpaper's color (Settings shows
         // it) or the motion: the icons stay as they are.
         if (themeChanged || tonalChanged || otherChanged || wallpaperChanged || motion.effects != m_animationEffects
@@ -185,6 +191,7 @@ void Appearance::reload()
     m_accent = accent;
     m_mica = mica;
     m_micaInactive = micaInactive;
+    m_iconTheme = iconTheme;
     applyIconTheme(light); // before QML asks for the icons
     const QString mode = light ? QStringLiteral("l/") : QStringLiteral("d/");
     if (first) {
@@ -195,10 +202,14 @@ void Appearance::reload()
     // The image://icon prefix a moment later, when the icon caches
     // (KIconLoader's too, which gets the D-Bus signal) are empty: only then
     // QML asks for the icons again.
-    QTimer::singleShot(300, this, [this, mode] {
+    QTimer::singleShot(300, this, [this, mode, iconThemeChanged] {
         if (mode != m_iconMode) {
             m_iconMode = mode;
             emit iconModeChanged();
+        }
+        if (iconThemeChanged) {
+            ++m_iconRevision;
+            emit iconRevisionChanged();
         }
     });
 }

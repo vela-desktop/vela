@@ -52,6 +52,7 @@ class Appearance : public QObject {
     Q_PROPERTY(bool animationEffects READ animationEffects NOTIFY changed)
     // animation-duration in vela.conf as a factor: 1 is Vela's durations.
     Q_PROPERTY(qreal animationDuration READ animationDuration NOTIFY changed)
+    Q_PROPERTY(int iconRevision READ iconRevision NOTIFY iconRevisionChanged)
     // "l/" or "d/" for image://icon: changes a moment after the mode, once the
     // icon caches are emptied (applyIconTheme).
     Q_PROPERTY(QString iconMode READ iconMode NOTIFY iconModeChanged)
@@ -77,6 +78,7 @@ public:
     QColor micaInactive() const { return m_micaInactive; }
     bool animationEffects() const { return m_animationEffects; }
     qreal animationDuration() const { return m_animationDuration; }
+    int iconRevision() const { return m_iconRevision; }
     QString iconMode() const { return m_iconMode; }
     QStringList hiddenMenuEntries() const { return m_hiddenMenuEntries; }
     QVariantMap theme() const { return m_theme; }
@@ -100,6 +102,7 @@ public:
 signals:
     void changed();
     void iconModeChanged();
+    void iconRevisionChanged();
     void hiddenMenuEntriesChanged();
 
 private:
@@ -125,5 +128,7 @@ private:
     bool m_animationEffects = true;
     qreal m_animationDuration = 1.0;
     QString m_iconMode = QStringLiteral("d/");
+    QString m_iconTheme;
+    int m_iconRevision = 0;
     QStringList m_hiddenMenuEntries;
 };

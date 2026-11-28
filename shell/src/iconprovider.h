@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <QDBusConnection>
-#include <QDBusMessage>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -19,9 +17,30 @@
 
 #include <algorithm>
 
+#include "kdeconfig.h"
+
+// The icon theme chosen for Vela and KDE apps: [Icons] Theme in kdeglobals
+// (Settings writes it, hicolor too when that is the choice), else the
+// platform's, else VELA_ICON_THEME or Breeze Dark. Read again at every call:
+// a choice made in Settings applies without a restart.
+inline QString configuredIconTheme()
+{
+    const std::optional<QString> configured = vela::kde::read(
+        vela::kde::configPath(QStringLiteral("kdeglobals")), QStringLiteral("Icons"), QStringLiteral("Theme"));
+    if (configured && !configured->isEmpty()) {
+        return *configured;
+    }
+    const QString platform = QIcon::themeName();
+    if (platform.isEmpty() || platform == QLatin1String("hicolor")) {
+        return qEnvironmentVariable("VELA_ICON_THEME", QStringLiteral("breeze-dark"));
+    }
+    return platform;
+}
+
 // The icon theme matching the light or dark mode: the "-dark" variant
 // (breeze-dark) on dark, the normal one (breeze) on light, starting from the
-// theme chosen in KDE. Call at startup and when the mode changes. With KDE's
+// configured theme (which stays as it is: only Vela's apps take the variant).
+// Call at startup, when the mode changes and when the theme does. With KDE's
 // platform the icons come from KIconLoader, which colors the monochrome ones
 // with the app's palette: that follows the mode too.
 inline void applyIconTheme(bool light)
@@ -29,9 +48,13 @@ inline void applyIconTheme(bool light)
     // Qt's generic platform theme can advertise only :/icons (for example
     // on a standalone Wayland desktop without the KDE platform plugin).
     // Preserve platform/custom paths and also discover installed XDG themes.
+    // Also ~/.icons, the legacy place Settings offers themes from.
     QStringList paths = QIcon::themeSearchPaths();
+    QStringList wanted { QDir::homePath() + QStringLiteral("/.icons") };
     for (const QString& data : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
-        const QString icons = data + QStringLiteral("/icons");
+        wanted.append(data + QStringLiteral("/icons"));
+    }
+    for (const QString& icons : std::as_const(wanted)) {
         if (!paths.contains(icons)) {
             paths.append(icons);
         }
@@ -55,13 +78,7 @@ inline void applyIconTheme(bool light)
         QGuiApplication::setPalette(palette);
     }
 
-    static const QString base = [] {
-        QString theme = QIcon::themeName();
-        if (theme.isEmpty() || theme == QLatin1String("hicolor")) {
-            theme = qEnvironmentVariable("VELA_ICON_THEME", QStringLiteral("breeze-dark"));
-        }
-        return theme;
-    }();
+    const QString base = configuredIconTheme();
     auto exists = [](const QString& name) {
         const QStringList paths = QIcon::themeSearchPaths();
         return std::any_of(paths.begin(), paths.end(),
@@ -78,19 +95,15 @@ inline void applyIconTheme(bool light)
     } else if (!light && dark != base && exists(dark)) {
         chosen = dark;
     }
-    if (QIcon::themeName() != chosen) {
+    // Set again on a new palette too: Qt redraws the theme's icons.
+    const bool themeChanged = QIcon::themeName() != chosen;
+    if (changed || themeChanged) {
         QIcon::setThemeName(chosen);
-    } else if (changed) {
-        QIcon::setThemeName(chosen);
-    }
-    if (changed) {
-        // Already loaded icons have the old colors: they're reloaded.
-        // KIconLoader (KDE's platform) empties its cache when it gets the
-        // signal KDE's icon module sends.
+        // Already loaded icons have the old colors or theme: they're
+        // reloaded. KIconLoader (KDE's platform) empties its cache when it
+        // gets the signal KDE's icon module sends.
         QPixmapCache::clear();
-        QDBusConnection::sessionBus().send(QDBusMessage::createSignal(QStringLiteral("/KIconLoader"),
-            QStringLiteral("org.kde.KIconLoader"), QStringLiteral("iconChanged"))
-            << 0);
+        vela::kde::iconLoaderChanged();
     }
 }
 
@@ -106,7 +119,8 @@ inline void applyIconTheme(bool light)
 // drawing of at least `designSize` pixels, carefully scaled down (files,
 // folders and places, colored even when small, like in Windows).
 //
-// A prefix before the name: "l/" and "d/" say for which mode (light or dark)
+// A prefix before the name: "v<n>/" the icon theme's revision (a new theme
+// changes the address), then "l/" and "d/" say for which mode (light or dark)
 // the icon is asked, so changing mode changes the address and QML reloads
 // it; "w/" wants it white (on the accent); "t<rrggbb>/" wants it in that
 // color (on a tonal fill, whose content may be dark in the dark mode, where
@@ -124,18 +138,26 @@ public:
         const int extent = requestedSize.isValid()
             ? std::max({ requestedSize.width(), requestedSize.height(), 8 })
             : 64;
-        QString name = QUrl::fromPercentEncoding(id.toUtf8());
+        // "v<n>/" first: the icon theme's revision (Theme.iconRevision), only
+        // there so that a new theme changes the address and QML asks again.
+        QString key = id;
+        const qsizetype revision = key.indexOf(u'/');
+        if (revision > 1 && key[0] == u'v'
+            && std::all_of(key.cbegin() + 1, key.cbegin() + revision, [](QChar ch) { return ch.isDigit(); })) {
+            key = key.mid(revision + 1);
+        }
+        QString name = QUrl::fromPercentEncoding(key.toUtf8());
         QColor tint;
-        if (id.size() > 2 && id[1] == u'/' && (id[0] == u'l' || id[0] == u'd' || id[0] == u'w')) {
-            if (id[0] == u'w') {
+        if (key.size() > 2 && key[1] == u'/' && (key[0] == u'l' || key[0] == u'd' || key[0] == u'w')) {
+            if (key[0] == u'w') {
                 tint = Qt::white;
             }
-            name = QUrl::fromPercentEncoding(id.mid(2).toUtf8());
-        } else if (id.size() > 8 && id[0] == u't' && id[7] == u'/') {
-            const QColor asked = QColor::fromString(u'#' + id.mid(1, 6));
+            name = QUrl::fromPercentEncoding(key.mid(2).toUtf8());
+        } else if (key.size() > 8 && key[0] == u't' && key[7] == u'/') {
+            const QColor asked = QColor::fromString(u'#' + key.mid(1, 6));
             if (asked.isValid()) {
                 tint = asked;
-                name = QUrl::fromPercentEncoding(id.mid(8).toUtf8());
+                name = QUrl::fromPercentEncoding(key.mid(8).toUtf8());
             }
         }
 

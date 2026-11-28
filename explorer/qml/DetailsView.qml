@@ -279,7 +279,7 @@ Item {
                 Drag.supportedActions: Qt.CopyAction | Qt.MoveAction | Qt.LinkAction
                 Drag.proposedAction: Qt.MoveAction
                 Drag.mimeData: ({ "text/uri-list": view.tab.dragUrls(row.index).join("\r\n") })
-                Drag.imageSource: "image://fileicon/" + encodeURIComponent(row.iconName)
+                Drag.imageSource: Theme.fileIcons + encodeURIComponent(row.iconName)
                 Drag.imageSourceSize: Qt.size(32, 32)
             }
             MouseArea {

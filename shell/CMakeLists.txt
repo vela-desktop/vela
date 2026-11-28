@@ -427,7 +427,7 @@ if(VELA_BUILD_TOOLS)
     qt_add_executable(vela-icon-provider-test tests/iconprovider.cpp src/iconprovider.h)
     target_include_directories(vela-icon-provider-test PRIVATE src)
     target_compile_options(vela-icon-provider-test PRIVATE -Wall -Wextra)
-    target_link_libraries(vela-icon-provider-test PRIVATE Qt6::Quick Qt6::DBus Qt6::Test)
+    target_link_libraries(vela-icon-provider-test PRIVATE vela-kdeconfig Qt6::Quick Qt6::DBus Qt6::Test)
     add_test(NAME shell-icon-provider COMMAND vela-icon-provider-test)
     set_tests_properties(shell-icon-provider PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

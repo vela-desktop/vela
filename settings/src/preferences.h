@@ -4,6 +4,7 @@
 #pragma once
 
 #include "defaults.h"
+#include "kdeconfig.h"
 #include "starticon.h"
 
 #include <QColor>
@@ -43,6 +44,17 @@ class Preferences : public QObject {
     Q_PROPERTY(QString shellTheme READ shellTheme WRITE setShellTheme NOTIFY appThemeChanged)
     // Settings itself is light (it follows the apps' mode).
     Q_PROPERTY(bool light READ light NOTIFY appThemeChanged)
+    Q_PROPERTY(QString systemFont READ systemFont WRITE setSystemFont NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QStringList systemFonts READ systemFonts NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QString iconTheme READ iconTheme WRITE setIconTheme NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QStringList iconThemes READ iconThemes NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QString cursorTheme READ cursorTheme WRITE setCursorTheme NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QStringList cursorThemes READ cursorThemes NOTIFY desktopThemesChanged)
+    // [Mouse] cursorSize in kcminputrc, logical pixels; the sizes the theme
+    // is drawn at (empty when they can't be read). Written sizes are always
+    // one of them (nearestCursorSize()).
+    Q_PROPERTY(int cursorSize READ cursorSize WRITE setCursorSize NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QList<int> cursorSizes READ cursorSizes NOTIFY desktopThemesChanged)
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarPosition READ taskbarPosition WRITE setTaskbarPosition NOTIFY taskbarChanged)
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
@@ -207,6 +219,22 @@ public:
     QString shellTheme() const { return m_shellTheme; }
     void setShellTheme(const QString& theme);
     bool light() const { return m_appTheme == QLatin1String("light"); }
+    QString systemFont() const;
+    QStringList systemFonts() const;
+    void setSystemFont(const QString& family);
+    QString iconTheme() const;
+    QStringList iconThemes() const;
+    void setIconTheme(const QString& theme);
+    QString cursorTheme() const;
+    QStringList cursorThemes() const;
+    int cursorSize() const;
+    QList<int> cursorSizes() const;
+    void setCursorSize(int size);
+    // The theme's size nearest to `size` (8-256 when its sizes are unknown),
+    // and the next one up or down from `from`: the size field's steps.
+    Q_INVOKABLE int nearestCursorSize(int size) const;
+    Q_INVOKABLE int steppedCursorSize(int from, int direction) const;
+    void setCursorTheme(const QString& theme);
 
     QString taskbarAlignment() const { return m_taskbarAlignment; }
     void setTaskbarAlignment(const QString& alignment);
@@ -428,6 +456,7 @@ signals:
     void wallpaperChanged();
     void accentChanged();
     void appThemeChanged();
+    void desktopThemesChanged();
     void taskbarChanged();
     void desktopChanged();
     void menusChanged();
@@ -452,6 +481,8 @@ private:
     bool saveShell(const QList<QPair<QString, QVariant>>& changes);
     // The same write, the changes made by `edit` on the file as read under
     // its lock (a list another writer may have changed meanwhile).
+    // Writes KDE's file, tells KDE apps, and shows a save error on failure.
+    bool saveKde(const QString& path, const QList<vela::kde::Entry>& entries);
     bool saveShell(const std::function<void(QSettings&)>& edit);
     void loadShell(const QSettings& settings);
     // vela.conf: reread, only these keys changed, then "reload-config".
@@ -479,6 +510,7 @@ private:
     QString m_saveError;
     bool m_shellSaveFailed = false;
     bool m_compositorSaveFailed = false;
+    QString m_kdeSaveFailed; // kdeglobals or kcminputrc, when its last write failed
     bool m_restoredFromFile = false;
     bool m_reportingSaveFailure = false;
 

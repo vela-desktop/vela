@@ -32,7 +32,7 @@ Flickable {
             anchors.verticalCenter: parent.verticalCenter
             width: 16
             height: 16
-            source: "image://fileicon/" + encodeURIComponent(row.modelData.icon)
+            source: Theme.fileIcons + encodeURIComponent(row.modelData.icon)
             sourceSize: Qt.size(width, height)
         }
         Text {
@@ -119,7 +119,7 @@ Flickable {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 40
                         height: 40
-                        source: "image://fileicon/" + encodeURIComponent(tile.modelData.icon)
+                        source: Theme.fileIcons + encodeURIComponent(tile.modelData.icon)
                         sourceSize: Qt.size(width, height)
                     }
                     Column {

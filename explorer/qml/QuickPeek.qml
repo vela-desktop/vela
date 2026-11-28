@@ -193,7 +193,7 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: 128
                     height: 128
-                    source: peek.result ? "image://fileicon/" + encodeURIComponent(peek.result.icon) : ""
+                    source: peek.result ? Theme.fileIcons + encodeURIComponent(peek.result.icon) : ""
                     sourceSize: Qt.size(width, height)
                 }
                 Text {

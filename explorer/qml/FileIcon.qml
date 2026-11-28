@@ -25,7 +25,7 @@ Item {
         id: themed
         anchors.fill: parent
         visible: !thumb.visible
-        source: "image://fileicon/" + encodeURIComponent(icon.iconName)
+        source: Theme.fileIcons + encodeURIComponent(icon.iconName)
         sourceSize: Qt.size(icon.size, icon.size)
         asynchronous: icon.size > 32
         smooth: true

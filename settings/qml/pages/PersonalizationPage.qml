@@ -30,7 +30,7 @@ Page {
         LinkCard {
             icon: "preferences-desktop-theme"
             title: qsTr("Themes")
-            description: qsTr("Installed themes, your own, back to Vela's own look")
+            description: qsTr("System fonts, icons, cursor style, and installed themes")
             onClicked: root.navigate("themes")
         }
         LinkCard {

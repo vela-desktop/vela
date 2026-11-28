@@ -9,6 +9,7 @@
 // compositor is used.
 
 #include "defaults.h"
+#include "kdeconfig.h"
 #include "controls.h"
 #include "preferences.h"
 #include "privatehome.h"
@@ -16,9 +17,11 @@
 
 #include <unistd.h>
 #include <utility>
+#include <algorithm>
 
 #include <QDir>
 #include <QFile>
+#include <QFontDatabase>
 #include <QGuiApplication>
 #include <QIcon>
 #include <QImage>
@@ -39,6 +42,7 @@
 #include <QSettings>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QtEndian>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -846,6 +850,210 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(calls().contains("set org.gnome.desktop.interface color-scheme prefer-light"), 5000);
         QTRY_VERIFY_WITH_TIMEOUT(calls().contains("BreezeLight"), 5000);
         expectFreshShell({ { QStringLiteral("appearance/appTheme"), QStringLiteral("light") } });
+    }
+
+    // Without KDE (no kwriteconfig6 on PATH): every font key in KDE's own
+    // format, the real [General] section, commas and no quotes, each key
+    // keeping its size and weight.
+    void systemFontWithoutKde()
+    {
+        const QByteArray originalPath = qgetenv("PATH");
+        const auto restore = qScopeGuard([&] {
+            qputenv("PATH", originalPath);
+            QFile::remove(home().filePath(QStringLiteral("config/kdeglobals")));
+        });
+        const QString bin = home().filePath(QStringLiteral("no-kde-bin"));
+        QVERIFY(QDir().mkpath(bin));
+        qputenv("PATH", bin.toUtf8());
+
+        const QStringList families = QFontDatabase::families();
+        if (families.size() < 2) QSKIP("Two font families are needed.");
+        const QString before = families[0];
+        const QString chosen = families[1];
+        // As Plasma 6 writes them (QFont::toString()).
+        const QByteArray bold = QFont(before, 14, QFont::Bold).toString().toUtf8();
+        const QByteArray title = QFont(before, 11, QFont::Normal).toString().toUtf8();
+        QVERIFY(writeFile(QStringLiteral("config/kdeglobals"),
+            "[General]\nColorScheme=BreezeDark\nfont=" + bold + "\n\n[WM]\nactiveFont=" + title + "\n"));
+
+        Preferences prefs;
+        QCOMPARE(prefs.systemFont(), before);
+        QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
+        prefs.setSystemFont(chosen);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(prefs.systemFont(), chosen);
+        QCOMPARE(prefs.saveError(), QString());
+
+        const QString path = home().filePath(QStringLiteral("config/kdeglobals"));
+        const auto font = [&](const QString& group, const QString& key) {
+            QFont font;
+            const std::optional<QString> value = vela::kde::read(path, group, key);
+            return value && font.fromString(*value) ? std::optional(font) : std::nullopt;
+        };
+        const std::optional<QFont> general = font(QStringLiteral("General"), QStringLiteral("font"));
+        QVERIFY(general);
+        QCOMPARE(general->family(), chosen);
+        QCOMPARE(general->pointSize(), 14);
+        QCOMPARE(general->weight(), QFont::Bold);
+        const std::optional<QFont> titleFont = font(QStringLiteral("WM"), QStringLiteral("activeFont"));
+        QVERIFY(titleFont);
+        QCOMPARE(titleFont->family(), chosen);
+        QCOMPARE(titleFont->pointSize(), 11);
+        QCOMPARE(titleFont->weight(), QFont::Normal);
+        for (const QString& key :
+            { QStringLiteral("menuFont"), QStringLiteral("toolBarFont"), QStringLiteral("smallestReadableFont") }) {
+            const std::optional<QFont> other = font(QStringLiteral("General"), key);
+            QVERIFY2(other, qPrintable(key));
+            QCOMPARE(other->family(), chosen);
+            QCOMPARE(other->pointSize(), 14); // from the general font
+        }
+        // As KDE writes it: unquoted, in the real [General], the rest kept.
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray text = file.readAll();
+        QVERIFY(text.startsWith("[General]\nColorScheme=BreezeDark\nfont=" + chosen.toUtf8() + ",14,"));
+        QVERIFY(!text.contains('"'));
+        QVERIFY(!text.contains("%General"));
+    }
+
+    // A theme named in Settings is the theme written, also in the dark mode
+    // where Vela shows its -dark variant; a cursor theme (index.theme with
+    // no icon directories) is offered only as a cursor theme.
+    void iconAndCursorThemes()
+    {
+        const auto restore = qScopeGuard([&] {
+            QFile::remove(home().filePath(QStringLiteral("config/kdeglobals")));
+            QFile::remove(home().filePath(QStringLiteral("config/kcminputrc")));
+        });
+        const QByteArray icons = "[Icon Theme]\nName=Test\nDirectories=16x16/apps\n[16x16/apps]\nSize=16\n";
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-test/index.theme"), icons));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-test-dark/index.theme"), icons));
+        QVERIFY(writeFile(QStringLiteral("home/.icons/vela-legacy/index.theme"), icons));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/index.theme"), "[Icon Theme]\nName=Pointer\n"));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/cursors/left_ptr"), "x"));
+
+        Preferences prefs;
+        QVERIFY(!prefs.light());
+        QVERIFY(prefs.iconThemes().contains(QStringLiteral("vela-test")));
+        QVERIFY(prefs.iconThemes().contains(QStringLiteral("vela-legacy")));
+        QVERIFY(!prefs.iconThemes().contains(QStringLiteral("vela-pointer")));
+        QVERIFY(prefs.cursorThemes().contains(QStringLiteral("vela-pointer")));
+        QVERIFY(!prefs.cursorThemes().contains(QStringLiteral("vela-test")));
+
+        prefs.setIconTheme(QStringLiteral("vela-test"));
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kdeglobals")), QStringLiteral("Icons"),
+                     QStringLiteral("Theme")),
+            QStringLiteral("vela-test"));
+        QCOMPARE(prefs.iconTheme(), QStringLiteral("vela-test"));
+        QCOMPARE(QIcon::themeName(), QStringLiteral("vela-test-dark"));
+        // Not installed: nothing written.
+        prefs.setIconTheme(QStringLiteral("vela-missing"));
+        QCOMPARE(prefs.iconTheme(), QStringLiteral("vela-test"));
+
+        prefs.setCursorTheme(QStringLiteral("vela-pointer"));
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
+                     QStringLiteral("cursorTheme")),
+            QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.cursorTheme(), QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.saveError(), QString());
+    }
+
+    // The sizes a cursor theme is drawn at, from its Xcursor file (or the
+    // theme it inherits): − and + step through them, a typed size goes to
+    // the nearest, and only those are written to kcminputrc.
+    void cursorSizes()
+    {
+        const auto restore = qScopeGuard([&] { QFile::remove(home().filePath(QStringLiteral("config/kcminputrc"))); });
+        // A table of contents with images at 36, 24 and 48 (a comment chunk
+        // at 99 too, which is no size) and no pixels: only the table is read.
+        QByteArray xcursor("Xcur");
+        const auto word = [&](quint32 value) {
+            const quint32 little = qToLittleEndian(value);
+            xcursor.append(reinterpret_cast<const char*>(&little), 4);
+        };
+        word(16);
+        word(0x10000);
+        word(4);
+        for (const auto& [type, size] : { std::pair { 0xfffd0002u, 36u }, std::pair { 0xfffd0002u, 24u },
+                 std::pair { 0xfffe0001u, 99u }, std::pair { 0xfffd0002u, 48u } }) {
+            word(type);
+            word(size);
+            word(0);
+        }
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-sized/index.theme"), "[Icon Theme]\nName=Sized\n"));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-sized/cursors/default"), xcursor));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-heir/index.theme"),
+            "[Icon Theme]\nName=Heir\nInherits=vela-missing, vela-sized\n"));
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-sized\n"));
+
+        Preferences prefs;
+        QCOMPARE(prefs.cursorSize(), 24);
+        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 36, 48 }));
+        // − and + go to the theme's sizes, and stop at its ends.
+        QCOMPARE(prefs.steppedCursorSize(24, 1), 36);
+        QCOMPARE(prefs.steppedCursorSize(36, 1), 48);
+        QCOMPARE(prefs.steppedCursorSize(48, 1), 48);
+        QCOMPARE(prefs.steppedCursorSize(48, -1), 36);
+        QCOMPARE(prefs.steppedCursorSize(24, -1), 24);
+        QCOMPARE(prefs.steppedCursorSize(30, 1), 36); // from a size set elsewhere
+        QCOMPARE(prefs.steppedCursorSize(30, -1), 24);
+        // A typed size goes to the nearest; halfway, the smaller (as wlroots).
+        QCOMPARE(prefs.nearestCursorSize(25), 24);
+        QCOMPARE(prefs.nearestCursorSize(31), 36);
+        QCOMPARE(prefs.nearestCursorSize(30), 24);
+        QCOMPARE(prefs.nearestCursorSize(4096), 48);
+        QCOMPARE(prefs.nearestCursorSize(-3), 24);
+
+        QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
+        prefs.setCursorSize(44); // typed: written as the theme's 48
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(prefs.cursorSize(), 48);
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
+                     QStringLiteral("cursorSize")),
+            QStringLiteral("48"));
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
+                     QStringLiteral("cursorTheme")),
+            QStringLiteral("vela-sized"));
+        // Already that size: nothing written, but the field is told to show it.
+        prefs.setCursorSize(4096);
+        QCOMPARE(prefs.cursorSize(), 48);
+        QCOMPARE(changed.count(), 2);
+
+        // No cursors of its own: the sizes of the theme it inherits.
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-heir\ncursorSize=30\n"));
+        QCOMPARE(prefs.cursorSize(), 30); // as written elsewhere
+        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 36, 48 }));
+        QCOMPARE(prefs.nearestCursorSize(prefs.cursorSize()), 24); // what the field shows
+        // Nothing readable: every size from 8 to 256, one by one.
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-missing\ncursorSize=999\n"));
+        QCOMPARE(prefs.cursorSize(), 24);
+        QCOMPARE(prefs.cursorSizes(), QList<int>());
+        QCOMPARE(prefs.nearestCursorSize(25), 25);
+        QCOMPARE(prefs.nearestCursorSize(300), 256);
+        QCOMPARE(prefs.nearestCursorSize(2), 8);
+        QCOMPARE(prefs.steppedCursorSize(24, 1), 25);
+        QCOMPARE(prefs.steppedCursorSize(8, -1), 8);
+        QCOMPARE(prefs.steppedCursorSize(256, 1), 256);
+    }
+
+    // KDE's immutable mark: nothing written, the choice shown as it is, and
+    // Settings says which file it could not write.
+    void lockedKdeChoiceIsReported()
+    {
+        const auto restore = qScopeGuard([&] { QFile::remove(home().filePath(QStringLiteral("config/kcminputrc"))); });
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/index.theme"), "[Icon Theme]\nName=Pointer\n"));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/cursors/left_ptr"), "x"));
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse][$i]\ncursorTheme=locked\n"));
+        Preferences prefs;
+        QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
+        prefs.setCursorTheme(QStringLiteral("vela-pointer"));
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(prefs.cursorTheme(), QStringLiteral("locked"));
+        QVERIFY(prefs.saveError().contains(home().filePath(QStringLiteral("config/kcminputrc"))));
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=locked\n"));
+        prefs.setCursorTheme(QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.cursorTheme(), QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.saveError(), QString());
     }
 
     void failedWriteReloadsNewerPersistedShellValues()

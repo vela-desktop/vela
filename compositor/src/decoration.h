@@ -51,6 +51,10 @@ struct vela_decoration *vela_decoration_create(struct vela_server *server, struc
 void vela_decoration_destroy(struct vela_decoration *decoration);
 
 void vela_decoration_update(struct vela_decoration *decoration, const struct vela_decoration_state *state);
+// The title again with a new font ("reload-font"), the icon again with a new
+// icon theme ("reload-icons"): the bar laid out as for a new title or app.
+void vela_decoration_refresh_text(struct vela_decoration *decoration, const struct vela_decoration_state *state);
+void vela_decoration_refresh_icon(struct vela_decoration *decoration, const struct vela_decoration_state *state);
 
 // What lies at a global point of the bar.
 enum vela_decoration_part vela_decoration_part_at(const struct vela_decoration *decoration, double lx, double ly);

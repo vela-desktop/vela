@@ -11,6 +11,7 @@
 #include "lock.h"
 #include "interact.h"
 #include "config.h"
+#include "cursor_size.h"
 #include "keyboard.h"
 #include "output.h"
 #include "nested.h"
@@ -24,6 +25,9 @@
 #include "util.h"
 
 #include <math.h>
+#include <errno.h>
+#include <limits.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <wlr/config.h>
@@ -60,6 +64,51 @@
 #define SWIPE_THRESHOLD 90.0
 // "Switch app": one step per this much movement.
 #define APP_STEP 140.0
+
+static bool valid_cursor_theme(const char *theme)
+{
+    if (!theme || !*theme || strcmp(theme, ".") == 0 || strcmp(theme, "..") == 0 || strchr(theme, '/')) {
+        return false;
+    }
+    for (const unsigned char *p = (const unsigned char *)theme; *p; ++p) {
+        if (*p < 32 || *p == 127) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// The pointer as chosen in Settings (or in KDE): [Mouse] cursorTheme and
+// cursorSize in kcminputrc, else XCURSOR_THEME and XCURSOR_SIZE, else the
+// "default" theme at 24. The size is in logical pixels: wlroots loads the
+// theme again for each output's scale.
+static struct wlr_xcursor_manager *configured_cursor_manager(void)
+{
+    const char *config = getenv("XDG_CONFIG_HOME");
+    const char *home = getenv("HOME");
+    char path[PATH_MAX] = "";
+    if (config && *config) {
+        snprintf(path, sizeof(path), "%s/kcminputrc", config);
+    } else if (home) {
+        snprintf(path, sizeof(path), "%s/.config/kcminputrc", home);
+    }
+    static const char *const keys[] = { "cursorTheme", "cursorSize" };
+    char values[2][256] = { "", "" };
+    if (path[0]) {
+        vela_ini_read(path, "Mouse", keys, values, 2);
+    }
+    const char *theme = valid_cursor_theme(values[0]) ? values[0] : getenv("XCURSOR_THEME");
+    int size = vela_env_int("XCURSOR_SIZE", 24);
+    char *end = NULL;
+    errno = 0;
+    long chosen = strtol(values[1], &end, 10);
+    if (values[1][0] && *end == '\0' && errno == 0 && chosen >= VELA_CURSOR_SIZE_MIN
+        && chosen <= VELA_CURSOR_SIZE_MAX) {
+        size = (int)chosen;
+    }
+    wlr_log(WLR_INFO, "Cursor: %s at %d", theme ? theme : "default", size);
+    return VELA_MUST(wlr_xcursor_manager_create(theme, (uint32_t)size));
+}
 
 // A mouse or a touchpad.
 struct vela_pointer {
@@ -762,7 +811,8 @@ static void handle_request_set_cursor(struct wl_listener *listener, void *data)
     struct vela_input *input = wl_container_of(listener, input, request_set_cursor);
     struct wlr_seat_pointer_request_set_cursor_event *event = data;
     if (input->server->seat->pointer_state.focused_client == event->seat_client) {
-        wlr_cursor_set_surface(input->server->cursor, event->surface, event->hotspot_x, event->hotspot_y);
+        // No surface: the app hides the pointer.
+        vela_input_set_cursor_surface(input->server, event->surface, event->hotspot_x, event->hotspot_y);
     }
 }
 
@@ -774,7 +824,7 @@ static void handle_request_set_shape(struct wl_listener *listener, void *data)
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
     struct vela_server *server = input->server;
     if (event->seat_client == server->seat->pointer_state.focused_client) {
-        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, wlr_cursor_shape_v1_name(event->shape));
+        vela_input_set_cursor_name(server, wlr_cursor_shape_v1_name(event->shape));
     }
 }
 
@@ -984,8 +1034,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
 
     server->cursor = VELA_MUST(wlr_cursor_create());
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
-    server->cursor_manager
-        = VELA_MUST(wlr_xcursor_manager_create(getenv("XCURSOR_THEME"), (uint32_t)vela_env_int("XCURSOR_SIZE", 24)));
+    server->cursor_manager = configured_cursor_manager();
 
     // Games and apps that want the mouse to themselves.
     input->relative_pointers = VELA_MUST(wlr_relative_pointer_manager_v1_create(display));
@@ -1114,4 +1163,32 @@ void vela_input_destroy(struct vela_input *input)
         wl_list_remove(&listeners[i]->link);
     }
     free(input);
+}
+
+void vela_input_set_cursor_name(struct vela_server *server, const char *name)
+{
+    server->input->cursor_name = name;
+    wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, name);
+}
+
+void vela_input_set_cursor_surface(struct vela_server *server, struct wlr_surface *surface, int32_t x, int32_t y)
+{
+    server->input->cursor_name = NULL;
+    wlr_cursor_set_surface(server->cursor, surface, x, y);
+}
+
+void vela_input_reload_cursor(struct vela_input *input)
+{
+    struct vela_server *server = input->server;
+    struct wlr_xcursor_manager *old = server->cursor_manager;
+    server->cursor_manager = configured_cursor_manager();
+    // wlr_cursor holds a manager (and its images, an animated cursor's timer)
+    // only while it shows one of its cursors: that cursor again, from the new
+    // theme, before the old one goes. An app's surface, or a hidden pointer,
+    // holds none and stays as it is.
+    if (input->cursor_name) {
+        wlr_cursor_set_xcursor(server->cursor, server->cursor_manager, input->cursor_name);
+    }
+    vela_xwayland_reload_cursor(server); // X11 windows' default cursor
+    wlr_xcursor_manager_destroy(old);
 }
