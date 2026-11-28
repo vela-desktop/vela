@@ -113,7 +113,7 @@ Item {
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: 16
                                     height: 16
-                                    source: crumb.modelData.icon ? "image://fileicon/" + crumb.modelData.icon : ""
+                                    source: crumb.modelData.icon ? Theme.fileIcons + crumb.modelData.icon : ""
                                     sourceSize: Qt.size(width, height)
                                 }
                                 Text {

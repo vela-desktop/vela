@@ -96,7 +96,7 @@ Page {
             description: qsTr("Font used by KDE and Qt applications")
             trailing: Choice {
                 width: 220
-                usable: Prefs.desktopThemesAvailable && page.visibleFonts.length > 0
+                usable: page.visibleFonts.length > 0
                 model: page.visibleFonts
                 currentIndex: page.visibleFonts.indexOf(Prefs.systemFont)
                 onChosen: index => Prefs.systemFont = page.visibleFonts[index]
@@ -113,7 +113,7 @@ Page {
             title: qsTr("Icon theme")
             description: qsTr("Icons used across KDE and Qt applications")
             trailing: Choice {
-                usable: Prefs.desktopThemesAvailable && Prefs.iconThemes.length > 0
+                usable: Prefs.iconThemes.length > 0
                 model: Prefs.iconThemes
                 currentIndex: Prefs.iconThemes.indexOf(Prefs.iconTheme)
                 onChosen: index => Prefs.iconTheme = Prefs.iconThemes[index]
@@ -124,7 +124,7 @@ Page {
             title: qsTr("Cursor theme")
             description: qsTr("Pointer style used across the desktop")
             trailing: Choice {
-                usable: Prefs.desktopThemesAvailable && Prefs.cursorThemes.length > 0
+                usable: Prefs.cursorThemes.length > 0
                 model: Prefs.cursorThemes
                 currentIndex: Prefs.cursorThemes.indexOf(Prefs.cursorTheme)
                 onChosen: index => Prefs.cursorTheme = Prefs.cursorThemes[index]

@@ -18,6 +18,7 @@ extern "C" {
 #include "batterysettings.h"
 #include "clockformat.h"
 #include "iconprovider.h"
+#include "kdeconfig.h"
 #include "themefile.h"
 
 #include <QDir>
@@ -60,37 +61,41 @@ QString compositorConfigPath()
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/vela/vela.conf");
 }
 
-QString kdeConfigPath(const QString& file)
+QString kdeglobalsPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + u'/' + file;
+    return vela::kde::configPath(QStringLiteral("kdeglobals"));
 }
 
-QString kdeValue(const QString& file, const QString& group, const QString& key)
+QString kcminputrcPath()
 {
-    QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
-    return settings.value(group + u'/' + key).toString();
+    return vela::kde::configPath(QStringLiteral("kcminputrc"));
 }
 
-QStringList installedThemes(const QString& subdirectory, const QString& marker)
+// A theme's directory name as Settings may offer it (and send to the
+// compositor on one command line): no control characters.
+bool usableThemeName(const QString& name)
 {
-    QStringList themes;
-    QStringList roots;
+    return !name.isEmpty() && std::none_of(name.cbegin(), name.cend(), [](QChar ch) {
+        const ushort value = ch.unicode();
+        return value < 32 || (value >= 127 && value <= 159);
+    });
+}
+
+// The installed themes whose directory passes `accept`, in ~/.icons (the
+// legacy place, which applyIconTheme() searches too) and the XDG data
+// directories' icons/: icon and cursor themes share them.
+QStringList installedThemes(const std::function<bool(const QString&)>& accept)
+{
+    QStringList roots { QDir::homePath() + QStringLiteral("/.icons") };
     for (const QString& data : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation)) {
-        roots.append(data + u'/' + subdirectory);
+        roots.append(data + QStringLiteral("/icons"));
     }
-    if (subdirectory == QLatin1String("icons")) {
-        roots.append(QDir::homePath() + QStringLiteral("/.icons"));
-    }
-    for (const QString& root : roots) {
+    QStringList themes;
+    for (const QString& root : std::as_const(roots)) {
         const QDir dir(root);
         for (const QFileInfo& entry : dir.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot)) {
-            const QString name = entry.fileName();
-            if (QFileInfo::exists(entry.filePath() + u'/' + marker)
-                && std::none_of(name.cbegin(), name.cend(), [](QChar ch) {
-                       const ushort value = ch.unicode();
-                       return value < 32 || (value >= 127 && value <= 159);
-                   })) {
-                themes.append(name);
+            if (usableThemeName(entry.fileName()) && accept(entry.filePath())) {
+                themes.append(entry.fileName());
             }
         }
     }
@@ -99,46 +104,45 @@ QStringList installedThemes(const QString& subdirectory, const QString& marker)
     return themes;
 }
 
-bool writeKdeValue(const QString& file, const QString& group, const QString& key, const QString& value)
+// An icon theme has directories of icons; a cursor theme's index.theme
+// (breeze_cursors) has none.
+bool isIconTheme(const QString& dir)
 {
-    const QString writer = QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6"));
-    if (!writer.isEmpty()) {
-        vela::process::ExternalProcess process;
-        process.start(writer,
-            { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
-                QStringLiteral("--key"), key, value });
-        return process.waitForFinished(-1) && process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
-    }
-    QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
-    settings.setValue(group + u'/' + key, value);
-    settings.sync();
-    return settings.status() == QSettings::NoError;
+    const std::optional<QString> directories = vela::kde::read(
+        dir + QStringLiteral("/index.theme"), QStringLiteral("Icon Theme"), QStringLiteral("Directories"));
+    return directories && !directories->trimmed().isEmpty();
 }
 
-void deleteKdeValue(const QString& file, const QString& group, const QString& key)
+bool isCursorTheme(const QString& dir)
 {
-    const QString writer = QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6"));
-    if (!writer.isEmpty()) {
-        vela::process::ExternalProcess process;
-        process.start(writer,
-            { QStringLiteral("--notify"), QStringLiteral("--file"), file, QStringLiteral("--group"), group,
-                QStringLiteral("--key"), key, QStringLiteral("--delete") });
-        process.waitForFinished(-1);
-    } else {
-        QSettings settings(kdeConfigPath(file), QSettings::IniFormat);
-        settings.remove(group + u'/' + key);
-        settings.sync();
-    }
+    return QFileInfo::exists(dir + QStringLiteral("/cursors/default"))
+        || QFileInfo::exists(dir + QStringLiteral("/cursors/left_ptr"));
 }
 
-QString withFontFamily(QString value, const QString& family)
+// The font keys KDE's font settings write, but the fixed-width one: the
+// general, menu, toolbar and smallest readable fonts, and [WM] activeFont,
+// the title bars' (the compositor reads it too, compositor/src/text.c).
+const QList<QPair<QString, QString>>& fontKeys()
 {
+    static const QList<QPair<QString, QString>> keys {
+        { QStringLiteral("General"), QStringLiteral("font") },
+        { QStringLiteral("General"), QStringLiteral("menuFont") },
+        { QStringLiteral("General"), QStringLiteral("toolBarFont") },
+        { QStringLiteral("General"), QStringLiteral("smallestReadableFont") },
+        { QStringLiteral("WM"), QStringLiteral("activeFont") },
+    };
+    return keys;
+}
+
+// A font as KDE writes it ("Noto Sans,10,-1,5,400,0,0,0,0,0"), or nullopt.
+std::optional<QFont> kdeFont(const QString& group, const QString& key)
+{
+    const std::optional<QString> value = vela::kde::read(kdeglobalsPath(), group, key);
     QFont font;
-    if (!font.fromString(value)) {
-        font = QGuiApplication::font();
+    if (!value || !font.fromString(*value)) {
+        return std::nullopt;
     }
-    font.setFamily(family);
-    return font.toString();
+    return font;
 }
 
 } // namespace
@@ -735,13 +739,25 @@ void Preferences::setWallpaper(const QString& pathOrUrl)
 
 // --------------------------------------------------- colors and theme --
 
+// The system font, icon and cursor themes are shared with KDE and Qt apps
+// through KDE's own files, written without KDE (common/src/kdeconfig.h,
+// docs/system-appearance.md).
+
+bool Preferences::saveKde(const QString& path, const QList<vela::kde::Entry>& entries)
+{
+    const bool saved = vela::kde::write(path, entries);
+    if (saved) {
+        vela::kde::notifyChanged(path, entries);
+    }
+    m_kdeSaveFailed = saved ? QString() : path;
+    publishSaveError();
+    return saved;
+}
+
 QString Preferences::systemFont() const
 {
-    QFont font;
-    if (!font.fromString(kdeValue(QStringLiteral("kdeglobals"), QStringLiteral("General"), QStringLiteral("font")))) {
-        font = QGuiApplication::font();
-    }
-    return font.family();
+    const std::optional<QFont> font = kdeFont(QStringLiteral("General"), QStringLiteral("font"));
+    return font ? font->family() : QGuiApplication::font().family();
 }
 
 QStringList Preferences::systemFonts() const
@@ -749,67 +765,50 @@ QStringList Preferences::systemFonts() const
     QStringList fonts = QFontDatabase::families();
     fonts.sort(Qt::CaseInsensitive);
     const QString current = systemFont();
-    if (!current.isEmpty() && !fonts.contains(current, Qt::CaseInsensitive)) {
+    if (!current.isEmpty() && !fonts.contains(current)) {
         fonts.prepend(current);
     }
     return fonts;
 }
 
-bool Preferences::desktopThemesAvailable() const
-{
-    return true;
-}
-
 void Preferences::setSystemFont(const QString& family)
 {
-    if (!desktopThemesAvailable() || family == systemFont() || !QFontDatabase::families().contains(family)) {
+    if (family == systemFont() || !QFontDatabase::families().contains(family)) {
         return;
     }
-    QSettings settings(kdeConfigPath(QStringLiteral("kdeglobals")), QSettings::IniFormat);
-    QList<QPair<QString, QString>> changed;
-    const auto writeFont = [&](const QString& group, const QString& key) {
-        const QString oldValue = settings.value(group + u'/' + key).toString();
-        const QString newValue = withFontFamily(oldValue, family);
-        if (!writeKdeValue(QStringLiteral("kdeglobals"), group, key, newValue)) {
-            for (auto it = changed.crbegin(); it != changed.crend(); ++it) {
-                const QString path = it->first + u'/' + it->second;
-                if (settings.contains(path)) {
-                    writeKdeValue(QStringLiteral("kdeglobals"), it->first, it->second, settings.value(path).toString());
-                } else {
-                    deleteKdeValue(QStringLiteral("kdeglobals"), it->first, it->second);
-                }
-            }
-            emit desktopThemesChanged();
-            return false;
-        }
-        changed.append({ group, key });
-        return true;
-    };
-    for (const QString& key : { QStringLiteral("font"), QStringLiteral("menuFont"), QStringLiteral("toolBarFont"),
-             QStringLiteral("windowTitleFont"), QStringLiteral("taskFont") }) {
-        if (!writeFont(QStringLiteral("General"), key)) {
-            return;
-        }
+    // Every key keeps its own size and weight; a missing one starts from the
+    // general font. The style name ("Bold", "Regular") belongs to the old
+    // family.
+    const QFont general = kdeFont(QStringLiteral("General"), QStringLiteral("font")).value_or(QGuiApplication::font());
+    QList<vela::kde::Entry> entries;
+    for (const auto& [group, key] : fontKeys()) {
+        QFont font = kdeFont(group, key).value_or(general);
+        font.setFamily(family);
+        font.setStyleName(QString());
+        entries.append({ group, key, font.toString() });
     }
-    if (!writeFont(QStringLiteral("WM"), QStringLiteral("activeFont"))) {
+    if (!saveKde(kdeglobalsPath(), entries)) {
+        emit desktopThemesChanged(); // back to what the file says
         return;
     }
     QFont font = QGuiApplication::font();
     font.setFamily(family);
+    font.setStyleName(QString());
     QGuiApplication::setFont(font);
-    sendToCompositor("reload-font");
+    sendToCompositor("reload-font"); // the title bars
+    vela::kde::refreshFonts(); // running KDE/Qt apps
+    vela::kde::notifyGlobalChange(vela::kde::GlobalChange::Font);
     emit desktopThemesChanged();
 }
 
 QString Preferences::iconTheme() const
 {
-    const QString configured = kdeValue(QStringLiteral("kdeglobals"), QStringLiteral("Icons"), QStringLiteral("Theme"));
-    return configured.isEmpty() ? QIcon::themeName() : configured;
+    return configuredIconTheme();
 }
 
 QStringList Preferences::iconThemes() const
 {
-    QStringList themes = installedThemes(QStringLiteral("icons"), QStringLiteral("index.theme"));
+    QStringList themes = installedThemes(isIconTheme);
     const QString current = iconTheme();
     if (!current.isEmpty() && !themes.contains(current)) {
         themes.prepend(current);
@@ -819,28 +818,36 @@ QStringList Preferences::iconThemes() const
 
 void Preferences::setIconTheme(const QString& theme)
 {
-    if (!desktopThemesAvailable() || theme == iconTheme() || !iconThemes().contains(theme)) {
+    if (theme == iconTheme() || !installedThemes(isIconTheme).contains(theme)) {
         return;
     }
-    if (!writeKdeValue(QStringLiteral("kdeglobals"), QStringLiteral("Icons"), QStringLiteral("Theme"), theme)) {
+    // The theme as chosen: the light or dark variant is only what Vela's
+    // apps show (applyIconTheme()).
+    if (!saveKde(kdeglobalsPath(), { { QStringLiteral("Icons"), QStringLiteral("Theme"), theme } })) {
         emit desktopThemesChanged();
         return;
     }
-    applyIconTheme(m_appTheme == QLatin1String("light"));
-    sendToCompositor("reload-icons");
+    applyIconTheme(light());
+    sendToCompositor("reload-icons"); // the title bars
+    vela::kde::notifyGlobalChange(vela::kde::GlobalChange::Icon); // KDE's platform rereads the theme
+    vela::kde::iconLoaderChanged();
     emit desktopThemesChanged();
 }
 
 QString Preferences::cursorTheme() const
 {
-    const QString configured =
-        kdeValue(QStringLiteral("kcminputrc"), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"));
-    return configured.isEmpty() ? qEnvironmentVariable("XCURSOR_THEME", QStringLiteral("default")) : configured;
+    const std::optional<QString> configured =
+        vela::kde::read(kcminputrcPath(), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"));
+    if (configured && !configured->isEmpty()) {
+        return *configured;
+    }
+    // What the compositor loads without a choice (compositor/src/input.c).
+    return qEnvironmentVariable("XCURSOR_THEME", QStringLiteral("default"));
 }
 
 QStringList Preferences::cursorThemes() const
 {
-    QStringList themes = installedThemes(QStringLiteral("icons"), QStringLiteral("cursors/left_ptr"));
+    QStringList themes = installedThemes(isCursorTheme);
     const QString current = cursorTheme();
     if (!current.isEmpty() && !themes.contains(current)) {
         themes.prepend(current);
@@ -850,13 +857,15 @@ QStringList Preferences::cursorThemes() const
 
 void Preferences::setCursorTheme(const QString& theme)
 {
-    if (!desktopThemesAvailable() || theme == cursorTheme() || !cursorThemes().contains(theme)
-        || !writeKdeValue(
-            QStringLiteral("kcminputrc"), QStringLiteral("Mouse"), QStringLiteral("cursorTheme"), theme)) {
+    if (theme == cursorTheme() || !installedThemes(isCursorTheme).contains(theme)) {
+        return;
+    }
+    if (!saveKde(kcminputrcPath(), { { QStringLiteral("Mouse"), QStringLiteral("cursorTheme"), theme } })) {
         emit desktopThemesChanged();
         return;
     }
     sendToCompositor("reload-cursor " + theme.toUtf8());
+    vela::kde::notifyGlobalChange(vela::kde::GlobalChange::Cursor);
     emit desktopThemesChanged();
 }
 
@@ -1307,6 +1316,9 @@ void Preferences::publishSaveError()
     }
     if (m_compositorSaveFailed) {
         paths.append(compositorConfigPath());
+    }
+    if (!m_kdeSaveFailed.isEmpty()) {
+        paths.append(m_kdeSaveFailed);
     }
     const QString message = paths.isEmpty() ? QString() : tr("Check that you can write %1.").arg(paths.join(u'\n'));
     if (m_saveError == message) {

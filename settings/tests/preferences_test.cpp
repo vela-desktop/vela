@@ -9,6 +9,7 @@
 // compositor is used.
 
 #include "defaults.h"
+#include "kdeconfig.h"
 #include "controls.h"
 #include "preferences.h"
 #include "privatehome.h"
@@ -850,27 +851,130 @@ private slots:
         expectFreshShell({ { QStringLiteral("appearance/appTheme"), QStringLiteral("light") } });
     }
 
-    void desktopThemesWorkWithoutKdeConfigUtility()
+    // Without KDE (no kwriteconfig6 on PATH): every font key in KDE's own
+    // format, the real [General] section, commas and no quotes, each key
+    // keeping its size and weight.
+    void systemFontWithoutKde()
     {
         const QByteArray originalPath = qgetenv("PATH");
-        const auto restore = qScopeGuard([&] { qputenv("PATH", originalPath); });
+        const auto restore = qScopeGuard([&] {
+            qputenv("PATH", originalPath);
+            QFile::remove(home().filePath(QStringLiteral("config/kdeglobals")));
+        });
         const QString bin = home().filePath(QStringLiteral("no-kde-bin"));
         QVERIFY(QDir().mkpath(bin));
         qputenv("PATH", bin.toUtf8());
 
-        Preferences prefs;
-        QVERIFY(prefs.desktopThemesAvailable());
-        const QString current = prefs.systemFont();
-        const auto families = QFontDatabase::families();
-        const auto alternative =
-            std::find_if(families.cbegin(), families.cend(), [&](const QString& family) { return family != current; });
-        if (alternative == families.cend()) QSKIP("No alternative font family is installed.");
+        const QStringList families = QFontDatabase::families();
+        if (families.size() < 2) QSKIP("Two font families are needed.");
+        const QString before = families[0];
+        const QString chosen = families[1];
+        // As Plasma 6 writes them (QFont::toString()).
+        const QByteArray bold = QFont(before, 14, QFont::Bold).toString().toUtf8();
+        const QByteArray title = QFont(before, 11, QFont::Normal).toString().toUtf8();
+        QVERIFY(writeFile(QStringLiteral("config/kdeglobals"),
+            "[General]\nColorScheme=BreezeDark\nfont=" + bold + "\n\n[WM]\nactiveFont=" + title + "\n"));
 
-        prefs.setSystemFont(*alternative);
-        QSettings kdeGlobals(home().filePath(QStringLiteral("config/kdeglobals")), QSettings::IniFormat);
-        QFont written;
-        QVERIFY(written.fromString(kdeGlobals.value(QStringLiteral("General/font")).toString()));
-        QCOMPARE(written.family(), *alternative);
+        Preferences prefs;
+        QCOMPARE(prefs.systemFont(), before);
+        QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
+        prefs.setSystemFont(chosen);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(prefs.systemFont(), chosen);
+        QCOMPARE(prefs.saveError(), QString());
+
+        const QString path = home().filePath(QStringLiteral("config/kdeglobals"));
+        const auto font = [&](const QString& group, const QString& key) {
+            QFont font;
+            const std::optional<QString> value = vela::kde::read(path, group, key);
+            return value && font.fromString(*value) ? std::optional(font) : std::nullopt;
+        };
+        const std::optional<QFont> general = font(QStringLiteral("General"), QStringLiteral("font"));
+        QVERIFY(general);
+        QCOMPARE(general->family(), chosen);
+        QCOMPARE(general->pointSize(), 14);
+        QCOMPARE(general->weight(), QFont::Bold);
+        const std::optional<QFont> titleFont = font(QStringLiteral("WM"), QStringLiteral("activeFont"));
+        QVERIFY(titleFont);
+        QCOMPARE(titleFont->family(), chosen);
+        QCOMPARE(titleFont->pointSize(), 11);
+        QCOMPARE(titleFont->weight(), QFont::Normal);
+        for (const QString& key :
+            { QStringLiteral("menuFont"), QStringLiteral("toolBarFont"), QStringLiteral("smallestReadableFont") }) {
+            const std::optional<QFont> other = font(QStringLiteral("General"), key);
+            QVERIFY2(other, qPrintable(key));
+            QCOMPARE(other->family(), chosen);
+            QCOMPARE(other->pointSize(), 14); // from the general font
+        }
+        // As KDE writes it: unquoted, in the real [General], the rest kept.
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::ReadOnly));
+        const QByteArray text = file.readAll();
+        QVERIFY(text.startsWith("[General]\nColorScheme=BreezeDark\nfont=" + chosen.toUtf8() + ",14,"));
+        QVERIFY(!text.contains('"'));
+        QVERIFY(!text.contains("%General"));
+    }
+
+    // A theme named in Settings is the theme written, also in the dark mode
+    // where Vela shows its -dark variant; a cursor theme (index.theme with
+    // no icon directories) is offered only as a cursor theme.
+    void iconAndCursorThemes()
+    {
+        const auto restore = qScopeGuard([&] {
+            QFile::remove(home().filePath(QStringLiteral("config/kdeglobals")));
+            QFile::remove(home().filePath(QStringLiteral("config/kcminputrc")));
+        });
+        const QByteArray icons = "[Icon Theme]\nName=Test\nDirectories=16x16/apps\n[16x16/apps]\nSize=16\n";
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-test/index.theme"), icons));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-test-dark/index.theme"), icons));
+        QVERIFY(writeFile(QStringLiteral("home/.icons/vela-legacy/index.theme"), icons));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/index.theme"), "[Icon Theme]\nName=Pointer\n"));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/cursors/left_ptr"), "x"));
+
+        Preferences prefs;
+        QVERIFY(!prefs.light());
+        QVERIFY(prefs.iconThemes().contains(QStringLiteral("vela-test")));
+        QVERIFY(prefs.iconThemes().contains(QStringLiteral("vela-legacy")));
+        QVERIFY(!prefs.iconThemes().contains(QStringLiteral("vela-pointer")));
+        QVERIFY(prefs.cursorThemes().contains(QStringLiteral("vela-pointer")));
+        QVERIFY(!prefs.cursorThemes().contains(QStringLiteral("vela-test")));
+
+        prefs.setIconTheme(QStringLiteral("vela-test"));
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kdeglobals")), QStringLiteral("Icons"),
+                     QStringLiteral("Theme")),
+            QStringLiteral("vela-test"));
+        QCOMPARE(prefs.iconTheme(), QStringLiteral("vela-test"));
+        QCOMPARE(QIcon::themeName(), QStringLiteral("vela-test-dark"));
+        // Not installed: nothing written.
+        prefs.setIconTheme(QStringLiteral("vela-missing"));
+        QCOMPARE(prefs.iconTheme(), QStringLiteral("vela-test"));
+
+        prefs.setCursorTheme(QStringLiteral("vela-pointer"));
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
+                     QStringLiteral("cursorTheme")),
+            QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.cursorTheme(), QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.saveError(), QString());
+    }
+
+    // KDE's immutable mark: nothing written, the choice shown as it is, and
+    // Settings says which file it could not write.
+    void lockedKdeChoiceIsReported()
+    {
+        const auto restore = qScopeGuard([&] { QFile::remove(home().filePath(QStringLiteral("config/kcminputrc"))); });
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/index.theme"), "[Icon Theme]\nName=Pointer\n"));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-pointer/cursors/left_ptr"), "x"));
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse][$i]\ncursorTheme=locked\n"));
+        Preferences prefs;
+        QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
+        prefs.setCursorTheme(QStringLiteral("vela-pointer"));
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(prefs.cursorTheme(), QStringLiteral("locked"));
+        QVERIFY(prefs.saveError().contains(home().filePath(QStringLiteral("config/kcminputrc"))));
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=locked\n"));
+        prefs.setCursorTheme(QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.cursorTheme(), QStringLiteral("vela-pointer"));
+        QCOMPARE(prefs.saveError(), QString());
     }
 
     void failedWriteReloadsNewerPersistedShellValues()

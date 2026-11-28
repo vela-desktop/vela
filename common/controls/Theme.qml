@@ -236,15 +236,23 @@ QtObject {
     readonly property color inversePrimary: themed("inversePrimary", Style.tonal.inversePrimary)
     // Expressive: links are primary (M3, underlined where they're used).
     readonly property color link: expressive ? primary : light ? Qt.darker(accent, 1.3) : Qt.lighter(accent, 1.5)
-    // Icons of the theme matching the mode ("image://icon/l/<name>"; the
-    // prefix reloads them when the mode changes). Always white on the accent.
-    readonly property string icons: "image://icon/" + Style.iconMode[0] + "@" + Style.iconRevision + "/"
-    readonly property string iconsOnAccent: Style.iconMode[0] === "l" ? "image://icon/w@" + Style.iconRevision + "/" : icons
+    // Icons of the theme matching the mode ("image://icon/v<n>/l/<name>": the
+    // icon theme's revision and the mode, so a new theme or mode reloads
+    // them). Always white on the accent.
     readonly property int iconRevision: Style.iconRevision
+    readonly property string icons: "image://icon/v" + iconRevision + "/" + Style.iconMode
+    readonly property string iconsOnAccent: Style.iconMode === "l/" ? "image://icon/v" + iconRevision + "/w/" : icons
+    // Files', folders' and places' icons ("image://fileicon/v<n>/<name>").
+    readonly property string fileIcons: "image://fileicon/v" + iconRevision + "/"
+    // An image://icon or image://fileicon address made elsewhere (a
+    // notification's, a tray item's), with the revision: reloaded with a new
+    // icon theme too. Other sources stay as they are.
     function versionedIcon(source) {
-        return source && source.startsWith("image://icon/")
-            ? "image://icon/v" + iconRevision + "/" + source.slice("image://icon/".length)
-            : source
+        for (const provider of ["image://icon/", "image://fileicon/"]) {
+            if (source && source.startsWith(provider))
+                return provider + "v" + iconRevision + "/" + source.slice(provider.length)
+        }
+        return source
     }
 
     // --- shapes and type ---

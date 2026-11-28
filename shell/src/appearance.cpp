@@ -15,7 +15,6 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QSettings>
-#include <QStandardPaths>
 
 Appearance::Appearance(QObject* parent, Mode mode)
     : QObject(parent)
@@ -37,7 +36,7 @@ void Appearance::watch()
     // The chosen theme and styles and what they inherit too: editing one shows
     // at once.
     QStringList paths { shellConfig, wallpaperTintCachePath(), wallpaperColorCachePath(), vela::language::configPath(),
-        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/kdeglobals") };
+        vela::kde::configPath(QStringLiteral("kdeglobals")) };
     paths += m_loaded.files();
     for (const QString& path : std::as_const(paths)) {
         if (path.isEmpty()) {
@@ -131,11 +130,9 @@ void Appearance::reload()
     const QColor mica = micaFromTint(tint, true, light);
     const QColor micaInactive = micaFromTint(tint, false, light);
     const vela::conf::Motion motion = vela::conf::motion(vela::conf::read(vela::language::configPath()));
-    QSettings kdeGlobals(
-        QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/kdeglobals"),
-        QSettings::IniFormat);
-    kdeGlobals.sync();
-    const QString iconTheme = kdeGlobals.value(QStringLiteral("Icons/Theme")).toString();
+    // The icon theme chosen in Settings (or in KDE): a new one reloads the
+    // icons as a new mode does.
+    const QString iconTheme = configuredIconTheme();
     const bool iconThemeChanged = iconTheme != m_iconTheme;
     vela::themes::Loaded loaded = vela::themes::loadConfigured(vela::language::configPath());
     const QStringList files = loaded.files();

@@ -99,7 +99,7 @@ Item {
                     visible: thumb.status !== Image.Ready
                     width: 96
                     height: 96
-                    source: pane.file ? "image://fileicon/" + encodeURIComponent(pane.info.icon) : ""
+                    source: pane.file ? Theme.fileIcons + encodeURIComponent(pane.info.icon) : ""
                     sourceSize: Qt.size(width, height)
                 }
             }
@@ -164,7 +164,7 @@ Item {
                     visible: detailsThumb.status !== Image.Ready
                     width: 96
                     height: 96
-                    source: pane.info ? "image://fileicon/" + encodeURIComponent(pane.info.icon) : ""
+                    source: pane.info ? Theme.fileIcons + encodeURIComponent(pane.info.icon) : ""
                     sourceSize: Qt.size(width, height)
                 }
             }

@@ -103,7 +103,7 @@ Page {
                 required property var modelData
                 readonly property var outputs: page.choices(Audio.outputs, true)
                 readonly property var inputs: page.choices(Audio.inputs, true)
-                icon: "image://fileicon/" + encodeURIComponent(modelData.icon)
+                icon: Theme.fileIcons + encodeURIComponent(modelData.icon)
                 title: modelData.name
                 description: modelData.playing && modelData.recording ? qsTr("Playing and recording")
                     : modelData.recording ? qsTr("Recording") : ""

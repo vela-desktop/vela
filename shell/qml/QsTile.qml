@@ -167,7 +167,7 @@ Item {
         // On: drawn in the label's color (the provider's "t<rrggbb>/"), dark
         // on the dark mode's light primary, where the theme's own are light.
         source: name === "" ? "" : !tile.checked ? Theme.icons + encodeURIComponent(name)
-            : "image://icon/t" + ("" + tile.content).substring(1, 7) + "/" + encodeURIComponent(name)
+            : "image://icon/v" + Theme.iconRevision + "/t" + ("" + tile.content).substring(1, 7) + "/" + encodeURIComponent(name)
     }
     Text {
         objectName: "tileLabel"

@@ -407,7 +407,7 @@ Window {
                             anchors.verticalCenter: parent.verticalCenter
                             width: 16
                             height: 16
-                            source: "image://fileicon/" + encodeURIComponent(root.pages[result.modelData.page].icon)
+                            source: Theme.fileIcons + encodeURIComponent(root.pages[result.modelData.page].icon)
                             sourceSize: Qt.size(width, height)
                         }
                         Text {

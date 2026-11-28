@@ -39,7 +39,7 @@ Fill {
         anchors.verticalCenter: parent.verticalCenter
         width: 16
         height: 16
-        source: "image://fileicon/" + encodeURIComponent(entry.icon)
+        source: Theme.fileIcons + encodeURIComponent(entry.icon)
         sourceSize: Qt.size(width, height)
     }
     Text {

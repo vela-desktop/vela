@@ -245,7 +245,7 @@ Window {
                     Image {
                         width: 32
                         height: 32
-                        source: root.paths.length === 1 ? "image://fileicon/v" + Theme.iconRevision + "/" + encodeURIComponent(FileActions.iconFor(root.paths[0])) : Theme.icons + "document-multiple"
+                        source: root.paths.length === 1 ? Theme.fileIcons + encodeURIComponent(FileActions.iconFor(root.paths[0])) : Theme.icons + "document-multiple"
                         sourceSize: Qt.size(width, height)
                     }
                     Text {

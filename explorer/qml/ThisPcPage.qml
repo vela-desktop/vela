@@ -46,7 +46,7 @@ Flickable {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 36
                         height: 36
-                        source: "image://fileicon/" + encodeURIComponent(folder.modelData.icon)
+                        source: Theme.fileIcons + encodeURIComponent(folder.modelData.icon)
                         sourceSize: Qt.size(width, height)
                     }
                     Text {
@@ -101,7 +101,7 @@ Flickable {
                         anchors.verticalCenter: parent.verticalCenter
                         width: 40
                         height: 40
-                        source: "image://fileicon/" + encodeURIComponent(drive.modelData.icon)
+                        source: Theme.fileIcons + encodeURIComponent(drive.modelData.icon)
                         sourceSize: Qt.size(width, height)
                     }
                     Column {

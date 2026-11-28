@@ -2713,8 +2713,8 @@ Specifiche sistema
         <translation>scuro chiaro dark light tema app</translation>
     </message>
     <message>
-        <source>theme palette colors corners radius rounded reset</source>
-        <translation>tema tavolozza colori angoli raggio arrotondati reimposta</translation>
+        <source>theme palette colors corners radius rounded reset system font fonts cursor pointer icon icons</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati reimposta sistema font carattere caratteri cursore puntatore icona icone</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
@@ -3398,8 +3398,8 @@ Specifiche sistema
         <translation>Temi</translation>
     </message>
     <message>
-        <source>Installed themes, your own, back to Vela&apos;s own look</source>
-        <translation>Temi installati, temi personali, ritorno all&apos;aspetto di Vela</translation>
+        <source>System fonts, icons, cursor style, and installed themes</source>
+        <translation>Font di sistema, icone, stile del cursore e temi installati</translation>
     </message>
     <message>
         <source>Taskbar items and behaviors, styles of the taskbar and quick settings</source>

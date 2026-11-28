@@ -232,7 +232,7 @@ Window {
                     Image {
                         width: 40
                         height: 40
-                        source: "image://fileicon/v" + Theme.iconRevision + "/" + encodeURIComponent(root.info.icon || "unknown")
+                        source: Theme.fileIcons + encodeURIComponent(root.info.icon || "unknown")
                         sourceSize: Qt.size(width, height)
                     }
                     Rectangle {
