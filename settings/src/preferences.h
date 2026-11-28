@@ -51,7 +51,8 @@ class Preferences : public QObject {
     Q_PROPERTY(QString cursorTheme READ cursorTheme WRITE setCursorTheme NOTIFY desktopThemesChanged)
     Q_PROPERTY(QStringList cursorThemes READ cursorThemes NOTIFY desktopThemesChanged)
     // [Mouse] cursorSize in kcminputrc, logical pixels; the sizes the theme
-    // is drawn at.
+    // is drawn at (empty when they can't be read). Written sizes are always
+    // one of them (nearestCursorSize()).
     Q_PROPERTY(int cursorSize READ cursorSize WRITE setCursorSize NOTIFY desktopThemesChanged)
     Q_PROPERTY(QList<int> cursorSizes READ cursorSizes NOTIFY desktopThemesChanged)
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
@@ -229,6 +230,10 @@ public:
     int cursorSize() const;
     QList<int> cursorSizes() const;
     void setCursorSize(int size);
+    // The theme's size nearest to `size` (8-256 when its sizes are unknown),
+    // and the next one up or down from `from`: the size field's steps.
+    Q_INVOKABLE int nearestCursorSize(int size) const;
+    Q_INVOKABLE int steppedCursorSize(int from, int direction) const;
     void setCursorTheme(const QString& theme);
 
     QString taskbarAlignment() const { return m_taskbarAlignment; }

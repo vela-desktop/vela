@@ -47,11 +47,20 @@ The lists hold only what is installed. Fonts come from fontconfig. Icon and
 cursor themes come from `~/.icons` and from `icons/` in the XDG data
 directories. An icon theme has icon directories (`Directories=` in its
 `index.theme`). A cursor theme has `cursors/default` or `cursors/left_ptr`.
-So `breeze_cursors` appears only in the cursor list. The sizes offered are
-the ones the cursor theme is drawn at: the nominal sizes in the table of
-contents of its arrow's Xcursor file, or of the theme it inherits (`default`
-naming Adwaita), as KDE's settings offer them. Without a readable file they
-are 24, 32, 48 and 64. The size in use is always in the list.
+So `breeze_cursors` appears only in the cursor list.
+
+The cursor size is a field with − and + beside it, from 8 to 256, that always
+lands on a size the cursor theme is drawn at. Those sizes are the nominal
+sizes in the table of contents of the theme's arrow (its Xcursor file), or of
+the theme it inherits (`default` naming Adwaita). − and + go to the previous
+or next one: from 24 with Capitaine, + gives 36. A typed size goes to the
+nearest; halfway between two, to the smaller, as wlroots chooses. The reason:
+wlroots shows the theme's drawing nearest to the size asked, unchanged, so a
+size between two would show one of them anyway. A size written elsewhere (by
+KDE) shows as the one the pointer really has. When the theme's sizes can't be
+read, every size from 8 to 256 is accepted. A question mark beside the field
+opens this explanation, with the theme's sizes and what the display scale
+does to them (§6).
 
 ## 3. Writing without KDE
 
@@ -152,7 +161,11 @@ by setting no surface, and a new theme must not bring it back.
   lists (a cursor-only theme in the right list, `~/.icons`), the chosen
   theme written rather than its dark variant, an immutable `kcminputrc`
   reported, and the cursor sizes (from an Xcursor table of contents, through
-  `Inherits`, the size in use added, out-of-range sizes refused).
+  `Inherits`; the steps of − and +, a typed size snapped to the nearest, only
+  the theme's sizes written; any size when they can't be read).
+- `settings-controls` (`tst_cursorsizefield`): the field's − and +, a typed
+  size and where it lands, the ends, a size set elsewhere, and the question
+  mark's popup.
 - `shell-icon-provider`: the configured theme read again at every call, an
   explicit `hicolor`, `~/.icons` in the search paths, and a test
   `kdeglobals` so the host's theme can't interfere.

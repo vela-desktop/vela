@@ -127,6 +127,7 @@ set(SETTINGS_QML_FILES
     qml/ResetThemesCard.qml
     qml/ThemeInUseCard.qml
     qml/OwnThemesCard.qml
+    qml/CursorSizeField.qml
     qml/UndoBar.qml
     qml/Page.qml
     qml/pages/HomePage.qml

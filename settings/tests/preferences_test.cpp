@@ -959,8 +959,8 @@ private slots:
     }
 
     // The sizes a cursor theme is drawn at, from its Xcursor file (or the
-    // theme it inherits), as KDE's settings offer them; the size written to
-    // kcminputrc, and nothing out of range.
+    // theme it inherits): − and + step through them, a typed size goes to
+    // the nearest, and only those are written to kcminputrc.
     void cursorSizes()
     {
         const auto restore = qScopeGuard([&] { QFile::remove(home().filePath(QStringLiteral("config/kcminputrc"))); });
@@ -989,8 +989,23 @@ private slots:
         Preferences prefs;
         QCOMPARE(prefs.cursorSize(), 24);
         QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 36, 48 }));
+        // − and + go to the theme's sizes, and stop at its ends.
+        QCOMPARE(prefs.steppedCursorSize(24, 1), 36);
+        QCOMPARE(prefs.steppedCursorSize(36, 1), 48);
+        QCOMPARE(prefs.steppedCursorSize(48, 1), 48);
+        QCOMPARE(prefs.steppedCursorSize(48, -1), 36);
+        QCOMPARE(prefs.steppedCursorSize(24, -1), 24);
+        QCOMPARE(prefs.steppedCursorSize(30, 1), 36); // from a size set elsewhere
+        QCOMPARE(prefs.steppedCursorSize(30, -1), 24);
+        // A typed size goes to the nearest; halfway, the smaller (as wlroots).
+        QCOMPARE(prefs.nearestCursorSize(25), 24);
+        QCOMPARE(prefs.nearestCursorSize(31), 36);
+        QCOMPARE(prefs.nearestCursorSize(30), 24);
+        QCOMPARE(prefs.nearestCursorSize(4096), 48);
+        QCOMPARE(prefs.nearestCursorSize(-3), 24);
+
         QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
-        prefs.setCursorSize(48);
+        prefs.setCursorSize(44); // typed: written as the theme's 48
         QCOMPARE(changed.count(), 1);
         QCOMPARE(prefs.cursorSize(), 48);
         QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
@@ -999,19 +1014,26 @@ private slots:
         QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
                      QStringLiteral("cursorTheme")),
             QStringLiteral("vela-sized"));
+        // Already that size: nothing written, but the field is told to show it.
         prefs.setCursorSize(4096);
-        prefs.setCursorSize(0);
         QCOMPARE(prefs.cursorSize(), 48);
-        QCOMPARE(changed.count(), 1);
+        QCOMPARE(changed.count(), 2);
 
         // No cursors of its own: the sizes of the theme it inherits.
         QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-heir\ncursorSize=30\n"));
-        QCOMPARE(prefs.cursorSize(), 30);
-        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 30, 36, 48 })); // the size in use too
-        // Nothing readable: the usual sizes.
+        QCOMPARE(prefs.cursorSize(), 30); // as written elsewhere
+        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 36, 48 }));
+        QCOMPARE(prefs.nearestCursorSize(prefs.cursorSize()), 24); // what the field shows
+        // Nothing readable: every size from 8 to 256, one by one.
         QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-missing\ncursorSize=999\n"));
         QCOMPARE(prefs.cursorSize(), 24);
-        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 32, 48, 64 }));
+        QCOMPARE(prefs.cursorSizes(), QList<int>());
+        QCOMPARE(prefs.nearestCursorSize(25), 25);
+        QCOMPARE(prefs.nearestCursorSize(300), 256);
+        QCOMPARE(prefs.nearestCursorSize(2), 8);
+        QCOMPARE(prefs.steppedCursorSize(24, 1), 25);
+        QCOMPARE(prefs.steppedCursorSize(8, -1), 8);
+        QCOMPARE(prefs.steppedCursorSize(256, 1), 256);
     }
 
     // KDE's immutable mark: nothing written, the choice shown as it is, and

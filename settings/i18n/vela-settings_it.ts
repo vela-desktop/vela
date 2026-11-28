@@ -3361,6 +3361,37 @@ Specifiche sistema
     </message>
 </context>
 <context>
+    <name>CursorSizeField</name>
+    <message>
+        <source>Smaller cursor</source>
+        <translation>Cursore più piccolo</translation>
+    </message>
+    <message>
+        <source>Cursor size in pixels</source>
+        <translation>Dimensione del cursore in pixel</translation>
+    </message>
+    <message>
+        <source>Larger cursor</source>
+        <translation>Cursore più grande</translation>
+    </message>
+    <message>
+        <source>Why these sizes</source>
+        <translation>Perché queste dimensioni</translation>
+    </message>
+    <message>
+        <source>This cursor theme&apos;s sizes can&apos;t be read, so any size from 8 to 256 is accepted. The pointer still shows the theme&apos;s drawing nearest to it.</source>
+        <translation>Le dimensioni di questo tema del cursore non si possono leggere, quindi va bene qualsiasi dimensione da 8 a 256. Il puntatore mostra comunque il disegno del tema più vicino.</translation>
+    </message>
+    <message>
+        <source>A cursor theme is drawn at a few sizes only, %1 px for this one. Other sizes would be the nearest drawing, unchanged, so the size always snaps to one of them: − and + go to the previous or next one, and a typed size goes to the nearest.
+
+The size is at 100% scale. On a display at another scale the theme is loaded at the size times the scale, and the drawing nearest to that is shown: at 125%, 24 asks for 30, and a theme without 30 shows its nearest, which can be smaller or larger than you expect.</source>
+        <translation>Un tema del cursore è disegnato solo in poche dimensioni, per questo %1 px. Con un&apos;altra dimensione si vedrebbe comunque il disegno più vicino, tale e quale, quindi la dimensione si aggancia sempre a una di queste: − e + passano alla precedente o alla successiva, e una dimensione scritta a mano va alla più vicina.
+
+La dimensione è al 100% di scala. Su uno schermo con un&apos;altra scala il tema viene caricato alla dimensione per la scala e si vede il disegno più vicino a quel valore: al 125%, 24 chiede 30, e un tema senza 30 mostra il più vicino, che può essere più piccolo o più grande di quanto ti aspetti.</translation>
+    </message>
+</context>
+<context>
     <name>OwnThemesCard</name>
     <message>
         <source>Your own themes</source>
@@ -4595,12 +4626,8 @@ Specifiche sistema
         <translation>Dimensione del cursore</translation>
     </message>
     <message>
-        <source>At 100% scale: larger displays scale it with everything else</source>
-        <translation>Al 100% di scala: sugli schermi più grandi cresce con tutto il resto</translation>
-    </message>
-    <message>
-        <source>%1 px</source>
-        <translation>%1 px</translation>
+        <source>In pixels at 100% scale, one of the sizes the cursor theme is drawn at</source>
+        <translation>In pixel al 100% di scala, una delle dimensioni in cui è disegnato il tema del cursore</translation>
     </message>
 </context>
 <context>

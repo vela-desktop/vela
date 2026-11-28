@@ -946,26 +946,53 @@ int Preferences::cursorSize() const
 
 QList<int> Preferences::cursorSizes() const
 {
-    // The sizes the theme is drawn at, as KDE's settings offer them;
-    // others would be scaled from the nearest one.
-    QList<int> sizes = cursorThemeSizes(cursorTheme());
+    // The sizes the theme is drawn at: wlroots shows the nearest one as it
+    // is, so these are the sizes the pointer can really have.
+    return cursorThemeSizes(cursorTheme());
+}
+
+int Preferences::nearestCursorSize(int size) const
+{
+    size = std::clamp(size, VELA_CURSOR_SIZE_MIN, VELA_CURSOR_SIZE_MAX);
+    const QList<int> sizes = cursorSizes();
     if (sizes.isEmpty()) {
-        sizes = { 24, 32, 48, 64 };
+        return size; // the theme's sizes can't be read: any
     }
-    if (!sizes.contains(cursorSize())) {
-        sizes.append(cursorSize());
-        std::sort(sizes.begin(), sizes.end());
+    // Halfway between two, the smaller, as wlroots chooses in a theme that
+    // lists its sizes from the smallest.
+    int nearest = sizes.constFirst();
+    for (const int candidate : sizes) {
+        if (std::abs(candidate - size) < std::abs(nearest - size)) {
+            nearest = candidate;
+        }
     }
-    return sizes;
+    return nearest;
+}
+
+int Preferences::steppedCursorSize(int from, int direction) const
+{
+    const QList<int> sizes = cursorSizes();
+    if (sizes.isEmpty()) {
+        return std::clamp(from + (direction > 0 ? 1 : -1), VELA_CURSOR_SIZE_MIN, VELA_CURSOR_SIZE_MAX);
+    }
+    if (direction > 0) {
+        const auto next = std::find_if(sizes.cbegin(), sizes.cend(), [from](int size) { return size > from; });
+        return next != sizes.cend() ? *next : sizes.constLast();
+    }
+    const auto previous = std::find_if(sizes.crbegin(), sizes.crend(), [from](int size) { return size < from; });
+    return previous != sizes.crend() ? *previous : sizes.constFirst();
 }
 
 void Preferences::setCursorSize(int size)
 {
-    if (size == cursorSize() || size < VELA_CURSOR_SIZE_MIN || size > VELA_CURSOR_SIZE_MAX) {
+    // Always one of the theme's sizes, whatever was typed.
+    const int snapped = nearestCursorSize(size);
+    if (snapped == cursorSize()) {
+        emit desktopThemesChanged(); // the field shows the size again
         return;
     }
-    if (!saveKde(
-            kcminputrcPath(), { { QStringLiteral("Mouse"), QStringLiteral("cursorSize"), QString::number(size) } })) {
+    if (!saveKde(kcminputrcPath(),
+            { { QStringLiteral("Mouse"), QStringLiteral("cursorSize"), QString::number(snapped) } })) {
         emit desktopThemesChanged();
         return;
     }
