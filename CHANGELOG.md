@@ -11,7 +11,8 @@ under "Unreleased" in the pull request that makes a user-visible change.
 ## Unreleased
 
 - Settings → Personalization → Themes chooses the system font, the icon theme
-  and the cursor theme, shared with KDE and Qt apps. They apply at once: title
+  and the cursor theme and size, shared with KDE and Qt apps. The cursor theme
+  chosen in KDE now applies in Vela too. They apply at once: title
   bars, the pointer, Vela's apps and running KDE apps. They also work without
   Plasma or kwriteconfig6. Switching between light and dark no longer replaces
   the chosen icon theme with its dark variant in KDE's settings. Based on work

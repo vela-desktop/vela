@@ -237,7 +237,7 @@ Window {
         { page: "colors", text: qsTr("Colors"), keys: qsTr("accent color theme dark light mode") },
         { page: "colors", text: qsTr("Custom color"), keys: qsTr("accent custom color picker hex code rgb") },
         { page: "colors", text: qsTr("Choose your mode"), keys: qsTr("dark light theme apps mode") },
-        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset system font fonts cursor pointer icon icons") },
+        { page: "themes", text: qsTr("Themes"), keys: qsTr("theme palette colors corners radius rounded reset system font fonts cursor pointer size icon icons") },
         { page: "taskbar", text: qsTr("Taskbar"), keys: qsTr("taskbar alignment left center end task") },
         { page: "taskbar", text: qsTr("Show seconds"), keys: qsTr("taskbar clock seconds time") },
         { page: "taskbar", text: qsTr("Show the date"), keys: qsTr("taskbar clock date day show hide") },

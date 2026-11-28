@@ -42,6 +42,7 @@
 #include <QSettings>
 #include <QScopeGuard>
 #include <QSignalSpy>
+#include <QtEndian>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUrl>
@@ -955,6 +956,62 @@ private slots:
             QStringLiteral("vela-pointer"));
         QCOMPARE(prefs.cursorTheme(), QStringLiteral("vela-pointer"));
         QCOMPARE(prefs.saveError(), QString());
+    }
+
+    // The sizes a cursor theme is drawn at, from its Xcursor file (or the
+    // theme it inherits), as KDE's settings offer them; the size written to
+    // kcminputrc, and nothing out of range.
+    void cursorSizes()
+    {
+        const auto restore = qScopeGuard([&] { QFile::remove(home().filePath(QStringLiteral("config/kcminputrc"))); });
+        // A table of contents with images at 36, 24 and 48 (a comment chunk
+        // at 99 too, which is no size) and no pixels: only the table is read.
+        QByteArray xcursor("Xcur");
+        const auto word = [&](quint32 value) {
+            const quint32 little = qToLittleEndian(value);
+            xcursor.append(reinterpret_cast<const char*>(&little), 4);
+        };
+        word(16);
+        word(0x10000);
+        word(4);
+        for (const auto& [type, size] : { std::pair { 0xfffd0002u, 36u }, std::pair { 0xfffd0002u, 24u },
+                 std::pair { 0xfffe0001u, 99u }, std::pair { 0xfffd0002u, 48u } }) {
+            word(type);
+            word(size);
+            word(0);
+        }
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-sized/index.theme"), "[Icon Theme]\nName=Sized\n"));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-sized/cursors/default"), xcursor));
+        QVERIFY(writeFile(QStringLiteral("data/icons/vela-heir/index.theme"),
+            "[Icon Theme]\nName=Heir\nInherits=vela-missing, vela-sized\n"));
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-sized\n"));
+
+        Preferences prefs;
+        QCOMPARE(prefs.cursorSize(), 24);
+        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 36, 48 }));
+        QSignalSpy changed(&prefs, &Preferences::desktopThemesChanged);
+        prefs.setCursorSize(48);
+        QCOMPARE(changed.count(), 1);
+        QCOMPARE(prefs.cursorSize(), 48);
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
+                     QStringLiteral("cursorSize")),
+            QStringLiteral("48"));
+        QCOMPARE(vela::kde::read(home().filePath(QStringLiteral("config/kcminputrc")), QStringLiteral("Mouse"),
+                     QStringLiteral("cursorTheme")),
+            QStringLiteral("vela-sized"));
+        prefs.setCursorSize(4096);
+        prefs.setCursorSize(0);
+        QCOMPARE(prefs.cursorSize(), 48);
+        QCOMPARE(changed.count(), 1);
+
+        // No cursors of its own: the sizes of the theme it inherits.
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-heir\ncursorSize=30\n"));
+        QCOMPARE(prefs.cursorSize(), 30);
+        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 30, 36, 48 })); // the size in use too
+        // Nothing readable: the usual sizes.
+        QVERIFY(writeFile(QStringLiteral("config/kcminputrc"), "[Mouse]\ncursorTheme=vela-missing\ncursorSize=999\n"));
+        QCOMPARE(prefs.cursorSize(), 24);
+        QCOMPARE(prefs.cursorSizes(), (QList<int> { 24, 32, 48, 64 }));
     }
 
     // KDE's immutable mark: nothing written, the choice shown as it is, and

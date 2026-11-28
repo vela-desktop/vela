@@ -132,5 +132,16 @@ Page {
                 onChosen: index => page.prefs.cursorTheme = page.prefs.cursorThemes[index]
             }
         }
+        Card {
+            icon: "preferences-desktop-cursor"
+            title: qsTr("Cursor size")
+            description: qsTr("At 100% scale: larger displays scale it with everything else")
+            trailing: Choice {
+                usable: page.prefs.cursorSizes.length > 1
+                model: page.prefs.cursorSizes.map(size => qsTr("%1 px").arg(size))
+                currentIndex: page.prefs.cursorSizes.indexOf(page.prefs.cursorSize)
+                onChosen: index => page.prefs.cursorSize = page.prefs.cursorSizes[index]
+            }
+        }
     }
 }

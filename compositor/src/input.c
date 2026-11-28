@@ -11,6 +11,7 @@
 #include "lock.h"
 #include "interact.h"
 #include "config.h"
+#include "cursor_size.h"
 #include "keyboard.h"
 #include "output.h"
 #include "nested.h"
@@ -24,6 +25,7 @@
 #include "util.h"
 
 #include <math.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -76,22 +78,36 @@ static bool valid_cursor_theme(const char *theme)
     return true;
 }
 
-// The cursor theme chosen in Settings (or in KDE): [Mouse] cursorTheme in
-// kcminputrc. false when there is none (or none usable).
-static bool configured_cursor_theme(char (*theme)[256])
+// The pointer as chosen in Settings (or in KDE): [Mouse] cursorTheme and
+// cursorSize in kcminputrc, else XCURSOR_THEME and XCURSOR_SIZE, else the
+// "default" theme at 24. The size is in logical pixels: wlroots loads the
+// theme again for each output's scale.
+static struct wlr_xcursor_manager *configured_cursor_manager(void)
 {
     const char *config = getenv("XDG_CONFIG_HOME");
     const char *home = getenv("HOME");
-    char path[PATH_MAX];
+    char path[PATH_MAX] = "";
     if (config && *config) {
         snprintf(path, sizeof(path), "%s/kcminputrc", config);
     } else if (home) {
         snprintf(path, sizeof(path), "%s/.config/kcminputrc", home);
-    } else {
-        return false;
     }
-    static const char *const keys[] = { "cursorTheme" };
-    return vela_ini_read(path, "Mouse", keys, theme, 1) && valid_cursor_theme(theme[0]);
+    static const char *const keys[] = { "cursorTheme", "cursorSize" };
+    char values[2][256] = { "", "" };
+    if (path[0]) {
+        vela_ini_read(path, "Mouse", keys, values, 2);
+    }
+    const char *theme = valid_cursor_theme(values[0]) ? values[0] : getenv("XCURSOR_THEME");
+    int size = vela_env_int("XCURSOR_SIZE", 24);
+    char *end = NULL;
+    errno = 0;
+    long chosen = strtol(values[1], &end, 10);
+    if (values[1][0] && *end == '\0' && errno == 0 && chosen >= VELA_CURSOR_SIZE_MIN
+        && chosen <= VELA_CURSOR_SIZE_MAX) {
+        size = (int)chosen;
+    }
+    wlr_log(WLR_INFO, "Cursor: %s at %d", theme ? theme : "default", size);
+    return VELA_MUST(wlr_xcursor_manager_create(theme, (uint32_t)size));
 }
 
 // A mouse or a touchpad.
@@ -1018,10 +1034,7 @@ struct vela_input *vela_input_create(struct vela_server *server)
 
     server->cursor = VELA_MUST(wlr_cursor_create());
     wlr_cursor_attach_output_layout(server->cursor, server->output_layout);
-    char cursor_theme[1][256];
-    server->cursor_manager = VELA_MUST(
-        wlr_xcursor_manager_create(configured_cursor_theme(cursor_theme) ? cursor_theme[0] : getenv("XCURSOR_THEME"),
-            (uint32_t)vela_env_int("XCURSOR_SIZE", 24)));
+    server->cursor_manager = configured_cursor_manager();
 
     // Games and apps that want the mouse to themselves.
     input->relative_pointers = VELA_MUST(wlr_relative_pointer_manager_v1_create(display));
@@ -1164,14 +1177,11 @@ void vela_input_set_cursor_surface(struct vela_server *server, struct wlr_surfac
     wlr_cursor_set_surface(server->cursor, surface, x, y);
 }
 
-void vela_input_reload_cursor(struct vela_input *input, const char *theme)
+void vela_input_reload_cursor(struct vela_input *input)
 {
-    if (!input || !valid_cursor_theme(theme)) {
-        return;
-    }
     struct vela_server *server = input->server;
     struct wlr_xcursor_manager *old = server->cursor_manager;
-    server->cursor_manager = VELA_MUST(wlr_xcursor_manager_create(theme, (uint32_t)vela_env_int("XCURSOR_SIZE", 24)));
+    server->cursor_manager = configured_cursor_manager();
     // wlr_cursor holds a manager (and its images, an animated cursor's timer)
     // only while it shows one of its cursors: that cursor again, from the new
     // theme, before the old one goes. An app's surface, or a hidden pointer,
@@ -1181,5 +1191,4 @@ void vela_input_reload_cursor(struct vela_input *input, const char *theme)
     }
     vela_xwayland_reload_cursor(server); // X11 windows' default cursor
     wlr_xcursor_manager_destroy(old);
-    wlr_log(WLR_INFO, "Cursor theme: %s", theme);
 }

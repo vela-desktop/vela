@@ -50,6 +50,10 @@ class Preferences : public QObject {
     Q_PROPERTY(QStringList iconThemes READ iconThemes NOTIFY desktopThemesChanged)
     Q_PROPERTY(QString cursorTheme READ cursorTheme WRITE setCursorTheme NOTIFY desktopThemesChanged)
     Q_PROPERTY(QStringList cursorThemes READ cursorThemes NOTIFY desktopThemesChanged)
+    // [Mouse] cursorSize in kcminputrc, logical pixels; the sizes the theme
+    // is drawn at.
+    Q_PROPERTY(int cursorSize READ cursorSize WRITE setCursorSize NOTIFY desktopThemesChanged)
+    Q_PROPERTY(QList<int> cursorSizes READ cursorSizes NOTIFY desktopThemesChanged)
     Q_PROPERTY(QString taskbarAlignment READ taskbarAlignment WRITE setTaskbarAlignment NOTIFY taskbarChanged)
     Q_PROPERTY(QString taskbarPosition READ taskbarPosition WRITE setTaskbarPosition NOTIFY taskbarChanged)
     Q_PROPERTY(bool endTask READ endTask WRITE setEndTask NOTIFY taskbarChanged)
@@ -222,6 +226,9 @@ public:
     void setIconTheme(const QString& theme);
     QString cursorTheme() const;
     QStringList cursorThemes() const;
+    int cursorSize() const;
+    QList<int> cursorSizes() const;
+    void setCursorSize(int size);
     void setCursorTheme(const QString& theme);
 
     QString taskbarAlignment() const { return m_taskbarAlignment; }

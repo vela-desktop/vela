@@ -2713,8 +2713,8 @@ Specifiche sistema
         <translation>scuro chiaro dark light tema app</translation>
     </message>
     <message>
-        <source>theme palette colors corners radius rounded reset system font fonts cursor pointer icon icons</source>
-        <translation>tema tavolozza colori angoli raggio arrotondati reimposta sistema font carattere caratteri cursore puntatore icona icone</translation>
+        <source>theme palette colors corners radius rounded reset system font fonts cursor pointer size icon icons</source>
+        <translation>tema tavolozza colori angoli raggio arrotondati reimposta sistema font carattere caratteri cursore puntatore dimensione grandezza icona icone</translation>
     </message>
     <message>
         <source>taskbar alignment left center end task</source>
@@ -4589,6 +4589,18 @@ Specifiche sistema
     <message>
         <source>Pointer style used across the desktop</source>
         <translation>Stile del puntatore usato nel desktop</translation>
+    </message>
+    <message>
+        <source>Cursor size</source>
+        <translation>Dimensione del cursore</translation>
+    </message>
+    <message>
+        <source>At 100% scale: larger displays scale it with everything else</source>
+        <translation>Al 100% di scala: sugli schermi più grandi cresce con tutto il resto</translation>
+    </message>
+    <message>
+        <source>%1 px</source>
+        <translation>%1 px</translation>
     </message>
 </context>
 <context>

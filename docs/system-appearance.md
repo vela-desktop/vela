@@ -1,8 +1,8 @@
 # System appearance
 
-Settings → Personalization → Themes → System appearance chooses three things
-that Vela shares with KDE and Qt apps: the system font, the icon theme and the
-cursor theme. This document says where those choices are stored, how Vela
+Settings → Personalization → Themes → System appearance chooses what Vela
+shares with KDE and Qt apps: the system font, the icon theme, and the cursor
+theme and size. This document says where those choices are stored, how Vela
 writes them without KDE, and how every part of the desktop picks them up at
 once.
 
@@ -38,6 +38,7 @@ for every Qt app.
 | System font | `kdeglobals` | `[General]` `font`, `menuFont`, `toolBarFont`, `smallestReadableFont`; `[WM]` `activeFont` (title bars) |
 | Icon theme | `kdeglobals` | `[Icons]` `Theme` |
 | Cursor theme | `kcminputrc` | `[Mouse]` `cursorTheme` |
+| Cursor size | `kcminputrc` | `[Mouse]` `cursorSize` (logical pixels, 8–256) |
 
 The font keys are the ones Plasma's font settings write, except the fixed-width
 font. Each key keeps its own size and weight; only the family changes.
@@ -46,7 +47,11 @@ The lists hold only what is installed. Fonts come from fontconfig. Icon and
 cursor themes come from `~/.icons` and from `icons/` in the XDG data
 directories. An icon theme has icon directories (`Directories=` in its
 `index.theme`). A cursor theme has `cursors/default` or `cursors/left_ptr`.
-So `breeze_cursors` appears only in the cursor list.
+So `breeze_cursors` appears only in the cursor list. The sizes offered are
+the ones the cursor theme is drawn at: the nominal sizes in the table of
+contents of its arrow's Xcursor file, or of the theme it inherits (`default`
+naming Adwaita), as KDE's settings offer them. Without a readable file they
+are 24, 32, 48 and 64. The size in use is always in the list.
 
 ## 3. Writing without KDE
 
@@ -79,7 +84,7 @@ After a successful write, Settings sends:
 
 | To | Message | For |
 | --- | --- | --- |
-| The compositor | `reload-font`, `reload-icons`, `reload-cursor <theme>` | title bars, pointer (§6) |
+| The compositor | `reload-font`, `reload-icons`, `reload-cursor` | title bars, pointer (§6) |
 | KConfig watchers | `org.kde.kconfig.notify.ConfigChanged` on `/kdeglobals` or `/kcminputrc`, the changed keys | what `kwriteconfig6 --notify` sends |
 | KDE's platform plugin | `org.kde.KDEPlatformTheme.refreshFonts` | running Qt apps reload their fonts |
 | KDE's platform plugin | `org.kde.KGlobalSettings.notifyChange` (1 font, 4 icons, 5 cursor) | running Qt apps reload their icon theme |
@@ -105,10 +110,14 @@ actually chosen stays `hicolor`.
 
 ## 6. The cursor theme in the compositor
 
-At startup the compositor loads `[Mouse] cursorTheme` from `kcminputrc`, then
-`XCURSOR_THEME`, at `XCURSOR_SIZE`. On `reload-cursor <theme>` it:
+At startup, and on `reload-cursor`, the compositor reads `[Mouse]
+cursorTheme` and `cursorSize` from `kcminputrc`. Without them, or with a name
+that is not a single directory name or a size out of 8–256, it falls back to
+`XCURSOR_THEME` and `XCURSOR_SIZE`, else the `default` theme at 24. The size is
+logical: wlroots loads the theme again at each output's scale, so a 24 px
+cursor is 30 physical pixels at 125%. On `reload-cursor` it:
 
-1. creates a manager for the new theme;
+1. creates a manager for the theme and size;
 2. shows the current cursor again from it, if the pointer is showing one of
    the theme's cursors (Vela's own, or one an app asked for by name with
    cursor-shape-v1);
@@ -127,9 +136,10 @@ by setting no surface, and a new theme must not bring it back.
 
 - **GTK apps** read GNOME's settings (`org.gnome.desktop.interface`), not
   KDE's files. Writing those too is a separate choice.
-- **Cursor size** stays `XCURSOR_SIZE`. **Font size** is not offered.
-- **Apps that draw their own cursor** from `XCURSOR_THEME` (rare on Wayland;
-  some X11 apps) keep the theme they started with.
+- **Font size** is not offered.
+- **Apps that draw their own cursor** from `XCURSOR_THEME` and
+  `XCURSOR_SIZE` (rare on Wayland; some X11 apps) keep what they started
+  with.
 
 ## 8. Tests
 
@@ -140,13 +150,15 @@ by setting no surface, and a new theme must not bring it back.
 - `settings-preferences`: the font without `kwriteconfig6` (every key, sizes
   and weights kept, no quotes, the real `[General]`), the icon and cursor
   lists (a cursor-only theme in the right list, `~/.icons`), the chosen
-  theme written rather than its dark variant, and an immutable `kcminputrc`
-  reported.
+  theme written rather than its dark variant, an immutable `kcminputrc`
+  reported, and the cursor sizes (from an Xcursor table of contents, through
+  `Inherits`, the size in use added, out-of-range sizes refused).
 - `shell-icon-provider`: the configured theme read again at every call, an
   explicit `hicolor`, `~/.icons` in the search paths, and a test
   `kdeglobals` so the host's theme can't interfere.
 - `functional-system_appearance` (GPU): read on screen. It checks the cursor
-  from `kcminputrc` at startup, a new theme over the desktop without moving,
+  from `kcminputrc` at startup (theme and size), a new theme and a new size
+  without moving, a name outside the cursor directories refused,
   over a window border after an app's own cursor, an app's cursor and a
   hidden one left alone, and an animated cursor replaced while outputs come
   and go. It also checks the title bars' icons following a new theme, an

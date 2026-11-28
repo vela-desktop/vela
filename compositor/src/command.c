@@ -579,8 +579,8 @@ static void run_command(struct vela_server *server, const char *line)
         vela_brightness_probe(server, line + 17); // Settings is showing this output
     } else if (starts_with(line, "brightness ")) {
         brightness(server, line + 11);
-    } else if (starts_with(line, "reload-cursor ")) {
-        vela_input_reload_cursor(server->input, line + 14);
+    } else if (strcmp(line, "reload-cursor") == 0) {
+        vela_input_reload_cursor(server->input);
     } else if (strcmp(line, "reload-icons") == 0) {
         vela_icons_destroy(server->icons);
         server->icons = NULL;

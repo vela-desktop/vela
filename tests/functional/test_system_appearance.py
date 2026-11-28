@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 """The system appearance chosen in Settings (docs/system-appearance.md), as
-the compositor applies it at once: the cursor theme ("reload-cursor", and
-kcminputrc at startup) and the icon theme of the title bars ("reload-icons",
+the compositor applies it at once: the cursor theme and size (kcminputrc, at
+startup and on "reload-cursor") and the icon theme of the title bars ("reload-icons",
 kdeglobals). Read on screen."""
 
 import os
@@ -26,24 +26,23 @@ YELLOW = (255, 255, 0)
 GREEN = (0, 255, 0)  # vela-pattern --cursor surface
 
 
-def write_cursor_theme(icons, name, colors, delay=0):
-    """An Xcursor theme in `icons` with one cursor, "default", of 24x24
-    pixels, its hotspot at the top left: one frame per color, shown `delay`
-    ms each (an animated cursor when there are more)."""
+def write_cursor_theme(icons, name, colors, delay=0, sizes=(24, 48)):
+    """An Xcursor theme in `icons` with one cursor, "default", square, at each
+    nominal size of `sizes`, its hotspot at the top left: one frame per color,
+    shown `delay` ms each (an animated cursor when there are more)."""
     cursors = os.path.join(icons, name, "cursors")
     os.makedirs(cursors, exist_ok=True)
     with open(os.path.join(icons, name, "index.theme"), "w") as index:
         index.write(f"[Icon Theme]\nName={name}\n")
-    size = 24
     image_type = 0xFFFD0002
     header, chunk = 16, 36
-    toc = 12 * len(colors)
-    data = bytearray(struct.pack("<4sIII", b"Xcur", header, 0x10000, len(colors)))
-    position = header + toc
-    for _ in colors:
+    images = [(size, color) for size in sizes for color in colors]
+    data = bytearray(struct.pack("<4sIII", b"Xcur", header, 0x10000, len(images)))
+    position = header + 12 * len(images)
+    for size, _ in images:
         data += struct.pack("<III", image_type, size, position)
         position += chunk + size * size * 4
-    for color in colors:
+    for size, color in images:
         data += struct.pack("<IIIIIIIII", chunk, image_type, size, 1, size, size, 0, 0, delay)
         pixel = struct.pack("<I", 0xFF000000 | color[0] << 16 | color[1] << 8 | color[2])
         data += pixel * (size * size)
@@ -74,33 +73,43 @@ class CursorTheme(unittest.TestCase):
     of the old theme stays in use (an ASan build turns a use of it into a
     failure)."""
 
-    def session(self, theme="vela-red"):
+    def session(self, theme="vela-red", env=None, size=None):
         """A session whose kcminputrc chooses `theme` before it starts, with
         the test's cursor themes the only ones it finds (XCURSOR_PATH)."""
-        base = tempfile.mkdtemp(prefix="vela-cursor-")
-        self.addCleanup(shutil.rmtree, base, ignore_errors=True)
-        config = os.path.join(base, "config")
+        self.base = tempfile.mkdtemp(prefix="vela-cursor-")
+        self.addCleanup(shutil.rmtree, self.base, ignore_errors=True)
+        config = os.path.join(self.base, "config")
         os.makedirs(config)
-        with open(os.path.join(config, "kcminputrc"), "w") as kcminputrc:
-            kcminputrc.write(f"[Mouse]\ncursorTheme={theme}\n")
-        icons = os.path.join(base, "icons")
+        icons = os.path.join(self.base, "icons")
         write_cursor_theme(icons, "vela-red", [RED])
         write_cursor_theme(icons, "vela-blue", [BLUE])
         write_cursor_theme(icons, "vela-blinking", [RED, YELLOW], delay=20)
-        vela = Session(env={"XDG_CONFIG_HOME": config, "XCURSOR_PATH": icons})
+        self.write_choice(config, theme, size)
+        vela = Session(env={"XDG_CONFIG_HOME": config, "XCURSOR_PATH": icons, **(env or {})})
         vela.start()
         self.addCleanup(vela.stop)
         return vela
 
-    def cursor_at(self, vela, x, y):
-        """The pixel just inside the pointer at (x, y), the cursor drawn."""
+    @staticmethod
+    def write_choice(config, theme, size=None):
+        with open(os.path.join(config, "kcminputrc"), "w") as kcminputrc:
+            kcminputrc.write(f"[Mouse]\ncursorTheme={theme}\n" + (f"cursorSize={size}\n" if size else ""))
+
+    def choose(self, vela, theme, size=None):
+        """What Settings does: kcminputrc written, then "reload-cursor"."""
+        self.write_choice(vela.env["XDG_CONFIG_HOME"], theme, size)
+        vela.command("reload-cursor")
+
+    def cursor_at(self, vela, x, y, inside=4):
+        """The pixel `inside` pixels into the pointer at (x, y), the cursor
+        drawn."""
         path = os.path.join(vela.directory, "cursor.png")
-        vela.screenshot(path, region=(x + 4, y + 4, 1, 1), cursor=True)
+        vela.screenshot(path, region=(x + inside, y + inside, 1, 1), cursor=True)
         return Image.read(path).at(0, 0)
 
-    def plain_at(self, vela, x, y):
+    def plain_at(self, vela, x, y, inside=4):
         path = os.path.join(vela.directory, "plain.png")
-        vela.screenshot(path, region=(x + 4, y + 4, 1, 1), cursor=False)
+        vela.screenshot(path, region=(x + inside, y + inside, 1, 1), cursor=False)
         return Image.read(path).at(0, 0)
 
     def wait_cursor(self, vela, x, y, color, what):
@@ -112,7 +121,7 @@ class CursorTheme(unittest.TestCase):
         vela = self.session("vela-red")
         vela.input("move", "300", "300", "sleep", "50", "move", "310", "300")
         self.wait_cursor(vela, 310, 300, RED, "the theme from kcminputrc")
-        vela.command("reload-cursor vela-blue")
+        self.choose(vela, "vela-blue")
         self.wait_cursor(vela, 310, 300, BLUE, "the new theme, without moving")
         vela.input("move", "320", "300")
         self.wait_cursor(vela, 320, 300, BLUE, "the new theme, moving")
@@ -131,12 +140,12 @@ class CursorTheme(unittest.TestCase):
         self.wait_cursor(vela, inside[0] + 5, inside[1], GREEN, "the app's own cursor")
         vela.input("move", *map(str, border), "sleep", "100", "move", str(border[0] + 1), str(border[1]))
         self.wait_cursor(vela, border[0] + 1, border[1], RED, "the border's cursor")
-        vela.command("reload-cursor vela-blue")
+        self.choose(vela, "vela-blue")
         self.wait_cursor(vela, border[0] + 1, border[1], BLUE, "the border's cursor, new theme")
         # Back inside: the app's cursor; a new theme leaves it alone.
         vela.input("move", *map(str, inside), "sleep", "100", "move", str(inside[0] + 5), str(inside[1]))
         self.wait_cursor(vela, inside[0] + 5, inside[1], GREEN, "the app's own cursor again")
-        vela.command("reload-cursor vela-red")
+        self.choose(vela, "vela-red")
         time.sleep(0.2)
         self.assertTrue(close(self.cursor_at(vela, inside[0] + 5, inside[1]), GREEN))
         vela.input("move", "100", "100", "sleep", "100", "move", "105", "100")
@@ -151,7 +160,7 @@ class CursorTheme(unittest.TestCase):
         under = self.plain_at(vela, x + 5, y)
         vela.wait_for(lambda _: self.cursor_at(vela, x + 5, y) == under, read_state=False,
                       what="no cursor over the game")
-        vela.command("reload-cursor vela-blue")
+        self.choose(vela, "vela-blue")
         time.sleep(0.2)
         self.assertEqual(self.cursor_at(vela, x + 5, y), under, "a new theme showed the hidden cursor")
 
@@ -163,7 +172,7 @@ class CursorTheme(unittest.TestCase):
         self.wait_cursor(vela, 310, 300, RED, "the first frame")
         self.wait_cursor(vela, 310, 300, YELLOW, "the second frame")
         for theme in ("vela-red", "vela-blinking", "vela-blue"):
-            vela.command(f"reload-cursor {theme}")
+            self.choose(vela, theme)
             vela.command("test-output add 1280x720")
             time.sleep(0.1)
             vela.command("test-output remove HEADLESS-2")
@@ -172,13 +181,35 @@ class CursorTheme(unittest.TestCase):
         self.assertTrue(vela.state()["outputs"], "the compositor is still there")
 
     def test_bad_names_are_refused(self):
-        vela = self.session("vela-red")
+        # A name that leaves the cursor directories is not loaded: the
+        # pointer falls back to XCURSOR_THEME, never to the theme next door.
+        vela = self.session("vela-red", env={"XCURSOR_THEME": "vela-blue"})
+        write_cursor_theme(self.base, "outside", [YELLOW])
         vela.input("move", "300", "300", "sleep", "50", "move", "310", "300")
         self.wait_cursor(vela, 310, 300, RED, "the theme from kcminputrc")
-        for name in ("../vela-blue", ".", ".."):
-            vela.command(f"reload-cursor {name}")
+        for name in ("../outside", ".", ".."):
+            self.choose(vela, name)
+            self.wait_cursor(vela, 310, 300, BLUE, f"XCURSOR_THEME instead of {name!r}")
+            self.choose(vela, "vela-red")
+            self.wait_cursor(vela, 310, 300, RED, "the theme from kcminputrc again")
+
+    def test_size(self):
+        # 48 from kcminputrc at startup, 24 at once: the pixel 40 in is the
+        # cursor's, then no longer.
+        vela = self.session("vela-red", size=48)
+        vela.input("move", "300", "300", "sleep", "50", "move", "310", "300")
+        self.wait_cursor(vela, 310, 300, RED, "the theme from kcminputrc")
+        vela.wait_for(lambda _: close(self.cursor_at(vela, 310, 300, inside=40), RED), read_state=False,
+                      what="a cursor 48 wide")
+        self.choose(vela, "vela-red", 24)
+        vela.wait_for(lambda _: not close(self.cursor_at(vela, 310, 300, inside=40), RED, 60), read_state=False,
+                      what="a cursor 24 wide")
+        self.assertTrue(close(self.cursor_at(vela, 310, 300, inside=20), RED), "still the theme's cursor")
+        # Out of range: XCURSOR_SIZE's instead (unset here: 24).
+        self.choose(vela, "vela-red", 4096)
         time.sleep(0.2)
-        self.assertTrue(close(self.cursor_at(vela, 310, 300), RED))
+        self.assertFalse(close(self.cursor_at(vela, 310, 300, inside=40), RED, 60))
+        self.assertTrue(close(self.cursor_at(vela, 310, 300, inside=20), RED))
 
 
 class IconTheme(unittest.TestCase):

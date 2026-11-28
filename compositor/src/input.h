@@ -175,9 +175,9 @@ void vela_input_destroy(struct vela_input *input);
 // Rereads vela.conf ("reload-config"): keyboard layouts and repeat, mice and
 // touchpads.
 void vela_input_reload(struct vela_input *input);
-// "reload-cursor <theme>" (Settings): the pointer from that cursor theme,
-// at once, the cursor shown included.
-void vela_input_reload_cursor(struct vela_input *input, const char *theme);
+// "reload-cursor" (Settings): kcminputrc read again, the pointer in its
+// theme and size at once, the cursor shown included.
+void vela_input_reload_cursor(struct vela_input *input);
 // The pointer's image: a cursor of the theme by name, or an app's surface
 // (NULL hides the pointer). Every change goes through these two, so that a
 // new theme knows what wlr_cursor still holds.

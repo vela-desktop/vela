@@ -12,6 +12,7 @@
 
 extern "C" {
 #include "color.h"
+#include "cursor_size.h"
 #include "legacy_names.h"
 }
 
@@ -31,6 +32,7 @@ extern "C" {
 #include <QFile>
 #include <QFileInfo>
 #include <QFont>
+#include <QtEndian>
 #include <QFontDatabase>
 #include <QGuiApplication>
 #include <QLocalSocket>
@@ -118,6 +120,64 @@ bool isCursorTheme(const QString& dir)
 {
     return QFileInfo::exists(dir + QStringLiteral("/cursors/default"))
         || QFileInfo::exists(dir + QStringLiteral("/cursors/left_ptr"));
+}
+
+// The nominal sizes of a cursor theme's arrow, as the Xcursor file lists them
+// (its table of contents: image chunks, their subtype the nominal size), in
+// the theme or the themes it inherits. Empty when none can be read.
+QList<int> cursorThemeSizes(const QString& theme, int depth = 0)
+{
+    QStringList roots { QDir::homePath() + QStringLiteral("/.icons") };
+    const QStringList data = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+    for (const QString& location : data) {
+        roots.append(location + QStringLiteral("/icons"));
+    }
+    for (const QString& root : std::as_const(roots)) {
+        const QString dir = root + u'/' + theme;
+        for (const QString& name : { QStringLiteral("default"), QStringLiteral("left_ptr") }) {
+            QFile file(dir + QStringLiteral("/cursors/") + name);
+            if (!file.open(QIODevice::ReadOnly)) {
+                continue;
+            }
+            const QByteArray header = file.read(16);
+            const auto word = [](const QByteArray& bytes, qsizetype at) {
+                return qFromLittleEndian<quint32>(bytes.constData() + at);
+            };
+            if (header.size() < 16 || !header.startsWith("Xcur")) {
+                continue;
+            }
+            const quint32 entries = qMin<quint32>(word(header, 12), 1024);
+            if (!file.seek(word(header, 4))) {
+                continue;
+            }
+            const QByteArray toc = file.read(qint64(entries) * 12);
+            QList<int> sizes;
+            for (qsizetype at = 0; at + 12 <= toc.size(); at += 12) {
+                const quint32 size = word(toc, at + 4);
+                if (word(toc, at) == 0xfffd0002u && size >= VELA_CURSOR_SIZE_MIN && size <= VELA_CURSOR_SIZE_MAX
+                    && !sizes.contains(int(size))) {
+                    sizes.append(int(size));
+                }
+            }
+            if (!sizes.isEmpty()) {
+                std::sort(sizes.begin(), sizes.end());
+                return sizes;
+            }
+        }
+        // No cursors of its own ("default" naming another theme): the ones it
+        // inherits.
+        const std::optional<QString> inherits = vela::kde::read(
+            dir + QStringLiteral("/index.theme"), QStringLiteral("Icon Theme"), QStringLiteral("Inherits"));
+        if (inherits && depth < 4) {
+            for (const QString& parent : inherits->split(u',', Qt::SkipEmptyParts)) {
+                const QList<int> sizes = cursorThemeSizes(parent.trimmed(), depth + 1);
+                if (!sizes.isEmpty()) {
+                    return sizes;
+                }
+            }
+        }
+    }
+    return {};
 }
 
 // The font keys KDE's font settings write, but the fixed-width one: the
@@ -865,7 +925,51 @@ void Preferences::setCursorTheme(const QString& theme)
         emit desktopThemesChanged();
         return;
     }
-    sendToCompositor("reload-cursor " + theme.toUtf8());
+    sendToCompositor("reload-cursor");
+    vela::kde::notifyGlobalChange(vela::kde::GlobalChange::Cursor);
+    emit desktopThemesChanged();
+}
+
+int Preferences::cursorSize() const
+{
+    // As the compositor reads it (compositor/src/input.c).
+    bool ok = false;
+    const int configured = vela::kde::read(kcminputrcPath(), QStringLiteral("Mouse"), QStringLiteral("cursorSize"))
+                               .value_or(QString())
+                               .toInt(&ok);
+    if (ok && configured >= VELA_CURSOR_SIZE_MIN && configured <= VELA_CURSOR_SIZE_MAX) {
+        return configured;
+    }
+    const int environment = qEnvironmentVariableIntValue("XCURSOR_SIZE", &ok);
+    return ok && environment > 0 ? environment : 24;
+}
+
+QList<int> Preferences::cursorSizes() const
+{
+    // The sizes the theme is drawn at, as KDE's settings offer them;
+    // others would be scaled from the nearest one.
+    QList<int> sizes = cursorThemeSizes(cursorTheme());
+    if (sizes.isEmpty()) {
+        sizes = { 24, 32, 48, 64 };
+    }
+    if (!sizes.contains(cursorSize())) {
+        sizes.append(cursorSize());
+        std::sort(sizes.begin(), sizes.end());
+    }
+    return sizes;
+}
+
+void Preferences::setCursorSize(int size)
+{
+    if (size == cursorSize() || size < VELA_CURSOR_SIZE_MIN || size > VELA_CURSOR_SIZE_MAX) {
+        return;
+    }
+    if (!saveKde(
+            kcminputrcPath(), { { QStringLiteral("Mouse"), QStringLiteral("cursorSize"), QString::number(size) } })) {
+        emit desktopThemesChanged();
+        return;
+    }
+    sendToCompositor("reload-cursor");
     vela::kde::notifyGlobalChange(vela::kde::GlobalChange::Cursor);
     emit desktopThemesChanged();
 }
