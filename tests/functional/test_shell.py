@@ -2285,6 +2285,38 @@ class PanelGraphics(RealShell):
         self.assertGreaterEqual(time.monotonic() - closed, self.KEPT - 0.5, "released again at once")
         self.check_desktop()
 
+    def test_curve_shapes_are_drawn_again_after_the_release(self):
+        """Start's power symbol and Sign out's in the power menu, Shapes on
+        the curve renderer, which Qt leaves empty on a new scene graph (#326):
+        reopened after the release, Start looks as before."""
+        start = "vela-start-menu"
+        offset = len(self.vela.log_text())
+        with self.input_session() as send:
+
+            def open_power_menu(name):
+                send("key", "super")
+                self.vela.wait_for(lambda s: self.mapped(s, start), what="Start open")
+                layer = self.layer(self.vela.state(), start)
+                # The power button, 24 from the panel's right side, in its bottom bar.
+                send("move", layer["x"] + 641, layer["y"] + 716, "sleep", "300", "click")
+                time.sleep(1.5)
+                # The button and its menu above it, Sign out included.
+                path = os.path.join(self.vela.directory, f"{name}.png")
+                self.vela.screenshot(path, region=(layer["x"] + 420, layer["y"] + 480, 280, 270))
+                send("key", "super")
+                self.vela.wait_for(lambda s: not self.mapped(s, start), timeout=5, what="Start closed")
+                return Image.read(path)
+
+            warm = open_power_menu("warm")
+            self.vela.wait_for(lambda _: f"{start} released its graphics" in self.vela.log_text()[offset:],
+                               timeout=self.KEPT * 1.5, read_state=False, what="Start released its graphics")
+            cold = open_power_menu("cold")
+        self.assertIn(f"{start} rebuilds 2 curve shapes", self.vela.log_text()[offset:])
+        # A new glyph cache, as in the test above: a level or two on text.
+        difference = max(abs(a - b) for new, old in zip(cold.rows, warm.rows) for a, b in zip(new, old))
+        self.assertLessEqual(difference, 3, "reopened after the release, Start's symbols are missing")
+        self.check_desktop()
+
 
 # Black and white stripes 4 pixels wide: blurred they become one gray, seen
 # through a translucent panel or a shadow they stay stripes.
