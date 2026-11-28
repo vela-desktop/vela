@@ -1,30 +1,30 @@
 {
-  "collected_at": "2026-11-27T12:17:06+00:00",
+  "collected_at": "2026-11-28T11:43:40+00:00",
   "coverage": "top_10_only",
   "items": [
     {
-      "count": 401,
+      "count": 382,
       "path": "/vela-desktop/vela",
       "title": "Overview",
-      "uniques": 138
+      "uniques": 125
     },
     {
-      "count": 97,
+      "count": 95,
       "path": "/vela-desktop/vela/issues",
       "title": "/issues",
-      "uniques": 15
+      "uniques": 16
     },
     {
-      "count": 57,
+      "count": 62,
       "path": "/vela-desktop/vela/pulls",
       "title": "/pulls",
-      "uniques": 4
+      "uniques": 6
     },
     {
-      "count": 26,
+      "count": 24,
       "path": "/vela-desktop/vela/commits/main",
       "title": "/commits/main",
-      "uniques": 6
+      "uniques": 5
     },
     {
       "count": 21,
@@ -33,16 +33,16 @@
       "uniques": 1
     },
     {
-      "count": 18,
-      "path": "/vela-desktop/vela/releases",
-      "title": "/releases",
-      "uniques": 15
+      "count": 15,
+      "path": "/vela-desktop/vela/issues/326",
+      "title": "/issues/326",
+      "uniques": 2
     },
     {
-      "count": 15,
+      "count": 14,
       "path": "/vela-desktop/vela/blob/main/docs/screenshots/files.webp",
       "title": "/blob/main/docs/screenshots/files.webp",
-      "uniques": 15
+      "uniques": 14
     },
     {
       "count": 14,
@@ -52,15 +52,15 @@
     },
     {
       "count": 13,
-      "path": "/vela-desktop/vela/issues/214",
-      "title": "/issues/214",
-      "uniques": 2
+      "path": "/vela-desktop/vela/releases",
+      "title": "/releases",
+      "uniques": 12
     },
     {
       "count": 12,
-      "path": "/vela-desktop/vela/blob/main/docs/development.md",
-      "title": "/blob/main/docs/development.md",
-      "uniques": 7
+      "path": "/vela-desktop/vela/issues/214",
+      "title": "/issues/214",
+      "uniques": 2
     }
   ],
   "schema_version": 1,
